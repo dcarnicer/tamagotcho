@@ -1,0 +1,10 @@
+.DS_Store
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+# Python
+__pycache__/
+*.pyc
+.venv/
+tools/pack-builder/cache/
+tools/pack-builder/out/
