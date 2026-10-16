@@ -67,7 +67,7 @@ Sections are 4-byte aligned. Readers must use the offsets, not assume order.
 | 4   | u32  | meanings      | string offset. Meanings separated by `"; "`, most common first |
 | 8   | u32  | onyomi        | string offset, katakana, readings separated by `"、"`. May be empty `""` |
 | 12  | u32  | kunyomi       | string offset, hiragana, separated by `"、"`; okurigana marked with `.` as in KANJIDIC (`た.べる`). May be empty |
-| 16  | u32  | distractors   | offset into distractor section (see below)                 |
+| 16  | u32  | distractors   | absolute file offset of this card's list inside the distractor section (see below) |
 | 20  | u8   | jlpt          | 1..5 (N1..N5), 0 = unknown                                 |
 | 21  | u8   | grade         | KANJIDIC school grade 1..10, 0 = unknown                   |
 | 22  | u8   | strokes       |                                                            |
@@ -104,9 +104,12 @@ Sorted ascending by `(set, codepoint)` so the device can binary-search.
 | 11  | u8   | reserved  | 0                                                      |
 | 12  | u32  | data_off  | absolute offset of bitmap                              |
 
-For sets 0 and 1 the builder centres each kanji in a `large_px`/`small_px`
-em square and stores the cropped bitmap with offsets relative to that square's
-baseline, so all kanji of one set share a visual box.
+For sets 0 and 1 the builder centres each kanji's ink box in a
+`large_px`/`small_px` square and stores the cropped bitmap. The **baseline is
+the bottom edge of that square**, so `y_off = top_in_square - px` (always
+negative) and `x_off` is the left offset inside the square. To draw a kanji
+in a box whose top-left is `(x, y)`: bitmap top-left = `(x + x_off, y + px + y_off)`.
+All kanji of one set share the same visual box.
 
 ## Bitmap encoding 0: raw 4bpp
 

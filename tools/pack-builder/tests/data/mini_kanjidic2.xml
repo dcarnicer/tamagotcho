@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kanjidic2>
+<header><file_version>4</file_version><database_version>fixture</database_version></header>
+<character>
+<literal>火</literal>
+<codepoint>
+<cp_value cp_type="ucs">706b</cp_value>
+<cp_value cp_type="jis208">1-18-48</cp_value>
+</codepoint>
+<radical>
+<rad_value rad_type="classical">86</rad_value>
+</radical>
+<misc>
+<grade>1</grade>
+<stroke_count>4</stroke_count>
+<variant var_type="jis212">1-16-60</variant>
+<freq>574</freq>
+<jlpt>4</jlpt>
+</misc>
+<reading_meaning>
+<rmgroup>
+<reading r_type="pinyin">huo3</reading>
+<reading r_type="korean_r">hwa</reading>
+<reading r_type="korean_h">화</reading>
+<reading r_type="vietnam">Hỏa</reading>
+<reading r_type="ja_on">カ</reading>
+<reading r_type="ja_kun">ひ</reading>
+<reading r_type="ja_kun">-び</reading>
+<reading r_type="ja_kun">ほ-</reading>
+<meaning>fire</meaning>
+<meaning m_lang="fr">feu</meaning>
+<meaning m_lang="es">fuego</meaning>
+<meaning m_lang="es">flama</meaning>
+<meaning m_lang="es">llama</meaning>
+<meaning m_lang="pt">fogo</meaning>
+</rmgroup>
+</reading_meaning>
+</character>
+<character>
+<literal>月</literal>
+<codepoint>
+<cp_value cp_type="ucs">6708</cp_value>
+<cp_value cp_type="jis208">1-23-78</cp_value>
+</codepoint>
+<radical>
+<rad_value rad_type="classical">74</rad_value>
+</radical>
+<misc>
+<grade>1</grade>
+<stroke_count>4</stroke_count>
+<freq>23</freq>
+<jlpt>4</jlpt>
+</misc>
+<reading_meaning>
+<rmgroup>
+<reading r_type="pinyin">yue4</reading>
+<reading r_type="korean_r">weol</reading>
+<reading r_type="korean_h">월</reading>
+<reading r_type="vietnam">Nguyệt</reading>
+<reading r_type="ja_on">ゲツ</reading>
+<reading r_type="ja_on">ガツ</reading>
+<reading r_type="ja_kun">つき</reading>
+<meaning>month</meaning>
+<meaning>moon</meaning>
+<meaning m_lang="fr">lune</meaning>
+<meaning m_lang="fr">mois</meaning>
+<meaning m_lang="es">mes</meaning>
+<meaning m_lang="es">luna</meaning>
+<meaning m_lang="pt">mês</meaning>
+<meaning m_lang="pt">lua</meaning>
+</rmgroup>
+<nanori>おと</nanori>
+<nanori>がっ</nanori>
+<nanori>す</nanori>
+<nanori>ずき</nanori>
+<nanori>もり</nanori>
+</reading_meaning>
+</character>
+<character>
+<literal>日</literal>
+<codepoint>
+<cp_value cp_type="ucs">65e5</cp_value>
+<cp_value cp_type="jis208">1-38-92</cp_value>
+</codepoint>
+<radical>
+<rad_value rad_type="classical">72</rad_value>
+</radical>
+<misc>
+<grade>1</grade>
+<stroke_count>4</stroke_count>
+<freq>1</freq>
+<jlpt>4</jlpt>
+</misc>
+<reading_meaning>
+<rmgroup>
+<reading r_type="pinyin">ri4</reading>
+<reading r_type="korean_r">il</reading>
+<reading r_type="korean_h">일</reading>
+<reading r_type="vietnam">Nhật</reading>
+<reading r_type="ja_on">ニチ</reading>
+<reading r_type="ja_on">ジツ</reading>
+<reading r_type="ja_kun">ひ</reading>
+<reading r_type="ja_kun">-び</reading>
+<reading r_type="ja_kun">-か</reading>
+<meaning>day</meaning>
+<meaning>sun</meaning>
+<meaning>Japan</meaning>
+<meaning>counter for days</meaning>
+<meaning m_lang="fr">jour</meaning>
+<meaning m_lang="fr">soleil</meaning>
+<meaning m_lang="fr">Japon</meaning>
+<meaning m_lang="fr">compteur de jours</meaning>
+<meaning m_lang="es">día</meaning>
+<meaning m_lang="es">solar</meaning>
+<meaning m_lang="es">Japón</meaning>
+<meaning m_lang="es">sol</meaning>
+<meaning m_lang="es">rayo de sol</meaning>
+<meaning m_lang="pt">dia</meaning>
+<meaning m_lang="pt">sol</meaning>
+<meaning m_lang="pt">Japão</meaning>
+</rmgroup>
+<nanori>あ</nanori>
+<nanori>あき</nanori>
+<nanori>いる</nanori>
+<nanori>く</nanori>
+<nanori>くさ</nanori>
+<nanori>こう</nanori>
+<nanori>す</nanori>
+<nanori>たち</nanori>
+<nanori>に</nanori>
+<nanori>にっ</nanori>
+<nanori>につ</nanori>
+<nanori>へ</nanori>
+</reading_meaning>
+</character>
+</kanjidic2>
