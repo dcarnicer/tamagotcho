@@ -64,7 +64,7 @@ Sections are 4-byte aligned. Readers must use the offsets, not assume order.
 | off | type | field         | notes                                                      |
 |-----|------|---------------|------------------------------------------------------------|
 | 0   | u32  | codepoint     | the kanji (Unicode scalar). Stable card identity.          |
-| 4   | u32  | meanings      | string offset. Meanings separated by `"; "`, most common first |
+| 4   | u32  | meanings      | absolute file offset into the string pool. Meanings separated by `"; "`, most common first |
 | 8   | u32  | onyomi        | string offset, katakana, readings separated by `"、"`. May be empty `""` |
 | 12  | u32  | kunyomi       | string offset, hiragana, separated by `"、"`; okurigana marked with `.` as in KANJIDIC (`た.べる`). May be empty |
 | 16  | u32  | distractors   | absolute file offset of this card's list inside the distractor section (see below) |

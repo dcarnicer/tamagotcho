@@ -1,0 +1,118 @@
+#pragma once
+// Reader for Tangocho packs (*.tgc), format v1. See docs/pack-format.md.
+// Pure C++, no Arduino. Caches header, card table, glyph table and the string
+// pool in memory (obtained through a pluggable allocator, PSRAM on device);
+// bitmaps and distractor lists are read on demand through a PackSource.
+#include <cstddef>
+#include <cstdint>
+
+#include "pack/PackSource.h"
+
+namespace tgc {
+
+enum class PackError : uint8_t {
+    Ok = 0,
+    Io,           // source read failed
+    BadMagic,
+    BadVersion,
+    BadHeader,    // header_size, counts or offsets inconsistent / out of bounds
+    BadTable,     // card/glyph table content invalid
+    NoMemory,
+};
+
+const char* packErrorString(PackError e);
+
+struct Allocator {
+    void* (*alloc)(size_t);
+    void (*release)(void*);
+};
+// malloc/free.
+Allocator defaultAllocator();
+
+constexpr uint32_t kPackHeaderSize = 64;
+constexpr uint32_t kCardSize = 32;
+constexpr uint32_t kGlyphEntrySize = 16;
+constexpr uint8_t kGlyphSetLarge = 0;
+constexpr uint8_t kGlyphSetSmall = 1;
+constexpr uint8_t kGlyphSetText = 2;
+constexpr uint8_t kCardFlagMeaningFallback = 0x01;
+
+struct PackHeader {
+    uint16_t version;
+    uint16_t headerSize;
+    uint32_t cardCount;
+    uint32_t glyphCount;
+    uint32_t cardsOff, glyphsOff, distractOff, stringsOff, stringsSize, glyphDataOff;
+    uint32_t deckNameOff;
+    char lang[5];  // NUL terminated
+    uint8_t largePx, smallPx, textPx, textLineHeight, textAscent;
+    uint32_t buildTime;
+};
+
+struct Card {
+    uint32_t codepoint;
+    const char* meanings;  // "; " separated; never null
+    const char* onyomi;    // "、" separated katakana; may be ""
+    const char* kunyomi;   // "、" separated hiragana, '.' okurigana marker; may be ""
+    uint32_t distractorOff;
+    uint8_t jlpt, grade, strokes, flags;
+    uint16_t freq, level;
+};
+
+struct Glyph {
+    uint32_t codepoint;
+    uint8_t set, encoding, width, height;
+    int8_t xOff, yOff;
+    uint8_t advance;
+    uint32_t dataOff;
+};
+
+class PackReader {
+public:
+    PackReader() = default;
+    ~PackReader() { close(); }
+    PackReader(const PackReader&) = delete;
+    PackReader& operator=(const PackReader&) = delete;
+
+    // `src` must outlive the reader. On failure the reader stays closed.
+    PackError open(PackSource& src, Allocator alloc = defaultAllocator());
+    void close();
+    bool isOpen() const { return src_ != nullptr; }
+
+    const PackHeader& header() const { return hdr_; }
+    uint32_t cardCount() const { return hdr_.cardCount; }
+    uint32_t glyphCount() const { return hdr_.glyphCount; }
+    const char* deckName() const { return str(hdr_.deckNameOff); }
+    const Allocator& allocator() const { return alloc_; }
+
+    // False if idx is out of range.
+    bool card(uint32_t idx, Card* out) const;
+
+    // String pool access by absolute file offset; "" if out of range.
+    const char* str(uint32_t off) const;
+
+    // Copies up to `cap` distractor card indices, returns the number copied
+    // (0 on error / empty). `total` (optional) receives the list's full count.
+    uint16_t distractors(const Card& c, uint16_t* out, uint16_t cap, uint16_t* total = nullptr) const;
+
+    // Binary search by (set, codepoint). Null if absent.
+    const Glyph* findGlyph(uint8_t set, uint32_t codepoint) const;
+    const Glyph* glyphAt(uint32_t idx) const { return idx < hdr_.glyphCount ? &glyphs_[idx] : nullptr; }
+    // Index of a Glyph returned by findGlyph/glyphAt.
+    uint32_t glyphIndex(const Glyph* g) const { return static_cast<uint32_t>(g - glyphs_); }
+
+    // Bytes of raw 4bpp data for this glyph: ceil(w/2)*h.
+    static size_t bitmapSize(const Glyph& g) { return static_cast<size_t>((g.width + 1) / 2) * g.height; }
+    // Reads the bitmap into buf (cap >= bitmapSize). Only encoding 0 is supported.
+    bool readGlyphBitmap(const Glyph& g, uint8_t* buf, size_t cap) const;
+
+private:
+    PackSource* src_ = nullptr;
+    Allocator alloc_{nullptr, nullptr};
+    PackHeader hdr_{};
+    uint8_t* cards_ = nullptr;  // raw card table
+    Glyph* glyphs_ = nullptr;
+    char* strings_ = nullptr;
+};
+
+}  // namespace tgc

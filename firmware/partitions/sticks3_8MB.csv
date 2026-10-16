@@ -1,0 +1,9 @@
+# Tangocho, 8 MB flash (M5Stack StickS3).
+# No OTA: firmware is updated over USB, so a single app slot is enough and
+# nearly all flash goes to LittleFS for packs. App slot is 2 MB (current build
+# is well under 1.5 MB); raise it here if the app outgrows it.
+# Name,    Type, SubType, Offset,   Size,     Flags
+nvs,       data, nvs,     0x9000,   0x5000,
+phy_init,  data, phy,     0xE000,   0x1000,
+app0,      app,  factory, 0x10000,  0x200000,
+spiffs,    data, spiffs,  0x210000, 0x5F0000,

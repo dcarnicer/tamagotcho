@@ -1,0 +1,229 @@
+// Tangocho Phase 0: open the first pack in /packs and run a random
+// multiple-choice quiz (kanji -> meaning / reading).
+#include <Arduino.h>
+#include <LittleFS.h>
+
+#include <memory>
+
+#include "board/Board.h"
+#include "pack/PackReader.h"
+#include "platform/FsPackSource.h"
+#include "quiz/Quiz.h"
+#include "render/Renderer.h"
+
+using tgc::board::Button;
+
+namespace {
+
+constexpr uint16_t kBlack = 0x0000;
+constexpr uint16_t kWhite = 0xFFFF;
+uint16_t kGrey, kHighlight, kGreen, kRed, kYellow;
+
+lgfx::LGFX_Sprite* gCanvas = nullptr;  // full-screen back buffer in PSRAM
+tgc::PackReader gPack;
+std::unique_ptr<tgc::FsPackSource> gSource;
+tgc::Renderer gRender;
+tgc::XorShiftRng gRng;
+
+tgc::Question gQ;
+int gSel = 0;
+bool gRevealed = false;
+bool gNextModeIsReading = false;
+
+int W, H;
+
+void smallText(lgfx::LovyanGFX& d, const char* s, int x, int y, uint16_t fg, uint16_t bg,
+               lgfx::textdatum_t datum = lgfx::top_left) {
+    d.setFont(&lgfx::fonts::Font0);
+    d.setTextSize(1);
+    d.setTextColor(fg, bg);
+    d.setTextDatum(datum);
+    d.drawString(s, x, y);
+}
+
+void present() { gCanvas->pushSprite(&tgc::board::display(), 0, 0); }
+
+void showError(const char* line1, const char* line2 = "") {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kRed);
+    smallText(d, "Tangocho", 3, 3, kWhite, kRed);
+    d.setTextWrap(true);
+    d.setCursor(4, 24);
+    d.setFont(&lgfx::fonts::Font0);
+    d.setTextColor(kYellow, kBlack);
+    d.println(line1);
+    d.setTextColor(kWhite, kBlack);
+    d.println();
+    d.println(line2);
+    present();
+}
+
+// Find the first *.tgc in /packs. Returns true and fills `path`.
+bool findPack(String* path) {
+    File dir = LittleFS.open("/packs");
+    if (!dir || !dir.isDirectory()) return false;
+    for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
+        String name = f.name();
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0) name = name.substring(slash + 1);
+        if (!f.isDirectory() && name.endsWith(".tgc") && !name.startsWith(".")) {
+            *path = "/packs/" + name;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool newQuestion() {
+    for (int attempt = 0; attempt < 40; ++attempt) {
+        uint32_t idx = gRng.below(gPack.cardCount());
+        tgc::QuizMode first = gNextModeIsReading ? tgc::QuizMode::Reading : tgc::QuizMode::Meaning;
+        tgc::QuizMode second = gNextModeIsReading ? tgc::QuizMode::Meaning : tgc::QuizMode::Reading;
+        if (tgc::buildQuestion(gPack, idx, first, gRng, &gQ) ||
+            tgc::buildQuestion(gPack, idx, second, gRng, &gQ)) {
+            gNextModeIsReading = !gNextModeIsReading;
+            gSel = 0;
+            gRevealed = false;
+            return true;
+        }
+    }
+    return false;
+}
+
+void drawScreen() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+
+    // Header: deck name left, battery right.
+    const int headerH = 14;
+    d.fillRect(0, 0, W, headerH, kGrey);
+    gRender.drawText(d, gPack.deckName(), 3, 0, kWhite, kGrey);
+    int bat = tgc::board::batteryPercent();
+    if (bat >= 0) {
+        char b[8];
+        snprintf(b, sizeof b, "%d%%", bat);
+        smallText(d, b, W - 3, 3, bat < 15 ? kYellow : kWhite, kGrey, lgfx::top_right);
+    }
+
+    // Kanji prompt.
+    tgc::Card card;
+    gPack.card(gQ.cardIndex, &card);
+    const int largePx = gPack.header().largePx ? gPack.header().largePx : 64;
+    int kanjiH = largePx + 6;
+    if (kanjiH > H * 45 / 100) kanjiH = H * 45 / 100;
+    gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH + 2, W, kanjiH, kWhite, kBlack);
+    const bool reading = gQ.mode == tgc::QuizMode::Reading;
+    smallText(d, reading ? "READING" : "MEANING", W / 2, headerH + 2 + kanjiH, kYellow, kBlack,
+              lgfx::top_center);
+
+    // Options.
+    const int top = headerH + kanjiH + 14;
+    const int area = H - top - 2;
+    const int rowH = area / gQ.count;
+    const int lh = gRender.lineHeight();
+    const int pad = 3;
+    for (int i = 0; i < gQ.count; ++i) {
+        int y = top + i * rowH;
+        uint16_t bg = kBlack;
+        if (gRevealed) {
+            if (i == gQ.correct) bg = kGreen;
+            else if (i == gSel) bg = kRed;
+        } else if (i == gSel) {
+            bg = kHighlight;
+        }
+        d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
+        if (!gRevealed && i == gSel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
+        int maxLines = (rowH - 2 - 2 * pad + 2) / lh;
+        if (maxLines < 1) maxLines = 1;
+        int textH = (maxLines < 2 ? 1 : maxLines) * lh;
+        // Centre single-line options vertically.
+        int usedLines = 1;
+        (void)usedLines;
+        int ty = y + (rowH - 2 - (maxLines >= 2 ? textH : lh)) / 2;
+        gRender.drawWrapped(d, gQ.options[i].c_str(), 1 + pad + 2, ty, W - 2 - 2 * (pad + 2), maxLines,
+                            kWhite, bg);
+    }
+    present();
+}
+
+void halt() {
+    for (;;) {
+        tgc::board::update();
+        delay(50);
+    }
+}
+
+}  // namespace
+
+void setup() {
+    Serial.begin(115200);
+    tgc::board::begin();
+    auto& disp = tgc::board::display();
+    W = tgc::board::width();
+    H = tgc::board::height();
+    kGrey = disp.color565(60, 60, 70);
+    kHighlight = disp.color565(30, 60, 150);
+    kGreen = disp.color565(0, 130, 40);
+    kRed = disp.color565(170, 20, 20);
+    kYellow = disp.color565(255, 210, 60);
+
+    gCanvas = new lgfx::LGFX_Sprite(&disp);
+    gCanvas->setColorDepth(16);
+    gCanvas->setPsram(true);
+    if (!gCanvas->createSprite(W, H)) {
+        // Fall back to internal RAM.
+        gCanvas->setPsram(false);
+        gCanvas->createSprite(W, H);
+    }
+    gRng = tgc::XorShiftRng(tgc::board::randomSeed());
+
+    if (!LittleFS.begin(false)) {
+        showError("Filesystem not found", "Run: pio run -t uploadfs");
+        halt();
+    }
+    String path;
+    if (!findPack(&path)) {
+        showError("No pack found", "Put a .tgc in data/packs/ then run uploadfs");
+        halt();
+    }
+    gSource.reset(new tgc::FsPackSource(LittleFS.open(path, "r")));
+    if (!gSource->ok()) {
+        showError("Cannot open", path.c_str());
+        halt();
+    }
+    tgc::PackError err = gPack.open(*gSource, tgc::psramAllocator());
+    if (err != tgc::PackError::Ok) {
+        showError("Invalid pack", tgc::packErrorString(err));
+        halt();
+    }
+    if (!gRender.begin(gPack)) {
+        showError("Out of memory");
+        halt();
+    }
+    Serial.printf("pack %s: %u cards, %u glyphs, lang %s\n", gPack.deckName(),
+                  (unsigned)gPack.cardCount(), (unsigned)gPack.glyphCount(), gPack.header().lang);
+    if (!newQuestion()) {
+        showError("Pack has no usable cards");
+        halt();
+    }
+    drawScreen();
+}
+
+void loop() {
+    tgc::board::update();
+    const bool next = tgc::board::wasPressed(Button::Next);
+    const bool select = tgc::board::wasPressed(Button::Select);
+    if (next || select) {
+        if (gRevealed) {
+            if (newQuestion()) drawScreen();
+        } else if (next) {
+            gSel = (gSel + 1) % gQ.count;
+            drawScreen();
+        } else {
+            gRevealed = true;
+            drawScreen();
+        }
+    }
+    delay(10);
+}
