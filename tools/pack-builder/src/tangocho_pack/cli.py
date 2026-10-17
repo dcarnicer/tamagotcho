@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -17,27 +18,47 @@ def cmd_fetch(a) -> int:
 
 def cmd_build(a) -> int:
     from .build import build_pack, default_deck_name
-    from .kanjidic import load_new_jlpt, make_cards, parse_kanjidic
     from .kanjivg import KanjiVGError
     from .pack import read_pack
 
-    jlpt, grades = set(a.jlpt or []), set(a.grade or [])
-    if not jlpt and not grades:
-        print("error: give at least one --jlpt or --grade", file=sys.stderr)
-        return 2
-    if not paths.KANJIDIC_GZ.exists():
-        print("error: run `tangocho-pack fetch` first", file=sys.stderr)
-        return 2
-    new = None
-    if paths.KANJI_JSON.exists():
-        new = load_new_jlpt(paths.KANJI_JSON)
+    # The WaniKani path is opt-in: it needs the user's own token (flag or env)
+    # instead of the cached KANJIDIC2 file. The token is never printed, logged
+    # or written to cache/.
+    token = a.wanikani_token or os.environ.get("WANIKANI_TOKEN")
+    if token:
+        from .wanikani import WaniKaniError, default_wanikani_name, wanikani_cards
+
+        levels = set(a.wanikani_level) if a.wanikani_level else None
+        try:
+            cards = wanikani_cards(token, lang=a.lang, levels=levels)
+        except WaniKaniError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        if not cards:
+            print("error: no unlocked WaniKani kanji selected", file=sys.stderr)
+            return 1
+        name = a.name or default_wanikani_name(levels)
     else:
-        print("warning: kanji.json missing, mapping old 4-level JLPT (lossy)", file=sys.stderr)
-    cards = make_cards(parse_kanjidic(paths.KANJIDIC_GZ), a.lang, jlpt, grades, new)
-    if not cards:
-        print("error: no cards selected", file=sys.stderr)
-        return 1
-    name = a.name or default_deck_name(jlpt, grades)
+        from .kanjidic import load_new_jlpt, make_cards, parse_kanjidic
+
+        jlpt, grades = set(a.jlpt or []), set(a.grade or [])
+        if not jlpt and not grades:
+            print("error: give at least one --jlpt or --grade, or a --wanikani-token",
+                  file=sys.stderr)
+            return 2
+        if not paths.KANJIDIC_GZ.exists():
+            print("error: run `tangocho-pack fetch` first", file=sys.stderr)
+            return 2
+        new = None
+        if paths.KANJI_JSON.exists():
+            new = load_new_jlpt(paths.KANJI_JSON)
+        else:
+            print("warning: kanji.json missing, mapping old 4-level JLPT (lossy)", file=sys.stderr)
+        cards = make_cards(parse_kanjidic(paths.KANJIDIC_GZ), a.lang, jlpt, grades, new)
+        if not cards:
+            print("error: no cards selected", file=sys.stderr)
+            return 1
+        name = a.name or default_deck_name(jlpt, grades)
     try:
         raw = build_pack(cards, a.font, a.lang, name, a.large_px, a.small_px, a.text_px, a.option_px,
                          strokes=a.strokes, strokes_px=a.strokes_px)
@@ -137,9 +158,16 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--force", action="store_true")
     s.set_defaults(fn=cmd_fetch)
 
-    s = sub.add_parser("build", help="build a .tgc pack")
+    s = sub.add_parser("build", help="build a .tgc pack (KANJIDIC2 or your own WaniKani account)")
     s.add_argument("--jlpt", type=int, action="append", choices=range(1, 6), metavar="N")
     s.add_argument("--grade", type=int, action="append", choices=range(1, 11), metavar="N")
+    s.add_argument("--wanikani-token", metavar="TOKEN",
+                   help="build from the kanji unlocked on your own WaniKani account; the token "
+                        "is never logged or cached (the WANIKANI_TOKEN environment variable is "
+                        "also read). Replaces the --jlpt/--grade (KANJIDIC2) selection")
+    s.add_argument("--wanikani-level", type=int, action="append", choices=range(1, 61), metavar="N",
+                   help="limit the WaniKani import to this level (repeatable); "
+                        "default: every unlocked level")
     s.add_argument("--lang", default="en", choices=["en", "es", "fr", "pt"])
     s.add_argument("--font", default=str(paths.DEFAULT_FONT))
     s.add_argument("--large-px", type=int, default=96)

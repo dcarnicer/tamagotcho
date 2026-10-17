@@ -1,0 +1,127 @@
+{
+  "object": "collection",
+  "url": "https://api.wanikani.com/v2/assignments?page_after_id=1003&subject_types=kanji&unlocked=true&hidden=false",
+  "pages": {
+    "per_page": 500,
+    "next_url": null,
+    "previous_url": "https://api.wanikani.com/v2/assignments?page_before_id=1004&subject_types=kanji&unlocked=true&hidden=false"
+  },
+  "total_count": 9,
+  "data_updated_at": "2026-10-01T12:00:00.000000Z",
+  "data": [
+    {
+      "id": 1004,
+      "object": "assignment",
+      "url": "https://api.wanikani.com/v2/assignments/1004",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "created_at": "2026-01-10T00:00:00.000000Z",
+        "subject_id": 443,
+        "subject_type": "kanji",
+        "srs_stage": 1,
+        "unlocked_at": "2026-01-10T00:00:00.000000Z",
+        "started_at": null,
+        "passed_at": null,
+        "burned_at": null,
+        "available_at": "2026-02-03T00:00:00.000000Z",
+        "resurrected_at": null,
+        "hidden": true
+      }
+    },
+    {
+      "id": 1005,
+      "object": "assignment",
+      "url": "https://api.wanikani.com/v2/assignments/1005",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "created_at": "2026-02-01T00:00:00.000000Z",
+        "subject_id": 450,
+        "subject_type": "kanji",
+        "srs_stage": 2,
+        "unlocked_at": "2026-02-01T00:00:00.000000Z",
+        "started_at": "2026-02-02T00:00:00.000000Z",
+        "passed_at": null,
+        "burned_at": null,
+        "available_at": "2026-03-01T00:00:00.000000Z",
+        "resurrected_at": null,
+        "hidden": false
+      }
+    },
+    {
+      "id": 1006,
+      "object": "assignment",
+      "url": "https://api.wanikani.com/v2/assignments/1006",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "created_at": "2026-02-01T00:00:00.000000Z",
+        "subject_id": 451,
+        "subject_type": "kanji",
+        "srs_stage": 2,
+        "unlocked_at": "2026-02-01T00:00:00.000000Z",
+        "started_at": "2026-02-02T00:00:00.000000Z",
+        "passed_at": null,
+        "burned_at": null,
+        "available_at": "2026-03-01T00:00:00.000000Z",
+        "resurrected_at": null,
+        "hidden": false
+      }
+    },
+    {
+      "id": 1007,
+      "object": "assignment",
+      "url": "https://api.wanikani.com/v2/assignments/1007",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "created_at": "2026-02-01T00:00:00.000000Z",
+        "subject_id": 452,
+        "subject_type": "radical",
+        "srs_stage": 6,
+        "unlocked_at": "2026-02-01T00:00:00.000000Z",
+        "started_at": "2026-02-02T00:00:00.000000Z",
+        "passed_at": "2026-02-05T00:00:00.000000Z",
+        "burned_at": null,
+        "available_at": "2026-03-01T00:00:00.000000Z",
+        "resurrected_at": null,
+        "hidden": false
+      }
+    },
+    {
+      "id": 1008,
+      "object": "assignment",
+      "url": "https://api.wanikani.com/v2/assignments/1008",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "created_at": "2026-02-01T00:00:00.000000Z",
+        "subject_id": 453,
+        "subject_type": "vocabulary",
+        "srs_stage": 4,
+        "unlocked_at": "2026-02-01T00:00:00.000000Z",
+        "started_at": "2026-02-02T00:00:00.000000Z",
+        "passed_at": null,
+        "burned_at": null,
+        "available_at": "2026-03-01T00:00:00.000000Z",
+        "resurrected_at": null,
+        "hidden": false
+      }
+    },
+    {
+      "id": 1009,
+      "object": "assignment",
+      "url": "https://api.wanikani.com/v2/assignments/1009",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "created_at": "2026-03-01T00:00:00.000000Z",
+        "subject_id": 460,
+        "subject_type": "kanji",
+        "srs_stage": 1,
+        "unlocked_at": "2026-03-01T00:00:00.000000Z",
+        "started_at": null,
+        "passed_at": null,
+        "burned_at": null,
+        "available_at": "2026-04-01T00:00:00.000000Z",
+        "resurrected_at": null,
+        "hidden": false
+      }
+    }
+  ]
+}

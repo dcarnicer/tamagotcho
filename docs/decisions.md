@@ -457,3 +457,44 @@ Short log of non-obvious choices. Newest last.
   `/packs` once the firmware is running, because it does not depend on who owns
   the filesystem partition. Written up in README.md.
 
+## 2026-10-17 – Optional WaniKani importer (phase 4)
+
+- **An importer, not a content source.** `tools/pack-builder/src/tangocho_pack/
+  wanikani.py` builds cards from the kanji a user has **unlocked** on WaniKani,
+  using the user's own API v2 token. No WaniKani content is shipped and nothing
+  is fetched unless the user explicitly passes `--wanikani-token` (or sets
+  `WANIKANI_TOKEN`) to `build`. The importer then hands the cards to the
+  unchanged `build_pack`, so glyphs, distractors (including the radical ranking)
+  and `--strokes` all apply as usual. Reserve from the start: WaniKani is a
+  trademark of Tofugu LLC; the content is theirs; packs built this way are the
+  user's own responsibility and are not redistributed (docs/data-sources.md).
+- **Unlocked only.** `/assignments` says what the user can study: an assignment
+  must have `unlocked_at`, not be `hidden`, and have `subject_type == "kanji"`.
+  The request asks the API for exactly that (`subject_types=kanji&unlocked=true
+  &hidden=false`, plus an optional `levels=` filter) **and** re-checks the flags
+  locally, so a locked/hidden kanji in the data can never slip through — this is
+  what the canned fixture pins. Subjects are fetched with `types=kanji` and
+  joined by subject id; nothing is written back to WaniKani.
+- **Token handling.** The token is read from the flag or the environment and
+  used only in the `Authorization: Bearer` header; it is never logged, printed
+  in `--help`/output, cached to disk or committed. HTTP 401/403/429 become
+  clear, token-free `WaniKaniError` messages, and requests are spaced to stay
+  under the documented 60-requests/minute limit. The network layer is a
+  `transport(url, token)` callable so tests inject canned pages and never touch
+  the network.
+- **English-only meanings.** WaniKani ships English meanings only; there is no
+  honest translation, so a non-English `--lang` **falls back to English and sets
+  the card's fallback flag** rather than refusing the build. This matches the
+  KANJIDIC2 importer's convention (flag bit0), so the device and the detail card
+  behave identically for both sources. Chosen over "refuse" because it keeps the
+  common `--lang es` pipeline working and the fallback is already surfaced.
+- **Readings.** The API returns all readings in hiragana; on'yomi are shifted to
+  **katakana** so the pack contract (`onyomi` katakana, `kunyomi` hiragana) holds
+  for both importers and the reading distractors compare like with like. Readings
+  are primary-first then accepted-first, deduped; `nanori` are dropped. Meaning
+  and reading lists are capped/ordered the same way as KANJIDIC2 (meanings to
+  `MAX_MEANINGS`).
+- **Unknown metadata is 0.** `jlpt`/`grade`/`strokes`/`freq` have no WaniKani
+  equivalent, so they stay 0; the ordering hint is WaniKani level then subject
+  id, which the builder assigns as the deck-local `level`.
+

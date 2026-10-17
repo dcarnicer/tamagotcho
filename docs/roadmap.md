@@ -34,10 +34,16 @@ Scope for now: **kanji only** (no vocabulary decks).
       access point (`Tangocho-XXXX`, `http://192.168.4.1`) to upload, delete and
       download packs and to read the SRS statistics (`/`, `/api/stats`); it also
       lets a fresh, pack-less device boot into an "upload a `.tgc`" state and
-      continue into the quiz once a pack arrives. Pending: WaniKani importer
-      (user's own token, unlocked kanji only), IMU input (tilt to choose), and
-      NTP time (store an epoch in the SRS state so the scheduler finally has
-      real days; the StickS3 has no RTC, see docs/decisions.md).
+      continue into the quiz once a pack arrives. Pending: IMU input (tilt to
+      choose), and NTP time (store an epoch in the SRS state so the scheduler
+      finally has real days; the StickS3 has no RTC, see docs/decisions.md).
+      - [x] **WaniKani importer** (user's own token, unlocked kanji only). The
+        builder can build a pack from the kanji a user has unlocked on their own
+        WaniKani account instead of (or as well as) KANJIDIC2, via
+        `tangocho-pack build --wanikani-token ... [--wanikani-level N]`. Nothing
+        is shipped, nothing is fetched without the flag, and the token is never
+        logged or cached; a WaniKani-derived pack is the user's own
+        responsibility and is not redistributed (docs/data-sources.md).
       - [x] **Download packs over Wi-Fi** from a URL, so a fresh device gets
         decks without `uploadfs` and without a computer. Plain `http://` only
         (TLS to arbitrary hosts is untested); no resume yet.
