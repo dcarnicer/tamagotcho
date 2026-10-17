@@ -11,10 +11,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       (2026-10-17).
 - [~] **Phase 2 – SRS.** FSRS-5 on device (`firmware/src/srs/`, pure and
       native-tested), `/state/srs.bin` persisted per-codepoint state, review/
-      learn queues, grade from correctness + response time. Implemented and
-      committed; persistence and the session day clock verified on the StickS3.
-      Pending: tune `slow_ms` and the daily new cap with real use, and the
-      "study more" override check.
+      learn queues, grade from correctness + response time. Validated on the
+      StickS3. The device has no clock, so days come from a user-reported gap on
+      each power-on plus a manual date (NTP in phase 4). `slow_ms`, the daily new
+      cap and the "study more" override are all adjustable/working. Pending: tune
+      the defaults with real use.
 - [~] **Phase 3 – Better cards.** Distractors done for visual similarity and
       confusable readings (shared radicals pending); meaning→kanji questions
       done. Pending: detail card on mistakes, stroke order from KanjiVG, and
@@ -40,9 +41,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       `SrsStore::stats()` + `Screen::Stats` show the date, seen/pack total,
       due/new, lifetime answers, accuracy and learned count. Pending: per-kanji
       accuracy, streak, time spent and the portal views.
-- [ ] **Multilingual.** Localise the on-device strings (currently English) and
-      let the user pick the meaning language on device; packs already carry
-      `lang`, and the builder supports en/es/fr/pt.
+- [~] **Multilingual.** On-device strings are localised to the pack language
+      (`lang`: en/es today, anything else falls back to English). Pending: a
+      language picker on device (the meaning language is a property of the pack,
+      so switching packs already switches the meanings).
 - [x] **Menu and settings redesign.** The settings home (Seguir / Mazos / Fecha /
       Nuevas/día / Velocidad) replaces the single deck list, with a shared
       four-row choice screen for the new/day cap and the Hard threshold. The deck
