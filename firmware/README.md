@@ -1,14 +1,15 @@
 # Tangochō firmware
 
 PlatformIO project for the M5Stack StickS3 (primary) and the LilyGO
-T-Display-S3 (dev stand-in). Phase 0: open the first pack in `/packs` and run a
-random multiple-choice quiz (kanji -> meaning / reading).
+T-Display-S3 (dev stand-in). Phase 2: open the saved pack in `/packs` and run a
+multiple-choice quiz (kanji -> meaning / reading / meaning -> kanji) scheduled
+from persisted FSRS review state (`/state/srs.bin`).
 
 ## Build and test
 
 ```sh
 cd firmware
-pio test -e native            # unit tests for pack/ and quiz/ (host, no Arduino)
+pio test -e native            # unit tests for pack/, quiz/ and srs/ (host, no Arduino)
 pio run -e sticks3            # build for StickS3
 pio run -e tdisplay-s3        # build for T-Display-S3
 ```
@@ -29,7 +30,8 @@ Build a pack with `tools/pack-builder` (see its README), copy the `.tgc` into
 `firmware/data/packs/` (packs are git-ignored) and run `uploadfs`. The firmware
 opens the deck saved in NVS, or the first `*.tgc` if there is none; hold the
 side button to switch decks. `uploadfs` replaces the whole filesystem, so keep
-every pack you want in `data/packs/`.
+every pack you want in `data/packs/`, and note that it also clears review
+progress (`/state/srs.bin`).
 
 ## Flash layout
 

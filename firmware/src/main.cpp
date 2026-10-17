@@ -1,5 +1,5 @@
-// Tangocho Phase 0: open the first pack in /packs and run a random
-// multiple-choice quiz (kanji -> meaning / reading).
+// Tangocho Phase 2: open the saved pack in /packs and run a spaced-repetition
+// multiple-choice quiz (kanji -> meaning / reading / meaning -> kanji).
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <Preferences.h>
@@ -11,8 +11,11 @@
 #include "board/Board.h"
 #include "pack/PackReader.h"
 #include "platform/FsPackSource.h"
+#include "platform/FsSrsFile.h"
 #include "quiz/Quiz.h"
 #include "render/Renderer.h"
+#include "srs/Queue.h"
+#include "srs/SrsStore.h"
 
 using tgc::board::Button;
 
@@ -38,11 +41,20 @@ tgc::XorShiftRng gRng;
 tgc::Question gQ;
 int gSel = 0;
 bool gRevealed = false;
-int gModeCycle = 0;  // rotates Meaning / Reading / MeaningToKanji
 bool gNextReadingIsKun = false;
 
-enum class Screen { Quiz, Menu };
+tgc::SrsStore gSrs;
+tgc::FsSrsFile gSrsIo;
+tgc::Queue gQueue;
+uint32_t gShownAt = 0;     // millis() when the question was drawn
+uint32_t gLastNavAt = 0;   // last navigation tap, 0 = never moved
+uint32_t gLastAnswerAt = 0;
+int gDirty = 0;            // answers not yet persisted
+uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
+
+enum class Screen { Quiz, Menu, Done };
 Screen gScreen = Screen::Quiz;
+Screen gBeforeMenu = Screen::Quiz;
 std::vector<String> gPacks;  // paths of the *.tgc files in /packs
 int gMenuSel = 0;
 String gCurrentPack;
@@ -92,36 +104,67 @@ void listPacks(std::vector<String>& out) {
     std::sort(out.begin(), out.end());
 }
 
+const char* gradeName(tgc::Grade g) {
+    switch (g) {
+        case tgc::Grade::Again: return "again";
+        case tgc::Grade::Hard: return "hard";
+        case tgc::Grade::Good: return "good";
+    }
+    return "?";
+}
+
+// Count the current pack's cards that are due or unseen, for the boot log and
+// the done screen. Cheap: one pass over the card table.
+void packDueNew(uint32_t* due, uint32_t* fresh) {
+    uint32_t d = 0, n = 0;
+    const uint16_t today = gSrs.today();
+    for (uint32_t i = 0; i < gPack.cardCount(); ++i) {
+        tgc::Card c;
+        if (!gPack.card(i, &c)) continue;
+        const tgc::Record* r = gSrs.find(c.codepoint);
+        if (!r || r->dueDay == 0)
+            ++n;
+        else if (r->dueDay <= today)
+            ++d;
+    }
+    if (due) *due = d;
+    if (fresh) *fresh = n;
+}
+
+// Pops the next queue item and builds a question for it, trying the item's
+// mode first and then the other two (a card may lack readings/meanings).
+// False when the queue is exhausted.
 bool newQuestion() {
     static const tgc::QuizMode kModes[] = {tgc::QuizMode::Meaning, tgc::QuizMode::Reading,
                                            tgc::QuizMode::MeaningToKanji};
     constexpr int kN = 3;
-    for (int attempt = 0; attempt < 40; ++attempt) {
-        uint32_t idx = gRng.below(gPack.cardCount());
+    for (;;) {
+        tgc::QueueItem item;
+        if (!gQueue.next(&item)) return false;
         // Ask for on'yomi and kun'yomi in turn, so both kinds show up.
-        tgc::ReadingKind want = gNextReadingIsKun ? tgc::ReadingKind::Kun : tgc::ReadingKind::On;
-        // Try the preferred mode first, then the others, so a card that cannot
-        // be asked one way still yields a question.
+        const tgc::ReadingKind want =
+            gNextReadingIsKun ? tgc::ReadingKind::Kun : tgc::ReadingKind::On;
         for (int k = 0; k < kN; ++k) {
-            tgc::QuizMode mode = kModes[(gModeCycle + k) % kN];
-            if (!tgc::buildQuestion(gPack, idx, mode, gRng, &gQ, want)) continue;
-            gModeCycle = (gModeCycle + 1) % kN;
+            const tgc::QuizMode mode = kModes[(static_cast<int>(item.mode) + k) % kN];
+            if (!tgc::buildQuestion(gPack, item.cardIndex, mode, gRng, &gQ, want)) continue;
             if (gQ.mode == tgc::QuizMode::Reading) gNextReadingIsKun = !gNextReadingIsKun;
             gSel = 0;
             gRevealed = false;
+            gShownAt = millis();
+            gLastNavAt = 0;
             tgc::Card c;
             gPack.card(gQ.cardIndex, &c);
             const char* mk = gQ.mode == tgc::QuizMode::Reading
                                  ? (gQ.readingKind == tgc::ReadingKind::Kun ? "read-kun" : "read-on")
                                  : (gQ.mode == tgc::QuizMode::MeaningToKanji ? "k2m" : "mean");
-            QLOG("Q %s U+%04X", mk, (unsigned)c.codepoint);
+            QLOG("Q %s mode=%d U+%04X", mk, static_cast<int>(gQ.mode), (unsigned)c.codepoint);
             for (int i = 0; i < gQ.count; ++i)
                 QLOG(" |%s %s", i == gQ.correct ? "*" : " ", gQ.options[i].c_str());
             QLOG("\n");
             return true;
         }
+        // Card cannot be asked in any mode: skip it and try the next item.
     }
-    return false;
 }
 
 void drawScreen();  // dispatches to the quiz or the deck menu
@@ -268,8 +311,36 @@ void drawMenu() {
     present();
 }
 
+// "All done" screen: no card is due and no new card is left today. A tap, hold
+// or side tap rebuilds the queue and tries again; the side hold opens the menu.
+void drawDone() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, gPack.deckName(), 3, 3, kWhite, kGrey);
+    smallText(d, "DONE", W - 3, 3, kWhite, kGrey, lgfx::top_right);
+
+    uint32_t due = 0, fresh = 0;
+    packDueNew(&due, &fresh);
+    char line[48];
+    smallText(d, "All reviewed for now", W / 2, H / 2 - 24, kWhite, kBlack, lgfx::top_center);
+    snprintf(line, sizeof line, "day %u  %u cards", (unsigned)gSrs.today(), (unsigned)gSrs.count());
+    smallText(d, line, W / 2, H / 2 - 6, kYellow, kBlack, lgfx::top_center);
+    snprintf(line, sizeof line, "due %u  new %u", (unsigned)due, (unsigned)fresh);
+    smallText(d, line, W / 2, H / 2 + 8, kWhite, kBlack, lgfx::top_center);
+    smallText(d, "tap/hold: +10 new", W / 2, H / 2 + 30, kWhite, kBlack, lgfx::top_center);
+    smallText(d, "side hold: decks", W / 2, H / 2 + 44, kWhite, kBlack, lgfx::top_center);
+    present();
+}
+
+void showDone() {
+    gScreen = Screen::Done;
+    drawDone();
+}
+
 void drawScreen() {
     if (gScreen == Screen::Menu) drawMenu();
+    else if (gScreen == Screen::Done) drawDone();
     else drawQuiz();
 }
 
@@ -281,18 +352,29 @@ bool loadPack(const String& path) {
         tgc::PackReader probe;
         if (probe.open(*src, tgc::psramAllocator()) != tgc::PackError::Ok) return false;
     }
+    // Progress is global (keyed by codepoint), so persist it before the swap.
+    if (gDirty) {
+        gSrs.save(gSrsIo);
+        gDirty = 0;
+    }
     gRender.end();
     gPack.close();
     gSource = std::move(src);
     if (gPack.open(*gSource, tgc::psramAllocator()) != tgc::PackError::Ok) return false;
     if (!gRender.begin(gPack)) return false;
     gCurrentPack = path;
+    gQueue.rebuild(gPack, gSrs, gRng);
     Serial.printf("pack %s: %u cards, %u glyphs, lang %s\n", gPack.deckName(),
                   (unsigned)gPack.cardCount(), (unsigned)gPack.glyphCount(), gPack.header().lang);
     return true;
 }
 
 void openMenu() {
+    if (gDirty) {  // entering the menu is a flush point (docs/srs.md section 4)
+        gSrs.save(gSrsIo);
+        gDirty = 0;
+    }
+    gBeforeMenu = gScreen;
     gScreen = Screen::Menu;
     gMenuSel = 0;
     for (size_t i = 0; i < gPacks.size(); ++i)
@@ -301,14 +383,23 @@ void openMenu() {
 }
 
 void closeMenu() {
-    gScreen = Screen::Quiz;
+    gScreen = gBeforeMenu;
     drawScreen();
 }
 
 void selectPack() {
+    bool loaded = false;
+    gExtraNew = 0;
     if (gMenuSel >= 0 && gMenuSel < static_cast<int>(gPacks.size())) {
         const String path = gPacks[gMenuSel];
-        if (loadPack(path) && newQuestion()) gPrefs.putString("pack", path);
+        if (loadPack(path)) {
+            gPrefs.putString("pack", path);
+            loaded = true;
+        }
+    }
+    if (loaded && !newQuestion()) {
+        showDone();
+        return;
     }
     gScreen = Screen::Quiz;
     drawScreen();
@@ -385,11 +476,19 @@ void setup() {
         halt();
     }
     gPrefs.putString("pack", gCurrentPack);
-    if (!newQuestion()) {
-        showError("Pack has no usable cards");
-        halt();
-    }
-    drawScreen();
+
+    const bool srsLoaded = gSrs.begin(gSrsIo);
+    gSrs.beginSession();
+    gExtraNew = 0;
+    gQueue.rebuild(gPack, gSrs, gRng);  // loadPack rebuilt with an empty store
+    uint32_t due = 0, fresh = 0;
+    packDueNew(&due, &fresh);
+    Serial.printf("srs: day %u, records %u, due %u, new %u%s\n", (unsigned)gSrs.today(),
+                  (unsigned)gSrs.count(), (unsigned)due, (unsigned)fresh,
+                  srsLoaded ? "" : " (new)");
+
+    if (!newQuestion()) showDone();
+    else drawScreen();
 }
 
 // One button drives everything: a tap cycles the highlight (or, once revealed,
@@ -399,25 +498,53 @@ void setup() {
 void tapAction() {
     if (gRevealed) {
         if (newQuestion()) drawScreen();
+        else showDone();
         return;
     }
     gSel = (gSel + 1) % gQ.count;
+    gLastNavAt = millis();  // answer clock restarts on every navigation tap
     drawScreen();
 }
 
-void holdAction() {
+void holdAction(uint32_t pressedAt) {
     if (gRevealed) {
         if (newQuestion()) drawScreen();
+        else showDone();
         return;
     }
     gRevealed = true;
-    QLOG("A sel=%d correct=%d %s\n", gSel, gQ.correct, gSel == gQ.correct ? "OK" : "MISS");
+
+    const bool correct = gSel == gQ.correct;
+    const uint32_t start = gLastNavAt ? gLastNavAt : gShownAt;
+    const uint32_t rt_ms = pressedAt - start;  // until the hold's press-down, not its fire
+    tgc::Grade grade;
+    if (!correct)
+        grade = tgc::Grade::Again;
+    else if (rt_ms >= gSrs.slowMs())
+        grade = tgc::Grade::Hard;
+    else
+        grade = tgc::Grade::Good;
+
+    tgc::Card card;
+    gPack.card(gQ.cardIndex, &card);
+    const float u01 = gRng.below(1000) / 1000.0f;
+    gSrs.grade(card.codepoint, grade, gSrs.today(), static_cast<uint8_t>(gQ.mode), u01);
+    gQueue.answered(gQ.cardIndex, grade);
+    ++gDirty;
+    gLastAnswerAt = millis();
+
+    const tgc::Record* r = gSrs.find(card.codepoint);
+    const int interval = r ? static_cast<int>(r->dueDay) - static_cast<int>(gSrs.today()) : 0;
+    QLOG("A sel=%d correct=%d %s grade=%s rt=%ums S=%.2f D=%.1f I=%d\n", gSel, gQ.correct,
+         correct ? "OK" : "MISS", gradeName(grade), (unsigned)rt_ms,
+         r ? r->stabilityCds / 100.0f : 0.0f, r ? r->difficulty10 / 10.0f : 0.0f, interval);
     drawScreen();
 }
 
 void loop() {
     tgc::board::update();
     const uint32_t t = millis();
+    gSrs.tick(t);
     static Key keyA, keyB;
     const int a = keyA.poll(tgc::board::isHeld(Button::Select), t, tgc::board::kHoldMs);
     const int b = keyB.poll(tgc::board::isHeld(Button::Next), t, tgc::board::kHoldMs);
@@ -429,11 +556,29 @@ void loop() {
             selectPack();
         }
         if (b) closeMenu();  // side button backs out of the menu
+    } else if (gScreen == Screen::Done) {
+        if (b == 2) {
+            openMenu();
+        } else if (a || b == 1) {
+            // Nothing due and the daily new cap is spent: study kMoreNew more.
+            gExtraNew = static_cast<uint16_t>(gExtraNew + 10);
+            gQueue.rebuild(gPack, gSrs, gRng, gExtraNew);
+            if (newQuestion()) {
+                gScreen = Screen::Quiz;
+                drawScreen();
+            } else {
+                drawDone();
+            }
+        }
     } else {
         if (a == 1) tapAction();
-        else if (a == 2) holdAction();
+        else if (a == 2) holdAction(keyA.downAt);
         if (b == 1) tapAction();  // side button shortcut
         else if (b == 2) openMenu();
+    }
+    if (gDirty >= 8 || (gDirty > 0 && t - gLastAnswerAt > 120000)) {
+        gSrs.save(gSrsIo);
+        gDirty = 0;
     }
     delay(10);
 }

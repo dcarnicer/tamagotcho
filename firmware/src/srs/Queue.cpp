@@ -22,7 +22,7 @@ struct NewEntry {
 
 }  // namespace
 
-void Queue::rebuild(const PackReader& pack, const SrsStore& srs, XorShiftRng& rng) {
+void Queue::rebuild(const PackReader& pack, const SrsStore& srs, XorShiftRng& rng, uint16_t extraNew) {
     (void)rng;  // ordering is fully specified; kept for the injected-RNG API
     pack_ = &pack;
     srs_ = &srs;
@@ -70,7 +70,7 @@ void Queue::rebuild(const PackReader& pack, const SrsStore& srs, XorShiftRng& rn
     // New cap: new_per_day minus what was introduced today. The store resets
     // the counter on a day change; the day check here is belt and braces.
     const uint16_t introduced = srs.newIntroducedDay() == today ? srs.newIntroducedCount() : 0;
-    const uint16_t perDay = srs.newPerDay();
+    const uint16_t perDay = static_cast<uint16_t>(srs.newPerDay() + extraNew);
     uint16_t allowed = perDay > introduced ? static_cast<uint16_t>(perDay - introduced) : 0;
     for (const NewEntry& e : fresh) {
         if (allowed == 0 || items_.size() >= kSessionCap) break;

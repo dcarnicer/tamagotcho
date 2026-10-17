@@ -5,7 +5,7 @@
  ─────────────             ──────────────────────────           ──────────────────
  KANJIDIC2 ─┐                                                   LittleFS
  KanjiVG ───┼──► importers ─► deck model ─► distractors ─┐      ├─ packs/*.tgc ──► PackReader
- WaniKani* ─┤                                            ├─► .tgc ──► upload ──►├─ state/   ──► SRS (FSRS)
+ WaniKani* ─┤                                            ├─► .tgc ──► upload ──►├─ state/srs.bin ──► SRS (FSRS)
  CSV/Anki* ─┘                 font (Klee One) ─► glyphs ─┘      └─ config         Quiz engine ─► UI
                                                                                   Board HAL (StickS3 / T-Display-S3)
  * later phases

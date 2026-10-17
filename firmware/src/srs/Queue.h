@@ -30,8 +30,10 @@ public:
 
     // Rebuilds the session list for `pack` from `srs`. `rng` is accepted for
     // determinism/future fuzz; ordering here is fully specified by the design,
-    // so it is currently unused. Call on boot and on every pack change.
-    void rebuild(const PackReader& pack, const SrsStore& srs, XorShiftRng& rng);
+    // so it is currently unused. `extraNew` raises the daily new-card allowance
+    // (the "study more" override on the done screen). Call on boot and on every
+    // pack change.
+    void rebuild(const PackReader& pack, const SrsStore& srs, XorShiftRng& rng, uint16_t extraNew = 0);
 
     // Pops the next item (and chooses its mode). False when the queue is done.
     bool next(QueueItem* out);
