@@ -327,6 +327,27 @@ void test_quiz_meaning() {
     }
 }
 
+void test_quiz_meaning_to_kanji() {
+    auto buf = makePack(sixCards(), someGlyphs());
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    XorShiftRng rng(11);
+    for (int iter = 0; iter < 100; ++iter) {
+        Question q;
+        TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::MeaningToKanji, rng, &q));
+        TEST_ASSERT_EQUAL(QuizMode::MeaningToKanji, q.mode);
+        TEST_ASSERT_EQUAL(4, q.count);
+        TEST_ASSERT_EQUAL_STRING("day", q.options[q.correct].c_str());  // prompt = first gloss
+        TEST_ASSERT_EQUAL_UINT16(0, q.optionCard[q.correct]);
+        for (int i = 0; i < 4; ++i)
+            for (int j = i + 1; j < 4; ++j) {
+                TEST_ASSERT_TRUE(q.options[i] != q.options[j]);       // no ambiguous kanji
+                TEST_ASSERT_TRUE(q.optionCard[i] != q.optionCard[j]);
+            }
+    }
+}
+
 void test_quiz_distractor_priority_and_shuffle() {
     auto buf = makePack(sixCards(), someGlyphs());
     MemorySource src(buf);
@@ -617,6 +638,7 @@ int main() {
     RUN_TEST(test_rejects_bad_packs);
     RUN_TEST(test_quiz_text_helpers);
     RUN_TEST(test_quiz_meaning);
+    RUN_TEST(test_quiz_meaning_to_kanji);
     RUN_TEST(test_quiz_distractor_priority_and_shuffle);
     RUN_TEST(test_quiz_reading_kinds);
     RUN_TEST(test_quiz_unavailable_and_tiny);

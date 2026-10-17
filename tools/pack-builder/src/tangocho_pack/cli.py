@@ -141,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("preview", help="render a simulated device screen from a pack")
     s.add_argument("file")
     s.add_argument("--card", required=True)
-    s.add_argument("--mode", choices=["meaning", "reading"], default="meaning")
+    s.add_argument("--mode", choices=["meaning", "reading", "kanji"], default="meaning")
     s.add_argument("--kind", choices=["on", "kun"], default="on",
                    help="reading kind to ask for in reading mode")
     s.add_argument("--width", type=int, default=135)

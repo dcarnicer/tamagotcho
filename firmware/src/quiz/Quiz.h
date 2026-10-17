@@ -7,7 +7,10 @@
 
 namespace tgc {
 
-enum class QuizMode : uint8_t { Meaning, Reading };
+// Meaning: prompt is the kanji, options are meanings. Reading: prompt is the
+// kanji, options are kana readings. MeaningToKanji: prompt is a meaning, options
+// are kanji (options[i] holds each card's first gloss, used for dedupe).
+enum class QuizMode : uint8_t { Meaning, Reading, MeaningToKanji };
 
 // Which kind of reading a Reading question uses.
 enum class ReadingKind : uint8_t { None, On, Kun };

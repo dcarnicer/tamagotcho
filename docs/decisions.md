@@ -137,3 +137,14 @@ Short log of non-obvious choices. Newest last.
   (`distract_read`, offset 28; 0 = reuse the meaning list), so it is a
   backwards-compatible v1 extension. The firmware asks for it in Reading mode
   and falls back to the meaning list when absent.
+
+## 2026-10-17 – Meaning-to-kanji questions
+
+- A third question type: the prompt is the card's first gloss and the options
+  are kanji in the 2x2 grid (set 1). This is the one place where confusable
+  *kanji* are actually shown, so it uses the meaning list (ranked by visual
+  similarity) as its distractors.
+- `QuizMode::MeaningToKanji` reuses the meaning path in `buildQuestion` (first
+  gloss, gloss-deduped options, so no two options can mean the same). The app
+  rotates Meaning -> Reading -> MeaningToKanji and falls back to another mode
+  when a card cannot be asked one way. `preview.py` gained `--mode kanji`.

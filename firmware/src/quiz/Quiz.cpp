@@ -105,7 +105,7 @@ bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rn
         if (kind == ReadingKind::None) return false;
     }
     std::string answer =
-        (mode == QuizMode::Meaning) ? randomMeaning(target.meanings, rng) : readingDisplay(target, kind);
+        (mode == QuizMode::Reading) ? readingDisplay(target, kind) : randomMeaning(target.meanings, rng);
     if (answer.empty()) return false;
 
     Question q;
@@ -124,7 +124,7 @@ bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rn
         Card c;
         if (!pack.card(idx, &c)) return;
         std::string s;
-        if (mode == QuizMode::Meaning) {
+        if (mode != QuizMode::Reading) {
             s = pickMeaning(c.meanings, rng, q.options, n);
         } else {
             if (strict && !hasReading(c, kind)) return;

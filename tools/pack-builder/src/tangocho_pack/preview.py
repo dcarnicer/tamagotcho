@@ -101,7 +101,7 @@ def _first_reading(txt: str) -> str:
 
 
 def _disp(card, mode: str, kind: str) -> str:
-    if mode == "meaning":
+    if mode != "reading":
         return card.meanings.split("; ")[0] if card.meanings else ""
     return _first_reading(card.onyomi if kind == "on" else card.kunyomi)
 
@@ -212,6 +212,17 @@ def _draw_pack_lines(img, pack, text, gset, max_w, max_lines, line_h, ascent, x,
         draw_pack(img, pack, shown, tx, y, gset, ascent, INK, clip)
 
 
+def _draw_kanji(img, pack: Pack, cp: int, box_x: int, box_y: int, box_w: int, box_h: int,
+                px: int, missing: list) -> None:
+    g = pack.find_glyph(1, cp)
+    if g is None:
+        missing.append(chr(cp))
+        return
+    pen_x = box_x + (box_w - px) // 2
+    base_y = box_y + (box_h - px) // 2 + px
+    _blit_pack(img, pack, g, pen_x, base_y, INK, box_x + box_w)
+
+
 def render_preview(pack: Pack, cp: int, mode: str, width: int = 135, height: int = 240,
                    scale: int = 3, seed: int = 1, reveal: bool = False,
                    kind: str = "on") -> tuple[Image.Image, dict]:
@@ -233,24 +244,49 @@ def render_preview(pack: Pack, cp: int, mode: str, width: int = 135, height: int
     draw_glcd(img, pack.deck_name, 3, 3, 1, INK)
     large_px = h["large_px"]
     kanji_h = min(large_px + 6, height * 45 // 100)
-    label = "READING" if mode == "reading" else "MEANING"
+    label = "KANJI" if mode == "kanji" else ("READING" if mode == "reading" else "MEANING")
     lw = glcd_width(label, 1)
     draw_glcd(img, label, (width - lw) // 2, HEADER_H + 2 + kanji_h, 1, LABEL)
 
-    # Prompt kanji: em square centred horizontally, baseline = square bottom.
-    g0 = pack.find_glyph(0, cp)
-    if g0 is None:
-        missing.append(chr(cp))
+    if mode == "kanji":
+        # Prompt is the meaning; the options are kanji.
+        prompt = texts[correct]
+        if glcd.can_draw(prompt):
+            gscale = 2 if glcd_width(prompt, 2) <= width - 8 else 1
+            _draw_glcd_lines(img, prompt, width - 6, 4, glcd.GLYPH_H * gscale, 3, width - 6,
+                             HEADER_H + 2, kanji_h, gscale, INK)
+        else:
+            for ch in prompt:
+                if pack.find_glyph(2, ord(ch)) is None:
+                    missing.append(ch)
+            _draw_pack_lines(img, pack, prompt, 2, width - 6, 4, h["text_line_height"],
+                             h["text_ascent"], 3, width - 6, HEADER_H + 2, kanji_h, width)
     else:
-        pen_x = (width - large_px) // 2
-        base_y = HEADER_H + 2 + (kanji_h - large_px) // 2 + large_px
-        _blit_pack(img, pack, g0, pen_x, base_y, INK, width)
+        # Prompt kanji: em square centred horizontally, baseline = square bottom.
+        g0 = pack.find_glyph(0, cp)
+        if g0 is None:
+            missing.append(chr(cp))
+        else:
+            pen_x = (width - large_px) // 2
+            base_y = HEADER_H + 2 + (kanji_h - large_px) // 2 + large_px
+            _blit_pack(img, pack, g0, pen_x, base_y, INK, width)
 
     top = HEADER_H + kanji_h + 14
     area = height - top - 2
     fill_rect(img, MARGIN, top, width - MARGIN, height - 2, BG)
 
-    if mode == "reading":
+    if mode == "kanji":
+        cols, rows = 2, (len(opts) + 1) // 2
+        cell_w = (width - 2 * MARGIN - (cols - 1) * GAP) // cols
+        cell_h = (area - (rows - 1) * GAP) // rows
+        for i, o in enumerate(opts):
+            x = MARGIN + (i % cols) * (cell_w + GAP)
+            y = top + (i // cols) * (cell_h + GAP)
+            box = BOX_OK if (reveal and i == correct) else BOX
+            fill_rect(img, x, y, x + cell_w, y + cell_h, box)
+            _draw_kanji(img, pack, pack.cards[o].codepoint, x, y, cell_w, cell_h, h["small_px"],
+                        missing)
+    elif mode == "reading":
         cols, rows = 2, (len(opts) + 1) // 2
         cell_w = (width - 2 * MARGIN - (cols - 1) * GAP) // cols
         cell_h = (area - (rows - 1) * GAP) // rows

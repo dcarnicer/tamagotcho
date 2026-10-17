@@ -38,7 +38,7 @@ tgc::XorShiftRng gRng;
 tgc::Question gQ;
 int gSel = 0;
 bool gRevealed = false;
-bool gNextModeIsReading = false;
+int gModeCycle = 0;  // rotates Meaning / Reading / MeaningToKanji
 bool gNextReadingIsKun = false;
 
 enum class Screen { Quiz, Menu };
@@ -93,15 +93,19 @@ void listPacks(std::vector<String>& out) {
 }
 
 bool newQuestion() {
+    static const tgc::QuizMode kModes[] = {tgc::QuizMode::Meaning, tgc::QuizMode::Reading,
+                                           tgc::QuizMode::MeaningToKanji};
+    constexpr int kN = 3;
     for (int attempt = 0; attempt < 40; ++attempt) {
         uint32_t idx = gRng.below(gPack.cardCount());
         // Ask for on'yomi and kun'yomi in turn, so both kinds show up.
         tgc::ReadingKind want = gNextReadingIsKun ? tgc::ReadingKind::Kun : tgc::ReadingKind::On;
-        tgc::QuizMode first = gNextModeIsReading ? tgc::QuizMode::Reading : tgc::QuizMode::Meaning;
-        tgc::QuizMode second = gNextModeIsReading ? tgc::QuizMode::Meaning : tgc::QuizMode::Reading;
-        if (tgc::buildQuestion(gPack, idx, first, gRng, &gQ, want) ||
-            tgc::buildQuestion(gPack, idx, second, gRng, &gQ, want)) {
-            gNextModeIsReading = !gNextModeIsReading;
+        // Try the preferred mode first, then the others, so a card that cannot
+        // be asked one way still yields a question.
+        for (int k = 0; k < kN; ++k) {
+            tgc::QuizMode mode = kModes[(gModeCycle + k) % kN];
+            if (!tgc::buildQuestion(gPack, idx, mode, gRng, &gQ, want)) continue;
+            gModeCycle = (gModeCycle + 1) % kN;
             if (gQ.mode == tgc::QuizMode::Reading) gNextReadingIsKun = !gNextReadingIsKun;
             gSel = 0;
             gRevealed = false;
@@ -109,7 +113,7 @@ bool newQuestion() {
             gPack.card(gQ.cardIndex, &c);
             const char* mk = gQ.mode == tgc::QuizMode::Reading
                                  ? (gQ.readingKind == tgc::ReadingKind::Kun ? "read-kun" : "read-on")
-                                 : "mean";
+                                 : (gQ.mode == tgc::QuizMode::MeaningToKanji ? "k2m" : "mean");
             QLOG("Q %s U+%04X", mk, (unsigned)c.codepoint);
             for (int i = 0; i < gQ.count; ++i)
                 QLOG(" |%s %s", i == gQ.correct ? "*" : " ", gQ.options[i].c_str());
@@ -137,16 +141,29 @@ void drawQuiz() {
         smallText(d, b, W - 3, 3, bat < 15 ? kYellow : kWhite, kGrey, lgfx::top_right);
     }
 
-    // Kanji prompt.
+    // Prompt: the kanji, or (meaning -> kanji) the meaning text.
+    const bool reading = gQ.mode == tgc::QuizMode::Reading;
+    const bool k2m = gQ.mode == tgc::QuizMode::MeaningToKanji;
     tgc::Card card;
     gPack.card(gQ.cardIndex, &card);
     const int largePx = gPack.header().largePx ? gPack.header().largePx : 64;
     int kanjiH = largePx + 6;
     if (kanjiH > H * 45 / 100) kanjiH = H * 45 / 100;
-    gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH + 2, W, kanjiH, kWhite, kBlack);
-    const bool reading = gQ.mode == tgc::QuizMode::Reading;
-    smallText(d, reading ? "READING" : "MEANING", W / 2, headerH + 2 + kanjiH, kYellow, kBlack,
-              lgfx::top_center);
+    if (k2m) {
+        const char* prompt = gQ.options[gQ.correct].c_str();
+        uint8_t set = tgc::Renderer::kTextBuiltin;
+        if (!tgc::Renderer::builtinCanDraw(prompt)) set = tgc::kGlyphSetText;
+        else if (gRender.textWidth(prompt, set) > W - 8) set = tgc::Renderer::kTextBuiltinSmall;
+        int ml = (kanjiH - 4) / gRender.lineHeight(set);
+        if (ml < 1) ml = 1;
+        if (ml > 4) ml = 4;
+        gRender.drawCentred(d, prompt, 3, headerH + 2, W - 6, kanjiH, ml, kWhite, kBlack, set);
+    } else {
+        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH + 2, W, kanjiH, kWhite,
+                          kBlack);
+    }
+    smallText(d, k2m ? "KANJI" : (reading ? "READING" : "MEANING"), W / 2, headerH + 2 + kanjiH,
+              kYellow, kBlack, lgfx::top_center);
 
     // Readings: 2x2 grid with large kana (set 3). Meanings: one per row, full
     // width, in the built-in font at 2x (falling back to the pack glyphs).
@@ -166,7 +183,23 @@ void drawQuiz() {
                             set);
     };
 
-    if (reading) {
+    if (k2m) {
+        // Meaning prompt: the options are kanji (set 1) in the same 2x2 grid.
+        const int cols = 2;
+        const int rows = (gQ.count + cols - 1) / cols;
+        const int cellW = (W - 2 * margin - (cols - 1) * gap) / cols;
+        const int cellH = (area - (rows - 1) * gap) / rows;
+        for (int i = 0; i < gQ.count; ++i) {
+            const int cx = margin + (i % cols) * (cellW + gap);
+            const int cy = top + (i / cols) * (cellH + gap);
+            const uint16_t bg = optionBg(i);
+            d.fillRoundRect(cx, cy, cellW, cellH, 4, bg);
+            if (!gRevealed && i == gSel) d.drawRoundRect(cx, cy, cellW, cellH, 4, kWhite);
+            tgc::Card oc;
+            if (gPack.card(gQ.optionCard[i], &oc))
+                gRender.drawKanji(d, tgc::kGlyphSetSmall, oc.codepoint, cx, cy, cellW, cellH, kWhite, bg);
+        }
+    } else if (reading) {
         const int cols = 2;
         const int rows = (gQ.count + cols - 1) / cols;
         const int cellW = (W - 2 * margin - (cols - 1) * gap) / cols;
