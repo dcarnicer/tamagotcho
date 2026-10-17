@@ -213,11 +213,14 @@ String gCurrentPack;
 Preferences gPrefs;
 
 // On-device Wi-Fi portal (roadmap phase 4). Started on the Wi-Fi screen and
-// stopped on exit. `gWifiUploadReady` is the boot-time "no packs yet" state:
-// the Wi-Fi screen is then the only screen and the app moves to the quiz as
-// soon as a pack has been uploaded.
+// stopped on exit. `gWifiBootUpload` marks the boot-time "no packs yet" state:
+// the Wi-Fi screen is then the only screen (there is no quiz to return to), so
+// the side button is inert and the app moves to the quiz as soon as a pack has
+// been uploaded. It is set only at boot -- entering the portal later from the
+// settings home and then deleting every pack must still let the side button
+// leave for the settings home.
 tgc::WifiPortal gPortal;
-bool gWifiUploadReady = false;
+bool gWifiBootUpload = false;
 
 int W, H;
 
@@ -1083,7 +1086,6 @@ void portalFillStats(tgc::PortalStats& out) {
     out.streakBest = st.streakBest;
     out.reviewMs = st.reviewMs;
     out.packCards = gPack.isOpen() ? gPack.cardCount() : 0;
-    out.packName = gPack.isOpen() ? gPack.deckName() : "";
 }
 
 // Called by the portal after /packs changed. Rescans the folder and keeps the
@@ -1097,7 +1099,6 @@ bool portalPacksChanged() {
         gSource.reset();
         gCurrentPack = "";
         gPrefs.remove("pack");
-        gWifiUploadReady = true;  // nothing left to study -> upload-ready again
         return false;
     }
     String want = gCurrentPack;
@@ -1112,9 +1113,10 @@ bool portalPacksChanged() {
 const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged};
 
 // Opens the Wi-Fi screen and starts the portal (from the settings home, or at
-// boot when there is no pack yet).
+// boot when there is no pack yet). The boot-time upload mode is decided by the
+// caller (setup sets gWifiBootUpload); opening the portal from settings never
+// makes the side button inert.
 void openWifi() {
-    gWifiUploadReady = gPacks.empty();
     if (!gPortal.begin(kPortalHooks))
         QLOG("W wifi: portal start failed (%s)\n", gPortal.lastMessage());
     else
@@ -1123,10 +1125,10 @@ void openWifi() {
     drawScreen();
 }
 
-// Leaves the Wi-Fi screen for the settings home. In the upload-ready state (no
-// pack at all) the side button does nothing: there is no quiz to return to.
+// Leaves the Wi-Fi screen for the settings home. On the boot-time upload screen
+// there is nothing to return to, so the side button does nothing there.
 void closeWifi() {
-    if (gWifiUploadReady) return;
+    if (gWifiBootUpload) return;
     gPortal.end();
     QLOG("W wifi: stopped\n");
     gScreen = Screen::Menu;
@@ -1148,9 +1150,9 @@ void startQuizFromPortal() {
 // On the boot-time upload screen, move on to the quiz once a pack is loaded.
 // True when it took over the screen.
 bool wifiUploadReadyToQuiz() {
-    if (!gWifiUploadReady || !gPack.isOpen()) return false;
+    if (!gWifiBootUpload || !gPack.isOpen()) return false;
     gPortal.end();
-    gWifiUploadReady = false;
+    gWifiBootUpload = false;
     startQuizFromPortal();
     return true;
 }
@@ -1388,7 +1390,7 @@ void setup() {
             showError(ui().errNoPack, ui().errNoPackHint);
             halt();
         }
-        gWifiUploadReady = true;
+        gWifiBootUpload = true;
         Serial.printf("wifi: no packs, upload-ready (ssid %s)\n", gPortal.ssid());
         gScreen = Screen::Wifi;
         drawScreen();
@@ -1594,8 +1596,9 @@ void loop() {
         gPortal.poll();
         if (gPortal.consumeDirty()) drawScreen();
         // On the boot-time upload screen, continue booting as soon as a pack has
-        // been uploaded; otherwise the side button leaves for the settings home.
-        if (!wifiUploadReadyToQuiz() && !gWifiUploadReady && b) closeWifi();
+        // been uploaded; otherwise the side button leaves for the settings home
+        // (closeWifi itself ignores the button in the boot-time state).
+        if (!wifiUploadReadyToQuiz() && b) closeWifi();
     } else {
         if (a == 1) tapAction();
         else if (a == 2) holdAction(keyA.downAt);
