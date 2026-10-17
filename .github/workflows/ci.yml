@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One run per ref; a new push cancels the previous, superseded run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only token: CI builds and tests, it does not publish anything.
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    name: Firmware (native tests + StickS3/T-Display-S3 build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PlatformIO
+        run: pip install "platformio>=6.1,<7"
+
+      # The cache restore key needs the PlatformIO version, so read it after the
+      # install. The platform and packages PlatformIO downloads live in
+      # ~/.platformio; platformio.ini pins the platform version and the exact
+      # lib_deps commits, so hashing it invalidates the cache on any change.
+      - name: PlatformIO version
+        id: pio
+        run: echo "version=$(pio --version | sed -E 's/[^0-9]*([0-9][0-9.]*).*/\1/')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ steps.pio.outputs.version }}-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-${{ steps.pio.outputs.version }}-
+
+      - name: Native unit tests (pack/, quiz/, srs/)
+        run: pio test -e native
+
+      - name: Build StickS3
+        run: pio run -e sticks3
+
+      - name: Build T-Display-S3
+        run: pio run -e tdisplay-s3
+
+  pack-builder:
+    name: Pack builder (uv run pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/pack-builder
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Tests
+        run: uv run pytest -q

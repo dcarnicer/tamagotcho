@@ -1,0 +1,279 @@
+name: Release
+
+# Tags publish automatically. A manual run is for a dry run or for rebuilding a
+# release without moving the tag; prebuilt packs are opt-in because they pull
+# KANJIDIC2/KanjiVG and produce multi-MB CC BY-SA artifacts that the maintainer
+# may not want to distribute yet (see "Before publishing" in docs/roadmap.md).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, must start with 'v' (e.g. v0.2.0)"
+        required: true
+        type: string
+      build_packs:
+        description: "Also build prebuilt packs (with --strokes) and a catalog"
+        type: boolean
+        default: false
+      packs_jlpt:
+        description: "JLPT levels for prebuilt packs (space- or comma-separated)"
+        type: string
+        default: "5"
+      packs_langs:
+        description: "Meaning languages for prebuilt packs"
+        type: string
+        default: "en es"
+
+# Releases are not cancelled by a newer run of the same ref.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Least privilege by default; only the publish job asks for contents: write.
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - id: tag
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="$INPUT_TAG"
+          if [ "$EVENT" != "workflow_dispatch" ]; then
+            tag="$REF_NAME"
+          fi
+          case "$tag" in
+            v*) ;;
+            *) echo "error: release tag must start with 'v' (got '$tag')" >&2; exit 1 ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "resolved release tag: $tag"
+
+  firmware:
+    name: Firmware (${{ matrix.name }})
+    needs: resolve
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: sticks3
+            name: StickS3
+            partitions: sticks3_8MB.csv
+            flash_size: 8MB
+          - env: tdisplay-s3
+            name: T-Display-S3
+            partitions: tdisplay_s3_16MB.csv
+            flash_size: 16MB
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PlatformIO
+        run: pip install "platformio>=6.1,<7"
+
+      - name: PlatformIO version
+        id: pio
+        run: echo "version=$(pio --version | sed -E 's/[^0-9]*([0-9][0-9.]*).*/\1/')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ steps.pio.outputs.version }}-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-${{ steps.pio.outputs.version }}-
+
+      - name: Build
+        run: pio run -e ${{ matrix.env }}
+
+      # App-only image (ESP image magic 0xE9, no bootloader/partition table):
+      # what M5Launcher installs and what `pio run -t upload` writes to the app
+      # slot. The merged image below is the one ESP Web Tools needs.
+      - name: Stage app-only .bin
+        run: |
+          mkdir -p ../dist
+          cp ".pio/build/${{ matrix.env }}/firmware.bin" "../dist/tangocho-${{ matrix.env }}.bin"
+
+      - name: Build merged flashable image (for ESP Web Tools)
+        run: |
+          mkdir -p ../dist
+          boot_app0="$(find "$HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions" \
+            -name boot_app0.bin -print -quit 2>/dev/null || true)"
+          extra=()
+          if [ -n "$boot_app0" ]; then extra=(--boot-app0 "$boot_app0"); fi
+          python3 ../tools/release/merge_image.py \
+            --build-dir ".pio/build/${{ matrix.env }}" \
+            --partitions "partitions/${{ matrix.partitions }}" \
+            --flash-size "${{ matrix.flash_size }}" \
+            --out "../dist/tangocho-${{ matrix.env }}-merged.bin" \
+            "${extra[@]}"
+
+      - name: ESP Web Tools manifest
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          ENVNAME: ${{ matrix.env }}
+          BOARDNAME: ${{ matrix.name }}
+        run: |
+          cat > "../dist/tangocho-${ENVNAME}-manifest.json" <<JSON
+          {
+            "name": "Tangochō ${BOARDNAME}",
+            "version": "${TAG#v}",
+            "new_install_prompt_erase": true,
+            "builds": [
+              {
+                "chipFamily": "ESP32-S3",
+                "parts": [
+                  { "path": "tangocho-${ENVNAME}-merged.bin", "offset": 0 }
+                ]
+              }
+            ]
+          }
+          JSON
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.env }}
+          path: dist/*
+          if-no-files-found: error
+
+  packs:
+    name: Prebuilt packs + catalog
+    needs: resolve
+    if: github.event_name == 'workflow_dispatch' && inputs.build_packs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/pack-builder
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Fetch data sources (KANJIDIC2, JLPT levels, Klee One, KanjiVG)
+        run: uv run tangocho-pack fetch
+
+      - name: Build packs
+        env:
+          JLPT: ${{ inputs.packs_jlpt }}
+          LANGS: ${{ inputs.packs_langs }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for n in $(echo "$JLPT" | tr ',' ' '); do
+            for lang in $(echo "$LANGS" | tr ',' ' '); do
+              uv run tangocho-pack build --jlpt "$n" --lang "$lang" --strokes \
+                -o "out/n${n}-${lang}-strokes.tgc"
+            done
+          done
+
+      - name: Write the device catalog
+        run: |
+          uv run tangocho-pack catalog out \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/${{ needs.resolve.outputs.tag }}" \
+            --json out/catalog.json \
+            -o out/catalog.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packs
+          path: |
+            tools/pack-builder/out/*.tgc
+            tools/pack-builder/out/catalog.txt
+            tools/pack-builder/out/catalog.json
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: [resolve, firmware, packs]
+    # Publish even when the optional packs job was skipped; require the firmware.
+    if: always() && needs.firmware.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write release notes
+        run: |
+          tag="${{ needs.resolve.outputs.tag }}"
+          cat > notes.md <<MD
+          # Tangochō ${tag}
+
+          Firmware for the **M5Stack StickS3** and the **LilyGO T-Display-S3**.
+
+          ## Assets
+
+          | file | what |
+          |---|---|
+          | \`tangocho-sticks3.bin\` | app-only image (M5Launcher, \`pio run -t upload\`) |
+          | \`tangocho-tdisplay-s3.bin\` | app-only image (T-Display-S3) |
+          | \`tangocho-sticks3-merged.bin\`, \`tangocho-tdisplay-s3-merged.bin\` | single flashable images (ESP Web Tools) |
+          | \`tangocho-*-manifest.json\` | ESP Web Tools manifests |
+
+          ## Flash it
+
+          - **USB:** see the *Releases* section of README.md (\`esptool\` or \`pio run -t upload\`).
+          - **Browser:** open an ESP Web Tools page (e.g.
+            <https://esphome.github.io/esp-web-tools/>) pointing at this release's
+            \`tangocho-sticks3-manifest.json\` URL.
+          - **M5Launcher:** install the app-only \`tangocho-sticks3.bin\`, then put a
+            pack on the device over Wi-Fi (the merged image flashes an empty
+            filesystem, so a fresh device boots into the Wi-Fi upload screen).
+
+          The merged image and manifest are **not verified on hardware yet**; see
+          docs/decisions.md.
+          MD
+          if ls dist/*.tgc >/dev/null 2>&1; then
+            cat >> notes.md <<'MD'
+
+          ## Prebuilt packs (CC BY-SA 4.0)
+
+          The attached `*.tgc` packs are built from KANJIDIC2 and, because they
+          include stroke order, from KanjiVG, and are therefore licensed
+          **CC BY-SA 4.0**. The line-oriented `catalog.txt` (with `sha256` per
+          file) lists them for the device; `catalog.json` is the human-readable
+          companion.
+
+          > Kanji data from KANJIDIC2 (c) EDRDG, CC BY-SA 4.0,
+          > https://www.edrdg.org/edrdg/licence.html. JLPT levels from Jonathan
+          > Waller's JLPT Resources (tanos.co.uk) via davidluzgouveia/kanji-data
+          > (MIT). Glyphs rendered from Klee One (c) Fontworks Inc., SIL OFL 1.1.
+          > Stroke order data from KanjiVG (c) Ulrich Apel, CC BY-SA 3.0,
+          > https://kanjivg.tagaini.net. These packs are licensed CC BY-SA.
+          MD
+          fi
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ls -l dist
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" --title "Tangochō ${TAG}" --notes-file notes.md dist/*
+          fi
