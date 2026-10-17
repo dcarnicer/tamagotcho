@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from .distractors import DEFAULT_STRATEGY, DistractorStrategy
+from .distractors import meaning_distractors, reading_distractors, square_vector
 from .glyphs import SET_LARGE, SET_OPTION, SET_SMALL, SET_TEXT, FontRenderer, Glyph
 from .kanjidic import Card
 from .pack import card_strings, write_pack
@@ -29,7 +29,6 @@ def build_pack(
     small_px: int = 40,
     text_px: int = 18,
     option_px: int = 20,
-    strategy: DistractorStrategy = DEFAULT_STRATEGY,
     build_time: int | None = None,
 ) -> bytes:
     font = FontRenderer(font_path)
@@ -40,13 +39,18 @@ def build_pack(
         else:
             print(f"warning: font lacks U+{c.codepoint:04X} {c.char}; card dropped", file=sys.stderr)
     cards = kept
-    for c, d in zip(cards, strategy(cards)):
-        c.distractors = d
 
-    glyphs: list[Glyph] = []
-    for c in cards:
-        glyphs.append(font.kanji_glyph(c.codepoint, large_px, SET_LARGE))
-        glyphs.append(font.kanji_glyph(c.codepoint, small_px, SET_SMALL))
+    # Kanji glyphs first: the meaning distractors are picked from how similar
+    # the glyphs look, so we need the bitmaps before choosing them.
+    large = [font.kanji_glyph(c.codepoint, large_px, SET_LARGE) for c in cards]
+    small = [font.kanji_glyph(c.codepoint, small_px, SET_SMALL) for c in cards]
+    visual = [square_vector(g, small_px) for g in small]
+    for c, d in zip(cards, meaning_distractors(cards, visual)):
+        c.distractors = d
+    for c, d in zip(cards, reading_distractors(cards)):
+        c.distractors_reading = d
+
+    glyphs: list[Glyph] = large + small
 
     text_cps = set(range(0x20, 0x7F))
     for s in [deck_name] + [x for c in cards for x in card_strings(c)]:

@@ -57,6 +57,7 @@ struct Card {
     const char* onyomi;    // "、" separated katakana; may be ""
     const char* kunyomi;   // "、" separated hiragana, '.' okurigana marker; may be ""
     uint32_t distractorOff;
+    uint32_t distractorReadOff;  // 0 = use distractorOff
     uint8_t jlpt, grade, strokes, flags;
     uint16_t freq, level;
 };
@@ -94,8 +95,11 @@ public:
     const char* str(uint32_t off) const;
 
     // Copies up to `cap` distractor card indices, returns the number copied
-    // (0 on error / empty). `total` (optional) receives the list's full count.
-    uint16_t distractors(const Card& c, uint16_t* out, uint16_t cap, uint16_t* total = nullptr) const;
+    // (0 on error / empty). `reading` selects the reading list (falls back to
+    // the meaning list when the pack has none). `total` (optional) receives the
+    // list's full count.
+    uint16_t distractors(const Card& c, uint16_t* out, uint16_t cap, uint16_t* total = nullptr,
+                         bool reading = false) const;
 
     // Binary search by (set, codepoint). Null if absent.
     const Glyph* findGlyph(uint8_t set, uint32_t codepoint) const;

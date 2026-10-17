@@ -29,7 +29,8 @@ struct B {
 struct CardSpec {
     uint32_t cp;
     const char *mean, *on, *kun;
-    std::vector<uint16_t> dis;
+    std::vector<uint16_t> dis;      // meaning distractors
+    std::vector<uint16_t> disRead;  // reading distractors (empty -> offset 0)
 };
 struct GlyphSpec {
     uint8_t set;
@@ -59,14 +60,23 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
     const uint32_t cardsOff = 64;
     const uint32_t glyphsOff = cardsOff + cards.size() * 32;
     const uint32_t distOff = glyphsOff + glyphs.size() * 16;
-    std::vector<uint32_t> dOffs;
+    std::vector<uint32_t> dOffs, drOffs;
     uint32_t dsize = 0;
     for (auto& c : cards) {
         dOffs.push_back(distOff + dsize);
         dsize += 2 + 2 * c.dis.size();
     }
-    dsize = (dsize + 3) & ~3u;
-    const uint32_t strOff = distOff + dsize;
+    const uint32_t drBase = distOff + dsize;
+    uint32_t drsize = 0;
+    for (auto& c : cards) {
+        if (c.disRead.empty()) {
+            drOffs.push_back(0);
+            continue;
+        }
+        drOffs.push_back(drBase + drsize);
+        drsize += 2 + 2 * c.disRead.size();
+    }
+    const uint32_t strOff = (drBase + drsize + 3) & ~3u;
     const uint32_t gdOff = strOff + pool.size();
     const uint32_t deckOff = strOff + deckRel;  // string offsets are absolute
     for (auto& x : cs) { x.m += strOff; x.o += strOff; x.k += strOff; }
@@ -84,7 +94,7 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
     for (size_t i = 0; i < cards.size(); ++i) {
         b.u32(cards[i].cp); b.u32(cs[i].m); b.u32(cs[i].o); b.u32(cs[i].k); b.u32(dOffs[i]);
         b.u8(5); b.u8(1); b.u8(4); b.u8(0);
-        b.u16(10 + i); b.u16(i); b.u32(0);
+        b.u16(10 + i); b.u16(i); b.u32(drOffs[i]);
     }
     uint32_t dataOff = gdOff;
     for (auto& g : glyphs) {
@@ -96,6 +106,11 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
     for (auto& c : cards) {
         b.u16(c.dis.size());
         for (auto d : c.dis) b.u16(d);
+    }
+    for (auto& c : cards) {
+        if (c.disRead.empty()) continue;
+        b.u16(c.disRead.size());
+        for (auto d : c.disRead) b.u16(d);
     }
     b.pad4();
     for (char ch : pool) b.u8(ch);
@@ -188,6 +203,28 @@ void test_cards() {
     TEST_ASSERT_EQUAL_UINT16(3, total);
     r.card(2, &c);
     TEST_ASSERT_EQUAL_UINT16(0, r.distractors(c, d, 8));
+}
+
+void test_reading_distractor_list() {
+    std::vector<CardSpec> cs = {{0x65E5, "day", "ニチ", "ひ", {1, 2}, {2}},
+                                {0x6708, "month", "ゲツ", "つき", {0}, {0}},
+                                {0x706B, "fire", "カ", "ひ", {0, 1}, {}}};  // no reading list
+    auto buf = makePack(cs, someGlyphs());
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    Card c;
+    uint16_t d[4], total;
+    r.card(0, &c);
+    TEST_ASSERT_EQUAL_UINT16(2, r.distractors(c, d, 4, &total));  // meaning list
+    TEST_ASSERT_EQUAL_UINT16(2, total);
+    TEST_ASSERT_EQUAL_UINT16(1, r.distractors(c, d, 4, &total, true));  // reading list
+    TEST_ASSERT_EQUAL_UINT16(1, total);
+    TEST_ASSERT_EQUAL_UINT16(2, d[0]);
+    r.card(2, &c);
+    TEST_ASSERT_EQUAL_UINT16(2, r.distractors(c, d, 4, &total, true));  // falls back
+    TEST_ASSERT_EQUAL_UINT16(0, d[0]);
+    TEST_ASSERT_EQUAL_UINT16(1, d[1]);
 }
 
 void test_glyph_lookup_and_bitmap() {
@@ -427,7 +464,7 @@ static const char* kMini = "../tools/pack-builder/fixtures/mini.tgc";
 void test_mini_fixture() {
     StdioSource src(kMini);
     if (!src.ok()) TEST_IGNORE_MESSAGE("mini.tgc not found");
-    TEST_ASSERT_EQUAL_UINT32(7880, src.size());
+    TEST_ASSERT_EQUAL_UINT32(7896, src.size());
     PackReader r;
     TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
     const PackHeader& h = r.header();
@@ -437,9 +474,9 @@ void test_mini_fixture() {
     TEST_ASSERT_EQUAL_UINT32(64, h.cardsOff);
     TEST_ASSERT_EQUAL_UINT32(160, h.glyphsOff);
     TEST_ASSERT_EQUAL_UINT32(2224, h.distractOff);
-    TEST_ASSERT_EQUAL_UINT32(2244, h.stringsOff);
+    TEST_ASSERT_EQUAL_UINT32(2260, h.stringsOff);
     TEST_ASSERT_EQUAL_UINT32(116, h.stringsSize);
-    TEST_ASSERT_EQUAL_UINT32(2360, h.glyphDataOff);
+    TEST_ASSERT_EQUAL_UINT32(2376, h.glyphDataOff);
     TEST_ASSERT_EQUAL_STRING("en", h.lang);
     TEST_ASSERT_EQUAL_UINT8(32, h.largePx);
     TEST_ASSERT_EQUAL_UINT8(16, h.smallPx);
@@ -452,13 +489,19 @@ void test_mini_fixture() {
     TEST_ASSERT_EQUAL_UINT32(0, h.buildTime);
     TEST_ASSERT_EQUAL_STRING("JLPT N5", r.deckName());
 
-    struct E { uint32_t cp; const char *m, *on, *kun; uint16_t dis[2]; uint16_t freq, level; };
+    struct E {
+        uint32_t cp;
+        const char *m, *on, *kun;
+        uint16_t dis[2], rdis[2];
+        uint16_t freq, level;
+    };
     const E exp[3] = {
-        {26085, "day; sun; Japan", "ニチ、ジツ", "ひ、び、か", {1, 2}, 1, 0},
-        {26376, "month; moon", "ゲツ、ガツ", "つき", {0, 2}, 23, 1},
-        {28779, "fire", "カ", "ひ、び、ほ", {1, 0}, 574, 2},
+        {26085, "day; sun; Japan", "ニチ、ジツ", "ひ、び、か", {2, 1}, {1, 2}, 1, 0},
+        {26376, "month; moon", "ゲツ、ガツ", "つき", {2, 0}, {0, 2}, 23, 1},
+        {28779, "fire", "カ", "ひ、び、ほ", {1, 0}, {1, 0}, 574, 2},
     };
     const uint32_t distOffs[3] = {2224, 2230, 2236};
+    const uint32_t readOffs[3] = {2242, 2248, 2254};
     for (uint32_t i = 0; i < 3; ++i) {
         Card c;
         TEST_ASSERT_TRUE(r.card(i, &c));
@@ -467,6 +510,7 @@ void test_mini_fixture() {
         TEST_ASSERT_EQUAL_STRING(exp[i].on, c.onyomi);
         TEST_ASSERT_EQUAL_STRING(exp[i].kun, c.kunyomi);
         TEST_ASSERT_EQUAL_UINT32(distOffs[i], c.distractorOff);
+        TEST_ASSERT_EQUAL_UINT32(readOffs[i], c.distractorReadOff);
         TEST_ASSERT_EQUAL_UINT8(5, c.jlpt);
         TEST_ASSERT_EQUAL_UINT8(1, c.grade);
         TEST_ASSERT_EQUAL_UINT8(4, c.strokes);
@@ -477,6 +521,9 @@ void test_mini_fixture() {
         TEST_ASSERT_EQUAL_UINT16(2, r.distractors(c, d, 4, &total));
         TEST_ASSERT_EQUAL_UINT16(exp[i].dis[0], d[0]);
         TEST_ASSERT_EQUAL_UINT16(exp[i].dis[1], d[1]);
+        TEST_ASSERT_EQUAL_UINT16(2, r.distractors(c, d, 4, &total, true));
+        TEST_ASSERT_EQUAL_UINT16(exp[i].rdis[0], d[0]);
+        TEST_ASSERT_EQUAL_UINT16(exp[i].rdis[1], d[1]);
     }
     const Glyph* g = r.findGlyph(0, 26085);
     TEST_ASSERT_NOT_NULL(g);
@@ -485,16 +532,16 @@ void test_mini_fixture() {
     TEST_ASSERT_EQUAL_INT8(6, g->xOff);
     TEST_ASSERT_EQUAL_INT8(-29, g->yOff);
     TEST_ASSERT_EQUAL_UINT8(32, g->advance);
-    TEST_ASSERT_EQUAL_UINT32(2360, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(2376, g->dataOff);
     g = r.findGlyph(0, 28779);
     TEST_ASSERT_EQUAL_UINT8(29, g->width);
-    TEST_ASSERT_EQUAL_UINT32(2956, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(2972, g->dataOff);
     g = r.findGlyph(1, 26085);
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(11, g->width);
     TEST_ASSERT_EQUAL_UINT8(13, g->height);
     TEST_ASSERT_EQUAL_INT8(-15, g->yOff);
-    TEST_ASSERT_EQUAL_UINT32(3391, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(3407, g->dataOff);
     g = r.findGlyph(2, 'A');
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(9, g->width);
@@ -510,14 +557,14 @@ void test_mini_fixture() {
     g = r.findGlyph(2, 12491);
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(6, g->height);
-    TEST_ASSERT_EQUAL_UINT32(6551, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(6567, g->dataOff);
     // Set 3: the same ニ rendered larger for reading answers.
     g = r.findGlyph(3, 12491);
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(14, g->width);
     TEST_ASSERT_EQUAL_UINT8(9, g->height);
     TEST_ASSERT_EQUAL_UINT8(18, g->advance);
-    TEST_ASSERT_EQUAL_UINT32(7817, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(7833, g->dataOff);
     int cnt[4] = {0, 0, 0, 0};
     for (uint32_t i = 0; i < r.glyphCount(); ++i) ++cnt[r.glyphAt(i)->set];
     TEST_ASSERT_EQUAL(3, cnt[0]);
@@ -565,6 +612,7 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_open_and_header);
     RUN_TEST(test_cards);
+    RUN_TEST(test_reading_distractor_list);
     RUN_TEST(test_glyph_lookup_and_bitmap);
     RUN_TEST(test_rejects_bad_packs);
     RUN_TEST(test_quiz_text_helpers);

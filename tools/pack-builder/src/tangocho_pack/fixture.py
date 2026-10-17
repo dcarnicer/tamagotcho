@@ -39,6 +39,7 @@ def expected_json(raw: bytes) -> dict:
             "codepoint": c.codepoint, "char": chr(c.codepoint), "meanings": c.meanings,
             "onyomi": c.onyomi, "kunyomi": c.kunyomi, "string_offsets": list(c.string_offs),
             "distractor_off": c.distractor_off, "distractors": c.distractors,
+            "distractor_read_off": c.distractor_read_off, "distractors_reading": c.distractors_reading,
             "jlpt": c.jlpt, "grade": c.grade, "strokes": c.strokes, "flags": c.flags,
             "freq": c.freq, "level": c.level,
         } for c in p.cards],

@@ -69,25 +69,31 @@ Sections are 4-byte aligned. Readers must use the offsets, not assume order.
 | 4   | u32  | meanings      | absolute file offset into the string pool. Meanings separated by `"; "`, most common first |
 | 8   | u32  | onyomi        | string offset, katakana, readings separated by `"、"`. May be empty `""` |
 | 12  | u32  | kunyomi       | string offset, hiragana, separated by `"、"`; okurigana marked with `.` as in KANJIDIC (`た.べる`). May be empty |
-| 16  | u32  | distractors   | absolute file offset of this card's list inside the distractor section (see below) |
+| 16  | u32  | distractors   | absolute file offset of this card's meaning distractor list (see below) |
 | 20  | u8   | jlpt          | 1..5 (N1..N5), 0 = unknown                                 |
 | 21  | u8   | grade         | KANJIDIC school grade 1..10, 0 = unknown                   |
 | 22  | u8   | strokes       |                                                            |
 | 23  | u8   | flags         | bit0: meaning fell back to English (requested lang missing) |
 | 24  | u16  | freq          | newspaper frequency rank, 0 = unknown                      |
 | 26  | u16  | level         | deck-local ordering hint (lower = learn earlier)           |
-| 28  | u32  | reserved      | 0                                                          |
+| 28  | u32  | distract_read | reading distractor list offset; 0 = use `distractors`      |
 
 The kanji's own glyphs are looked up by `codepoint` in sets 0 and 1 (every card
 **must** have a set-0 and a set-1 glyph).
 
-## Distractor list
+## Distractor lists
 
-At `distractors`: `u16 count`, then `count` × `u16` card **indices** (into
-the card table of this pack), best distractor first. Lists are precomputed by
-the builder (visual similarity, shared radicals, confusable readings, same
-level...). The device may pick any subset and fill with random cards if the
-list is short. `count` may be 0.
+Each card has up to two lists: the **meaning** list at `distractors` and the
+**reading** list at `distract_read`. Both share the format: `u16 count`, then
+`count` × `u16` card **indices** (into the card table of this pack), best
+distractor first. `distract_read` may be 0, in which case the meaning list is
+used for reading questions too. Either list may have `count` 0.
+
+Lists are precomputed by the builder: the meaning list favours visually similar
+kanji (compared from their own bitmaps) so the wrong options are the ones a
+learner might confuse; the reading list favours cards whose reading of the same
+kind is confusable (one kana apart, e.g. ショウ/ジョウ). The device may pick any
+subset and fill with random cards if a list is short.
 
 ## Glyph table entry (16 bytes)
 

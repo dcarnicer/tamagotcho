@@ -140,7 +140,8 @@ bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rn
 
     std::vector<uint16_t> list(64);
     uint16_t total = 0;
-    uint16_t got = pack.distractors(target, list.data(), static_cast<uint16_t>(list.size()), &total);
+    uint16_t got = pack.distractors(target, list.data(), static_cast<uint16_t>(list.size()), &total,
+                                    mode == QuizMode::Reading);
     const uint32_t numCards = pack.cardCount();
 
     // Passes: strict (same reading kind) first, then relaxed. In each, the

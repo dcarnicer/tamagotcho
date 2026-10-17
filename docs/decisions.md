@@ -121,3 +121,19 @@ Short log of non-obvious choices. Newest last.
 - Hold the side button to open a `DECKS` menu: tap moves, hold opens, the side
   button goes back; the loaded deck is marked `*`. NVS survives `uploadfs` (only
   LittleFS is replaced), so the choice sticks across firmware/fs updates.
+
+## 2026-10-17 – Distractors: visual similarity and confusable readings
+
+- Each card now has **two distractor lists**. The **meaning** list ranks
+  candidates by visual similarity computed from the glyphs themselves: a 16×16
+  average-ink vector of the em square, compared by cosine (so 日/百, 水/木,
+  一/午 rank together). Same JLPT level first, then closest stroke count; cards
+  sharing a gloss with the target are excluded.
+- The **reading** list ranks candidates by how confusable their reading *of the
+  same kind* is: Levenshtein distance 1–3 between first on/kun readings (e.g.
+  カ/ゴ/フ, ショウ/ジョウ); identical readings are skipped (the quiz dedupes
+  them anyway).
+- Pack format: the reading list offset reuses the card's reserved u32
+  (`distract_read`, offset 28; 0 = reuse the meaning list), so it is a
+  backwards-compatible v1 extension. The firmware asks for it in Reading mode
+  and falls back to the meaning list when absent.

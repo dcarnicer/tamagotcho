@@ -142,6 +142,9 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
         }
         uint32_t d = rd32(c + 16);
         if (d < hd.distractOff || !inBounds(d, 2, total)) return fail(PackError::BadTable);
+        uint32_t dr = rd32(c + 28);
+        if (dr != 0 && (dr < hd.distractOff || !inBounds(dr, 2, total)))
+            return fail(PackError::BadTable);
     }
     return PackError::Ok;
 }
@@ -160,6 +163,7 @@ bool PackReader::card(uint32_t idx, Card* out) const {
     out->onyomi = str(rd32(c + 8));
     out->kunyomi = str(rd32(c + 12));
     out->distractorOff = rd32(c + 16);
+    out->distractorReadOff = rd32(c + 28);
     out->jlpt = c[20];
     out->grade = c[21];
     out->strokes = c[22];
@@ -169,11 +173,13 @@ bool PackReader::card(uint32_t idx, Card* out) const {
     return true;
 }
 
-uint16_t PackReader::distractors(const Card& c, uint16_t* out, uint16_t cap, uint16_t* total) const {
+uint16_t PackReader::distractors(const Card& c, uint16_t* out, uint16_t cap, uint16_t* total,
+                                 bool reading) const {
     if (total) *total = 0;
     if (!src_) return 0;
+    const uint32_t off = (reading && c.distractorReadOff) ? c.distractorReadOff : c.distractorOff;
     uint8_t b[2];
-    if (!src_->read(c.distractorOff, b, 2)) return 0;
+    if (!src_->read(off, b, 2)) return 0;
     uint16_t n = rd16(b);
     if (total) *total = n;
     if (n > cap) n = cap;
@@ -183,7 +189,7 @@ uint16_t PackReader::distractors(const Card& c, uint16_t* out, uint16_t cap, uin
     while (done < n) {
         uint16_t k = n - done;
         if (k > sizeof(buf) / 2) k = sizeof(buf) / 2;
-        if (!src_->read(c.distractorOff + 2 + done * 2u, buf, k * 2u)) return done;
+        if (!src_->read(off + 2 + done * 2u, buf, k * 2u)) return done;
         for (uint16_t i = 0; i < k; ++i) out[done + i] = rd16(buf + i * 2);
         done += k;
     }

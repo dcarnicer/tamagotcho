@@ -36,8 +36,9 @@ uv run pytest
 ## Layout
 
 - `kanjidic.py` parsing and card selection; `glyphs.py` rasterisation and 4bpp;
-  `pack.py` writer, reader and validator; `distractors.py` pluggable strategies
-  (`DistractorStrategy`); `preview.py` UI mock; `build.py` orchestration.
+  `pack.py` writer, reader and validator; `distractors.py` distractor strategies
+  (visual similarity for meanings, confusable readings for readings);
+  `preview.py` UI mock; `build.py` orchestration.
 
 ## Conventions (where the spec leaves room)
 

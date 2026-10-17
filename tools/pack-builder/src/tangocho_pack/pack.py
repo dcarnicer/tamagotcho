@@ -81,7 +81,17 @@ def write_pack(
     for c in cards:
         dis_rel.append(len(dis))
         dis += struct.pack(f"<H{len(c.distractors)}H", len(c.distractors), *c.distractors)
-    strings_off = align4(distract_off + len(dis))
+    read_off = distract_off + len(dis)
+    dis_r = bytearray()
+    dis_r_rel = []
+    for c in cards:
+        if c.distractors_reading:
+            dis_r_rel.append(read_off + len(dis_r))
+            dis_r += struct.pack(f"<H{len(c.distractors_reading)}H", len(c.distractors_reading),
+                                 *c.distractors_reading)
+        else:
+            dis_r_rel.append(0)  # no separate list -> use the meaning one
+    strings_off = align4(read_off + len(dis_r))
     strings_size = len(strings.buf)
     glyph_data_off = align4(strings_off + strings_size)
 
@@ -97,11 +107,11 @@ def write_pack(
     data += b"\0" * (align4(len(data)) - len(data))
 
     ctable = bytearray()
-    for c, (m, o, k), d in zip(cards, card_rel, dis_rel):
+    for c, (m, o, k), d, dr in zip(cards, card_rel, dis_rel, dis_r_rel):
         ctable += struct.pack(
             CARD_FMT, c.codepoint, strings_off + m, strings_off + o, strings_off + k,
             distract_off + d, c.jlpt, c.grade, c.strokes, 1 if c.fallback_en else 0,
-            c.freq, c.level, 0,
+            c.freq, c.level, dr,
         )
 
     header = struct.pack(
@@ -116,6 +126,7 @@ def write_pack(
     out += ctable
     out += gtable
     out += dis
+    out += dis_r
     out += b"\0" * (strings_off - len(out))
     out += strings.buf
     out += b"\0" * (glyph_data_off - len(out))
@@ -139,6 +150,8 @@ class PCard:
     flags: int
     freq: int
     level: int
+    distractor_read_off: int = 0
+    distractors_reading: list[int] = field(default_factory=list)
     string_offs: tuple[int, int, int] = (0, 0, 0)
 
 
@@ -244,26 +257,35 @@ def read_pack(raw: bytes) -> Pack:
 
     pack = Pack(raw, h, string(h["deck_name"], "deck_name"), errors=errs)
     d_lo = h["distract_off"]
+
+    def read_list(off: int, what: str) -> list[int]:
+        if off == 0:
+            return []
+        if not (d_lo <= off and off + 2 <= size):
+            errs.append(f"{what}: distractor offset {off} out of range")
+            return []
+        (n,) = struct.unpack_from("<H", raw, off)
+        if off + 2 + 2 * n > h["strings_off"]:
+            errs.append(f"{what}: distractor list overruns section")
+            return []
+        dl = list(struct.unpack_from(f"<{n}H", raw, off + 2))
+        if any(x >= cc for x in dl):
+            errs.append(f"{what}: distractor index out of range")
+        return dl
+
     for i in range(cc):
         t = struct.unpack_from(CARD_FMT, raw, h["cards_off"] + i * CARD_SIZE)
-        cp, mo, oo, ko, do, jlpt, grade, strokes, flags, freq, level, _ = t
-        dl: list[int] = []
-        if not (d_lo <= do and do + 2 <= size):
-            errs.append(f"card {i}: distractor offset {do} out of range")
-        else:
-            (n,) = struct.unpack_from("<H", raw, do)
-            if do + 2 + 2 * n > h["strings_off"]:
-                errs.append(f"card {i}: distractor list overruns section")
-            else:
-                dl = list(struct.unpack_from(f"<{n}H", raw, do + 2))
-                if any(x >= cc for x in dl):
-                    errs.append(f"card {i}: distractor index out of range")
-                if i in dl:
-                    errs.append(f"card {i}: lists itself as distractor")
+        cp, mo, oo, ko, do, jlpt, grade, strokes, flags, freq, level, dro = t
+        dl = read_list(do, f"card {i} meaning")
+        if i in dl:
+            errs.append(f"card {i}: lists itself as a meaning distractor")
+        dlr = read_list(dro, f"card {i} reading")
+        if i in dlr:
+            errs.append(f"card {i}: lists itself as a reading distractor")
         pack.cards.append(PCard(
             cp, string(mo, f"card {i} meanings"), string(oo, f"card {i} onyomi"),
             string(ko, f"card {i} kunyomi"), do, dl, jlpt, grade, strokes, flags, freq,
-            level, (mo, oo, ko),
+            level, dro, dlr, (mo, oo, ko),
         ))
     prev = None
     for i in range(gc):

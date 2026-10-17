@@ -1,30 +1,82 @@
-"""Distractor selection. Strategies are plain callables so smarter ones
-(visual similarity, shared radicals, confusable readings) can be plugged in.
+"""Distractor selection for meaning and reading questions.
 
-A strategy receives the ordered card list and returns, for each card, a list
-of other card *indices*, best distractor first.
+Two lists per card, both plain lists of card indices, best first:
+
+- **meaning**: visually similar kanji, compared from their own bitmaps, so the
+  wrong options are the ones a learner might actually confuse; same JLPT level
+  first, then closest stroke count.
+- **reading**: cards whose reading *of the same kind* is confusable (a kana or
+  two apart, e.g. ショウ / ジョウ), same level first.
+
+Cards sharing a meaning with the target are excluded from the meaning list: the
+quiz shows one gloss per option, so an overlap would make two options correct.
 """
 
 from __future__ import annotations
 
 import random
-from typing import Callable
 
-from .kanjidic import Card
+from .glyphs import Glyph, unpack_4bpp
 
-DistractorStrategy = Callable[[list[Card]], list[list[int]]]
 MAX_DISTRACTORS = 12
+GRID = 16  # similarity ink-mask resolution
 
 
-def same_level_similar_strokes(
-    cards: list[Card], k: int = MAX_DISTRACTORS, seed: int = 1
-) -> list[list[int]]:
-    """Prefer same JLPT level, then closest stroke count; seeded tie-break.
+def levenshtein(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
 
-    Candidates sharing *any* meaning with the target are skipped: the quiz picks
-    one of a card's meanings at random, so an overlap could make two options
-    correct at once.
-    """
+
+def display_reading(readings) -> str:
+    """First reading of a card's list (or a '、'-joined string), dots removed."""
+    if not readings:
+        return ""
+    first = readings[0] if isinstance(readings, list) else readings.split("、")[0]
+    return first.replace(".", "")
+
+
+def square_vector(glyph: Glyph, px: int, grid: int = GRID) -> tuple[float, ...]:
+    """A grid x grid vector of average ink coverage (0..15) for the glyph placed
+    in its px x px em square. Cosine similarity on this ranks like-looking kanji
+    (日/目, 水/木) well above unrelated ones."""
+    ink = [[0] * px for _ in range(px)]
+    if glyph.width and glyph.height:
+        vals = unpack_4bpp(glyph.data, glyph.width, glyph.height)
+        top = glyph.y_off + px
+        for y in range(glyph.height):
+            for x in range(glyph.width):
+                yy, xx = top + y, glyph.x_off + x
+                if 0 <= yy < px and 0 <= xx < px:
+                    ink[yy][xx] = vals[y * glyph.width + x]
+    step = px / grid
+    out = []
+    for gy in range(grid):
+        y0 = int(gy * step)
+        y1 = min(max(int((gy + 1) * step), y0 + 1), px)
+        for gx in range(grid):
+            x0 = int(gx * step)
+            x1 = min(max(int((gx + 1) * step), x0 + 1), px)
+            s = sum(ink[y][x] for y in range(y0, y1) for x in range(x0, x1))
+            out.append(s / ((y1 - y0) * (x1 - x0)))
+    return tuple(out)
+
+
+def _similarity(a: tuple[float, ...], b: tuple[float, ...]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(x * x for x in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def meaning_distractors(cards: list, visual: list[int], k: int = MAX_DISTRACTORS,
+                        seed: int = 1) -> list[list[int]]:
     result: list[list[int]] = []
     for i, c in enumerate(cards):
         rng = random.Random(seed * 1_000_003 + c.codepoint)
@@ -34,11 +86,33 @@ def same_level_similar_strokes(
             if j == i:
                 continue
             if mine & {m.lower() for m in o.meanings}:
-                continue
-            scored.append(((o.jlpt != c.jlpt), abs(o.strokes - c.strokes), rng.random(), j))
-        scored.sort()
-        result.append([s[3] for s in scored[:k]])
+                continue  # would make two options correct
+            scored.append(((o.jlpt != c.jlpt), -_similarity(visual[i], visual[j]),
+                           abs(o.strokes - c.strokes), rng.random(), j))
+        scored.sort(key=lambda s: s[:4])
+        result.append([s[4] for s in scored[:k]])
     return result
 
 
-DEFAULT_STRATEGY: DistractorStrategy = same_level_similar_strokes
+def reading_distractors(cards: list, k: int = MAX_DISTRACTORS, seed: int = 1) -> list[list[int]]:
+    result: list[list[int]] = []
+    for i, c in enumerate(cards):
+        rng = random.Random(seed * 1_000_003 + c.codepoint)
+        target = {"on": display_reading(c.onyomi), "kun": display_reading(c.kunyomi)}
+        scored = []
+        for j, o in enumerate(cards):
+            if j == i:
+                continue
+            other = {"on": display_reading(o.onyomi), "kun": display_reading(o.kunyomi)}
+            dists = [levenshtein(target[kd], other[kd]) for kd in ("on", "kun")
+                     if target[kd] and other[kd]]
+            dists = [d for d in dists if d > 0]  # identical readings are deduped anyway
+            if not dists:
+                continue
+            best = min(dists)
+            if best > 3:
+                continue  # not confusable
+            scored.append(((o.jlpt != c.jlpt), best, abs(o.strokes - c.strokes), rng.random(), j))
+        scored.sort(key=lambda s: s[:4])
+        result.append([s[4] for s in scored[:k]])
+    return result

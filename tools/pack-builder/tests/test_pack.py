@@ -68,6 +68,29 @@ def test_glcd_cp437_map():
     assert glcd.can_draw("día") and not glcd.can_draw("Á")
 
 
+def test_meaning_distractors_use_visual_and_skip_glosses():
+    from tangocho_pack.distractors import meaning_distractors
+    from tangocho_pack.kanjidic import Card
+    cards = [Card(1, ["a"], [], [], jlpt=5, strokes=1),
+             Card(2, ["b"], [], [], jlpt=5, strokes=1),
+             Card(3, ["a"], [], [], jlpt=5, strokes=1),  # shares a gloss with card 0
+             Card(4, ["d"], [], [], jlpt=5, strokes=1)]
+    visual = [(1.0, 0.0), (0.9, 0.1), (1.0, 0.0), (0.0, 1.0)]
+    order = meaning_distractors(cards, visual)[0]
+    assert 2 not in order      # card 2 shares a gloss with card 0 -> excluded
+    assert order[0] == 1       # most visually similar (cosine ~0.99)
+
+
+def test_reading_distractors_pick_confusable():
+    from tangocho_pack.distractors import reading_distractors
+    from tangocho_pack.kanjidic import Card
+    cards = [Card(1, ["x"], ["ショウ"], [], jlpt=5, strokes=1),
+             Card(2, ["y"], ["ジョウ"], [], jlpt=5, strokes=2),  # one kana apart
+             Card(3, ["z"], [], ["つき"], jlpt=5, strokes=3)]     # no on'yomi to compare
+    order = reading_distractors(cards)[0]
+    assert order == [1]
+
+
 def test_spanish_fallback_flag():
     cards = mini_cards("fr")  # fixture only guarantees some languages
     for c in cards:

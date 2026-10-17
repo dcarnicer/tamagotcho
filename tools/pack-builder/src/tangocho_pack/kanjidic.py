@@ -29,6 +29,7 @@ class Card:
     fallback_en: bool = False
     level: int = 0
     distractors: list[int] = field(default_factory=list)
+    distractors_reading: list[int] = field(default_factory=list)
 
     @property
     def char(self) -> str:
