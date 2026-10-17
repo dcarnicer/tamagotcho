@@ -111,3 +111,13 @@ Short log of non-obvious choices. Newest last.
   one. Caveat: KANJIDIC's reading order is not frequency-based (九's first kun
   reading is the rare ここの), so a per-reading frequency source may be worth
   adding later (roadmap, phase 3).
+
+## 2026-10-17 – Deck selector
+
+- The firmware lists the `*.tgc` files in `/packs` (sorted) and opens the one
+  saved in NVS (`Preferences`, namespace `tangocho`), falling back to the first.
+  A new pack replaces the live one only after it validates, so a bad file cannot
+  strand the device without a deck.
+- Hold the side button to open a `DECKS` menu: tap moves, hold opens, the side
+  button goes back; the loaded deck is marked `*`. NVS survives `uploadfs` (only
+  LittleFS is replaced), so the choice sticks across firmware/fs updates.

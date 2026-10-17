@@ -2,8 +2,11 @@
 // multiple-choice quiz (kanji -> meaning / reading).
 #include <Arduino.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 
+#include <algorithm>
 #include <memory>
+#include <vector>
 
 #include "board/Board.h"
 #include "pack/PackReader.h"
@@ -38,6 +41,13 @@ bool gRevealed = false;
 bool gNextModeIsReading = false;
 bool gNextReadingIsKun = false;
 
+enum class Screen { Quiz, Menu };
+Screen gScreen = Screen::Quiz;
+std::vector<String> gPacks;  // paths of the *.tgc files in /packs
+int gMenuSel = 0;
+String gCurrentPack;
+Preferences gPrefs;
+
 int W, H;
 
 void smallText(lgfx::LovyanGFX& d, const char* s, int x, int y, uint16_t fg, uint16_t bg,
@@ -67,20 +77,19 @@ void showError(const char* line1, const char* line2 = "") {
     present();
 }
 
-// Find the first *.tgc in /packs. Returns true and fills `path`.
-bool findPack(String* path) {
+// Fill `out` with the *.tgc files in /packs (sorted for a stable menu order).
+void listPacks(std::vector<String>& out) {
+    out.clear();
     File dir = LittleFS.open("/packs");
-    if (!dir || !dir.isDirectory()) return false;
+    if (!dir || !dir.isDirectory()) return;
     for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
         String name = f.name();
-        int slash = name.lastIndexOf('/');
+        const int slash = name.lastIndexOf('/');
         if (slash >= 0) name = name.substring(slash + 1);
-        if (!f.isDirectory() && name.endsWith(".tgc") && !name.startsWith(".")) {
-            *path = "/packs/" + name;
-            return true;
-        }
+        if (!f.isDirectory() && name.endsWith(".tgc") && !name.startsWith("."))
+            out.push_back("/packs/" + name);
     }
-    return false;
+    std::sort(out.begin(), out.end());
 }
 
 bool newQuestion() {
@@ -111,7 +120,9 @@ bool newQuestion() {
     return false;
 }
 
-void drawScreen() {
+void drawScreen();  // dispatches to the quiz or the deck menu
+
+void drawQuiz() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
 
@@ -198,6 +209,101 @@ void drawScreen() {
     present();
 }
 
+// Deck menu: one pack per row; the loaded one is marked with '*'.
+void drawMenu() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, "DECKS", 3, 3, kWhite, kGrey);
+    smallText(d, "tap=next  hold=open", W - 3, 3, kWhite, kGrey, lgfx::top_right);
+
+    const int top = 18, rowH = 20;
+    for (size_t i = 0; i < gPacks.size(); ++i) {
+        const int y = top + static_cast<int>(i) * rowH;
+        if (y + rowH - 2 > H) break;  // no more room
+        const bool sel = static_cast<int>(i) == gMenuSel;
+        const uint16_t bg = sel ? kHighlight : kBlack;
+        d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
+        if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
+        String name = gPacks[i];
+        const int slash = name.lastIndexOf('/');
+        if (slash >= 0) name = name.substring(slash + 1);
+        if (name.endsWith(".tgc")) name = name.substring(0, name.length() - 4);
+        if (gPacks[i] == gCurrentPack) name = "* " + name;
+        smallText(d, name.c_str(), 4, y + (rowH - 2 - 8) / 2, kWhite, bg);
+    }
+    present();
+}
+
+void drawScreen() {
+    if (gScreen == Screen::Menu) drawMenu();
+    else drawQuiz();
+}
+
+// Opens `path`, replacing the live pack only after the new one validates.
+bool loadPack(const String& path) {
+    auto src = std::make_unique<tgc::FsPackSource>(LittleFS.open(path, "r"));
+    if (!src->ok()) return false;
+    {
+        tgc::PackReader probe;
+        if (probe.open(*src, tgc::psramAllocator()) != tgc::PackError::Ok) return false;
+    }
+    gRender.end();
+    gPack.close();
+    gSource = std::move(src);
+    if (gPack.open(*gSource, tgc::psramAllocator()) != tgc::PackError::Ok) return false;
+    if (!gRender.begin(gPack)) return false;
+    gCurrentPack = path;
+    Serial.printf("pack %s: %u cards, %u glyphs, lang %s\n", gPack.deckName(),
+                  (unsigned)gPack.cardCount(), (unsigned)gPack.glyphCount(), gPack.header().lang);
+    return true;
+}
+
+void openMenu() {
+    gScreen = Screen::Menu;
+    gMenuSel = 0;
+    for (size_t i = 0; i < gPacks.size(); ++i)
+        if (gPacks[i] == gCurrentPack) gMenuSel = static_cast<int>(i);
+    drawScreen();
+}
+
+void closeMenu() {
+    gScreen = Screen::Quiz;
+    drawScreen();
+}
+
+void selectPack() {
+    if (gMenuSel >= 0 && gMenuSel < static_cast<int>(gPacks.size())) {
+        const String path = gPacks[gMenuSel];
+        if (loadPack(path) && newQuestion()) gPrefs.putString("pack", path);
+    }
+    gScreen = Screen::Quiz;
+    drawScreen();
+}
+
+// Tap/hold detection: 1 = tap (on release), 2 = hold (at the threshold).
+struct Key {
+    bool down = false;
+    bool longFired = false;
+    uint32_t downAt = 0;
+    int poll(bool isDown, uint32_t now, uint32_t holdMs) {
+        if (isDown && !down) {
+            down = true;
+            longFired = false;
+            downAt = now;
+        }
+        if (isDown && !longFired && now - downAt >= holdMs) {
+            longFired = true;
+            return 2;
+        }
+        if (!isDown && down) {
+            down = false;
+            if (!longFired) return 1;
+        }
+        return 0;
+    }
+};
+
 void halt() {
     for (;;) {
         tgc::board::update();
@@ -233,27 +339,19 @@ void setup() {
         showError("Filesystem not found", "Run: pio run -t uploadfs");
         halt();
     }
-    String path;
-    if (!findPack(&path)) {
+    listPacks(gPacks);
+    if (gPacks.empty()) {
         showError("No pack found", "Put a .tgc in data/packs/ then run uploadfs");
         halt();
     }
-    gSource.reset(new tgc::FsPackSource(LittleFS.open(path, "r")));
-    if (!gSource->ok()) {
-        showError("Cannot open", path.c_str());
+    gPrefs.begin("tangocho", false);
+    String want = gPrefs.getString("pack", "");
+    if (std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end()) want = gPacks[0];
+    if (!loadPack(want)) {
+        showError("Cannot open pack", want.c_str());
         halt();
     }
-    tgc::PackError err = gPack.open(*gSource, tgc::psramAllocator());
-    if (err != tgc::PackError::Ok) {
-        showError("Invalid pack", tgc::packErrorString(err));
-        halt();
-    }
-    if (!gRender.begin(gPack)) {
-        showError("Out of memory");
-        halt();
-    }
-    Serial.printf("pack %s: %u cards, %u glyphs, lang %s\n", gPack.deckName(),
-                  (unsigned)gPack.cardCount(), (unsigned)gPack.glyphCount(), gPack.header().lang);
+    gPrefs.putString("pack", gCurrentPack);
     if (!newQuestion()) {
         showError("Pack has no usable cards");
         halt();
@@ -286,25 +384,23 @@ void holdAction() {
 
 void loop() {
     tgc::board::update();
-    if (tgc::board::wasPressed(Button::Next)) tapAction();  // side button shortcut
-
-    static bool down = false;
-    static bool longFired = false;
-    static uint32_t downAt = 0;
-    const bool now = tgc::board::isHeld(Button::Select);
     const uint32_t t = millis();
-    if (now && !down) {
-        down = true;
-        longFired = false;
-        downAt = t;
-    }
-    if (now && !longFired && t - downAt >= tgc::board::kHoldMs) {
-        longFired = true;
-        holdAction();
-    }
-    if (!now && down) {
-        down = false;
-        if (!longFired) tapAction();
+    static Key keyA, keyB;
+    const int a = keyA.poll(tgc::board::isHeld(Button::Select), t, tgc::board::kHoldMs);
+    const int b = keyB.poll(tgc::board::isHeld(Button::Next), t, tgc::board::kHoldMs);
+    if (gScreen == Screen::Menu) {
+        if (a == 1) {
+            gMenuSel = (gMenuSel + 1) % static_cast<int>(gPacks.size());
+            drawScreen();
+        } else if (a == 2) {
+            selectPack();
+        }
+        if (b) closeMenu();  // side button backs out of the menu
+    } else {
+        if (a == 1) tapAction();
+        else if (a == 2) holdAction();
+        if (b == 1) tapAction();  // side button shortcut
+        else if (b == 2) openMenu();
     }
     delay(10);
 }

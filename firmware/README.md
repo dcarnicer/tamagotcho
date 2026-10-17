@@ -27,8 +27,9 @@ Use `-e tdisplay-s3` for the T-Display-S3.
 
 Build a pack with `tools/pack-builder` (see its README), copy the `.tgc` into
 `firmware/data/packs/` (packs are git-ignored) and run `uploadfs`. The firmware
-opens the first `*.tgc` it finds in `/packs`. `uploadfs` replaces the whole
-filesystem, so keep every pack you want in `data/packs/`.
+opens the deck saved in NVS, or the first `*.tgc` if there is none; hold the
+side button to switch decks. `uploadfs` replaces the whole filesystem, so keep
+every pack you want in `data/packs/`.
 
 ## Flash layout
 
@@ -44,12 +45,15 @@ No OTA: one 2 MB app slot, everything else is LittleFS (partition label
 
 The front (confirm) button drives the quiz: a **tap** moves the highlight to the
 next option, a **hold** (~600 ms) confirms the highlighted one. Once the answer
-is revealed, a tap goes to the next card. The side button is a tap shortcut.
+is revealed, a tap goes to the next card. The side button is a tap shortcut;
+**holding it opens the deck menu**, where a tap moves the selection, a hold
+opens the highlighted deck, and the side button goes back.
 
 | button            | StickS3          | T-Display-S3 |
 |-------------------|------------------|--------------|
 | confirm (hold)    | front button (A) | GPIO0 (BOOT) |
 | next / tap        | side button (B)  | GPIO14       |
+| deck menu (hold)  | side button (B)  | GPIO14       |
 
 ## Layout
 
