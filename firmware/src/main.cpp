@@ -423,12 +423,9 @@ void drawDate() {
     present();
 }
 
-// Applies the chosen number of days, persists it, rebuilds the queue (cards may
-// now be due) and shows the quiz.
-void applyDate() {
-    gSrs.advanceDays(kDateAdd[gDateSel]);
-    gSrs.save(gSrsIo);
-    gDirty = 0;
+// Rebuilds the queue and shows the quiz (or the done screen if nothing is due).
+// Used after the date screen so newly due cards appear.
+void leaveDate() {
     gQueue.rebuild(gPack, gSrs, gRng);
     if (!newQuestion()) {
         showDone();
@@ -436,6 +433,15 @@ void applyDate() {
     }
     gScreen = Screen::Quiz;
     drawScreen();
+}
+
+// Applies the chosen number of days, persists it, rebuilds the queue (cards may
+// now be due) and shows the quiz.
+void applyDate() {
+    gSrs.advanceDays(kDateAdd[gDateSel]);
+    gSrs.save(gSrsIo);
+    gDirty = 0;
+    leaveDate();
 }
 
 void drawScreen() {
@@ -603,14 +609,17 @@ void setup() {
                   (unsigned)gSrs.today(), today, (unsigned)gSrs.count(), (unsigned)due,
                   (unsigned)fresh, srsLoaded ? "" : " (new)", gPoweredOff ? 1 : 0);
 
-    if (!newQuestion()) {
-        showDone();
-    } else if (gPoweredOff && gSrs.count() > 0) {
-        // The device was powered off, so the elapsed days are unknown: ask.
+    if (gPoweredOff && gSrs.count() > 0) {
+        // Power cut: the elapsed days are unknown. Ask *before* deciding "done",
+        // because advancing the day can make reviews due.
         gAfterDate = Screen::Quiz;
         gDateSel = 0;
         gScreen = Screen::Date;
         drawScreen();
+        return;
+    }
+    if (!newQuestion()) {
+        showDone();
     } else {
         drawScreen();
     }
@@ -688,9 +697,13 @@ void loop() {
         } else if (a == 2) {
             applyDate();
         }
-        if (b) {  // cancel: back where we came from
-            gScreen = gAfterDate;
-            drawScreen();
+        if (b) {  // cancel: back to the menu, or straight into the quiz
+            if (gAfterDate == Screen::Menu) {
+                gScreen = Screen::Menu;
+                drawScreen();
+            } else {
+                leaveDate();
+            }
         }
     } else if (gScreen == Screen::Done) {
         if (b == 2) {
