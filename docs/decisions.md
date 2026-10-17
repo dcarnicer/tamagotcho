@@ -207,3 +207,16 @@ Short log of non-obvious choices. Newest last.
 - **Rows use the built-in 2x font** (`drawCentred` with `kTextBuiltin`) so the
   accented labels render; deck rows stay on the 1x `Font0` and only the loaded
   pack shows `due/new` counts (counting every pack would mean opening each one).
+
+## 2026-10-17 – On-device localisation follows the pack language
+
+- Every on-device string lives in a `UiStrings` table reached through `ui()`;
+  `loadPack` calls `setUiForLang(gPack.header().lang)`, so "es" selects Spanish
+  and any other code (or no pack yet) falls back to English. The error screen
+  runs before a pack opens, so it always draws the English defaults.
+- The pack's `lang` is the only signal for now; letting the user override the UI
+  language (independently of the meaning language) is still open (roadmap).
+- Header hints and the date rows draw through the built-in GFX font
+  (`drawCentred` with `kTextBuiltinSmall`/`kTextBuiltin`) so accented Spanish
+  ("atrás", "día") renders. The Font0 `smallText` path stays ASCII-only, so the
+  done screen uses plain "dia".

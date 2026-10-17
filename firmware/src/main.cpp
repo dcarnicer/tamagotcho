@@ -5,6 +5,7 @@
 #include <Preferences.h>
 
 #include <algorithm>
+#include <cstring>
 #include <memory>
 #include <vector>
 
@@ -40,6 +41,75 @@ namespace {
 constexpr uint16_t kBlack = 0x0000;
 constexpr uint16_t kWhite = 0xFFFF;
 uint16_t kGrey, kHighlight, kGreen, kRed, kYellow;
+
+// Every user-facing on-device string. The table is chosen from the loaded
+// pack's language (gPack.header().lang) when the pack changes; English is the
+// default and the fallback for any unknown code, so the error screen (which
+// runs before a pack is open) still has text.
+struct UiStrings {
+    const char* appName;  // error screen title bar
+    const char* settingsTitle;
+    const char* decksTitle;
+    const char* backHint;
+    const char* menuRows[5];  // continue, decks, date, new/day, speed
+    const char* newPerDayTitle;
+    const char* speedTitle;
+    const char* speedOff;
+    const char* speedSecondsFmt;
+    const char* quizMeaning;
+    const char* quizReading;
+    const char* quizKanji;
+    const char* dateTitle;
+    const char* dateRows[4];
+    const char* doneBadge;
+    const char* doneAllReviewed;
+    const char* doneDayFmt;
+    const char* doneDueFmt;
+    const char* doneStudyMore;
+    const char* doneMenuHint;
+    const char* deckCountsFmt;
+    const char* errNoFilesystem;
+    const char* errNoFilesystemHint;
+    const char* errNoPack;
+    const char* errNoPackHint;
+    const char* errOpenPack;
+};
+
+const UiStrings kUiEn = {
+    "Tangocho",
+    "SETTINGS", "DECKS", "side: back",
+    {"Continue", "Decks", "Date", "New/day", "Speed"},
+    "NEW/DAY", "SPEED", "no", "%.1f s",
+    "MEANING", "READING", "KANJI",
+    "DATE", {"today (0)", "1 day", "2-7 days", "more (14)"},
+    "DONE", "All reviewed for now", "day %u  %u cards", "due %u  new %u", "tap/hold: +10 new",
+    "side hold: menu",
+    "  %u/%u",
+    "Filesystem not found", "Run: pio run -t uploadfs",
+    "No pack found", "Put a .tgc in data/packs/ then run uploadfs",
+    "Cannot open pack",
+};
+
+const UiStrings kUiEs = {
+    "Tangocho",
+    "AJUSTES", "MAZOS", "lateral: atrás",
+    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad"},
+    "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
+    "SIGNIFICADO", "LECTURA", "KANJI",
+    "FECHA", {"hoy (0)", "1 día", "2-7 días", "más (14)"},
+    "FIN", "Todo repasado por ahora", "dia %u  %u tarjetas", "pendientes %u  nuevas %u",
+    "tap/hold: +10 nuevas", "lateral: menu",
+    "  %u/%u",
+    "No se encuentra el sistema de archivos", "Ejecuta: pio run -t uploadfs",
+    "No hay ningún mazo", "Pon un .tgc en data/packs/ y ejecuta uploadfs",
+    "No se puede abrir el mazo",
+};
+
+const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
+const UiStrings& ui() { return *gUi; }
+
+// "es" selects the Spanish table; anything else (including no pack yet) is English.
+void setUiForLang(const char* lang) { gUi = (lang && strcmp(lang, "es") == 0) ? &kUiEs : &kUiEn; }
 
 lgfx::LGFX_Sprite* gCanvas = nullptr;  // full-screen back buffer in PSRAM
 tgc::PackReader gPack;
@@ -91,11 +161,20 @@ void smallText(lgfx::LovyanGFX& d, const char* s, int x, int y, uint16_t fg, uin
 
 void present() { gCanvas->pushSprite(&tgc::board::display(), 0, 0); }
 
+// Right-aligned header hint. Drawn with the built-in GFX font (not the pack
+// font) so accented Spanish ("atrás") renders; the 1x size matches smallText.
+void drawBackHint(lgfx::LovyanGFX& d) {
+    const char* s = ui().backHint;
+    const int tw = gRender.textWidth(s, tgc::Renderer::kTextBuiltinSmall);
+    gRender.drawCentred(d, s, W - 3 - tw, 3, tw, 8, 1, kWhite, kGrey,
+                        tgc::Renderer::kTextBuiltinSmall);
+}
+
 void showError(const char* line1, const char* line2 = "") {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kRed);
-    smallText(d, "Tangocho", 3, 3, kWhite, kRed);
+    smallText(d, ui().appName, 3, 3, kWhite, kRed);
     d.setTextWrap(true);
     d.setCursor(4, 24);
     d.setFont(&lgfx::fonts::Font0);
@@ -224,8 +303,8 @@ void drawQuiz() {
         gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH + 2, W, kanjiH, kWhite,
                           kBlack);
     }
-    smallText(d, k2m ? "KANJI" : (reading ? "READING" : "MEANING"), W / 2, headerH + 2 + kanjiH,
-              kYellow, kBlack, lgfx::top_center);
+    smallText(d, k2m ? ui().quizKanji : (reading ? ui().quizReading : ui().quizMeaning), W / 2,
+              headerH + 2 + kanjiH, kYellow, kBlack, lgfx::top_center);
 
     // Readings: 2x2 grid with large kana (set 3). Meanings: one per row, full
     // width, in the built-in font at 2x (falling back to the pack glyphs).
@@ -316,18 +395,17 @@ void drawRow(lgfx::LovyanGFX& d, const char* label, int y, bool sel) {
 // Settings home (hold the side button from the quiz): tap moves the highlight,
 // hold activates the row. Each row is a full-width box with a label.
 constexpr int kSettingRows = 5;
-const char* const kSettingLabels[kSettingRows] = {"Seguir", "Mazos", "Fecha", "Nuevas/día",
-                                                  "Velocidad"};
 
 void drawMenu() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, "AJUSTES", 3, 3, kWhite, kGrey);
-    smallText(d, "lateral: atras", W - 3, 3, kWhite, kGrey, lgfx::top_right);
+    smallText(d, ui().settingsTitle, 3, 3, kWhite, kGrey);
+    drawBackHint(d);
 
     const int top = 20, step = 36;
-    for (int i = 0; i < kSettingRows; ++i) drawRow(d, kSettingLabels[i], top + i * step, i == gMenuSel);
+    for (int i = 0; i < kSettingRows; ++i)
+        drawRow(d, ui().menuRows[i], top + i * step, i == gMenuSel);
     present();
 }
 
@@ -338,8 +416,8 @@ void drawDecks() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, "MAZOS", 3, 3, kWhite, kGrey);
-    smallText(d, "lateral: atras", W - 3, 3, kWhite, kGrey, lgfx::top_right);
+    smallText(d, ui().decksTitle, 3, 3, kWhite, kGrey);
+    drawBackHint(d);
 
     uint32_t due = 0, fresh = 0;
     packDueNew(&due, &fresh);  // only shown on the loaded pack's row
@@ -358,7 +436,7 @@ void drawDecks() {
         if (label.endsWith(".tgc")) label = label.substring(0, label.length() - 4);
         if (gPacks[i] == gCurrentPack) {
             char counts[24];
-            snprintf(counts, sizeof counts, "  %u/%u", (unsigned)due, (unsigned)fresh);
+            snprintf(counts, sizeof counts, ui().deckCountsFmt, (unsigned)due, (unsigned)fresh);
             label = "* " + label + counts;
         }
         smallText(d, label.c_str(), 4, y + (rowH - 2 - 8) / 2, kWhite, bg);
@@ -372,15 +450,16 @@ void drawChoice() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, gChoice == Choice::NewPerDay ? "NUEVAS/DIA" : "VELOCIDAD", 3, 3, kWhite, kGrey);
-    smallText(d, "lateral: atras", W - 3, 3, kWhite, kGrey, lgfx::top_right);
+    smallText(d, gChoice == Choice::NewPerDay ? ui().newPerDayTitle : ui().speedTitle, 3, 3, kWhite,
+              kGrey);
+    drawBackHint(d);
 
     const int top = 40, step = 40;
     for (int i = 0; i < gChoiceCount; ++i) {
         char label[16];
         if (gChoice == Choice::SlowMs) {
-            if (gChoiceValues[i] == 0xFFFF) snprintf(label, sizeof label, "no");
-            else snprintf(label, sizeof label, "%.1f s", gChoiceValues[i] / 1000.0f);
+            if (gChoiceValues[i] == 0xFFFF) snprintf(label, sizeof label, "%s", ui().speedOff);
+            else snprintf(label, sizeof label, ui().speedSecondsFmt, gChoiceValues[i] / 1000.0f);
         } else {
             snprintf(label, sizeof label, "%u", (unsigned)gChoiceValues[i]);
         }
@@ -396,18 +475,18 @@ void drawDone() {
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, gPack.deckName(), 3, 3, kWhite, kGrey);
-    smallText(d, "DONE", W - 3, 3, kWhite, kGrey, lgfx::top_right);
+    smallText(d, ui().doneBadge, W - 3, 3, kWhite, kGrey, lgfx::top_right);
 
     uint32_t due = 0, fresh = 0;
     packDueNew(&due, &fresh);
     char line[48];
-    smallText(d, "All reviewed for now", W / 2, H / 2 - 24, kWhite, kBlack, lgfx::top_center);
-    snprintf(line, sizeof line, "day %u  %u cards", (unsigned)gSrs.today(), (unsigned)gSrs.count());
+    smallText(d, ui().doneAllReviewed, W / 2, H / 2 - 24, kWhite, kBlack, lgfx::top_center);
+    snprintf(line, sizeof line, ui().doneDayFmt, (unsigned)gSrs.today(), (unsigned)gSrs.count());
     smallText(d, line, W / 2, H / 2 - 6, kYellow, kBlack, lgfx::top_center);
-    snprintf(line, sizeof line, "due %u  new %u", (unsigned)due, (unsigned)fresh);
+    snprintf(line, sizeof line, ui().doneDueFmt, (unsigned)due, (unsigned)fresh);
     smallText(d, line, W / 2, H / 2 + 8, kWhite, kBlack, lgfx::top_center);
-    smallText(d, "tap/hold: +10 new", W / 2, H / 2 + 30, kWhite, kBlack, lgfx::top_center);
-    smallText(d, "side hold: menu", W / 2, H / 2 + 44, kWhite, kBlack, lgfx::top_center);
+    smallText(d, ui().doneStudyMore, W / 2, H / 2 + 30, kWhite, kBlack, lgfx::top_center);
+    smallText(d, ui().doneMenuHint, W / 2, H / 2 + 44, kWhite, kBlack, lgfx::top_center);
     present();
 }
 
@@ -458,13 +537,12 @@ void drawDate() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, "FECHA", 3, 3, kWhite, kGrey);
-    smallText(d, "lateral: atras", W - 3, 3, kWhite, kGrey, lgfx::top_right);
+    smallText(d, ui().dateTitle, 3, 3, kWhite, kGrey);
+    drawBackHint(d);
     char date[16];
     formatDate(gSrs.today(), date, sizeof date);
     gRender.drawCentred(d, date, 2, 18, W - 4, 18, 1, kYellow, kBlack, tgc::Renderer::kTextBuiltin);
 
-    static const char* kLabels[kDateRows] = {"hoy (0)", "1 día", "2-7 días", "más (14)"};
     const int top = 44, rowH = 32;
     for (int i = 0; i < kDateRows; ++i) {
         const int y = top + i * rowH;
@@ -472,7 +550,7 @@ void drawDate() {
         const uint16_t bg = sel ? kHighlight : kBlack;
         d.fillRoundRect(2, y, W - 4, rowH - 4, 5, bg);
         if (sel) d.drawRoundRect(2, y, W - 4, rowH - 4, 5, kWhite);
-        gRender.drawCentred(d, kLabels[i], 4, y + 2, W - 8, rowH - 8, 1, kWhite, bg,
+        gRender.drawCentred(d, ui().dateRows[i], 4, y + 2, W - 8, rowH - 8, 1, kWhite, bg,
                             tgc::Renderer::kTextBuiltin);
     }
     present();
@@ -538,6 +616,7 @@ bool loadPack(const String& path) {
     gSource = std::move(src);
     if (gPack.open(*gSource, tgc::psramAllocator()) != tgc::PackError::Ok) return false;
     if (!gRender.begin(gPack)) return false;
+    setUiForLang(gPack.header().lang);
     gCurrentPack = path;
     gQueue.rebuild(gPack, gSrs, gRng);
     Serial.printf("pack %s: %u cards, %u glyphs, lang %s\n", gPack.deckName(),
@@ -715,19 +794,19 @@ void setup() {
     gRng = tgc::XorShiftRng(tgc::board::randomSeed());
 
     if (!LittleFS.begin(false)) {
-        showError("Filesystem not found", "Run: pio run -t uploadfs");
+        showError(ui().errNoFilesystem, ui().errNoFilesystemHint);
         halt();
     }
     listPacks(gPacks);
     if (gPacks.empty()) {
-        showError("No pack found", "Put a .tgc in data/packs/ then run uploadfs");
+        showError(ui().errNoPack, ui().errNoPackHint);
         halt();
     }
     gPrefs.begin("tangocho", false);
     String want = gPrefs.getString("pack", "");
     if (std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end()) want = gPacks[0];
     if (!loadPack(want)) {
-        showError("Cannot open pack", want.c_str());
+        showError(ui().errOpenPack, want.c_str());
         halt();
     }
     gPrefs.putString("pack", gCurrentPack);
