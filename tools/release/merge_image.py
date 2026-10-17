@@ -111,10 +111,12 @@ def main(argv: list[str] | None = None) -> int:
     parts = image_parts(partitions, build_dir, Path(a.boot_app0) if a.boot_app0 else None)
     args = esptool_args(parts, out, a.chip, a.flash_mode, a.flash_freq, a.flash_size, a.esptool)
 
-    # The first bytes of the app image are the ESP image magic 0xE9; catch a
-    # truncated/empty firmware.bin before merging it into a release artifact.
+    # The first byte of the app image is the ESP image magic; read just that byte
+    # (the image is ~1 MB) to catch a truncated/empty firmware.bin before merging.
     app = next(p for p in parts if p[1].name == "firmware.bin")[1]
-    if app.read_bytes()[:1] != b"\xE9":
+    with app.open("rb") as f:
+        magic = f.read(1)
+    if magic != b"\xE9":
         raise SystemExit(f"{app} is not an ESP32 app image (expected 0xE9 magic)")
     if not any(p["type"] == "data" and p["subtype"] == "ota" for p in partitions):
         print("note: no OTA data partition in the table -> no boot_app0 image (no OTA)")

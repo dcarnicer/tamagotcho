@@ -73,8 +73,8 @@ def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
     for ch in root.iter("character"):
         cp = None
         for c in ch.iter("cp_value"):
-            if c.get("cp_type") == "ucs":
-                cp = int(c.text, 16)
+            if c.get("cp_type") == "ucs" and c.text and c.text.strip():
+                cp = int(c.text.strip(), 16)
         if cp is None:
             continue
         # Classical KangXi radical numbers only (rad_type="classical"); the
@@ -83,24 +83,27 @@ def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
         # empty one as "no radical data" rather than failing.
         radicals: list[int] = []
         for rv in ch.iter("rad_value"):
-            if rv.get("rad_type") == "classical" and rv.text:
-                radicals.append(int(rv.text))
+            text = rv.text.strip() if rv.text else ""
+            if rv.get("rad_type") == "classical" and text:
+                radicals.append(int(text))
 
         meanings: dict[str, list[str]] = {}
         on: list[str] = []
         kun: list[str] = []
         for rm in ch.iter("reading_meaning"):
             for r in rm.iter("reading"):
+                text = (r.text or "").strip()
                 if r.get("r_type") == "ja_on":
-                    on.append(r.text.strip())
+                    on.append(text)
                 elif r.get("r_type") == "ja_kun":
-                    kun.append(clean_kun(r.text.strip()))
+                    kun.append(clean_kun(text))
             for m in rm.iter("meaning"):
-                meanings.setdefault(m.get("m_lang", "en"), []).append(m.text.strip())
+                meanings.setdefault(m.get("m_lang", "en"), []).append((m.text or "").strip())
 
         def num(path: str) -> int:
             e = ch.find(path)
-            return int(e.text) if e is not None and e.text else 0
+            text = e.text.strip() if e is not None and e.text else ""
+            return int(text) if text else 0
 
         out.append(
             RawKanji(

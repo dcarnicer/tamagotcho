@@ -66,10 +66,12 @@ No OTA: one 2 MB app slot, everything else is LittleFS (partition label
 
 The front (confirm) button drives the quiz: a **tap** moves the highlight to the
 next option, a **hold** (~600 ms) confirms the highlighted one. Once the answer
-is revealed, a tap goes to the next card. The side button is a tap shortcut;
-**holding it opens the settings home** (Continue / Decks / Date / New per day /
-Speed / Statistics / Wi-Fi / Orientation / Language), where a tap moves the
-selection, a hold activates the row, and the side button goes back.
+is revealed, a tap advances: for a correct answer straight to the next card, for
+a wrong answer it first opens the mistake **detail card** (meanings, readings,
+stroke order), and the next tap starts the following question. The side button is
+a tap shortcut; **holding it opens the settings home** (Continue / Decks / Date /
+New per day / Speed / Statistics / Wi-Fi / Orientation / Language), where a tap
+moves the selection, a hold activates the row, and the side button goes back.
 
 | button            | StickS3          | T-Display-S3 |
 |-------------------|------------------|--------------|
