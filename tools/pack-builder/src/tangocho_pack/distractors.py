@@ -94,16 +94,29 @@ def meaning_distractors(cards: list, visual: list[int], k: int = MAX_DISTRACTORS
     return result
 
 
+def _readings(readings) -> set[str]:
+    """All readings of a card's list (or a '、'-joined string), dots removed."""
+    if not readings:
+        return set()
+    items = readings if isinstance(readings, list) else readings.split("、")
+    return {r.replace(".", "") for r in items if r}
+
+
 def reading_distractors(cards: list, k: int = MAX_DISTRACTORS, seed: int = 1) -> list[list[int]]:
     result: list[list[int]] = []
     for i, c in enumerate(cards):
         rng = random.Random(seed * 1_000_003 + c.codepoint)
         target = {"on": display_reading(c.onyomi), "kun": display_reading(c.kunyomi)}
+        t_sets = {"on": _readings(c.onyomi), "kun": _readings(c.kunyomi)}
         scored = []
         for j, o in enumerate(cards):
             if j == i:
                 continue
             other = {"on": display_reading(o.onyomi), "kun": display_reading(o.kunyomi)}
+            # A candidate whose reading is *another valid reading of the target*
+            # would make two options correct: never offer it.
+            if any(other[kd] and other[kd] in t_sets[kd] for kd in ("on", "kun")):
+                continue
             dists = [levenshtein(target[kd], other[kd]) for kd in ("on", "kun")
                      if target[kd] and other[kd]]
             dists = [d for d in dists if d > 0]  # identical readings are deduped anyway

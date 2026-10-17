@@ -348,6 +348,30 @@ void test_quiz_meaning_to_kanji() {
     }
 }
 
+void test_quiz_reading_excludes_target_readings() {
+    // A distractor whose reading is another reading of the target must never be
+    // offered: two options would both be correct.
+    std::vector<CardSpec> cs = {{0x65E5, "day", "ニチ、ジツ", "ひ、び", {1, 2, 3, 4}},
+                                {0x706B, "fire", "カ", "ひ", {}},   // kun ひ is a 日 reading
+                                {0x6728, "tree", "ジツ", "", {}},    // on ジツ is a 日 reading
+                                {0x6708, "month", "ゲツ", "つき", {}},
+                                {0x6C34, "water", "スイ", "みず", {}}};
+    auto buf = makePack(cs, someGlyphs());
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    XorShiftRng rng(21);
+    for (int iter = 0; iter < 100; ++iter) {
+        Question q;
+        TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Reading, rng, &q, ReadingKind::Kun));
+        TEST_ASSERT_EQUAL_STRING("ひ", q.options[q.correct].c_str());
+        for (int i = 0; i < q.count; ++i) TEST_ASSERT_TRUE(q.optionCard[i] != 1);
+        TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Reading, rng, &q, ReadingKind::On));
+        TEST_ASSERT_EQUAL_STRING("ニチ", q.options[q.correct].c_str());
+        for (int i = 0; i < q.count; ++i) TEST_ASSERT_TRUE(q.optionCard[i] != 2);
+    }
+}
+
 void test_quiz_distractor_priority_and_shuffle() {
     auto buf = makePack(sixCards(), someGlyphs());
     MemorySource src(buf);
@@ -485,7 +509,7 @@ static const char* kMini = "../tools/pack-builder/fixtures/mini.tgc";
 void test_mini_fixture() {
     StdioSource src(kMini);
     if (!src.ok()) TEST_IGNORE_MESSAGE("mini.tgc not found");
-    TEST_ASSERT_EQUAL_UINT32(7896, src.size());
+    TEST_ASSERT_EQUAL_UINT32(7892, src.size());
     PackReader r;
     TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
     const PackHeader& h = r.header();
@@ -495,9 +519,9 @@ void test_mini_fixture() {
     TEST_ASSERT_EQUAL_UINT32(64, h.cardsOff);
     TEST_ASSERT_EQUAL_UINT32(160, h.glyphsOff);
     TEST_ASSERT_EQUAL_UINT32(2224, h.distractOff);
-    TEST_ASSERT_EQUAL_UINT32(2260, h.stringsOff);
+    TEST_ASSERT_EQUAL_UINT32(2256, h.stringsOff);
     TEST_ASSERT_EQUAL_UINT32(116, h.stringsSize);
-    TEST_ASSERT_EQUAL_UINT32(2376, h.glyphDataOff);
+    TEST_ASSERT_EQUAL_UINT32(2372, h.glyphDataOff);
     TEST_ASSERT_EQUAL_STRING("en", h.lang);
     TEST_ASSERT_EQUAL_UINT8(32, h.largePx);
     TEST_ASSERT_EQUAL_UINT8(16, h.smallPx);
@@ -514,15 +538,16 @@ void test_mini_fixture() {
         uint32_t cp;
         const char *m, *on, *kun;
         uint16_t dis[2], rdis[2];
+        uint8_t rdisN;  // reading lists can be shorter (target readings are excluded)
         uint16_t freq, level;
     };
     const E exp[3] = {
-        {26085, "day; sun; Japan", "ニチ、ジツ", "ひ、び、か", {2, 1}, {1, 2}, 1, 0},
-        {26376, "month; moon", "ゲツ、ガツ", "つき", {2, 0}, {0, 2}, 23, 1},
-        {28779, "fire", "カ", "ひ、び、ほ", {1, 0}, {1, 0}, 574, 2},
+        {26085, "day; sun; Japan", "ニチ、ジツ", "ひ、び、か", {2, 1}, {1, 0}, 1, 1, 0},
+        {26376, "month; moon", "ゲツ、ガツ", "つき", {2, 0}, {0, 2}, 2, 23, 1},
+        {28779, "fire", "カ", "ひ、び、ほ", {1, 0}, {1, 0}, 1, 574, 2},
     };
     const uint32_t distOffs[3] = {2224, 2230, 2236};
-    const uint32_t readOffs[3] = {2242, 2248, 2254};
+    const uint32_t readOffs[3] = {2242, 2246, 2252};
     for (uint32_t i = 0; i < 3; ++i) {
         Card c;
         TEST_ASSERT_TRUE(r.card(i, &c));
@@ -542,9 +567,9 @@ void test_mini_fixture() {
         TEST_ASSERT_EQUAL_UINT16(2, r.distractors(c, d, 4, &total));
         TEST_ASSERT_EQUAL_UINT16(exp[i].dis[0], d[0]);
         TEST_ASSERT_EQUAL_UINT16(exp[i].dis[1], d[1]);
-        TEST_ASSERT_EQUAL_UINT16(2, r.distractors(c, d, 4, &total, true));
-        TEST_ASSERT_EQUAL_UINT16(exp[i].rdis[0], d[0]);
-        TEST_ASSERT_EQUAL_UINT16(exp[i].rdis[1], d[1]);
+        TEST_ASSERT_EQUAL_UINT16(exp[i].rdisN, r.distractors(c, d, 4, &total, true));
+        TEST_ASSERT_EQUAL_UINT16(exp[i].rdisN, total);
+        for (int k = 0; k < exp[i].rdisN; ++k) TEST_ASSERT_EQUAL_UINT16(exp[i].rdis[k], d[k]);
     }
     const Glyph* g = r.findGlyph(0, 26085);
     TEST_ASSERT_NOT_NULL(g);
@@ -553,16 +578,16 @@ void test_mini_fixture() {
     TEST_ASSERT_EQUAL_INT8(6, g->xOff);
     TEST_ASSERT_EQUAL_INT8(-29, g->yOff);
     TEST_ASSERT_EQUAL_UINT8(32, g->advance);
-    TEST_ASSERT_EQUAL_UINT32(2376, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(2372, g->dataOff);
     g = r.findGlyph(0, 28779);
     TEST_ASSERT_EQUAL_UINT8(29, g->width);
-    TEST_ASSERT_EQUAL_UINT32(2972, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(2968, g->dataOff);
     g = r.findGlyph(1, 26085);
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(11, g->width);
     TEST_ASSERT_EQUAL_UINT8(13, g->height);
     TEST_ASSERT_EQUAL_INT8(-15, g->yOff);
-    TEST_ASSERT_EQUAL_UINT32(3407, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(3403, g->dataOff);
     g = r.findGlyph(2, 'A');
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(9, g->width);
@@ -578,14 +603,14 @@ void test_mini_fixture() {
     g = r.findGlyph(2, 12491);
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(6, g->height);
-    TEST_ASSERT_EQUAL_UINT32(6567, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(6563, g->dataOff);
     // Set 3: the same ニ rendered larger for reading answers.
     g = r.findGlyph(3, 12491);
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(14, g->width);
     TEST_ASSERT_EQUAL_UINT8(9, g->height);
     TEST_ASSERT_EQUAL_UINT8(18, g->advance);
-    TEST_ASSERT_EQUAL_UINT32(7833, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(7829, g->dataOff);
     int cnt[4] = {0, 0, 0, 0};
     for (uint32_t i = 0; i < r.glyphCount(); ++i) ++cnt[r.glyphAt(i)->set];
     TEST_ASSERT_EQUAL(3, cnt[0]);
@@ -641,6 +666,7 @@ int main() {
     RUN_TEST(test_quiz_meaning_to_kanji);
     RUN_TEST(test_quiz_distractor_priority_and_shuffle);
     RUN_TEST(test_quiz_reading_kinds);
+    RUN_TEST(test_quiz_reading_excludes_target_readings);
     RUN_TEST(test_quiz_unavailable_and_tiny);
     RUN_TEST(test_quiz_meaning_gloss_collisions);
     RUN_TEST(test_glcd_cp437_map);

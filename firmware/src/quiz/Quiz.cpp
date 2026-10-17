@@ -92,6 +92,40 @@ std::string pickMeaning(const char* m, Rng& rng, const std::string* used, int us
     return std::string();
 }
 
+// True if `want` is one of the card's readings of the given list (dots removed).
+// Used so a distractor is never another valid reading of the target, which would
+// make two options correct at once.
+bool containsReading(const char* readings, const std::string& want) {
+    if (!readings || !*readings || want.empty()) return false;
+    const size_t sep = std::strlen(kReadingSep);
+    const char* p = readings;
+    while (*p) {
+        const char* e = std::strstr(p, kReadingSep);
+        std::string s(p, e ? static_cast<size_t>(e - p) : std::strlen(p));
+        std::string cleaned;
+        for (char ch : s)
+            if (ch != '.') cleaned += ch;
+        if (cleaned == want) return true;
+        if (!e) break;
+        p = e + sep;
+    }
+    return false;
+}
+
+// True if `want` is any of the card's meanings.
+bool containsMeaning(const char* meanings, const std::string& want) {
+    if (!meanings || !*meanings || want.empty()) return false;
+    const char* p = meanings;
+    while (*p) {
+        const char* e = std::strstr(p, "; ");
+        std::string s(p, e ? static_cast<size_t>(e - p) : std::strlen(p));
+        if (s == want) return true;
+        if (!e) break;
+        p = e + 2;
+    }
+    return false;
+}
+
 }  // namespace
 
 bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rng& rng, Question* out,
@@ -126,9 +160,12 @@ bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rn
         std::string s;
         if (mode != QuizMode::Reading) {
             s = pickMeaning(c.meanings, rng, q.options, n);
+            if (containsMeaning(target.meanings, s)) return;  // also a meaning of the target
         } else {
             if (strict && !hasReading(c, kind)) return;
             s = readingDisplay(c, kind);
+            const char* list = (kind == ReadingKind::On) ? target.onyomi : target.kunyomi;
+            if (containsReading(list, s)) return;  // also a reading of the target
         }
         if (s.empty()) return;
         for (int i = 0; i < n; ++i)

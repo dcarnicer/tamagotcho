@@ -91,6 +91,16 @@ def test_reading_distractors_pick_confusable():
     assert order == [1]
 
 
+def test_reading_distractors_skip_target_readings():
+    from tangocho_pack.distractors import reading_distractors
+    from tangocho_pack.kanjidic import Card
+    cards = [Card(1, ["x"], ["ニチ", "ジツ"], ["ひ", "び"], jlpt=5, strokes=1),
+             Card(2, ["y"], [], ["ひ"], jlpt=5, strokes=2),     # kun ひ is a target reading
+             Card(3, ["z"], ["ジツ"], [], jlpt=5, strokes=3),   # on ジツ is a target reading
+             Card(4, ["w"], ["ゲツ"], [], jlpt=5, strokes=4)]   # safe
+    assert reading_distractors(cards)[0] == [3]
+
+
 def test_spanish_fallback_flag():
     cards = mini_cards("fr")  # fixture only guarantees some languages
     for c in cards:

@@ -149,6 +149,17 @@ Short log of non-obvious choices. Newest last.
   rotates Meaning -> Reading -> MeaningToKanji and falls back to another mode
   when a card cannot be asked one way. `preview.py` gained `--mode kanji`.
 
+## 2026-10-17 – Options must not duplicate the target's readings/meanings
+
+- A reading option that is *another* reading of the prompt kanji (日 = ニチ/ジツ;
+  a distractor showing ジツ) is a second correct answer. `Quiz.cpp` now rejects
+  any candidate whose asked-kind reading is one of the target's readings of that
+  kind, and any candidate whose gloss is one of the target's meanings.
+- The builder excludes the same candidates from the precomputed reading list, so
+  the pack carries no dead entries. The runtime check is the safety net (it also
+  covers the random-walk fallback); packs built earlier still play correctly, so
+  rebuilding them is optional.
+
 ## 2026-10-17 – Phase 2 SRS design (see docs/srs.md)
 
 - **FSRS-5, fixed default weights, three grades** (Again on a miss, Hard on a
