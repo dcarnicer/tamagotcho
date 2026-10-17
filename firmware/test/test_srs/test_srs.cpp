@@ -485,6 +485,58 @@ void test_store_cap() {
     TEST_ASSERT_EQUAL_UINT32(1, srs.answeredTotal());
 }
 
+// Sums the whole table: seen/learned/answers/reps/lapses. The threshold is a
+// stability of 21 days (centidays >= 2100). See docs/roadmap.md "Statistics".
+void test_stats() {
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(0);
+
+    // Empty store: every counter is zero.
+    const Stats empty = srs.stats();
+    TEST_ASSERT_EQUAL_UINT32(0, empty.seen);
+    TEST_ASSERT_EQUAL_UINT32(0, empty.learned);
+    TEST_ASSERT_EQUAL_UINT32(0, empty.answers);
+    TEST_ASSERT_EQUAL_UINT32(0, empty.reps);
+    TEST_ASSERT_EQUAL_UINT32(0, empty.lapses);
+
+    // Three distinct cards, different grades: 日 Good twice, 月 a lapse, 火 Good.
+    srs.grade(0x65E5, Grade::Good, 0, 0, 0.5f);
+    srs.grade(0x6708, Grade::Again, 0, 1, 0.5f);
+    srs.grade(0x706B, Grade::Good, 0, 2, 0.5f);
+    srs.grade(0x65E5, Grade::Good, 0, 0, 0.5f);
+
+    const Stats st = srs.stats();
+    TEST_ASSERT_EQUAL_UINT32(3, st.seen);
+    TEST_ASSERT_EQUAL_UINT32(4, st.answers);
+    TEST_ASSERT_EQUAL_UINT32(4, st.reps);    // one per grade call
+    TEST_ASSERT_EQUAL_UINT32(1, st.lapses);  // only the Again on 月
+    TEST_ASSERT_EQUAL_UINT32(0, st.learned); // young cards stay below the threshold
+
+    // The 21-day threshold is inclusive and measured in whole days.
+    srs.getOrCreate(0x6C34).stabilityCds = kLearnedStabilityDays * 100u;  // 水
+    TEST_ASSERT_EQUAL_UINT32(1, srs.stats().learned);
+    srs.getOrCreate(0x6C34).stabilityCds = kLearnedStabilityDays * 100u - 1;
+    TEST_ASSERT_EQUAL_UINT32(0, srs.stats().learned);
+
+    // A card crosses the threshold on its own after enough Good answers.
+    SrsStore learn;
+    MemoryIo io2;
+    learn.begin(io2);
+    learn.grade(0x65E5, Grade::Good, 0, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT32(0, learn.stats().learned);
+    int days = 0;
+    while (learn.stats().learned == 0) {
+        ++days;
+        TEST_ASSERT_TRUE(days <= 30);  // the sequence below reaches 21 days by ~8
+        learn.grade(0x65E5, Grade::Good, static_cast<uint16_t>(days), 0, 0.5f);
+    }
+    TEST_ASSERT_EQUAL_UINT32(1, learn.stats().learned);
+    TEST_ASSERT_EQUAL_UINT32(1, learn.stats().seen);
+    TEST_ASSERT_EQUAL_UINT32(days + 1, learn.stats().answers);
+}
+
 void test_clock_boot_and_uptime() {
     // beginSession() no longer moves the day by itself (the device has no clock,
     // so the app asks the user); advanceDays() does it explicitly.
@@ -749,6 +801,7 @@ int main() {
     RUN_TEST(test_serialize_rejects);
     RUN_TEST(test_codepoint_identity);
     RUN_TEST(test_store_cap);
+    RUN_TEST(test_stats);
     RUN_TEST(test_clock_boot_and_uptime);
     RUN_TEST(test_queue_due_before_new);
     RUN_TEST(test_queue_new_cap_resets_on_new_day);

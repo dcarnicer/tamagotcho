@@ -220,3 +220,20 @@ Short log of non-obvious choices. Newest last.
   (`drawCentred` with `kTextBuiltinSmall`/`kTextBuiltin`) so accented Spanish
   ("atrás", "día") renders. The Font0 `smallText` path stays ASCII-only, so the
   done screen uses plain "dia".
+
+## 2026-10-17 – On-device statistics screen
+
+- `SrsStore::stats()` sums the state table once into `Stats`
+  (`seen`/`learned`/`answers`/`reps`/`lapses`, pure and native-tested). A card is
+  **learned** once its stability reaches 21 days (`stabilityCds / 100 >=
+  kLearnedStabilityDays`), i.e. a ~3-week interval; the threshold is inclusive
+  and in whole days.
+- The settings home gained a sixth row ("Statistics"/"Estadisticas") opening
+  `Screen::Stats`: the internal date (reusing `formatDate`), seen/pack total,
+  the loaded pack's due/new (`packDueNew`), lifetime answers, accuracy
+  `(reps - lapses) / reps` as a percentage (guarded for a zero divisor) and the
+  learned count. All labels come from the `UiStrings` en/es table; the side
+  button returns to the settings home, as on the other settings subscreens.
+- Accuracy is computed in the UI from `Stats`, not stored: the header already
+  keeps `reps`/`lapses` per card and `answered_total`, so no format change was
+  needed (v1-compatible).

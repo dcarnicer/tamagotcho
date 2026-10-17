@@ -31,6 +31,10 @@ constexpr uint16_t kSrsDefaultMaxIntervalDays = 365;
 // Header `flags` bits (bit0 reserved for a future clean-shutdown marker).
 constexpr uint16_t kSrsFlagNone = 0;
 
+// A card counts as "learned" once its stability reaches a ~3-week interval
+// (docs/roadmap.md "Statistics"). Stability is in centidays, so 21 days.
+constexpr uint16_t kLearnedStabilityDays = 21;
+
 // Per-card state, 16 bytes in memory and on disk (docs/srs.md section 2).
 // `dueDay == 0` means "new, never reviewed"; `lastGrade == 0xFF` means never.
 struct Record {
@@ -46,6 +50,16 @@ struct Record {
     uint8_t reserved;       // 0
 };
 static_assert(sizeof(Record) == kSrsRecordSize, "Record must stay 16 bytes");
+
+// Aggregate counters over the whole state table, for the statistics screen
+// (docs/roadmap.md "Statistics"). Pure and deterministic: no clock, no I/O.
+struct Stats {
+    uint32_t seen;     // records in the table (distinct kanji reviewed)
+    uint32_t learned;  // records whose stability >= kLearnedStabilityDays
+    uint32_t answers;  // lifetime answers (header counter)
+    uint32_t reps;     // sum of every card's review count
+    uint32_t lapses;   // sum of every card's Again count
+};
 
 // Byte sink/source for the state file. Device code implements this over
 // LittleFS (temp + rename); MemoryIo below is the test double.
@@ -118,6 +132,9 @@ public:
 
     size_t count() const { return records_.size(); }
     const std::vector<Record>& records() const { return records_; }
+
+    // Walks the table once and sums the counters above. O(n), no allocation.
+    Stats stats() const;
 
     // --- format --------------------------------------------------------
     // Header + records + CRC, v1. False only on an oversized table.

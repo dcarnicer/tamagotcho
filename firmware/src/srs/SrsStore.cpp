@@ -182,6 +182,18 @@ Record* SrsStore::find(uint32_t codepoint) {
     return const_cast<Record*>(static_cast<const SrsStore*>(this)->find(codepoint));
 }
 
+Stats SrsStore::stats() const {
+    Stats s{};
+    s.seen = static_cast<uint32_t>(records_.size());
+    s.answers = answeredTotal_;
+    for (const Record& r : records_) {
+        if (r.stabilityCds / 100u >= kLearnedStabilityDays) ++s.learned;
+        s.reps += r.reps;
+        s.lapses += r.lapses;
+    }
+    return s;
+}
+
 Record& SrsStore::getOrCreate(uint32_t codepoint) {
     size_t lo = 0, hi = records_.size();
     while (lo < hi) {

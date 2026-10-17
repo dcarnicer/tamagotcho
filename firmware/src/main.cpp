@@ -51,7 +51,7 @@ struct UiStrings {
     const char* settingsTitle;
     const char* decksTitle;
     const char* backHint;
-    const char* menuRows[5];  // continue, decks, date, new/day, speed
+    const char* menuRows[6];  // continue, decks, date, new/day, speed, stats
     const char* newPerDayTitle;
     const char* speedTitle;
     const char* speedOff;
@@ -68,6 +68,12 @@ struct UiStrings {
     const char* doneStudyMore;
     const char* doneMenuHint;
     const char* deckCountsFmt;
+    const char* statsTitle;
+    const char* statsSeenFmt;
+    const char* statsDueNewFmt;
+    const char* statsAnswersFmt;
+    const char* statsAccuracyFmt;
+    const char* statsLearnedFmt;
     const char* errNoFilesystem;
     const char* errNoFilesystemHint;
     const char* errNoPack;
@@ -78,13 +84,14 @@ struct UiStrings {
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS", "side: back",
-    {"Continue", "Decks", "Date", "New/day", "Speed"},
+    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
     "DATE", {"today (0)", "1 day", "2-7 days", "more (14)"},
     "DONE", "All reviewed for now", "day %u  %u cards", "due %u  new %u", "tap/hold: +10 new",
     "side hold: menu",
     "  %u/%u",
+    "STATISTICS", "seen %u / %u", "due %u  new %u", "answers %u", "accuracy %u%%", "learned %u",
     "Filesystem not found", "Run: pio run -t uploadfs",
     "No pack found", "Put a .tgc in data/packs/ then run uploadfs",
     "Cannot open pack",
@@ -93,13 +100,15 @@ const UiStrings kUiEn = {
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS", "lateral: atrás",
-    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad"},
+    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", {"hoy (0)", "1 día", "2-7 días", "más (14)"},
     "FIN", "Todo repasado por ahora", "dia %u  %u tarjetas", "pendientes %u  nuevas %u",
     "tap/hold: +10 nuevas", "lateral: menu",
     "  %u/%u",
+    "ESTADISTICAS", "vistos %u / %u", "pendientes %u  nuevas %u", "respuestas %u",
+    "precisión %u%%", "aprendidas %u",
     "No se encuentra el sistema de archivos", "Ejecuta: pio run -t uploadfs",
     "No hay ningún mazo", "Pon un .tgc en data/packs/ y ejecuta uploadfs",
     "No se puede abrir el mazo",
@@ -131,7 +140,7 @@ uint32_t gLastAnswerAt = 0;
 int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
 
-enum class Screen { Quiz, Menu, Decks, Choice, Done, Date };
+enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats };
 // Screen::Choice is shared by the two four-row pickers (see openChoice()).
 enum class Choice { NewPerDay, SlowMs };
 Screen gScreen = Screen::Quiz;
@@ -394,7 +403,7 @@ void drawRow(lgfx::LovyanGFX& d, const char* label, int y, bool sel) {
 
 // Settings home (hold the side button from the quiz): tap moves the highlight,
 // hold activates the row. Each row is a full-width box with a label.
-constexpr int kSettingRows = 5;
+constexpr int kSettingRows = 6;
 
 void drawMenu() {
     auto& d = *gCanvas;
@@ -556,6 +565,41 @@ void drawDate() {
     present();
 }
 
+// Statistics screen (opened from the settings home): the internal date, cards
+// seen out of the loaded pack, its due/new counts, and the lifetime answer
+// counters from the SRS store. Read-only; the side button returns to settings.
+void drawStats() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, ui().statsTitle, 3, 3, kWhite, kGrey);
+    drawBackHint(d);
+
+    const tgc::Stats st = gSrs.stats();
+    uint32_t due = 0, fresh = 0;
+    packDueNew(&due, &fresh);
+
+    // Accuracy over every grade ever recorded; guard a zero divisor and a
+    // saturation edge (lapses can equal reps but never exceed it).
+    const uint32_t acc = st.reps ? (st.reps > st.lapses ? st.reps - st.lapses : 0) * 100u / st.reps
+                                 : 0;
+
+    char date[16], seen[24], dueNew[32], answers[24], accuracy[24], learned[24];
+    formatDate(gSrs.today(), date, sizeof date);
+    snprintf(seen, sizeof seen, ui().statsSeenFmt, (unsigned)st.seen, (unsigned)gPack.cardCount());
+    snprintf(dueNew, sizeof dueNew, ui().statsDueNewFmt, (unsigned)due, (unsigned)fresh);
+    snprintf(answers, sizeof answers, ui().statsAnswersFmt, (unsigned)st.answers);
+    snprintf(accuracy, sizeof accuracy, ui().statsAccuracyFmt, (unsigned)acc);
+    snprintf(learned, sizeof learned, ui().statsLearnedFmt, (unsigned)st.learned);
+
+    const char* lines[] = {date, seen, dueNew, answers, accuracy, learned};
+    const int top = 26, step = 24;
+    for (int i = 0; i < 6; ++i)
+        gRender.drawCentred(d, lines[i], 2, top + i * step, W - 4, 20, 1,
+                            i == 0 ? kYellow : kWhite, kBlack, tgc::Renderer::kTextBuiltin);
+    present();
+}
+
 // Rebuilds the queue and shows the quiz (or the done screen if nothing is due).
 // Used after the date screen so newly due cards appear.
 void leaveDate() {
@@ -595,6 +639,7 @@ void drawScreen() {
     else if (gScreen == Screen::Choice) drawChoice();
     else if (gScreen == Screen::Done) drawDone();
     else if (gScreen == Screen::Date) drawDate();
+    else if (gScreen == Screen::Stats) drawStats();
     else drawQuiz();
 }
 
@@ -711,6 +756,10 @@ void activateSetting() {
             break;
         case 4:  // Velocidad
             openChoice(Choice::SlowMs);
+            break;
+        case 5:  // Estadisticas
+            gScreen = Screen::Stats;
+            drawScreen();
             break;
     }
 }
@@ -941,6 +990,11 @@ void loop() {
             } else {
                 leaveDate();
             }
+        }
+    } else if (gScreen == Screen::Stats) {
+        if (b) {  // side button returns to the settings home
+            gScreen = Screen::Menu;
+            drawScreen();
         }
     } else if (gScreen == Screen::Done) {
         if (b == 2) {
