@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "board/Board.h"
@@ -83,6 +84,13 @@ struct UiStrings {
     const char* errOpenPack;
     const char* orientTitle;
     const char* orientRows[2];  // portrait, landscape
+    // Detail card (shown after a wrong answer). `detailOn`/`detailKun` label the
+    // on'yomi/kun'yomi lines; the meanings label reuses quizMeaning.
+    const char* detailTitle;
+    const char* detailOn;
+    const char* detailKun;
+    const char* detailStrokesFmt;
+    const char* detailAccuracyFmt;
 };
 
 const UiStrings kUiEn = {
@@ -100,6 +108,7 @@ const UiStrings kUiEn = {
     "No pack found", "Put a .tgc in data/packs/ then run uploadfs",
     "Cannot open pack",
     "ORIENTATION", {"Portrait", "Landscape"},
+    "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
 };
 
 const UiStrings kUiEs = {
@@ -118,6 +127,7 @@ const UiStrings kUiEs = {
     "No hay ningún mazo", "Pon un .tgc en data/packs/ y ejecuta uploadfs",
     "No se puede abrir el mazo",
     "ORIENTACION", {"Vertical", "Horizontal"},
+    "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -135,6 +145,7 @@ tgc::XorShiftRng gRng;
 tgc::Question gQ;
 int gSel = 0;
 bool gRevealed = false;
+bool gLastCorrect = false;  // outcome of the last answer (drives the detail card)
 bool gNextReadingIsKun = false;
 
 tgc::SrsStore gSrs;
@@ -146,7 +157,7 @@ uint32_t gLastAnswerAt = 0;
 int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
 
-enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats };
+enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail };
 // Screen::Choice is shared by the row pickers (see openChoice()).
 enum class Choice { NewPerDay, SlowMs, Orientation };
 Screen gScreen = Screen::Quiz;
@@ -698,6 +709,143 @@ void drawStats() {
     present();
 }
 
+// Joins a card's "、"-separated reading list into one display string, dropping
+// the okurigana markers ("た.べる、く.う" -> "たべる、くう") for display.
+std::string joinReadings(const char* list) {
+    std::string out;
+    if (!list || !*list) return out;
+    const char* kSep = "\xE3\x80\x81";  // U+3001 "、"
+    const char* p = list;
+    while (*p) {
+        const char* e = std::strstr(p, kSep);
+        const size_t n = e ? static_cast<size_t>(e - p) : std::strlen(p);
+        for (size_t i = 0; i < n; ++i)
+            if (p[i] != '.') out += p[i];
+        if (!e) break;
+        out += kSep;
+        p = e + 3;
+    }
+    return out;
+}
+
+// Detail card (roadmap phase 3): a tap after a wrong reveal opens this read-only
+// card with the kanji, all meanings, all on/kun readings (okurigana dots
+// removed), the stroke count and this card's own accuracy from the SRS record.
+// Portrait centres the kanji in the upper ~45% with the details below; landscape
+// mirrors the quiz (kanji left, details right). Japanese readings use the pack's
+// kana (set 2, falling back to set 3 by width as the quiz does); Latin values use
+// the built-in font when it can draw them (2x, shrunk to 1x), else pack glyphs.
+void drawDetail() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    const int headerH = 14;
+    d.fillRect(0, 0, W, headerH, kGrey);
+    smallText(d, gPack.deckName(), 3, 3, kWhite, kGrey);
+    smallText(d, ui().detailTitle, W - 3, 3, kWhite, kGrey, lgfx::top_right);
+
+    tgc::Card card;
+    gPack.card(gQ.cardIndex, &card);
+    const int largePx = gPack.header().largePx ? gPack.header().largePx : 64;
+    const bool landscape = W > H;
+
+    int x, w, top, bottom;
+    if (landscape) {
+        const int leftW = std::max(largePx, W * 2 / 5);
+        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH, leftW, H - headerH,
+                          kWhite, kBlack);
+        x = leftW + 3;
+        w = W - leftW - 6;
+        top = headerH + 2;
+        bottom = H - 2;
+    } else {
+        int kanjiH = largePx + 6;
+        if (kanjiH > H * 45 / 100) kanjiH = H * 45 / 100;
+        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH + 2, W, kanjiH, kWhite,
+                          kBlack);
+        x = 3;
+        w = W - 6;
+        top = headerH + 2 + kanjiH;
+        bottom = H - 2;
+    }
+
+    const int lh = gRender.lineHeight(tgc::kGlyphSetText);
+    const std::string on = joinReadings(card.onyomi);
+    const std::string kun = joinReadings(card.kunyomi);
+    const tgc::Record* rec = gSrs.find(card.codepoint);
+    const bool hasAcc = rec && rec->reps > 0;
+
+    // Kana: set 2, falling back to set 3 only when set 2 overflows and set 3 fits
+    // (mirrors the quiz's width test; in practice readings are short).
+    auto kanaSet = [&](const std::string& s) -> uint8_t {
+        if (gRender.textWidth(s.c_str(), tgc::kGlyphSetText) > w &&
+            gRender.textWidth(s.c_str(), tgc::kGlyphSetOption) <= w)
+            return tgc::kGlyphSetOption;
+        return tgc::kGlyphSetText;
+    };
+    // Latin: the built-in font when it covers the text (2x, shrunk to 1x), else
+    // the pack glyphs (same fallback rules as the quiz meaning options).
+    auto latinSet = [&](const char* s) -> uint8_t {
+        if (!tgc::Renderer::builtinCanDraw(s)) return tgc::kGlyphSetText;
+        return gRender.textWidth(s, tgc::Renderer::kTextBuiltin) <= w
+                   ? static_cast<uint8_t>(tgc::Renderer::kTextBuiltin)
+                   : static_cast<uint8_t>(tgc::Renderer::kTextBuiltinSmall);
+    };
+
+    // Reserve a label + one line for each optional reading and one short line
+    // each for strokes and accuracy, so the meanings block only takes what is
+    // left (it ellipsises rather than clipping, as elsewhere in this file).
+    int reserve = 11;                                       // strokes line
+    if (!on.empty()) reserve += 8 + lh;                     // ON label + value
+    if (!kun.empty()) reserve += 8 + lh;                    // KUN label + value
+    if (hasAcc) reserve += 11;                              // accuracy line
+    int meaningLines = (bottom - top - reserve - 8) / lh;
+    if (meaningLines < 1) meaningLines = 1;
+    if (meaningLines > 3) meaningLines = 3;
+
+    int y = top;
+    const uint8_t mset = latinSet(card.meanings);
+    smallText(d, ui().quizMeaning, x, y, kYellow, kBlack);
+    y += 8;
+    y += gRender.drawWrapped(d, card.meanings, x, y, w, meaningLines, kWhite, kBlack, mset) *
+         gRender.lineHeight(mset);
+    y += 3;
+
+    auto drawReading = [&](const char* label, const std::string& s) {
+        if (s.empty() || y + 8 + lh > bottom) return;
+        const uint8_t set = kanaSet(s);
+        smallText(d, label, x, y, kYellow, kBlack);
+        y += 8;
+        y += gRender.drawWrapped(d, s.c_str(), x, y, w, 1, kWhite, kBlack, set) *
+             gRender.lineHeight(set);
+        y += 3;
+    };
+    drawReading(ui().detailOn, on);
+    drawReading(ui().detailKun, kun);
+
+    if (y + 11 <= bottom) {
+        char s[32];
+        snprintf(s, sizeof s, ui().detailStrokesFmt, (unsigned)card.strokes);
+        smallText(d, s, x, y, kWhite, kBlack);
+        y += 11;
+    }
+    if (hasAcc && y + 11 <= bottom) {
+        char s[32];
+        const uint32_t total = rec->reps;
+        const uint32_t correct = rec->reps > rec->lapses ? rec->reps - rec->lapses : 0;
+        snprintf(s, sizeof s, ui().detailAccuracyFmt, (unsigned)correct, (unsigned)total);
+        smallText(d, s, x, y, kGreen, kBlack);
+    }
+    present();
+}
+
+void showDetail() {
+    tgc::Card c;
+    gPack.card(gQ.cardIndex, &c);
+    QLOG("D U+%04X\n", (unsigned)c.codepoint);
+    gScreen = Screen::Detail;
+    drawDetail();
+}
+
 // Rebuilds the queue and shows the quiz (or the done screen if nothing is due).
 // Used after the date screen so newly due cards appear.
 void leaveDate() {
@@ -738,6 +886,7 @@ void drawScreen() {
     else if (gScreen == Screen::Done) drawDone();
     else if (gScreen == Screen::Date) drawDate();
     else if (gScreen == Screen::Stats) drawStats();
+    else if (gScreen == Screen::Detail) drawDetail();
     else drawQuiz();
 }
 
@@ -1017,10 +1166,25 @@ void setup() {
 // moves to the next card); a 600 ms hold confirms the highlighted option. The
 // tap action runs on release, and a hold suppresses it, so a long press is never
 // also a tap.
+
+// The input after the answer has been revealed: a correct answer advances as
+// before; a wrong one opens the detail card first, and the next input advances.
+void afterReveal() {
+    if (!gLastCorrect) {
+        showDetail();
+        return;
+    }
+    if (newQuestion()) {
+        gScreen = Screen::Quiz;
+        drawScreen();
+    } else {
+        showDone();
+    }
+}
+
 void tapAction() {
     if (gRevealed) {
-        if (newQuestion()) drawScreen();
-        else showDone();
+        afterReveal();
         return;
     }
     gSel = (gSel + 1) % gQ.count;
@@ -1030,13 +1194,13 @@ void tapAction() {
 
 void holdAction(uint32_t pressedAt) {
     if (gRevealed) {
-        if (newQuestion()) drawScreen();
-        else showDone();
+        afterReveal();
         return;
     }
     gRevealed = true;
 
     const bool correct = gSel == gQ.correct;
+    gLastCorrect = correct;
     const uint32_t start = gLastNavAt ? gLastNavAt : gShownAt;
     const uint32_t rt_ms = pressedAt - start;  // until the hold's press-down, not its fire
     tgc::Grade grade;
@@ -1119,6 +1283,19 @@ void loop() {
         if (b) {  // side button returns to the settings home
             gScreen = Screen::Menu;
             drawScreen();
+        }
+    } else if (gScreen == Screen::Detail) {
+        // Any input (tap, hold or side tap) starts the next question; a side hold
+        // opens the menu, as on the quiz.
+        if (a == 1 || a == 2 || b == 1) {
+            if (newQuestion()) {
+                gScreen = Screen::Quiz;
+                drawScreen();
+            } else {
+                showDone();
+            }
+        } else if (b == 2) {
+            openMenu();
         }
     } else if (gScreen == Screen::Done) {
         if (b == 2) {

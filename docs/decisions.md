@@ -259,3 +259,24 @@ Short log of non-obvious choices. Newest last.
   available height and drop to the built-in 1x font when 2x no longer fits;
   portrait keeps its original steps and 2x font exactly.
 
+## 2026-10-17 – Mistake detail card
+
+- After a **wrong** answer the reveal is no longer "tap → next": a tap (or hold)
+  now opens a new `Screen::Detail` card and the **next** input starts the
+  following question. A correct answer keeps the old one-tap flow. The last
+  answer's correctness lives in `gLastCorrect`; `afterReveal()` decides.
+- The card shows the kanji (set 0, large), all meanings, all on/kun readings (the
+  okurigana `.` markers stripped by `joinReadings`), the stroke count and the
+  card's own accuracy `(reps - lapses)/reps` from the SRS record when it has one
+  ("correct 3/5"). No new storage: everything is already in the card + record.
+- Portrait: kanji centred in the upper ~45% (the quiz's `min(large_px + 6, 45%)`
+  box), details below. Landscape: two columns mirroring the quiz (kanji left,
+  details right). Latin values use the built-in font when it covers them (2x,
+  shrunk to 1x), else the pack glyphs; readings use **set 2**, falling back to
+  set 3 only when set 2 overflows and set 3 fits (kana are short and set 2 keeps
+  the card compact). The meanings block takes the height left after reserving a
+  label + one line per optional reading and one line each for strokes/accuracy;
+  it ellipsises rather than clipping, as elsewhere in `main.cpp`.
+- Input: tap/hold/side tap → next question; side hold → the settings home.
+  `TGC_QUIZ_LOG` gains a `D U+xxxx` line when the card is shown.
+
