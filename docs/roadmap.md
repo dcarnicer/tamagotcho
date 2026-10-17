@@ -27,19 +27,25 @@ Scope for now: **kanji only** (no vocabulary decks).
       Invariant enforced: **no option may be another valid reading or meaning of
       the target** (otherwise two options are correct); checked in `Quiz.cpp`
       and in the builder's distractor lists.
-- [ ] **Phase 4 – Connectivity.** Wi-Fi portal on device (upload packs, view
-      stats), WaniKani importer (user's own token, unlocked kanji only), IMU
-      input (tilt to choose). Also: sync NTP time while connected and store an
-      epoch in the SRS state, so the scheduler finally has real days (the
-      StickS3 has no RTC; see docs/decisions.md).
-      - **Download packs over Wi-Fi** from a URL (or a small catalog/JSON),
-        with progress and resume, so a fresh device gets decks without
-        `uploadfs` and without a computer.
-      - **M5Launcher compatibility.** Ship the app-only `.bin` so it can be
-        installed as an app (the launcher attaches its own SPIFFS), and provide
-        a way to put packs into that launcher-managed filesystem — the Wi-Fi
-        pack download above is the intended answer, since the launcher's SPIFFS
-        starts empty and our `uploadfs` layout is not the one in use.
+- [~] **Phase 4 – Connectivity.** The on-device **Wi-Fi portal** is done: it
+      serves a single self-contained page from a phone/laptop on its own open
+      access point (`Tangocho-XXXX`, `http://192.168.4.1`) to upload, delete and
+      download packs and to read the SRS statistics (`/`, `/api/stats`); it also
+      lets a fresh, pack-less device boot into an "upload a `.tgc`" state and
+      continue into the quiz once a pack arrives. Pending: WaniKani importer
+      (user's own token, unlocked kanji only), IMU input (tilt to choose), and
+      NTP time (store an epoch in the SRS state so the scheduler finally has
+      real days; the StickS3 has no RTC, see docs/decisions.md).
+      - [x] **Download packs over Wi-Fi** from a URL, so a fresh device gets
+        decks without `uploadfs` and without a computer. Plain `http://` only
+        (TLS to arbitrary hosts is untested); no resume yet.
+      - [~] **M5Launcher compatibility.** The app-only `.bin` that
+        `pio run -e sticks3` produces can be installed as a launcher app, and
+        the Wi-Fi upload is the intended way to populate `/packs` once it runs
+        (the launcher's SPIFFS starts empty and our `uploadfs` layout is not the
+        one in use). Documented in README.md; **not verified on hardware**, and
+        whether the launcher-created filesystem partition is large enough for
+        packs is an open question.
 - [ ] **Phase 5 – Release.** README with photos, licences/attribution, GitHub
       releases, ESP Web Tools browser flasher, prebuilt packs. Host prebuilt
       packs (with a small catalog the device can read) so the Wi-Fi download has
@@ -52,8 +58,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       portal. Depends on the SRS state (phase 2). On-device screen done:
       `SrsStore::stats()` + `Screen::Stats` show the date, current/best streak,
       time on questions, seen/pack total, due/new, lifetime answers, accuracy and
-      learned count. Single-card accuracy is on the mistake detail card. Pending:
-      an aggregate per-kanji accuracy view and the portal views.
+      learned count. Single-card accuracy is on the mistake detail card. The
+      Wi-Fi portal shows the same counters on its page and as JSON at
+      `/api/stats`. Pending: an aggregate per-kanji accuracy view.
 - [~] **Multilingual.** On-device strings are localised to the pack language
       (`lang`: en/es today, anything else falls back to English). The on-device
       language picker is done: a "Language"/"Idioma" setting chooses Auto (follow

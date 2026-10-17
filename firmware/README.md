@@ -33,6 +33,14 @@ side button to switch decks. `uploadfs` replaces the whole filesystem, so keep
 every pack you want in `data/packs/`, and note that it also clears review
 progress (`/state/srs.bin`).
 
+Alternatively, copy packs over Wi-Fi with no `uploadfs`: open **Settings →
+Wi-Fi** (hold the side button, then hold the row) and join the device's open
+access point from a phone or laptop, then open `http://192.168.4.1` to upload or
+delete packs, download one from a URL and read the statistics. A device with no
+pack at all boots straight into this screen. The uploaded file is validated
+before it is kept, and the side button stops the portal. See the root README for
+the security trade-off (the AP is open).
+
 ## Flash layout
 
 No OTA: one 2 MB app slot, everything else is LittleFS (partition label
@@ -48,8 +56,9 @@ No OTA: one 2 MB app slot, everything else is LittleFS (partition label
 The front (confirm) button drives the quiz: a **tap** moves the highlight to the
 next option, a **hold** (~600 ms) confirms the highlighted one. Once the answer
 is revealed, a tap goes to the next card. The side button is a tap shortcut;
-**holding it opens the deck menu**, where a tap moves the selection, a hold
-opens the highlighted deck, and the side button goes back.
+**holding it opens the settings home** (Continue / Decks / Date / New per day /
+Speed / Statistics / Wi-Fi / Orientation / Language), where a tap moves the
+selection, a hold activates the row, and the side button goes back.
 
 | button            | StickS3          | T-Display-S3 |
 |-------------------|------------------|--------------|
@@ -61,4 +70,6 @@ opens the highlighted deck, and the side button goes back.
 
 `src/board` HAL (one impl per board), `src/pack` pack reader (pure C++),
 `src/quiz` question builder (pure C++), `src/render` glyph/text drawing,
-`src/platform` LittleFS-backed pack source, `src/main.cpp` Phase 0 app.
+`src/platform` LittleFS-backed pack source and SRS file plus the on-device Wi-Fi
+portal (`WifiPortal`: open AP + HTTP upload/delete/download/stats),
+`src/main.cpp` Phase 0 app.
