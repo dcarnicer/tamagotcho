@@ -18,6 +18,7 @@
 #include "render/Renderer.h"
 #include "srs/Queue.h"
 #include "srs/SrsStore.h"
+#include "ui/UiLang.h"
 
 using tgc::board::Button;
 
@@ -52,7 +53,7 @@ struct UiStrings {
     const char* settingsTitle;
     const char* decksTitle;
     const char* backHint;
-    const char* menuRows[7];  // continue, decks, date, new/day, speed, stats, orientation
+    const char* menuRows[8];  // continue, decks, date, new/day, speed, stats, orientation, language
     const char* newPerDayTitle;
     const char* speedTitle;
     const char* speedOff;
@@ -97,12 +98,16 @@ struct UiStrings {
     const char* statsTimeHM;     // "%uh %um"
     const char* statsTimeMS;     // "%um %us"
     const char* statsTimeS;      // "%us"
+    // UI-language picker: the title and the three rows (endonyms, same in every
+    // table so a user can find their language whatever the current one is).
+    const char* langTitle;
+    const char* langRows[3];
 };
 
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS", "side: back",
-    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Orientation"},
+    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Orientation", "Language"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
     "DATE", {"today (0)", "1 day", "2-7 days", "more (14)"},
@@ -116,12 +121,13 @@ const UiStrings kUiEn = {
     "ORIENTATION", {"Portrait", "Landscape"},
     "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
     "streak %u/%u", "time %s", "%uh %um", "%um %us", "%us",
+    "LANGUAGE", {"Auto", "English", "Español"},
 };
 
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS", "lateral: atrás",
-    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Orientacion"},
+    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Orientacion", "Idioma"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", {"hoy (0)", "1 día", "2-7 días", "más (14)"},
@@ -136,13 +142,21 @@ const UiStrings kUiEs = {
     "ORIENTACION", {"Vertical", "Horizontal"},
     "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
     "racha %u/%u", "tiempo %s", "%uh %um", "%um %us", "%us",
+    "IDIOMA", {"Auto", "English", "Español"},
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
 const UiStrings& ui() { return *gUi; }
 
-// "es" selects the Spanish table; anything else (including no pack yet) is English.
-void setUiForLang(const char* lang) { gUi = (lang && strcmp(lang, "es") == 0) ? &kUiEs : &kUiEn; }
+// NVS `tangocho`/`ui`: the UI-language preference (Auto/English/Spanish). Auto,
+// the default, follows the pack language exactly as before.
+int gUiLangPref = tgc::kUiLangAuto;
+
+// "es" selects the Spanish table; anything else (including no pack yet) is
+// English. The user preference (see UiLang.h) decides when Auto is not set.
+void setUiForLang(const char* lang) {
+    gUi = (std::strcmp(tgc::uiLangCodeFor(gUiLangPref, lang), "es") == 0) ? &kUiEs : &kUiEn;
+}
 
 lgfx::LGFX_Sprite* gCanvas = nullptr;  // full-screen back buffer in PSRAM
 tgc::PackReader gPack;
@@ -167,7 +181,7 @@ uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
 
 enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail };
 // Screen::Choice is shared by the row pickers (see openChoice()).
-enum class Choice { NewPerDay, SlowMs, Orientation };
+enum class Choice { NewPerDay, SlowMs, Orientation, UiLang };
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
@@ -480,7 +494,7 @@ void drawRow(lgfx::LovyanGFX& d, const char* label, int y, int h, bool sel) {
 
 // Settings home (hold the side button from the quiz): tap moves the highlight,
 // hold activates the row. Each row is a full-width box with a label.
-constexpr int kSettingRows = 7;
+constexpr int kSettingRows = 8;
 
 void drawMenu() {
     auto& d = *gCanvas;
@@ -544,15 +558,16 @@ void drawDecks() {
     present();
 }
 
-// Generic four-row choice screen: a title and the candidate values. Hold applies
-// the highlighted value; the side button cancels back to the settings home.
+// Generic choice screen: a title and the candidate values. Hold applies the
+// highlighted value; the side button cancels back to the settings home.
 void drawChoice() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
-    const char* title = gChoice == Choice::NewPerDay    ? ui().newPerDayTitle
-                        : gChoice == Choice::SlowMs     ? ui().speedTitle
-                                                        : ui().orientTitle;
+    const char* title = gChoice == Choice::NewPerDay  ? ui().newPerDayTitle
+                        : gChoice == Choice::SlowMs   ? ui().speedTitle
+                        : gChoice == Choice::Orientation ? ui().orientTitle
+                                                         : ui().langTitle;
     smallText(d, title, 3, 3, kWhite, kGrey);
     drawBackHint(d);
 
@@ -569,6 +584,8 @@ void drawChoice() {
         char label[16];
         if (gChoice == Choice::Orientation) {
             snprintf(label, sizeof label, "%s", ui().orientRows[i]);
+        } else if (gChoice == Choice::UiLang) {
+            snprintf(label, sizeof label, "%s", ui().langRows[i]);
         } else if (gChoice == Choice::SlowMs) {
             if (gChoiceValues[i] == 0xFFFF) snprintf(label, sizeof label, "%s", ui().speedOff);
             else snprintf(label, sizeof label, ui().speedSecondsFmt, gChoiceValues[i] / 1000.0f);
@@ -984,7 +1001,7 @@ void openDecks() {
     drawScreen();
 }
 
-// Opens one of the two four-row pickers (Screen::Choice) with the saved value
+// Opens one of the Screen::Choice pickers (2/3/4 rows) with the saved value
 // highlighted when it is one of the candidates.
 void openChoice(Choice which) {
     gChoice = which;
@@ -994,6 +1011,17 @@ void openChoice(Choice which) {
         gChoiceValues[0] = 0;  // portrait
         gChoiceValues[1] = 1;  // landscape
         gChoiceSel = gPrefs.getBool("land", false) ? 1 : 0;
+        gScreen = Screen::Choice;
+        drawScreen();
+        return;
+    }
+    if (which == Choice::UiLang) {
+        gChoiceCount = 3;
+        gChoiceValues[0] = tgc::kUiLangAuto;
+        gChoiceValues[1] = tgc::kUiLangEnglish;
+        gChoiceValues[2] = tgc::kUiLangSpanish;
+        gChoiceSel = gUiLangPref;  // rows are in preference order
+        if (gChoiceSel < 0 || gChoiceSel >= gChoiceCount) gChoiceSel = 0;
         gScreen = Screen::Choice;
         drawScreen();
         return;
@@ -1023,6 +1051,14 @@ void applyChoice() {
     if (gChoice == Choice::Orientation) {
         gScreen = Screen::Menu;  // applyOrientation redraws the active screen
         applyOrientation(gChoiceValues[gChoiceSel] != 0);
+        return;
+    }
+    if (gChoice == Choice::UiLang) {
+        gUiLangPref = static_cast<int>(gChoiceValues[gChoiceSel]);
+        gPrefs.putInt("ui", gUiLangPref);
+        setUiForLang(gPack.header().lang);  // re-render in the chosen language
+        gScreen = Screen::Menu;
+        drawScreen();
         return;
     }
     const uint16_t v = gChoiceValues[gChoiceSel];
@@ -1067,6 +1103,9 @@ void activateSetting() {
             break;
         case 6:  // Orientacion
             openChoice(Choice::Orientation);
+            break;
+        case 7:  // Idioma / Language
+            openChoice(Choice::UiLang);
             break;
     }
 }
@@ -1140,6 +1179,8 @@ void setup() {
     // Apply the saved orientation right after board::begin() (which set portrait)
     // and before the canvas exists, so the buffer matches the panel from boot.
     gPrefs.begin("tangocho", false);
+    gUiLangPref = gPrefs.getInt("ui", tgc::kUiLangAuto);
+    setUiForLang(nullptr);  // localise the pre-pack error screens to the choice too
     tgc::board::setOrientation(gPrefs.getBool("land", false));
     W = tgc::board::width();
     H = tgc::board::height();

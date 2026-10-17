@@ -301,3 +301,20 @@ Short log of non-obvious choices. Newest last.
 - Per-kanji accuracy stays derivable from the record (`(reps - lapses) / reps`)
   and is surfaced by the detail card; no per-card storage was added.
 
+## 2026-10-17 – On-device UI language picker
+
+- The UI language used to be purely pack-driven (`setUiForLang` on the pack's
+  `lang`). A new NVS preference (`tangocho`/`ui`, int) adds **Auto (0, the
+  default)**, English (1) and Español (2). The settings home gains a
+  "Language"/"Idioma" row that opens the shared `Screen::Choice` with the three
+  endonyms (Auto / English / Español); applying persists the value and re-renders
+  immediately. Auto is byte-for-byte today's behaviour ("es" → Spanish, anything
+  else → English), so nothing changes unless the user chooses.
+- The decision is a tiny pure helper, `ui/UiLang.h`'s
+  `uiLangCodeFor(pref, packLang)` (header-only, native-tested through `-Isrc`).
+  English/Spanish force the table regardless of the pack, so an explicit choice
+  survives a pack in another language; an unknown preference behaves like Auto.
+- The settings home now has **8 rows**; `drawMenu`'s existing step/`labelFont`
+  fallback already shrinks the rows to fit both orientations (portrait keeps the
+  2x font for short labels and drops the long ones to 1x, landscape uses 1x).
+

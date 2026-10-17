@@ -55,9 +55,12 @@ Scope for now: **kanji only** (no vocabulary decks).
       learned count. Single-card accuracy is on the mistake detail card. Pending:
       an aggregate per-kanji accuracy view and the portal views.
 - [~] **Multilingual.** On-device strings are localised to the pack language
-      (`lang`: en/es today, anything else falls back to English). Pending: a
-      language picker on device (the meaning language is a property of the pack,
-      so switching packs already switches the meanings).
+      (`lang`: en/es today, anything else falls back to English). The on-device
+      language picker is done: a "Language"/"Idioma" setting chooses Auto (follow
+      the pack, the default), English or Español, persisted in NVS (`ui`) and
+      applied as a pure `uiLangCodeFor` helper. Pending: more languages (the
+      meaning language is a property of the pack, so switching packs already
+      switches the meanings).
 - [x] **Menu and settings redesign.** The settings home (Seguir / Mazos / Fecha /
       Nuevas/día / Velocidad) replaces the single deck list, with a shared
       four-row choice screen for the new/day cap and the Hard threshold. The deck
