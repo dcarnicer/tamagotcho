@@ -40,6 +40,14 @@ Scope for now: **kanji only** (no vocabulary decks).
 - [ ] **Multilingual.** Localise the on-device strings (currently English) and
       let the user pick the meaning language on device; packs already carry
       `lang`, and the builder supports en/es/fr/pt.
+- [ ] **Menu and settings redesign.** The deck menu now also carries the date
+      row, and more settings will follow (new/day, slow threshold, language).
+      Reconsider navigation and give settings their own screen instead of adding
+      rows to the deck list.
+- [ ] **Landscape orientation.** The panel is natively portrait (135x240); a
+      horizontal layout (240x135) gives much more room, especially for menus and
+      the four options. Needs layout work: `main.cpp` computes everything from
+      portrait `W x H` and the HAL returns portrait.
 
 ## Before publishing
 

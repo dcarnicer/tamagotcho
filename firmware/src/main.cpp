@@ -405,20 +405,18 @@ void drawDate() {
     smallText(d, "lateral: atras", W - 3, 3, kWhite, kGrey, lgfx::top_right);
     char date[16];
     formatDate(gSrs.today(), date, sizeof date);
-    char line[40];
-    snprintf(line, sizeof line, "hoy: %s", date);
-    smallText(d, line, W / 2, 17, kYellow, kBlack, lgfx::top_center);
+    gRender.drawCentred(d, date, 2, 18, W - 4, 18, 1, kYellow, kBlack, tgc::Renderer::kTextBuiltin);
 
-    static const char* kLabels[kDateRows] = {"hoy mismo (0)", "1 día", "2-7 días", "más (14)"};
-    const int top = 32, rowH = 22;
+    static const char* kLabels[kDateRows] = {"hoy (0)", "1 día", "2-7 días", "más (14)"};
+    const int top = 44, rowH = 32;
     for (int i = 0; i < kDateRows; ++i) {
         const int y = top + i * rowH;
         const bool sel = i == gDateSel;
         const uint16_t bg = sel ? kHighlight : kBlack;
-        d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
-        if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
-        gRender.drawCentred(d, kLabels[i], 2, y + 1, W - 4, rowH - 4, 1, kWhite, bg,
-                            tgc::Renderer::kTextBuiltinSmall);
+        d.fillRoundRect(2, y, W - 4, rowH - 4, 5, bg);
+        if (sel) d.drawRoundRect(2, y, W - 4, rowH - 4, 5, kWhite);
+        gRender.drawCentred(d, kLabels[i], 4, y + 2, W - 8, rowH - 8, 1, kWhite, bg,
+                            tgc::Renderer::kTextBuiltin);
     }
     present();
 }
