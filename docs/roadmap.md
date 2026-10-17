@@ -26,7 +26,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       and in the builder's distractor lists.
 - [ ] **Phase 4 – Connectivity.** Wi-Fi portal on device (upload packs, view
       stats), WaniKani importer (user's own token, unlocked kanji only), IMU
-      input (tilt to choose).
+      input (tilt to choose). Also: sync NTP time while connected and store an
+      epoch in the SRS state, so the scheduler finally has real days (the
+      StickS3 has no RTC; see docs/decisions.md).
 - [ ] **Phase 5 – Release.** README with photos, licences/attribution, GitHub
       releases, ESP Web Tools browser flasher, prebuilt packs.
 
