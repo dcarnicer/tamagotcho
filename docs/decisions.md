@@ -314,9 +314,10 @@ Short log of non-obvious choices. Newest last.
   `uiLangCodeFor(pref, packLang)` (header-only, native-tested through `-Isrc`).
   English/Spanish force the table regardless of the pack, so an explicit choice
   survives a pack in another language; an unknown preference behaves like Auto.
-- The settings home now has **8 rows**; `drawMenu`'s existing step/`labelFont`
-  fallback already shrinks the rows to fit both orientations (portrait keeps the
-  2x font for short labels and drops the long ones to 1x, landscape uses 1x).
+- The settings home now has **9 rows** (the Wi-Fi row was added later);
+  `drawMenu`'s existing step/`labelFont` fallback already shrinks the rows to fit
+  both orientations (portrait keeps the 2x font for short labels and drops the
+  long ones to 1x, landscape uses 1x).
 
 ## 2026-10-17 – Meaning distractors prefer a shared classical radical
 
@@ -356,8 +357,10 @@ Short log of non-obvious choices. Newest last.
   carries a per-card index, per-card blocks and 1bpp masks; the full layout is
   in docs/pack-format.md.
 - **Per-stroke masks, not pre-rendered frames.** Storing one 1bpp mask per
-  stroke and compositing on device costs ~0.4-0.6 KB per kanji at 96 px
-  (`--strokes` adds ~50 KB to the 79-card N5 pack) and lets the device choose
+  stroke and compositing on device costs ~1.1-1.2 KB per kanji at 96 px
+  (`--strokes` adds ~90-95 KB to the 79-card N5 pack; a mask's pixel count, and
+  so its cost, scales with the em square's area -- see docs/pack-format.md
+  "Limits") and lets the device choose
   colour, pacing and orientation. Pre-rendering N frames per kanji
   (or one 4bpp image per frame) would multiply the size and freeze the look;
   the strip is also only loaded on demand, like glyph bitmaps.
@@ -392,9 +395,9 @@ Short log of non-obvious choices. Newest last.
   (`begin`/`poll`/`end`), started from the new settings-home row "Wi-Fi" (or at
   boot when there is no pack) and stopped on exit. It is decoupled from
   `main.cpp` by a two-callback `Hooks` struct: one fills a `PortalStats` value
-  (SRS counters + loaded pack name/card count) and one is called after `/packs`
-  changes so the app rescans the folder, reloads the live pack and, when the
-  last pack is gone, re-enters the upload-ready state.
+  (SRS counters + loaded pack card count) and one is called after `/packs`
+  changes so the app rescans the folder and reloads the live pack (the
+  boot-only upload-ready handling is described below).
 - **The access point is open (no password), SSID `Tangocho-XXXX`** from the AP
   MAC's last two bytes, IP 192.168.4.1. Deliberate trade-off: joining is
   trivial, but anyone in radio range can list, upload or delete packs and read
@@ -404,14 +407,15 @@ Short log of non-obvious choices. Newest last.
   pack list (size + delete), an upload form (`multipart/form-data`,
   `accept=".tgc"`), a URL-download form, the SRS statistics and the free space.
   `/api/stats` returns the same counters and the pack list as JSON. No auth.
-- **Uploads stream to `/packs/<name>`** with `server.upload()`; the body never
-  has to fit in RAM. The filename is reduced to a basename and restricted to
-  `[A-Za-z0-9._-]`, must end `.tgc`, and is length-capped, so a write can never
-  escape `/packs`. A whole-file size cap, a running cap and a **96 KB reserve**
-  (against the ~5.9 MB StickS3 filesystem) reject an upload that would fill the
-  disk. After writing, the first 4 bytes must be `"TNGC"` and a cheap
-  `PackReader` probe (PSRAM-backed) must open it; otherwise the file is deleted,
-  so a bad upload cannot strand the device.
+- **Uploads stream to `/packs/.upload.tmp`** with `server.upload()` and are
+  renamed over the destination only after they validate (see the later "Uploads
+  are atomic" entry); the body never has to fit in RAM. The filename is reduced
+  to a basename and restricted to `[A-Za-z0-9._-]`, must end `.tgc`, and is
+  length-capped, so a write can never escape `/packs`. A whole-file size cap, a
+  running cap and a **96 KB reserve** (against the ~5.9 MB StickS3 filesystem)
+  reject an upload that would fill the disk. Before the rename the first 4 bytes
+  must be `"TNGC"` and a cheap `PackReader` probe (PSRAM-backed) must open it;
+  otherwise only the temp is deleted, so a bad upload cannot strand the device.
 - **URL download is staged through `poll()`** so the on-device screen paints
   "downloading..." before the (blocking) fetch starts; downloads stream via
   `HTTPClient::getStream()` to `/packs/.fetch.tmp` and are only renamed over the
@@ -434,9 +438,10 @@ Short log of non-obvious choices. Newest last.
   (the portal cannot help without a filesystem); so is an AP that will not
   start, which keeps the old error screen.
 - In upload-ready mode the Wi-Fi screen is the **only** screen: the side button
-  is ignored, because there is no quiz to return to. The same state is re-entered
-  if every pack is deleted while the portal is running (the open pack is
-  closed); uploading a new pack continues into the quiz.
+  is ignored, because there is no quiz to return to. This is the *boot-time*
+  state only: a portal opened later from Settings and then emptied stays
+  leavable (see the later "upload-ready is a boot-only flag" entry), and
+  uploading a new pack on the boot screen continues into the quiz.
 
 ## 2026-10-17 – M5Launcher and the app-only `.bin` (documented, not verified)
 
@@ -572,4 +577,57 @@ Short log of non-obvious choices. Newest last.
 - **Unknown metadata is 0.** `jlpt`/`grade`/`strokes`/`freq` have no WaniKani
   equivalent, so they stay 0; the ordering hint is WaniKani level then subject
   id, which the builder assigns as the deck-local `level`.
+
+## 2026-10-17 – Uploads are atomic: never destroy the pack they replace
+
+- The upload handler used to open (and delete) the final `/packs/<name>` at
+  `UPLOAD_FILE_START` and delete it again in `abortUpload()`, so a dropped
+  connection, a size cap or a 0-byte body destroyed a working pack and left the
+  loaded pack a dangling file handle. It now streams into `/packs/.upload.tmp`
+  (hidden, so the listers skip it) and removes the destination and renames the
+  temp over it **only after** the whole body arrived, passed the size caps and the
+  magic/`PackReader` probe -- exactly the URL-download scheme. Any abort removes
+  only the temp.
+- The dead early checks (`up.totalSize` is always 0 in this WebServer core) are
+  replaced by the request's declared length via `WebServer::clientContentLength()`
+  (0 = unknown/chunked -> the write-time cap decides), with a small multipart
+  envelope slack so a pack that only just fits is not refused. "Pack too large"
+  and "Not enough space" stay reachable at the early and the write-time checks.
+- `onPacksChanged()` now fires whenever `/packs` may have changed: a successful
+  upload, a successful fetch, and a fetch whose rename failed after the old
+  destination was already removed (delete already fired it unconditionally).
+
+## 2026-10-17 – The upload-ready state is a boot-only flag
+
+- `gWifiUploadReady` doubled as "booted with no pack" and "the folder is empty
+  now", so deleting every pack from a portal opened via Settings stranded the user
+  on the Wi-Fi screen (the side button was inert). Renamed to `gWifiBootUpload` and
+  set **only** at boot (cleared when the app advances to the quiz); opening the
+  portal from Settings no longer touches it, and `portalPacksChanged()` no longer
+  sets it. The side button is inert only in the genuine boot-time state.
+
+## 2026-10-17 – Streak "has studied" flag (header `flags` bit1)
+
+- `noteStudyDay()` used `last_study_day == 0` both as "never" and as the valid day
+  index 0, so no answer on day 0 started a streak. First-vs-consecutive now uses a
+  persisted "has studied" bit (header `flags` bit1, `kSrsFlagHasStudied`); day 0
+  starts a streak of 1 like any other first answer. A file written before the bit
+  recovers it from a non-zero `last_study_day` on load, so no v1 file resets a
+  running streak. Header bytes only, so still v1-compatible.
+
+## 2026-10-17 – Review follow-ups: stroke limits and small fixes
+
+- `--large-px > 128` with `--strokes` used to truncate the i8 stroke offsets;
+  `build_pack` now refuses it before rendering, and `write_pack` rejects both
+  `large_px > 128` and `strokes_px != large_px` so the public writer cannot emit a
+  pack the reader rejects (docs/pack-format.md "Limits").
+- The stroke-section size estimate was much too optimistic: masks scale with the
+  em square's area, so the committed 32 px fixture (~130 B/card) implies
+  ~1.1-1.2 KB/card at 96 px (~90-95 KB for the 79 N5 cards), not 0.4-0.6 KB.
+- `parse_kanjidic` strips (and treats whitespace-only as absent) numeric values
+  instead of letting `int()` raise on them; `merge_image.py` reads one byte of the
+  app image for the magic check instead of the whole file; the dead
+  `PortalStats::packName` field/assignment is removed; the firmware README's
+  tap-after-wrong-answer wording and the stale "8 rows" settings-home count are
+  corrected.
 

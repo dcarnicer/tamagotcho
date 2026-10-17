@@ -516,12 +516,11 @@ void test_stats() {
     TEST_ASSERT_EQUAL_UINT32(4, st.reps);    // one per grade call
     TEST_ASSERT_EQUAL_UINT32(1, st.lapses);  // only the Again on 月
     TEST_ASSERT_EQUAL_UINT32(0, st.learned); // young cards stay below the threshold
-    // All answers above were on SRS day 0, which collides with the "never
-    // studied" sentinel of `last_study_day`: the literal rule (`day ==
-    // last_study_day` means same-day) leaves the streak at 0. A real streak
-    // starts on the first day with a non-zero index (see test_streak).
-    TEST_ASSERT_EQUAL_UINT32(0, st.streakCurrent);
-    TEST_ASSERT_EQUAL_UINT32(0, st.streakBest);
+    // Four answers, all on SRS day 0. A "has studied" flags bit (not
+    // `last_study_day == 0`) decides first-vs-consecutive, so the very first
+    // answer on day 0 starts the streak at 1 and the rest are same-day.
+    TEST_ASSERT_EQUAL_UINT32(1, st.streakCurrent);
+    TEST_ASSERT_EQUAL_UINT32(1, st.streakBest);
     TEST_ASSERT_EQUAL_UINT32(0, st.reviewMs);
 
     // The 21-day threshold is inclusive and measured in whole days.
@@ -804,12 +803,14 @@ void test_streak() {
     TEST_ASSERT_EQUAL_UINT16(0, s.streakCurrent());
     TEST_ASSERT_EQUAL_UINT16(0, s.streakBest());
     TEST_ASSERT_EQUAL_UINT16(0, s.lastStudyDay());
+    TEST_ASSERT_FALSE(s.hasStudied());
 
     // First ever answer starts the streak at 1.
     s.grade(0x65E5, Grade::Good, 10, 0, 0.5f);
     TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
     TEST_ASSERT_EQUAL_UINT16(1, s.streakBest());
     TEST_ASSERT_EQUAL_UINT16(10, s.lastStudyDay());
+    TEST_ASSERT_TRUE(s.hasStudied());
 
     // Same-day answers do not change the streak.
     s.grade(0x6708, Grade::Good, 10, 1, 0.5f);
@@ -834,6 +835,31 @@ void test_streak() {
     s.grade(0x65E5, Grade::Good, 22, 0, 0.5f);
     TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
     TEST_ASSERT_EQUAL_UINT16(3, s.streakBest());
+}
+
+// The first answer a fresh store ever sees, on SRS day index 0: day 0 doubles as
+// the "never" value of last_study_day, so this is the regression the dedicated
+// "has studied" flag exists for. It must start the streak at 1.
+void test_streak_first_answer_on_day_zero() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(0);
+    TEST_ASSERT_FALSE(s.hasStudied());
+
+    s.grade(0x65E5, Grade::Good, 0, 0, 0.5f);
+    TEST_ASSERT_TRUE(s.hasStudied());
+    TEST_ASSERT_EQUAL_UINT16(0, s.lastStudyDay());
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakBest());
+
+    // A same-day answer still changes nothing...
+    s.grade(0x6708, Grade::Good, 0, 1, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
+    // ...and the next day continues it.
+    s.grade(0x65E5, Grade::Good, 1, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(2, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(2, s.streakBest());
 }
 
 void test_review_ms_saturation() {
@@ -874,6 +900,8 @@ void test_serialize_new_header_roundtrip() {
     TEST_ASSERT_EQUAL_UINT8(4, io.bytes[36]);
     TEST_ASSERT_EQUAL_UINT8(0xA2, io.bytes[40]);  // 3234 = 0x00000CA2, LE
     TEST_ASSERT_EQUAL_UINT8(0x0C, io.bytes[41]);
+    // flags @30: the "has studied" bit survives too.
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kSrsFlagHasStudied), io.bytes[30]);
 
     SrsStore b;
     TEST_ASSERT_TRUE(b.begin(io));
@@ -881,6 +909,19 @@ void test_serialize_new_header_roundtrip() {
     TEST_ASSERT_EQUAL_UINT16(4, b.streakBest());
     TEST_ASSERT_EQUAL_UINT16(4, b.lastStudyDay());
     TEST_ASSERT_EQUAL_UINT32(3234, b.reviewMs());
+    TEST_ASSERT_TRUE(b.hasStudied());
+
+    // A file with the flag bit cleared but a non-zero last study day (an older
+    // writer, or that bit reused later) recovers "has studied" from the day so a
+    // running streak is not silently reset to 1.
+    a.setFlags(0);
+    MemoryIo io2;
+    TEST_ASSERT_TRUE(a.save(io2));
+    TEST_ASSERT_EQUAL_UINT8(0, io2.bytes[30]);
+    SrsStore c;
+    TEST_ASSERT_TRUE(c.begin(io2));
+    TEST_ASSERT_TRUE(c.hasStudied());
+    TEST_ASSERT_EQUAL_UINT16(4, c.streakCurrent());
 }
 
 // A file whose bytes 32..47 are zero (an old v1 writer, or a store that never
@@ -899,6 +940,7 @@ void test_serialize_old_file_has_defaults() {
     TEST_ASSERT_EQUAL_UINT16(0, b.streakCurrent());
     TEST_ASSERT_EQUAL_UINT16(0, b.streakBest());
     TEST_ASSERT_EQUAL_UINT16(0, b.lastStudyDay());
+    TEST_ASSERT_FALSE(b.hasStudied());
     TEST_ASSERT_EQUAL_UINT32(0, b.reviewMs());
     TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(b.count()));
 }
@@ -927,6 +969,7 @@ int main() {
     RUN_TEST(test_queue_relearn_requeues_and_caps);
     RUN_TEST(test_queue_interleaves_modes);
     RUN_TEST(test_streak);
+    RUN_TEST(test_streak_first_answer_on_day_zero);
     RUN_TEST(test_review_ms_saturation);
     RUN_TEST(test_serialize_new_header_roundtrip);
     RUN_TEST(test_serialize_old_file_has_defaults);

@@ -105,6 +105,31 @@ def test_parse_kanjidic_classical_radicals():
     assert cards[0].radicals == [75]
 
 
+def test_parse_kanjidic_trims_whitespace():
+    # DTD-valid values can carry surrounding whitespace/newlines; parsing must
+    # not choke on them.
+    spaced = (
+        "<character><literal>日</literal>"
+        '<codepoint><cp_value cp_type="ucs">\n  65e5  \n</cp_value></codepoint>'
+        "<radical>"
+        '<rad_value rad_type="classical">\n 72 \n</rad_value>'
+        "</radical>"
+        "<misc><grade> 1 </grade><stroke_count>\n4\n</stroke_count>"
+        "<freq>   </freq></misc>"
+        "<reading_meaning><rmgroup>"
+        '<reading r_type="ja_on"> ニチ </reading><meaning> day </meaning>'
+        "</rmgroup></reading_meaning></character>"
+    )
+    raw = {k.codepoint: k for k in parse_kanjidic(_kd2(spaced))}
+    nichi = raw[0x65E5]
+    assert nichi.radicals == [72]
+    assert nichi.strokes == 4
+    assert nichi.grade == 1
+    assert nichi.freq == 0  # whitespace-only value -> "unknown", no crash
+    assert "ニチ" in nichi.onyomi
+    assert "day" in nichi.meanings["en"]
+
+
 def test_meaning_language_capped_to_english():
     # 母 has a single English sense; the Spanish list's extra senses are dropped.
     mother = RawKanji(0x6BCD, {"en": ["mother"], "es": ["madre", "base", "cimientos"]},

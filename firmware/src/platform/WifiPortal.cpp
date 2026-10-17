@@ -25,6 +25,12 @@ constexpr uint32_t kFetchIdleMs = 5000;      // no data for this long -> abort
 constexpr uint32_t kFetchTotalMs = 60000;    // whole download budget
 constexpr size_t kFetchBufSize = 1024;
 
+// A multipart upload body carries a boundary/header envelope around the file,
+// so the request's declared Content-Length is slightly larger than the `.tgc`
+// itself. This slack keeps the early "too large" check from rejecting a pack
+// that only just fits; the write-time cap stays authoritative for the file.
+constexpr size_t kMultipartSlack = 4096;
+
 // Basename only, must end in ".tgc", restricted to a safe character set and a
 // short length. Anything else is rejected so the portal never writes outside
 // /packs and never stores a surprising filename.
@@ -216,6 +222,8 @@ void WifiPortal::poll() {
 
 void WifiPortal::end() {
     if (uploadFile_) uploadFile_.close();
+    // A temp left by an interrupted upload is of no use to anyone.
+    LittleFS.remove(kUploadTmp);
     if (server_) {
         server_->stop();
         delete server_;
@@ -407,9 +415,12 @@ void WifiPortal::handleDelete() {
 
 // --- upload ----------------------------------------------------------------
 
+// Aborts the upload in flight. Only the temp file is removed: the destination
+// pack is never touched before the final, validated rename, so a dropped
+// connection, a size cap hit or a 0-byte body always leaves the old pack usable.
 void WifiPortal::abortUpload(const char* why) {
     if (uploadFile_) uploadFile_.close();
-    if (uploadName_.length()) LittleFS.remove(String(kPacksDir) + "/" + uploadName_);
+    LittleFS.remove(kUploadTmp);
     uploadOk_ = false;
     uploadError_ = why;
     Serial.printf("[wifi] upload failed %s: %s\n", uploadName_.c_str(), why);
@@ -431,20 +442,24 @@ void WifiPortal::handleUploadChunk() {
             const size_t total = LittleFS.totalBytes();
             const size_t used = LittleFS.usedBytes();
             const size_t freeB = total > used ? total - used : 0;
-            if (up.totalSize > kMaxPackBytes) {
+            // `up.totalSize` is always 0 here (this WebServer core only fills it
+            // on a buffer flush), so use the request's declared Content-Length.
+            // 0 means "unknown/chunked" -- then only the write-time cap applies.
+            const int declared = server_->clientContentLength();
+            const size_t bodyLen = declared > 0 ? static_cast<size_t>(declared) : 0;
+            if (bodyLen > kMaxPackBytes + kMultipartSlack) {
                 uploadError_ = "Pack too large";
                 return;
             }
-            if (up.totalSize && up.totalSize + kFsReserveBytes > freeB) {
+            if (bodyLen && bodyLen + kFsReserveBytes > freeB) {
                 uploadError_ = "Not enough space";
                 return;
             }
             LittleFS.mkdir(kPacksDir);
             uploadName_ = name;
             uploadFree_ = freeB;
-            const String path = String(kPacksDir) + "/" + name;
-            LittleFS.remove(path);  // replace an existing pack of the same name
-            uploadFile_ = LittleFS.open(path, "w");
+            LittleFS.remove(kUploadTmp);  // discard a temp left by an earlier run
+            uploadFile_ = LittleFS.open(kUploadTmp, "w");
             if (!uploadFile_) {
                 uploadError_ = "Cannot create file";
                 return;
@@ -469,12 +484,22 @@ void WifiPortal::handleUploadChunk() {
             if (!uploadOk_) break;
             uploadFile_.close();
             uploadOk_ = false;
-            const String path = String(kPacksDir) + "/" + uploadName_;
-            if (uploadWritten_ < 4 || !validatePackFile(path)) {
-                LittleFS.remove(path);  // never leave a broken pack behind
-                uploadError_ = "Not a valid .tgc pack (deleted)";
+            // Probe the temp, then swap it in. The destination is removed only
+            // now, after the body is known-good, so a rejected upload leaves the
+            // existing pack intact.
+            if (uploadWritten_ < 4 || !validatePackFile(kUploadTmp)) {
+                LittleFS.remove(kUploadTmp);
+                uploadError_ = "Not a valid .tgc pack (discarded)";
                 Serial.printf("[wifi] upload rejected %s (%u bytes)\n", uploadName_.c_str(),
                               (unsigned)uploadWritten_);
+                break;
+            }
+            const String dst = String(kPacksDir) + "/" + uploadName_;
+            if (LittleFS.exists(dst)) LittleFS.remove(dst);
+            if (!LittleFS.rename(kUploadTmp, dst)) {
+                LittleFS.remove(kUploadTmp);
+                uploadError_ = "Cannot store pack";
+                Serial.printf("[wifi] upload rename failed %s\n", uploadName_.c_str());
                 break;
             }
             ++uploaded_;
@@ -626,7 +651,8 @@ bool WifiPortal::doFetch(const String& url) {
     http.end();
 
     if (ok && written >= 4 && validatePackFile(tmp)) {
-        if (LittleFS.exists(dst)) LittleFS.remove(dst);
+        const bool hadDst = LittleFS.exists(dst);
+        if (hadDst) LittleFS.remove(dst);
         if (LittleFS.rename(tmp, dst)) {
             setMsg("downloaded %s (%u KB)", name.c_str(), (unsigned)(written / 1024));
             Serial.printf("[wifi] fetch ok %s %u bytes\n", name.c_str(), (unsigned)written);
@@ -634,6 +660,9 @@ bool WifiPortal::doFetch(const String& url) {
             return true;
         }
         LittleFS.remove(tmp);
+        // The old pack was already removed, so /packs did change: let the app
+        // rescan rather than keep a handle to a file that is gone.
+        if (hadDst && hooks_.onPacksChanged) hooks_.onPacksChanged();
         setMsg("rename failed");
         return false;
     }

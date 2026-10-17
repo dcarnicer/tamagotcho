@@ -28,8 +28,7 @@ struct PortalStats {
     uint32_t seen = 0, learned = 0, answers = 0, reps = 0, lapses = 0;
     uint32_t streakCurrent = 0, streakBest = 0;
     uint32_t reviewMs = 0;
-    uint32_t packCards = 0;          // cards in the loaded pack, 0 when none is open
-    const char* packName = nullptr;  // loaded deck name, may be null
+    uint32_t packCards = 0;  // cards in the loaded pack, 0 when none is open
 };
 
 class WifiPortal {
@@ -78,6 +77,11 @@ public:
     // A pack larger than this is refused outright: the StickS3 filesystem is
     // ~5.9 MB and the portal keeps a reserve free for /state and temp files.
     static constexpr size_t kMaxPackBytes = 5u * 1024u * 1024u;
+    // Uploads stream here first and are renamed over the destination only after
+    // the whole body arrived and validated, so a dropped/oversized/invalid
+    // upload can never destroy the pack it was replacing. Hidden name, so the
+    // pack listers skip it.
+    static constexpr const char* kUploadTmp = "/packs/.upload.tmp";
 
 private:
     void registerRoutes();
@@ -105,7 +109,9 @@ private:
     bool dirty_ = false;
     size_t uploaded_ = 0;  // packs received this session
 
-    // Upload state, valid between UPLOAD_FILE_START and UPLOAD_FILE_END.
+    // Upload state, valid between UPLOAD_FILE_START and UPLOAD_FILE_END. The
+    // body goes to kUploadTmp (never the destination); only the validated temp
+    // is renamed over the destination.
     File uploadFile_;
     String uploadName_;
     String uploadError_;

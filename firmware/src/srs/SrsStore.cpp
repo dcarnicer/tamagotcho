@@ -242,17 +242,21 @@ void SrsStore::noteNewIntroduced(uint16_t day) {
 // Day streak over the SRS day index (docs/srs.md section 4, "Streak"): the first
 // answer of a new day either extends the streak (exactly the day after the last
 // study day) or resets it to 1. Same-day answers never change it. 32-bit maths
-// avoids a wrap when the last study day is 0xFFFF.
+// avoids a wrap when the last study day is 0xFFFF. Whether anything was ever
+// studied is the persisted flags bit, not `lastStudyDay_ == 0`, so the first
+// answer on day index 0 starts a streak of 1 instead of looking like "same day".
 void SrsStore::noteStudyDay(uint16_t day) {
-    if (day == lastStudyDay_) return;
+    const bool studied = (flags_ & kSrsFlagHasStudied) != 0;
+    if (studied && day == lastStudyDay_) return;
     const bool consecutive =
-        lastStudyDay_ != 0 && static_cast<uint32_t>(day) == static_cast<uint32_t>(lastStudyDay_) + 1u;
+        studied && static_cast<uint32_t>(day) == static_cast<uint32_t>(lastStudyDay_) + 1u;
     if (consecutive) {
         if (streakCurrent_ < 0xFFFF) ++streakCurrent_;
     } else {
         streakCurrent_ = 1;
     }
     lastStudyDay_ = day;
+    flags_ |= kSrsFlagHasStudied;
     if (streakCurrent_ > streakBest_) streakBest_ = streakCurrent_;
 }
 
@@ -373,6 +377,10 @@ bool SrsStore::deserialize(const uint8_t* data, size_t len) {
     streakBest_ = rd16(data + kOffStreakBest);
     lastStudyDay_ = rd16(data + kOffLastStudyDay);
     reviewMs_ = rd32(data + kOffReviewMs);
+    // A file written before the "has studied" flag existed still records a
+    // non-zero last study day whenever the streak logic ran, so recover the flag
+    // from it; otherwise a continuing streak would be reset to 1.
+    if (lastStudyDay_ != 0) flags_ |= kSrsFlagHasStudied;
     tickStarted_ = false;
     lastTickMs_ = 0;
     return true;

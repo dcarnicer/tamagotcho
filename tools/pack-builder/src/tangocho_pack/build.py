@@ -35,6 +35,12 @@ def build_pack(
     strokes_px: int | None = None,
     kanjivg: KanjiVGDir | KanjiVGZip | None = None,
 ) -> bytes:
+    # The stroke masks store per-stroke placement as i8, so they only work up to
+    # a 128 px em square (docs/pack-format.md "Limits"). Fail before rendering the
+    # font or downloading KanjiVG.
+    if strokes and large_px > 128:
+        raise ValueError(f"large_px ({large_px}) > 128 cannot be used with --strokes: "
+                         "stroke x_off/y_off are signed bytes (max 127)")
     font = FontRenderer(font_path)
     kept = []
     for c in cards:
