@@ -3,9 +3,17 @@
 // comparison uses an absolute tolerance.
 #include <unity.h>
 
+#include <algorithm>
 #include <cmath>
+#include <string>
+#include <vector>
 
+#include "pack/MemorySource.h"
+#include "pack/PackReader.h"
+#include "quiz/Quiz.h"
+#include "srs/Queue.h"
 #include "srs/Srs.h"
+#include "srs/SrsStore.h"
 
 using namespace tgc;
 
@@ -17,6 +25,126 @@ Memory mid() {
     m.s = 10.0f;
     m.d = 5.0f;
     return m;
+}
+
+// ------------------------------------------------- in-memory pack builder
+// Minimal copy of the builder in test_native/test_main.cpp so the SRS and the
+// queue tests stay self-contained. Pack card `level` is the card's index.
+struct B {
+    std::vector<uint8_t> v;
+    void u8(uint8_t x) { v.push_back(x); }
+    void u16(uint16_t x) { u8(x & 255); u8(x >> 8); }
+    void u32(uint32_t x) { u16(x & 0xFFFF); u16(x >> 16); }
+    void pad4() { while (v.size() % 4) u8(0); }
+};
+
+struct CardSpec {
+    uint32_t cp;
+    const char *mean, *on, *kun;
+    std::vector<uint16_t> dis;      // meaning distractors
+    std::vector<uint16_t> disRead;  // reading distractors (empty -> offset 0)
+};
+struct GlyphSpec {
+    uint8_t set;
+    uint32_t cp;
+    uint8_t w, h;
+};
+
+std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<GlyphSpec> glyphs) {
+    std::sort(glyphs.begin(), glyphs.end(), [](const GlyphSpec& a, const GlyphSpec& b) {
+        return a.set != b.set ? a.set < b.set : a.cp < b.cp;
+    });
+    std::string pool;
+    auto addStr = [&](const char* s) {
+        uint32_t off = static_cast<uint32_t>(pool.size());
+        pool += s;
+        pool.push_back('\0');
+        return off;
+    };
+    uint32_t deckRel = addStr("Test Deck");
+    struct CS { uint32_t m, o, k; };
+    std::vector<CS> cs;
+    for (auto& c : cards) cs.push_back({addStr(c.mean), addStr(c.on), addStr(c.kun)});
+    while (pool.size() % 4) pool.push_back('\0');
+
+    const uint32_t cardsOff = 64;
+    const uint32_t glyphsOff = cardsOff + cards.size() * 32;
+    const uint32_t distOff = glyphsOff + glyphs.size() * 16;
+    std::vector<uint32_t> dOffs, drOffs;
+    uint32_t dsize = 0;
+    for (auto& c : cards) {
+        dOffs.push_back(distOff + dsize);
+        dsize += 2 + 2 * c.dis.size();
+    }
+    const uint32_t drBase = distOff + dsize;
+    uint32_t drsize = 0;
+    for (auto& c : cards) {
+        if (c.disRead.empty()) {
+            drOffs.push_back(0);
+            continue;
+        }
+        drOffs.push_back(drBase + drsize);
+        drsize += 2 + 2 * c.disRead.size();
+    }
+    const uint32_t strOff = (drBase + drsize + 3) & ~3u;
+    const uint32_t gdOff = strOff + pool.size();
+    const uint32_t deckOff = strOff + deckRel;
+    for (auto& x : cs) { x.m += strOff; x.o += strOff; x.k += strOff; }
+
+    B b;
+    b.u8('T'); b.u8('N'); b.u8('G'); b.u8('C');
+    b.u16(1); b.u16(64);
+    b.u32(cards.size()); b.u32(glyphs.size());
+    b.u32(cardsOff); b.u32(glyphsOff); b.u32(distOff); b.u32(strOff);
+    b.u32(pool.size()); b.u32(gdOff); b.u32(deckOff);
+    b.u8('e'); b.u8('n'); b.u8(0); b.u8(0);
+    b.u8(32); b.u8(16); b.u8(12); b.u8(18); b.u8(14);
+    b.u8(0); b.u8(0); b.u8(0);
+    b.u32(0); b.u32(0);
+    for (size_t i = 0; i < cards.size(); ++i) {
+        b.u32(cards[i].cp); b.u32(cs[i].m); b.u32(cs[i].o); b.u32(cs[i].k); b.u32(dOffs[i]);
+        b.u8(5); b.u8(1); b.u8(4); b.u8(0);
+        b.u16(10 + i); b.u16(i); b.u32(drOffs[i]);
+    }
+    uint32_t dataOff = gdOff;
+    for (auto& g : glyphs) {
+        b.u32(g.cp); b.u8(g.set); b.u8(0); b.u8(g.w); b.u8(g.h);
+        b.u8(static_cast<uint8_t>(-3)); b.u8(static_cast<uint8_t>(-g.h)); b.u8(g.w + 1); b.u8(0);
+        b.u32(dataOff);
+        dataOff += ((g.w + 1) / 2) * g.h;
+    }
+    for (auto& c : cards) {
+        b.u16(c.dis.size());
+        for (auto d : c.dis) b.u16(d);
+    }
+    for (auto& c : cards) {
+        if (c.disRead.empty()) continue;
+        b.u16(c.disRead.size());
+        for (auto d : c.disRead) b.u16(d);
+    }
+    b.pad4();
+    for (char ch : pool) b.u8(ch);
+    for (auto& g : glyphs)
+        for (int i = 0; i < ((g.w + 1) / 2) * g.h; ++i) b.u8((g.cp + i) & 0xFF);
+    return b.v;
+}
+
+std::vector<GlyphSpec> glyphsFor(const std::vector<CardSpec>& cs) {
+    std::vector<GlyphSpec> g;
+    for (auto& c : cs) {
+        g.push_back({0, c.cp, 4, 4});
+        g.push_back({1, c.cp, 4, 4});
+    }
+    return g;
+}
+
+// A pack of `n` cards that all carry a meaning and a reading, so each offers
+// all three quiz modes.
+std::vector<CardSpec> modeCards(int n) {
+    std::vector<CardSpec> cs;
+    for (int i = 0; i < n; ++i)
+        cs.push_back({0x4E00u + static_cast<uint32_t>(i), "meaning", "オン", "くん", {}});
+    return cs;
 }
 
 }  // namespace
@@ -175,6 +303,443 @@ void test_monotonic_difficulty() {
     }
 }
 
+// ---------------------------------------------------------------- phase 2
+// SrsStore + Queue. See docs/srs.md section 8.
+
+namespace {
+
+// Puts a card into the store as a reviewed card due on `due` with the given
+// stability (centidays), bypassing the scheduler so ordering is exact.
+void setDue(SrsStore& srs, uint32_t cp, uint16_t due, uint16_t stabCds) {
+    Record& r = srs.getOrCreate(cp);
+    r.dueDay = due;
+    r.stabilityCds = stabCds;
+    r.reps = 1;
+    r.lastDay = 1;
+    r.difficulty10 = 50;
+}
+
+}  // namespace
+
+void test_serialize_roundtrip() {
+    SrsStore a;
+    MemoryIo empty;
+    TEST_ASSERT_FALSE(a.begin(empty));  // no file -> empty state, no error
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(a.count()));
+
+    a.setToday(42);
+    a.setSlowMs(2500);
+    a.setNewPerDay(7);
+    a.grade(0x65E5, Grade::Good, 42, 0, 0.5f);
+    a.grade(0x4E2D, Grade::Again, 42, 1, 0.25f);
+    a.grade(0x65E5, Grade::Hard, 42, 2, 0.75f);  // same-day second review
+    // Both new cards graded above were introduced today; pin the header knob
+    // afterwards so the round trip checks a known value.
+    TEST_ASSERT_EQUAL_UINT16(42, a.newIntroducedDay());
+    TEST_ASSERT_EQUAL_UINT16(2, a.newIntroducedCount());
+    a.setNewIntroducedCount(3);
+
+    MemoryIo io;
+    TEST_ASSERT_TRUE(a.save(io));
+    TEST_ASSERT_EQUAL_UINT32(48 + 2 * 16 + 4, static_cast<uint32_t>(io.bytes.size()));
+    TEST_ASSERT_EQUAL_UINT8('T', io.bytes[0]);
+    TEST_ASSERT_EQUAL_UINT8('N', io.bytes[1]);
+    TEST_ASSERT_EQUAL_UINT8('G', io.bytes[2]);
+    TEST_ASSERT_EQUAL_UINT8('S', io.bytes[3]);
+    TEST_ASSERT_EQUAL_UINT8(1, io.bytes[4]);    // version, LE
+    TEST_ASSERT_EQUAL_UINT8(0, io.bytes[5]);
+    TEST_ASSERT_EQUAL_UINT8(48, io.bytes[6]);   // header_size, LE
+
+    SrsStore b;
+    TEST_ASSERT_TRUE(b.begin(io));
+    TEST_ASSERT_EQUAL_UINT16(42, b.today());
+    TEST_ASSERT_EQUAL_UINT16(2500, b.slowMs());
+    TEST_ASSERT_EQUAL_UINT16(7, b.newPerDay());
+    TEST_ASSERT_EQUAL_UINT16(42, b.newIntroducedDay());
+    TEST_ASSERT_EQUAL_UINT16(3, b.newIntroducedCount());
+    TEST_ASSERT_EQUAL_UINT32(3, b.answeredTotal());
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(b.count()));
+
+    // Sorted ascending and every field survives the round trip.
+    TEST_ASSERT_TRUE(b.records()[0].codepoint < b.records()[1].codepoint);
+    for (size_t i = 0; i < a.count(); ++i) {
+        const Record& x = a.records()[i];
+        const Record* y = b.find(x.codepoint);
+        TEST_ASSERT_NOT_NULL(y);
+        TEST_ASSERT_EQUAL_UINT32(x.codepoint, y->codepoint);
+        TEST_ASSERT_EQUAL_UINT16(x.stabilityCds, y->stabilityCds);
+        TEST_ASSERT_EQUAL_UINT16(x.dueDay, y->dueDay);
+        TEST_ASSERT_EQUAL_UINT16(x.lastDay, y->lastDay);
+        TEST_ASSERT_EQUAL_UINT8(x.difficulty10, y->difficulty10);
+        TEST_ASSERT_EQUAL_UINT8(x.reps, y->reps);
+        TEST_ASSERT_EQUAL_UINT8(x.lapses, y->lapses);
+        TEST_ASSERT_EQUAL_UINT8(x.modeSeen, y->modeSeen);
+        TEST_ASSERT_EQUAL_UINT8(x.lastGrade, y->lastGrade);
+        TEST_ASSERT_EQUAL_UINT8(x.reserved, y->reserved);
+    }
+    // modeSeen accumulated bits 0 and 2 on 日.
+    TEST_ASSERT_EQUAL_UINT8(0x5, b.find(0x65E5)->modeSeen);
+    TEST_ASSERT_EQUAL_UINT8(0x2, b.find(0x4E2D)->modeSeen);
+}
+
+void test_serialize_rejects() {
+    SrsStore a;
+    MemoryIo empty;
+    a.begin(empty);
+    a.setToday(3);
+    a.grade(0x65E5, Grade::Good, 3, 0, 0.5f);
+    a.grade(0x6C34, Grade::Good, 3, 1, 0.5f);
+    MemoryIo io;
+    TEST_ASSERT_TRUE(a.save(io));
+    const std::vector<uint8_t> good = io.bytes;
+
+    // A store that must stay untouched by every failed load.
+    SrsStore b;
+    b.setToday(9);
+    b.getOrCreate(0xABCD);
+
+    auto reject = [&](const std::vector<uint8_t>& bytes) {
+        TEST_ASSERT_FALSE(b.deserialize(bytes.data(), bytes.size()));
+        TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(b.count()));
+        TEST_ASSERT_EQUAL_UINT16(9, b.today());
+        TEST_ASSERT_NOT_NULL(b.find(0xABCD));
+    };
+
+    { std::vector<uint8_t> x = good; x[0] = 'X'; reject(x); }              // bad magic
+    { std::vector<uint8_t> x = good; x[4] = 2; reject(x); }                // version 2
+    { std::vector<uint8_t> x = good; x[6] = 40; reject(x); }               // bad header_size
+    { std::vector<uint8_t> x(good.begin(), good.end() - 1); reject(x); }   // truncated
+    { std::vector<uint8_t> x = good; x.push_back(0); reject(x); }          // extra byte
+    { std::vector<uint8_t> x = good; x[10] = 3; reject(x); }               // count too big
+    { std::vector<uint8_t> x = good; x.back() ^= 0xFF; reject(x); }        // bad CRC
+    { std::vector<uint8_t> x = good; x[20] ^= 0x03; reject(x); }           // header flip -> CRC
+    reject(std::vector<uint8_t>(10, 0));                                   // far too short
+
+    // The untouched bytes still load.
+    TEST_ASSERT_TRUE(b.deserialize(good.data(), good.size()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(b.count()));
+    TEST_ASSERT_EQUAL_UINT16(3, b.today());
+}
+
+void test_codepoint_identity() {
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(10);
+
+    // Keyed by codepoint, not by deck or card index.
+    Record& r = srs.getOrCreate(0x65E5);
+    r.dueDay = 4;
+    r.stabilityCds = 250;
+    r.reps = 2;
+    r.lastDay = 2;
+    r.difficulty10 = 60;
+    Record& again = srs.getOrCreate(0x65E5);
+    TEST_ASSERT_EQUAL_PTR(&r, &again);
+    TEST_ASSERT_EQUAL_UINT8(2, again.reps);
+
+    // Pack A: 日 at index 0. Pack B: 月 then 日, so the index changed.
+    std::vector<CardSpec> ca = {{0x65E5, "day", "ニチ", "ひ", {0}}, {0x6708, "month", "ゲツ", "つき", {}}};
+    std::vector<CardSpec> cb = {{0x6708, "month", "ゲツ", "つき", {0}}, {0x65E5, "day", "ニチ", "ひ", {}}};
+    auto pa = makePack(ca, glyphsFor(ca));
+    auto pb = makePack(cb, glyphsFor(cb));
+    MemorySource sa(pa), sb(pb);
+    PackReader ra, rb;
+    TEST_ASSERT_EQUAL(PackError::Ok, ra.open(sa));
+    TEST_ASSERT_EQUAL(PackError::Ok, rb.open(sb));
+
+    XorShiftRng rng(1);
+    Queue qa, qb;
+    qa.rebuild(ra, srs, rng);
+    qb.rebuild(rb, srs, rng);
+    QueueItem a0, b0;
+    TEST_ASSERT_TRUE(qa.next(&a0));
+    TEST_ASSERT_TRUE(qb.next(&b0));
+    TEST_ASSERT_EQUAL_UINT32(0, a0.cardIndex);  // 日 is index 0 in pack A
+    TEST_ASSERT_EQUAL_UINT32(1, b0.cardIndex);  // ...and index 1 in pack B
+    // Both are the same due review, so both options carry the same codepoint.
+    Card ca0, cb1;
+    TEST_ASSERT_TRUE(ra.card(a0.cardIndex, &ca0));
+    TEST_ASSERT_TRUE(rb.card(b0.cardIndex, &cb1));
+    TEST_ASSERT_EQUAL_UINT32(ca0.codepoint, cb1.codepoint);
+}
+
+void test_store_cap() {
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    for (uint32_t cp = 1; cp <= SrsStore::kMaxRecords; ++cp) srs.getOrCreate(cp).reps = 1;
+    TEST_ASSERT_EQUAL_UINT32(8192, static_cast<uint32_t>(srs.count()));
+    TEST_ASSERT_NOT_NULL(srs.find(8192));
+
+    // Past the cap nothing is inserted.
+    srs.getOrCreate(999999);
+    TEST_ASSERT_EQUAL_UINT32(8192, static_cast<uint32_t>(srs.count()));
+    TEST_ASSERT_NULL(srs.find(999999));
+    // grade() refuses to create a record past the cap...
+    srs.grade(999999, Grade::Good, 1, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT32(8192, static_cast<uint32_t>(srs.count()));
+    TEST_ASSERT_EQUAL_UINT32(0, srs.answeredTotal());
+    // ...but an existing record is still graded.
+    srs.grade(4096, Grade::Good, 1, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT32(1, srs.answeredTotal());
+}
+
+void test_clock_boot_and_uptime() {
+    // A boot after a used session advances exactly one day.
+    SrsStore used;
+    MemoryIo io;
+    used.begin(io);
+    used.setToday(7);
+    used.grade(0x65E5, Grade::Good, 7, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT32(1, used.answeredTotal());
+    used.beginSession();
+    TEST_ASSERT_EQUAL_UINT16(8, used.today());
+    used.beginSession();
+    TEST_ASSERT_EQUAL_UINT16(9, used.today());
+
+    // A boot that follows no answers does not.
+    SrsStore unused;
+    MemoryIo io2;
+    unused.begin(io2);
+    unused.setToday(3);
+    unused.beginSession();
+    TEST_ASSERT_EQUAL_UINT16(3, unused.today());
+
+    // Uptime: 24 h of ticks advance one day, the carry keeps the remainder.
+    SrsStore up;
+    MemoryIo io3;
+    up.begin(io3);
+    up.setToday(10);
+    up.tick(1000);
+    up.tick(1000 + kSrsMsPerDay - 1);
+    TEST_ASSERT_EQUAL_UINT16(10, up.today());
+    up.tick(1000 + kSrsMsPerDay);
+    TEST_ASSERT_EQUAL_UINT16(11, up.today());
+    TEST_ASSERT_EQUAL_UINT32(0, up.msCarry());
+    up.tick(1000 + kSrsMsPerDay + 5000);
+    TEST_ASSERT_EQUAL_UINT16(11, up.today());
+    TEST_ASSERT_EQUAL_UINT32(5000, up.msCarry());
+    up.tick(1000 + 3 * kSrsMsPerDay);  // two more days at once
+    TEST_ASSERT_EQUAL_UINT16(13, up.today());
+
+    // The day change resets the new-card counter.
+    up.setNewIntroducedDay(10);
+    up.setNewIntroducedCount(4);
+    up.setToday(13);
+    TEST_ASSERT_EQUAL_UINT16(13, up.newIntroducedDay());
+    TEST_ASSERT_EQUAL_UINT16(0, up.newIntroducedCount());
+}
+
+void test_queue_due_before_new() {
+    std::vector<CardSpec> cs = {{0x65E5, "day", "ニチ", "ひ", {}},
+                                {0x6708, "month", "ゲツ", "つき", {}},
+                                {0x706B, "fire", "カ", "ひ", {}},
+                                {0x6C34, "water", "スイ", "みず", {}}};
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(10);
+    setDue(srs, 0x65E5, 5, 300);  // index 0, due 5, stronger
+    setDue(srs, 0x706B, 2, 500);  // index 2, most overdue
+    setDue(srs, 0x6C34, 5, 100);  // index 3, due 5, weakest
+    // index 1 (月) stays new.
+
+    XorShiftRng rng(3);
+    Queue q;
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(4, static_cast<uint32_t>(q.remaining()));
+
+    QueueItem it;
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL_UINT32(2, it.cardIndex);  // due 2
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL_UINT32(3, it.cardIndex);  // due 5, weakest
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);  // due 5, stronger
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL_UINT32(1, it.cardIndex);  // reviews first, then new
+    TEST_ASSERT_FALSE(q.next(&it));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(q.remaining()));
+}
+
+void test_queue_new_cap_resets_on_new_day() {
+    std::vector<CardSpec> cs = {{0x65E5, "day", "ニチ", "ひ", {}},
+                                {0x6708, "month", "ゲツ", "つき", {}},
+                                {0x706B, "fire", "カ", "ひ", {}},
+                                {0x6C34, "water", "スイ", "みず", {}}};
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(5);
+    srs.setNewPerDay(2);
+    srs.setNewIntroducedDay(5);
+    srs.setNewIntroducedCount(1);
+
+    XorShiftRng rng(1);
+    Queue q;
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(q.remaining()));  // 2 - 1
+    QueueItem it;
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);  // first by level
+
+    srs.setNewIntroducedCount(2);
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(q.remaining()));
+
+    // A new day resets the counter in the store, so the cap is available again.
+    srs.setToday(6);
+    TEST_ASSERT_EQUAL_UINT16(6, srs.newIntroducedDay());
+    TEST_ASSERT_EQUAL_UINT16(0, srs.newIntroducedCount());
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(q.remaining()));
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);
+
+    // Grading a new card counts it against the day.
+    srs.grade(0x65E5, Grade::Good, 6, static_cast<uint8_t>(QuizMode::Meaning), 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(6, srs.newIntroducedDay());
+    TEST_ASSERT_EQUAL_UINT16(1, srs.newIntroducedCount());
+}
+
+void test_queue_no_repeat_within_session() {
+    std::vector<CardSpec> cs = modeCards(5);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(0);
+    srs.setNewPerDay(20);
+
+    XorShiftRng rng(2);
+    Queue q;
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(5, static_cast<uint32_t>(q.remaining()));
+
+    bool seen[5] = {false, false, false, false, false};
+    QueueItem it;
+    for (int i = 0; i < 5; ++i) {
+        TEST_ASSERT_TRUE(q.next(&it));
+        TEST_ASSERT_TRUE(it.cardIndex < 5);
+        TEST_ASSERT_FALSE(seen[it.cardIndex]);  // no card twice in one session
+        seen[it.cardIndex] = true;
+        q.answered(it.cardIndex, Grade::Good);
+    }
+    TEST_ASSERT_FALSE(q.next(&it));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(q.remaining()));
+}
+
+void test_queue_relearn_requeues_and_caps() {
+    std::vector<CardSpec> cs = modeCards(8);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(1);
+    srs.setNewPerDay(20);
+
+    XorShiftRng rng(4);
+    Queue q;
+    q.rebuild(pack, srs, rng);
+
+    QueueItem it;
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);
+    q.answered(0, Grade::Good);  // a correct answer does not requeue
+    TEST_ASSERT_EQUAL_UINT32(7, static_cast<uint32_t>(q.remaining()));
+
+    q.answered(0, Grade::Again);  // requeue 5 items ahead
+    TEST_ASSERT_EQUAL_UINT32(8, static_cast<uint32_t>(q.remaining()));
+    for (uint32_t want = 1; want <= 5; ++want) {
+        TEST_ASSERT_TRUE(q.next(&it));
+        TEST_ASSERT_EQUAL_UINT32(want, it.cardIndex);  // the gap is respected
+    }
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);  // the relearned card comes back
+
+    // At most three relearn pushes per card per session: 1 serve + 3 pushes.
+    std::vector<CardSpec> one = {{0x706B, "fire", "カ", "ひ", {}}};
+    auto ob = makePack(one, glyphsFor(one));
+    MemorySource os(ob);
+    PackReader op;
+    TEST_ASSERT_EQUAL(PackError::Ok, op.open(os));
+    SrsStore s2;
+    MemoryIo io2;
+    s2.begin(io2);
+    s2.setToday(1);
+    Queue q2;
+    q2.rebuild(op, s2, rng);
+    int serves = 0;
+    for (int i = 0; i < 10; ++i) {
+        QueueItem o;
+        if (!q2.next(&o)) break;
+        TEST_ASSERT_EQUAL_UINT32(0, o.cardIndex);
+        ++serves;
+        q2.answered(0, Grade::Again);
+    }
+    TEST_ASSERT_EQUAL_INT(4, serves);
+}
+
+void test_queue_interleaves_modes() {
+    std::vector<CardSpec> cs = modeCards(6);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(0);
+    srs.setNewPerDay(20);
+
+    XorShiftRng rng(9);
+    Queue q;
+    q.rebuild(pack, srs, rng);
+
+    bool seen[3] = {false, false, false};
+    int prev = -1;
+    QueueItem it;
+    for (int i = 0; i < 6; ++i) {
+        TEST_ASSERT_TRUE(q.next(&it));
+        const int m = static_cast<int>(it.mode);
+        TEST_ASSERT_TRUE(m >= 0 && m <= 2);
+        // Every card here offers all three modes, so a tie is always broken
+        // toward a mode different from the previous item's.
+        if (prev >= 0) TEST_ASSERT_TRUE(m != prev);
+        seen[m] = true;
+        prev = m;
+
+        // Simulate the app: grade the answer (which records the mode) and
+        // report it to the queue.
+        Card c;
+        TEST_ASSERT_TRUE(pack.card(it.cardIndex, &c));
+        srs.grade(c.codepoint, Grade::Good, 0, static_cast<uint8_t>(m), 0.5f);
+        q.answered(it.cardIndex, Grade::Good);
+    }
+    TEST_ASSERT_TRUE(seen[0] && seen[1] && seen[2]);
+    TEST_ASSERT_FALSE(q.next(&it));
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -187,5 +752,15 @@ int main() {
     RUN_TEST(test_lapse);
     RUN_TEST(test_same_day);
     RUN_TEST(test_monotonic_difficulty);
+    RUN_TEST(test_serialize_roundtrip);
+    RUN_TEST(test_serialize_rejects);
+    RUN_TEST(test_codepoint_identity);
+    RUN_TEST(test_store_cap);
+    RUN_TEST(test_clock_boot_and_uptime);
+    RUN_TEST(test_queue_due_before_new);
+    RUN_TEST(test_queue_new_cap_resets_on_new_day);
+    RUN_TEST(test_queue_no_repeat_within_session);
+    RUN_TEST(test_queue_relearn_requeues_and_caps);
+    RUN_TEST(test_queue_interleaves_modes);
     return UNITY_END();
 }
