@@ -28,9 +28,8 @@ constexpr uint16_t kSrsDefaultSlowMs = 3000;
 constexpr uint16_t kSrsDefaultNewPerDay = 10;
 constexpr uint16_t kSrsDefaultMaxIntervalDays = 365;
 
-// Header `flags` bits. kSrsFlagAnswered is set when the user answers and cleared
-// on the next boot, so only a session with answers advances the day index.
-constexpr uint16_t kSrsFlagAnswered = 0x0002;
+// Header `flags` bits (bit0 reserved for a future clean-shutdown marker).
+constexpr uint16_t kSrsFlagNone = 0;
 
 // Per-card state, 16 bytes in memory and on disk (docs/srs.md section 2).
 // `dueDay == 0` means "new, never reviewed"; `lastGrade == 0xFF` means never.
@@ -86,9 +85,13 @@ public:
     // Call beginSession() after a successful or failed begin().
     bool begin(StateIo& io);
 
-    // Boot rule (section 5): a power-up after a session with at least one
-    // answer advances the day index by one.
+    // Boot rule: resets the per-session tick. The day index is advanced by the
+    // caller instead of automatically: the device has no clock, so the app asks
+    // the user how much time passed (or the uptime rule advances it while on).
     void beginSession();
+
+    // Adds `n` days to the index (the user-reported gap, or a manual fix).
+    void advanceDays(uint16_t n);
 
     // Uptime rule: accumulates elapsed milliseconds into the day carry.
     // `nowMs` is the app's millisecond clock (millis()); wraps are handled.

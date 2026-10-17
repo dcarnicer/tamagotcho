@@ -131,11 +131,12 @@ void SrsStore::resetNewIfNewDay() {
 void SrsStore::beginSession() {
     tickStarted_ = false;
     lastTickMs_ = 0;
-    // A power-up after a session in which the user actually answered is our only
-    // proxy for "a day has passed". A quick reboot with no answers must not
-    // advance the day, or the schedule inflates with every restart.
-    if ((flags_ & kSrsFlagAnswered) && nowDay_ < 0xFFFF) ++nowDay_;
-    flags_ &= static_cast<uint16_t>(~kSrsFlagAnswered);
+    resetNewIfNewDay();
+}
+
+void SrsStore::advanceDays(uint16_t n) {
+    const uint32_t day = static_cast<uint32_t>(nowDay_) + n;
+    nowDay_ = day > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(day);
     resetNewIfNewDay();
 }
 
@@ -250,7 +251,6 @@ void SrsStore::grade(uint32_t codepoint, Grade g, uint16_t day, uint8_t mode, fl
     r->lastGrade = static_cast<uint8_t>(static_cast<uint8_t>(g) - 1u);
 
     if (answeredTotal_ < 0xFFFFFFFFu) ++answeredTotal_;
-    flags_ |= kSrsFlagAnswered;  // this session had answers (advances the day on next boot)
     if (first) noteNewIntroduced(day);
 }
 

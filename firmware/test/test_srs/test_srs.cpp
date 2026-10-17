@@ -486,30 +486,18 @@ void test_store_cap() {
 }
 
 void test_clock_boot_and_uptime() {
-    // A boot after a session *with answers* advances exactly one day.
-    SrsStore used;
+    // beginSession() no longer moves the day by itself (the device has no clock,
+    // so the app asks the user); advanceDays() does it explicitly.
+    SrsStore s;
     MemoryIo io;
-    used.begin(io);
-    used.setToday(7);
-    used.grade(0x65E5, Grade::Good, 7, 0, 0.5f);
-    TEST_ASSERT_EQUAL_UINT32(1, used.answeredTotal());
-    used.beginSession();
-    TEST_ASSERT_EQUAL_UINT16(8, used.today());
-    // A reboot with no answers in between must not advance the day.
-    used.beginSession();
-    TEST_ASSERT_EQUAL_UINT16(8, used.today());
-    // After answering again, the next boot does.
-    used.grade(0x65E5, Grade::Good, 8, 0, 0.5f);
-    used.beginSession();
-    TEST_ASSERT_EQUAL_UINT16(9, used.today());
-
-    // A boot that follows no answers does not.
-    SrsStore unused;
-    MemoryIo io2;
-    unused.begin(io2);
-    unused.setToday(3);
-    unused.beginSession();
-    TEST_ASSERT_EQUAL_UINT16(3, unused.today());
+    s.begin(io);
+    s.setToday(7);
+    s.beginSession();
+    TEST_ASSERT_EQUAL_UINT16(7, s.today());
+    s.advanceDays(3);
+    TEST_ASSERT_EQUAL_UINT16(10, s.today());
+    s.advanceDays(0);
+    TEST_ASSERT_EQUAL_UINT16(10, s.today());
 
     // Uptime: 24 h of ticks advance one day, the carry keeps the remainder.
     SrsStore up;

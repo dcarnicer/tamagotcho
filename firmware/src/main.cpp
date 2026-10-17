@@ -26,6 +26,15 @@ using tgc::board::Button;
 #define QLOG(...) do {} while (0)
 #endif
 
+// The StickS3 has no RTC and the ESP32's RTC domain does not survive a power-off
+// (verified: RTC memory is cleared when the device is switched off). RTC_NOINIT
+// memory does survive a soft reset, so it tells us whether this boot followed a
+// power cut -- in which case the elapsed days are unknown and we ask the user.
+RTC_NOINIT_ATTR uint32_t gPowerMagic;
+RTC_NOINIT_ATTR uint32_t gPowerMagicInv;
+constexpr uint32_t kPowerMagic = 0x7A5C1234u;
+bool gPoweredOff = false;
+
 namespace {
 
 constexpr uint16_t kBlack = 0x0000;
@@ -52,9 +61,11 @@ uint32_t gLastAnswerAt = 0;
 int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
 
-enum class Screen { Quiz, Menu, Done };
+enum class Screen { Quiz, Menu, Done, Date };
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
+Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
+int gDateSel = 0;
 std::vector<String> gPacks;  // paths of the *.tgc files in /packs
 int gMenuSel = 0;
 String gCurrentPack;
@@ -168,6 +179,7 @@ bool newQuestion() {
 }
 
 void drawScreen();  // dispatches to the quiz or the deck menu
+void formatDate(uint16_t days, char* out, size_t n);
 
 void drawQuiz() {
     auto& d = *gCanvas;
@@ -285,7 +297,8 @@ void drawQuiz() {
     present();
 }
 
-// Deck menu: one pack per row; the loaded one is marked with '*'.
+// Deck menu: row 0 is the date, then one row per pack; the loaded one is marked
+// with '*'.
 void drawMenu() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
@@ -294,19 +307,27 @@ void drawMenu() {
     smallText(d, "tap=next  hold=open", W - 3, 3, kWhite, kGrey, lgfx::top_right);
 
     const int top = 18, rowH = 20;
-    for (size_t i = 0; i < gPacks.size(); ++i) {
-        const int y = top + static_cast<int>(i) * rowH;
+    const int rows = static_cast<int>(gPacks.size()) + 1;
+    for (int i = 0; i < rows; ++i) {
+        const int y = top + i * rowH;
         if (y + rowH - 2 > H) break;  // no more room
-        const bool sel = static_cast<int>(i) == gMenuSel;
+        const bool sel = i == gMenuSel;
         const uint16_t bg = sel ? kHighlight : kBlack;
         d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
         if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
-        String name = gPacks[i];
-        const int slash = name.lastIndexOf('/');
-        if (slash >= 0) name = name.substring(slash + 1);
-        if (name.endsWith(".tgc")) name = name.substring(0, name.length() - 4);
-        if (gPacks[i] == gCurrentPack) name = "* " + name;
-        smallText(d, name.c_str(), 4, y + (rowH - 2 - 8) / 2, kWhite, bg);
+        String label;
+        if (i == 0) {
+            char date[16];
+            formatDate(gSrs.today(), date, sizeof date);
+            label = String("Fecha ") + date;
+        } else {
+            label = gPacks[i - 1];
+            const int slash = label.lastIndexOf('/');
+            if (slash >= 0) label = label.substring(slash + 1);
+            if (label.endsWith(".tgc")) label = label.substring(0, label.length() - 4);
+            if (gPacks[i - 1] == gCurrentPack) label = "* " + label;
+        }
+        smallText(d, label.c_str(), 4, y + (rowH - 2 - 8) / 2, kWhite, bg);
     }
     present();
 }
@@ -338,9 +359,89 @@ void showDone() {
     drawDone();
 }
 
+// Civil date helpers (Howard Hinnant's algorithms) for the internal day index.
+// Day 0 is 2026-10-17; only differences matter for the SRS, the date is a
+// convenience for the user.
+long daysFromCivil(int y, unsigned m, unsigned d) {
+    y -= m <= 2;
+    const long era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = static_cast<unsigned>(y - era * 400);
+    const unsigned doy = (153u * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + static_cast<long>(doe) - 719468;
+}
+
+void civilFromDays(long z, int* y, unsigned* m, unsigned* d) {
+    z += 719468;
+    const long era = (z >= 0 ? z : z - 146096) / 146097;
+    const unsigned doe = static_cast<unsigned>(z - era * 146097);
+    const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const int yr = static_cast<int>(yoe) + static_cast<int>(era) * 400;
+    const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const unsigned mp = (5 * doy + 2) / 153;
+    *d = doy - (153 * mp + 2) / 5 + 1;
+    *m = mp + (mp < 10 ? 3 : -9);
+    *y = yr + (*m <= 2);
+}
+
+void formatDate(uint16_t days, char* out, size_t n) {
+    static const long kBase = daysFromCivil(2026, 10, 17);
+    int y = 2026;
+    unsigned m = 10, d = 17;
+    civilFromDays(kBase + days, &y, &m, &d);
+    snprintf(out, n, "%04d-%02d-%02d", y, m, d);
+}
+
+// Date screen: shows today and offers to add days (the user's gap since the
+// last session, asked on a power-on boot, or a manual correction from the menu).
+constexpr int kDateRows = 4;
+const uint16_t kDateAdd[kDateRows] = {0, 1, 4, 14};
+
+void drawDate() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, "FECHA", 3, 3, kWhite, kGrey);
+    smallText(d, "lateral: atras", W - 3, 3, kWhite, kGrey, lgfx::top_right);
+    char date[16];
+    formatDate(gSrs.today(), date, sizeof date);
+    char line[40];
+    snprintf(line, sizeof line, "hoy: %s", date);
+    smallText(d, line, W / 2, 17, kYellow, kBlack, lgfx::top_center);
+
+    static const char* kLabels[kDateRows] = {"hoy mismo (0)", "1 día", "2-7 días", "más (14)"};
+    const int top = 32, rowH = 22;
+    for (int i = 0; i < kDateRows; ++i) {
+        const int y = top + i * rowH;
+        const bool sel = i == gDateSel;
+        const uint16_t bg = sel ? kHighlight : kBlack;
+        d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
+        if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
+        gRender.drawCentred(d, kLabels[i], 2, y + 1, W - 4, rowH - 4, 1, kWhite, bg,
+                            tgc::Renderer::kTextBuiltinSmall);
+    }
+    present();
+}
+
+// Applies the chosen number of days, persists it, rebuilds the queue (cards may
+// now be due) and shows the quiz.
+void applyDate() {
+    gSrs.advanceDays(kDateAdd[gDateSel]);
+    gSrs.save(gSrsIo);
+    gDirty = 0;
+    gQueue.rebuild(gPack, gSrs, gRng);
+    if (!newQuestion()) {
+        showDone();
+        return;
+    }
+    gScreen = Screen::Quiz;
+    drawScreen();
+}
+
 void drawScreen() {
     if (gScreen == Screen::Menu) drawMenu();
     else if (gScreen == Screen::Done) drawDone();
+    else if (gScreen == Screen::Date) drawDate();
     else drawQuiz();
 }
 
@@ -378,7 +479,7 @@ void openMenu() {
     gScreen = Screen::Menu;
     gMenuSel = 0;
     for (size_t i = 0; i < gPacks.size(); ++i)
-        if (gPacks[i] == gCurrentPack) gMenuSel = static_cast<int>(i);
+        if (gPacks[i] == gCurrentPack) gMenuSel = static_cast<int>(i) + 1;  // row 0 is the date
     drawScreen();
 }
 
@@ -388,10 +489,18 @@ void closeMenu() {
 }
 
 void selectPack() {
+    if (gMenuSel == 0) {  // the date row
+        gAfterDate = Screen::Menu;
+        gDateSel = 0;
+        gScreen = Screen::Date;
+        drawScreen();
+        return;
+    }
     bool loaded = false;
     gExtraNew = 0;
-    if (gMenuSel >= 0 && gMenuSel < static_cast<int>(gPacks.size())) {
-        const String path = gPacks[gMenuSel];
+    const int pi = gMenuSel - 1;
+    if (pi >= 0 && pi < static_cast<int>(gPacks.size())) {
+        const String path = gPacks[pi];
         if (loadPack(path)) {
             gPrefs.putString("pack", path);
             loaded = true;
@@ -440,6 +549,10 @@ void halt() {
 void setup() {
     Serial.begin(115200);
     tgc::board::begin();
+
+    gPoweredOff = !(gPowerMagic == kPowerMagic && gPowerMagicInv == ~kPowerMagic);
+    gPowerMagic = kPowerMagic;
+    gPowerMagicInv = ~kPowerMagic;
     auto& disp = tgc::board::display();
     W = tgc::board::width();
     H = tgc::board::height();
@@ -483,12 +596,24 @@ void setup() {
     gQueue.rebuild(gPack, gSrs, gRng);  // loadPack rebuilt with an empty store
     uint32_t due = 0, fresh = 0;
     packDueNew(&due, &fresh);
-    Serial.printf("srs: day %u, records %u, due %u, new %u%s\n", (unsigned)gSrs.today(),
-                  (unsigned)gSrs.count(), (unsigned)due, (unsigned)fresh,
-                  srsLoaded ? "" : " (new)");
 
-    if (!newQuestion()) showDone();
-    else drawScreen();
+    char today[16];
+    formatDate(gSrs.today(), today, sizeof today);
+    Serial.printf("srs: day %u (%s), records %u, due %u, new %u%s, powered_off=%d\n",
+                  (unsigned)gSrs.today(), today, (unsigned)gSrs.count(), (unsigned)due,
+                  (unsigned)fresh, srsLoaded ? "" : " (new)", gPoweredOff ? 1 : 0);
+
+    if (!newQuestion()) {
+        showDone();
+    } else if (gPoweredOff && gSrs.count() > 0) {
+        // The device was powered off, so the elapsed days are unknown: ask.
+        gAfterDate = Screen::Quiz;
+        gDateSel = 0;
+        gScreen = Screen::Date;
+        drawScreen();
+    } else {
+        drawScreen();
+    }
 }
 
 // One button drives everything: a tap cycles the highlight (or, once revealed,
@@ -550,12 +675,23 @@ void loop() {
     const int b = keyB.poll(tgc::board::isHeld(Button::Next), t, tgc::board::kHoldMs);
     if (gScreen == Screen::Menu) {
         if (a == 1) {
-            gMenuSel = (gMenuSel + 1) % static_cast<int>(gPacks.size());
+            gMenuSel = (gMenuSel + 1) % (static_cast<int>(gPacks.size()) + 1);  // +1 for the date row
             drawScreen();
         } else if (a == 2) {
             selectPack();
         }
         if (b) closeMenu();  // side button backs out of the menu
+    } else if (gScreen == Screen::Date) {
+        if (a == 1) {
+            gDateSel = (gDateSel + 1) % kDateRows;
+            drawScreen();
+        } else if (a == 2) {
+            applyDate();
+        }
+        if (b) {  // cancel: back where we came from
+            gScreen = gAfterDate;
+            drawScreen();
+        }
     } else if (gScreen == Screen::Done) {
         if (b == 2) {
             openMenu();
