@@ -14,6 +14,7 @@
 #include "pack/PackReader.h"
 #include "platform/FsPackSource.h"
 #include "platform/FsSrsFile.h"
+#include "platform/WifiPortal.h"
 #include "quiz/Quiz.h"
 #include "render/Renderer.h"
 #include "srs/Queue.h"
@@ -53,7 +54,7 @@ struct UiStrings {
     const char* settingsTitle;
     const char* decksTitle;
     const char* backHint;
-    const char* menuRows[8];  // continue, decks, date, new/day, speed, stats, orientation, language
+    const char* menuRows[9];  // continue, decks, date, new/day, speed, stats, wifi, orientation, language
     const char* newPerDayTitle;
     const char* speedTitle;
     const char* speedOff;
@@ -102,12 +103,15 @@ struct UiStrings {
     // table so a user can find their language whatever the current one is).
     const char* langTitle;
     const char* langRows[3];
+    // Wi-Fi portal screen.
+    const char* wifiTitle;
+    const char* wifiHint;
 };
 
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS", "side: back",
-    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Orientation", "Language"},
+    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi", "Orientation", "Language"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
     "DATE", {"today (0)", "1 day", "2-7 days", "more (14)"},
@@ -122,12 +126,13 @@ const UiStrings kUiEn = {
     "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
     "streak %u/%u", "time %s", "%uh %um", "%um %us", "%us",
     "LANGUAGE", {"Auto", "English", "Español"},
+    "WI-FI", "Open the URL on your phone and upload a .tgc",
 };
 
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS", "lateral: atrás",
-    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Orientacion", "Idioma"},
+    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi", "Orientacion", "Idioma"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", {"hoy (0)", "1 día", "2-7 días", "más (14)"},
@@ -143,6 +148,7 @@ const UiStrings kUiEs = {
     "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
     "racha %u/%u", "tiempo %s", "%uh %um", "%um %us", "%us",
     "IDIOMA", {"Auto", "English", "Español"},
+    "WI-FI", "Abre la URL en el móvil y sube un .tgc",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -189,7 +195,7 @@ uint32_t gLastAnswerAt = 0;
 int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
 
-enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail };
+enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi };
 // Screen::Choice is shared by the row pickers (see openChoice()).
 enum class Choice { NewPerDay, SlowMs, Orientation, UiLang };
 Screen gScreen = Screen::Quiz;
@@ -205,6 +211,13 @@ int gChoiceCount = 0;
 uint16_t gChoiceValues[4] = {0, 0, 0, 0};
 String gCurrentPack;
 Preferences gPrefs;
+
+// On-device Wi-Fi portal (roadmap phase 4). Started on the Wi-Fi screen and
+// stopped on exit. `gWifiUploadReady` is the boot-time "no packs yet" state:
+// the Wi-Fi screen is then the only screen and the app moves to the quiz as
+// soon as a pack has been uploaded.
+tgc::WifiPortal gPortal;
+bool gWifiUploadReady = false;
 
 int W, H;
 
@@ -504,7 +517,7 @@ void drawRow(lgfx::LovyanGFX& d, const char* label, int y, int h, bool sel) {
 
 // Settings home (hold the side button from the quiz): tap moves the highlight,
 // hold activates the row. Each row is a full-width box with a label.
-constexpr int kSettingRows = 8;
+constexpr int kSettingRows = 9;
 
 void drawMenu() {
     auto& d = *gCanvas;
@@ -766,6 +779,41 @@ void drawStats() {
     present();
 }
 
+// Wi-Fi portal screen (roadmap phase 4): the SSID and URL to join and open, a
+// hint, free space, how many packs were received this session and the portal's
+// last status line. Six short lines fit both orientations; the built-in GFX font
+// is used so accented Spanish renders. Safe before a pack is open (only the
+// built-in font is used, which does not touch the pack).
+void drawWifi() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    const int headerH = 14;
+    d.fillRect(0, 0, W, headerH, kGrey);
+    smallText(d, ui().wifiTitle, 3, 3, kWhite, kGrey);
+    drawBackHint(d);
+
+    const size_t total = LittleFS.totalBytes();
+    const size_t used = LittleFS.usedBytes();
+    const size_t freeB = total > used ? total - used : 0;
+    char freeLine[40];
+    snprintf(freeLine, sizeof freeLine, "free %u / %u KB", (unsigned)(freeB / 1024),
+             (unsigned)(total / 1024));
+    char upLine[40];
+    snprintf(upLine, sizeof upLine, "uploaded: %u", (unsigned)gPortal.uploadedPacks());
+
+    const char* lines[] = {gPortal.ssid(), gPortal.url(), ui().wifiHint, freeLine, upLine,
+                           gPortal.lastMessage()};
+    constexpr int kN = 6;
+    const int top = headerH + 4;
+    int step = (H - top - 2) / kN;
+    if (step > 22) step = 22;
+    if (step < 10) step = 10;
+    for (int i = 0; i < kN; ++i)
+        gRender.drawCentred(d, lines[i], 2, top + i * step, W - 4, step - 2, 2,
+                            i == 1 ? kYellow : kWhite, kBlack, tgc::Renderer::kTextBuiltinSmall);
+    present();
+}
+
 // Joins a card's "、"-separated reading list into one display string, dropping
 // the okurigana markers ("た.べる、く.う" -> "たべる、くう") for display.
 std::string joinReadings(const char* list) {
@@ -978,6 +1026,7 @@ void drawScreen() {
     else if (gScreen == Screen::Date) drawDate();
     else if (gScreen == Screen::Stats) drawStats();
     else if (gScreen == Screen::Detail) drawDetail();
+    else if (gScreen == Screen::Wifi) drawWifi();
     else drawQuiz();
 }
 
@@ -1017,6 +1066,92 @@ bool loadPack(const String& path) {
     gQueue.rebuild(gPack, gSrs, gRng);
     Serial.printf("pack %s: %u cards, %u glyphs, lang %s\n", gPack.deckName(),
                   (unsigned)gPack.cardCount(), (unsigned)gPack.glyphCount(), gPack.header().lang);
+    return true;
+}
+
+// --- Wi-Fi portal integration (roadmap phase 4) ----------------------------
+
+void portalFillStats(tgc::PortalStats& out) {
+    const tgc::Stats st = gSrs.stats();
+    out.day = gSrs.today();
+    out.seen = st.seen;
+    out.learned = st.learned;
+    out.answers = st.answers;
+    out.reps = st.reps;
+    out.lapses = st.lapses;
+    out.streakCurrent = st.streakCurrent;
+    out.streakBest = st.streakBest;
+    out.reviewMs = st.reviewMs;
+    out.packCards = gPack.isOpen() ? gPack.cardCount() : 0;
+    out.packName = gPack.isOpen() ? gPack.deckName() : "";
+}
+
+// Called by the portal after /packs changed. Rescans the folder and keeps the
+// live pack usable: reload the loaded pack (its contents may have changed),
+// else fall back to the first remaining one, else leave no pack open.
+bool portalPacksChanged() {
+    listPacks(gPacks);
+    if (gPacks.empty()) {
+        gRender.end();
+        gPack.close();
+        gSource.reset();
+        gCurrentPack = "";
+        gPrefs.remove("pack");
+        gWifiUploadReady = true;  // nothing left to study -> upload-ready again
+        return false;
+    }
+    String want = gCurrentPack;
+    if (want.isEmpty() || std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end())
+        want = gPacks[0];
+    if (!loadPack(want) && !loadPack(gPacks[0])) return false;
+    gPrefs.putString("pack", gCurrentPack);
+    gQueue.rebuild(gPack, gSrs, gRng);
+    return true;
+}
+
+const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged};
+
+// Opens the Wi-Fi screen and starts the portal (from the settings home, or at
+// boot when there is no pack yet).
+void openWifi() {
+    gWifiUploadReady = gPacks.empty();
+    if (!gPortal.begin(kPortalHooks))
+        QLOG("W wifi: portal start failed (%s)\n", gPortal.lastMessage());
+    else
+        QLOG("W wifi: ssid=%s url=%s\n", gPortal.ssid(), gPortal.url());
+    gScreen = Screen::Wifi;
+    drawScreen();
+}
+
+// Leaves the Wi-Fi screen for the settings home. In the upload-ready state (no
+// pack at all) the side button does nothing: there is no quiz to return to.
+void closeWifi() {
+    if (gWifiUploadReady) return;
+    gPortal.end();
+    QLOG("W wifi: stopped\n");
+    gScreen = Screen::Menu;
+    drawScreen();
+}
+
+// Builds the quiz from the pack the portal loaded and switches to it.
+void startQuizFromPortal() {
+    gExtraNew = 0;
+    gQueue.rebuild(gPack, gSrs, gRng);
+    if (!newQuestion()) {
+        showDone();
+        return;
+    }
+    gScreen = Screen::Quiz;
+    drawScreen();
+}
+
+// On the boot-time upload screen, move on to the quiz once a pack is loaded.
+// True when it took over the screen.
+bool wifiUploadReadyToQuiz() {
+    if (!gWifiUploadReady || !gPack.isOpen()) return false;
+    gPortal.end();
+    gWifiUploadReady = false;
+    startQuizFromPortal();
     return true;
 }
 
@@ -1145,10 +1280,13 @@ void activateSetting() {
             gScreen = Screen::Stats;
             drawScreen();
             break;
-        case 6:  // Orientacion
+        case 6:  // Wi-Fi
+            openWifi();
+            break;
+        case 7:  // Orientacion
             openChoice(Choice::Orientation);
             break;
-        case 7:  // Idioma / Language
+        case 8:  // Idioma / Language
             openChoice(Choice::UiLang);
             break;
     }
@@ -1236,10 +1374,27 @@ void setup() {
         halt();
     }
     listPacks(gPacks);
+
+    // No packs yet: do not halt. Start the Wi-Fi portal so a pack can be
+    // uploaded from a phone (or downloaded from a URL); loop() moves on to the
+    // quiz as soon as one arrives. This is the practical answer to a fresh (or
+    // launcher-formatted) filesystem. A missing filesystem stays fatal above,
+    // and an AP that will not start leaves nothing to do, so that keeps the old
+    // error screen.
     if (gPacks.empty()) {
-        showError(ui().errNoPack, ui().errNoPackHint);
-        halt();
+        gSrs.begin(gSrsIo);
+        gSrs.beginSession();
+        if (!gPortal.begin(kPortalHooks)) {
+            showError(ui().errNoPack, ui().errNoPackHint);
+            halt();
+        }
+        gWifiUploadReady = true;
+        Serial.printf("wifi: no packs, upload-ready (ssid %s)\n", gPortal.ssid());
+        gScreen = Screen::Wifi;
+        drawScreen();
+        return;
     }
+
     String want = gPrefs.getString("pack", "");
     if (std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end()) want = gPacks[0];
     if (!loadPack(want)) {
@@ -1435,6 +1590,12 @@ void loop() {
                 drawDone();
             }
         }
+    } else if (gScreen == Screen::Wifi) {
+        gPortal.poll();
+        if (gPortal.consumeDirty()) drawScreen();
+        // On the boot-time upload screen, continue booting as soon as a pack has
+        // been uploaded; otherwise the side button leaves for the settings home.
+        if (!wifiUploadReadyToQuiz() && !gWifiUploadReady && b) closeWifi();
     } else {
         if (a == 1) tapAction();
         else if (a == 2) holdAction(keyA.downAt);

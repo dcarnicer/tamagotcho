@@ -8,6 +8,7 @@
  WaniKani* ─┤                                            ├─► .tgc ──► upload ──►├─ state/srs.bin ──► SRS (FSRS)
  CSV/Anki* ─┘                 font (Klee One) ─► glyphs ─┘      └─ config         Quiz engine ─► UI
                                                                                   Board HAL (StickS3 / T-Display-S3)
+        phone/laptop ──(open AP 192.168.4.1)──► Wi-Fi portal (HTTP) ──► /packs
  * later phases
 ```
 
@@ -34,6 +35,7 @@
 | `render/`     | Draw 4bpp glyphs, 1bpp stroke masks and UTF-8 text from pack glyphs onto a GFX canvas |
 | `quiz/`       | Build a question (prompt + 4 options) from a card and its distractors. Pure C++ |
 | `srs/`        | Scheduling (FSRS, phase 2) and persisted review state         |
+| `platform/`   | LittleFS-backed pack source and SRS state file, plus the on-device **Wi-Fi portal** (access point + HTTP server) for uploading, deleting and downloading packs and reading the statistics. Arduino only |
 | `ui/`         | Screens and input state machine                              |
 
 Pure-logic modules (`pack`, `quiz`, `srs`) must build in the `native`

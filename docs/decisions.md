@@ -386,3 +386,74 @@ Short log of non-obvious choices. Newest last.
   when it changes. With no stroke data the card is byte-for-byte today's card
   (no input-handling change).
 
+## 2026-10-17 – On-device Wi-Fi portal (phase 4)
+
+- **A small `platform/WifiPortal` class owns the AP and an `esp32 WebServer`**
+  (`begin`/`poll`/`end`), started from the new settings-home row "Wi-Fi" (or at
+  boot when there is no pack) and stopped on exit. It is decoupled from
+  `main.cpp` by a two-callback `Hooks` struct: one fills a `PortalStats` value
+  (SRS counters + loaded pack name/card count) and one is called after `/packs`
+  changes so the app rescans the folder, reloads the live pack and, when the
+  last pack is gone, re-enters the upload-ready state.
+- **The access point is open (no password), SSID `Tangocho-XXXX`** from the AP
+  MAC's last two bytes, IP 192.168.4.1. Deliberate trade-off: joining is
+  trivial, but anyone in radio range can list, upload or delete packs and read
+  the statistics. The portal is meant to be started for a moment and stopped;
+  this is stated on the page, in README and in the header.
+- **One self-contained HTML page, no external assets or JS**, at `/`, with the
+  pack list (size + delete), an upload form (`multipart/form-data`,
+  `accept=".tgc"`), a URL-download form, the SRS statistics and the free space.
+  `/api/stats` returns the same counters and the pack list as JSON. No auth.
+- **Uploads stream to `/packs/<name>`** with `server.upload()`; the body never
+  has to fit in RAM. The filename is reduced to a basename and restricted to
+  `[A-Za-z0-9._-]`, must end `.tgc`, and is length-capped, so a write can never
+  escape `/packs`. A whole-file size cap, a running cap and a **96 KB reserve**
+  (against the ~5.9 MB StickS3 filesystem) reject an upload that would fill the
+  disk. After writing, the first 4 bytes must be `"TNGC"` and a cheap
+  `PackReader` probe (PSRAM-backed) must open it; otherwise the file is deleted,
+  so a bad upload cannot strand the device.
+- **URL download is staged through `poll()`** so the on-device screen paints
+  "downloading..." before the (blocking) fetch starts; downloads stream via
+  `HTTPClient::getStream()` to `/packs/.fetch.tmp` and are only renamed over the
+  target after the same magic/probe validation, so a failed download leaves the
+  existing packs untouched. **Plain `http://` only**: TLS to arbitrary hosts is
+  untested and may fail on flash/memory, so `https://` is refused rather than
+  silently attempted. No resume yet.
+- **Trace channel:** the portal always logs over serial (`[wifi] ...`) because
+  upload/fetch results matter even when `TGC_QUIZ_LOG` is off; the app also logs
+  portal start/stop and the SSID/URL behind `TGC_QUIZ_LOG`.
+
+## 2026-10-17 – Empty filesystem boots into the Wi-Fi upload screen
+
+- A device whose filesystem has no pack no longer shows "No pack found" and
+  halts; it starts the portal and shows the Wi-Fi screen with instructions
+  ("upload-ready"). `loop()` polls the portal and, as soon as an upload (or URL
+  download) has loaded a pack, rebuilds the queue and goes to the quiz. This is
+  the practical answer to a fresh device and to a launcher-formatted filesystem,
+  where `uploadfs` is not available. `LittleFS.begin()` failing is still fatal
+  (the portal cannot help without a filesystem); so is an AP that will not
+  start, which keeps the old error screen.
+- In upload-ready mode the Wi-Fi screen is the **only** screen: the side button
+  is ignored, because there is no quiz to return to. The same state is re-entered
+  if every pack is deleted while the portal is running (the open pack is
+  closed); uploading a new pack continues into the quiz.
+
+## 2026-10-17 – M5Launcher and the app-only `.bin` (documented, not verified)
+
+- `pio run -e sticks3` produces `.pio/build/sticks3/firmware.bin`, an
+  **app-only** image (ESP image magic `0xE9`, no bootloader, no partition
+  table), as before; USB flashing with `-t upload`/`-t uploadfs` is unchanged.
+- Per the M5Launcher wiki, Launcher installs a normal app-only `.bin` into an
+  OTA app partition and manages **its own** partition table, attaching a
+  SPIFFS/LittleFS data partition (its docs mention a 448 KB minimum for an empty
+  data partition). Our `partitions/sticks3_8MB.csv` (2 MB app slot, `spiffs` at
+  `0x210000`) is not the table the launcher uses.
+- **Conclusion, stated honestly:** installing the app under M5Launcher is
+  plausible — our ~1.2 MB build should fit a launcher-created app partition —
+  but **we have not verified it on hardware**, and we cannot claim that the
+  launcher's filesystem partition is the one our `uploadfs` layout writes or
+  that it is large enough for multi-MB packs. Open question to settle on a real
+  StickS3. Until then, the **Wi-Fi upload is the reliable way** to populate
+  `/packs` once the firmware is running, because it does not depend on who owns
+  the filesystem partition. Written up in README.md.
+
