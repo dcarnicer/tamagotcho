@@ -24,6 +24,17 @@ void begin() {
     M5.Display.setBrightness(128);
     M5.BtnA.setHoldThresh(kHoldMs);
     M5.BtnB.setHoldThresh(kHoldMs);
+
+    // M5Unified probes for an I2C RTC at boot (BM8563/PCF8563 at 0x51). The
+    // StickS3 has none (specs list only the BMI270 and M5PM1 on I2C), so this
+    // stays silent unless a future board/unit actually has one -- in which case
+    // a battery-backed clock would give the SRS real elapsed time.
+    if (M5.Rtc.isEnabled()) {
+        m5::rtc_datetime_t dt;
+        if (M5.Rtc.getDateTime(&dt))
+            Serial.printf("rtc: %04d-%02d-%02d %02d:%02d:%02d\n", dt.date.year, dt.date.month,
+                          dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
+    }
 }
 
 void update() { M5.update(); }

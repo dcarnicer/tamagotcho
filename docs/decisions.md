@@ -154,9 +154,11 @@ Short log of non-obvious choices. Newest last.
 - The M5PM1 (I2C 0x6E) has an RTC domain with 32 B of retained RAM and a "timer
   counter" (0x38..0x3B), but after arming it the read-back is the programmed
   value (2 000 000 s) on every boot, including across a power-off: it is a reload
-  register, not a free-running clock. So the StickS3 has no accessible wall
-  clock and the session-day heuristic stays; real time needs Wi-Fi/NTP (phase 4)
-  or a user-set date. The prototype was removed.
+  register, not a free-running counter. **The StickS3 has no RTC chip at all**
+  (the official pinmap lists only the BMI270 and the M5PM1 on the internal I2C,
+  and M5Unified's RTC probe reports absent), so there is no accessible wall
+  clock. Real time would need Wi-Fi/NTP (phase 4) or a user-set date; the
+  session-day heuristic stays and the prototype was removed.
 - The boot rule was too loose anyway: `beginSession()` advanced the day whenever
   `answered_total > 0` (lifetime), so *every* reboot after the first answer
   advanced a day. It now advances only when the *previous session* had an
