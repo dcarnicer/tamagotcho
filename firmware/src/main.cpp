@@ -36,6 +36,7 @@ tgc::Question gQ;
 int gSel = 0;
 bool gRevealed = false;
 bool gNextModeIsReading = false;
+bool gNextReadingIsKun = false;
 
 int W, H;
 
@@ -85,17 +86,22 @@ bool findPack(String* path) {
 bool newQuestion() {
     for (int attempt = 0; attempt < 40; ++attempt) {
         uint32_t idx = gRng.below(gPack.cardCount());
+        // Ask for on'yomi and kun'yomi in turn, so both kinds show up.
+        tgc::ReadingKind want = gNextReadingIsKun ? tgc::ReadingKind::Kun : tgc::ReadingKind::On;
         tgc::QuizMode first = gNextModeIsReading ? tgc::QuizMode::Reading : tgc::QuizMode::Meaning;
         tgc::QuizMode second = gNextModeIsReading ? tgc::QuizMode::Meaning : tgc::QuizMode::Reading;
-        if (tgc::buildQuestion(gPack, idx, first, gRng, &gQ) ||
-            tgc::buildQuestion(gPack, idx, second, gRng, &gQ)) {
+        if (tgc::buildQuestion(gPack, idx, first, gRng, &gQ, want) ||
+            tgc::buildQuestion(gPack, idx, second, gRng, &gQ, want)) {
             gNextModeIsReading = !gNextModeIsReading;
+            if (gQ.mode == tgc::QuizMode::Reading) gNextReadingIsKun = !gNextReadingIsKun;
             gSel = 0;
             gRevealed = false;
             tgc::Card c;
             gPack.card(gQ.cardIndex, &c);
-            QLOG("Q %s U+%04X", gQ.mode == tgc::QuizMode::Reading ? "read" : "mean",
-                 (unsigned)c.codepoint);
+            const char* mk = gQ.mode == tgc::QuizMode::Reading
+                                 ? (gQ.readingKind == tgc::ReadingKind::Kun ? "read-kun" : "read-on")
+                                 : "mean";
+            QLOG("Q %s U+%04X", mk, (unsigned)c.codepoint);
             for (int i = 0; i < gQ.count; ++i)
                 QLOG(" |%s %s", i == gQ.correct ? "*" : " ", gQ.options[i].c_str());
             QLOG("\n");

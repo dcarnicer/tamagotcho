@@ -48,19 +48,30 @@ struct Question {
 };
 
 // Display helpers (exposed for tests).
-// Text before the first "; " (whole string if none).
-std::string firstMeaning(const char* meanings);
+// Meanings are "; "-separated ("day; sun; Japan"): how many, and the i-th
+// (0-based) one. Empty list -> 0 / "".
+int meaningCount(const char* meanings);
+std::string meaningAt(const char* meanings, int index);
 // First reading of a "、"-separated list with '.' okurigana markers removed
 // ("た.べる、く.う" -> "たべる"). Empty if the list is empty.
 std::string firstReadingDisplay(const char* readings);
 
-// Which reading a card offers: On if it has on'yomi, else Kun, else None.
+// True if the card has a reading of this kind (None -> false).
+bool hasReading(const Card& c, ReadingKind kind);
+
+// The reading a card offers when no kind is requested: On if it has on'yomi,
+// else Kun, else None.
 ReadingKind readingKindOf(const Card& c);
 
 // Builds a question for `cardIndex`. Returns false if the card cannot be asked
 // in this mode (no meaning / no reading) or fewer than 2 distinct options exist.
-// Distractors: the card's precomputed list first (same-kind reading in Reading
-// mode), then random cards of the same kind, then random cards of any kind.
-bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rng& rng, Question* out);
+// Distractors: the card's precomputed list first (cards with a reading of the
+// asked kind in Reading mode), then random cards of the same kind, then random
+// cards of any kind.
+// For Reading mode, `readingKind` is the kind to ask for; if the card has none
+// of that kind, its primary kind is used instead (so kanji with only on'yomi or
+// only kun'yomi can still be asked). None means the card's primary kind.
+bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rng& rng, Question* out,
+                   ReadingKind readingKind = ReadingKind::None);
 
 }  // namespace tgc

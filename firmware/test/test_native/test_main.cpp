@@ -8,6 +8,7 @@
 #include "pack/MemorySource.h"
 #include "pack/PackReader.h"
 #include "pack/StdioSource.h"
+#include "pack/Utf8.h"
 #include "quiz/Quiz.h"
 #include "render/Blend565.h"
 
@@ -125,6 +126,22 @@ std::vector<GlyphSpec> someGlyphs() {
     return g;
 }
 
+// True if the UTF-8 string contains a code point in [lo, hi].
+bool hasInRange(const std::string& s, uint32_t lo, uint32_t hi) {
+    const char* p = s.c_str();
+    while (uint32_t cp = utf8Next(&p))
+        if (cp >= lo && cp <= hi) return true;
+    return false;
+}
+
+// True if `s` is one of the "; "-separated meanings in `list`.
+bool isMeaningOf(const std::string& s, const char* list) {
+    int n = meaningCount(list);
+    for (int i = 0; i < n; ++i)
+        if (meaningAt(list, i) == s) return true;
+    return false;
+}
+
 }  // namespace
 
 // ------------------------------------------------------------------- tests
@@ -236,8 +253,12 @@ void test_rejects_bad_packs() {
 
 // ---------------------------------------------------------------- quiz
 void test_quiz_text_helpers() {
-    TEST_ASSERT_EQUAL_STRING("day", firstMeaning("day; sun; Japan").c_str());
-    TEST_ASSERT_EQUAL_STRING("fire", firstMeaning("fire").c_str());
+    TEST_ASSERT_EQUAL(3, meaningCount("day; sun; Japan"));
+    TEST_ASSERT_EQUAL(1, meaningCount("fire"));
+    TEST_ASSERT_EQUAL(0, meaningCount(""));
+    TEST_ASSERT_EQUAL_STRING("day", meaningAt("day; sun; Japan", 0).c_str());
+    TEST_ASSERT_EQUAL_STRING("Japan", meaningAt("day; sun; Japan", 2).c_str());
+    TEST_ASSERT_EQUAL_STRING("", meaningAt("fire", 1).c_str());
     TEST_ASSERT_EQUAL_STRING("たべる", firstReadingDisplay("た.べる、く.う").c_str());
     TEST_ASSERT_EQUAL_STRING("ニチ", firstReadingDisplay("ニチ、ジツ").c_str());
     TEST_ASSERT_EQUAL_STRING("", firstReadingDisplay("").c_str());
@@ -249,20 +270,29 @@ void test_quiz_meaning() {
     PackReader r;
     TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
     XorShiftRng rng(12345);
-    const char* answers[] = {"day", "month", "fire", "water", "tree", "middle"};
+    const char* meanings[] = {"day; sun; Japan", "month; moon",       "fire",
+                              "water",            "tree; wood",        "middle"};
+    int seen[6] = {0, 0, 0, 0, 0, 0};  // distinct answers per card
+    std::vector<std::string> uniq[6];
     for (int iter = 0; iter < 300; ++iter) {
         uint32_t idx = iter % 6;
         Question q;
         TEST_ASSERT_TRUE(buildQuestion(r, idx, QuizMode::Meaning, rng, &q));
         TEST_ASSERT_EQUAL(4, q.count);
-        TEST_ASSERT_EQUAL_STRING(answers[idx], q.options[q.correct].c_str());
+        TEST_ASSERT_TRUE(isMeaningOf(q.options[q.correct], meanings[idx]));
         TEST_ASSERT_EQUAL_UINT16(idx, q.optionCard[q.correct]);
         for (int i = 0; i < 4; ++i)
             for (int j = i + 1; j < 4; ++j) {
                 TEST_ASSERT_TRUE(q.options[i] != q.options[j]);
                 TEST_ASSERT_TRUE(q.optionCard[i] != q.optionCard[j]);
             }
+        std::string a = q.options[q.correct];
+        if (std::find(uniq[idx].begin(), uniq[idx].end(), a) == uniq[idx].end()) uniq[idx].push_back(a);
+        ++seen[idx];
     }
+    // A card with several meanings surfaces more than one of them over time.
+    TEST_ASSERT_TRUE(uniq[0].size() >= 2);
+    TEST_ASSERT_TRUE(uniq[1].size() >= 2);
 }
 
 void test_quiz_distractor_priority_and_shuffle() {
@@ -293,19 +323,33 @@ void test_quiz_reading_kinds() {
     PackReader r;
     TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
     XorShiftRng rng(99);
-    // Card 0 has on'yomi: 4 options, all on'yomi (5 on'yomi cards exist).
+    // Card 0 has on'yomi: with no kind requested it asks on'yomi; every option
+    // is an on'yomi (katakana), so the kun-only card 5 is excluded.
     for (int iter = 0; iter < 100; ++iter) {
         Question q;
         TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Reading, rng, &q));
         TEST_ASSERT_EQUAL(ReadingKind::On, q.readingKind);
         TEST_ASSERT_EQUAL(4, q.count);
         TEST_ASSERT_EQUAL_STRING("ニチ", q.options[q.correct].c_str());
-        for (int i = 0; i < 4; ++i) TEST_ASSERT_TRUE(q.optionCard[i] != 5);  // kun-only card excluded
+        for (int i = 0; i < 4; ++i) {
+            TEST_ASSERT_TRUE(q.optionCard[i] != 5);  // kun-only card excluded
+            TEST_ASSERT_TRUE(hasInRange(q.options[i], 0x30A0, 0x30FF));  // katakana
+        }
     }
-    // Card 5 is kun-only: no other kun-only card exists, so the relaxed pass
-    // fills the remaining options with other cards' readings.
+    // Requesting kun'yomi on a card that also has on'yomi asks the kun reading,
+    // and every option is a kun reading (hiragana).
+    for (int iter = 0; iter < 100; ++iter) {
+        Question q;
+        TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Reading, rng, &q, ReadingKind::Kun));
+        TEST_ASSERT_EQUAL(ReadingKind::Kun, q.readingKind);
+        TEST_ASSERT_EQUAL_STRING("ひ", q.options[q.correct].c_str());
+        TEST_ASSERT_EQUAL_UINT16(0, q.optionCard[q.correct]);
+        for (int i = 0; i < 4; ++i)
+            TEST_ASSERT_FALSE(hasInRange(q.options[i], 0x30A0, 0x30FF));  // no katakana
+    }
+    // Card 5 is kun-only: asking for on'yomi falls back to its primary kind.
     Question q;
-    TEST_ASSERT_TRUE(buildQuestion(r, 5, QuizMode::Reading, rng, &q));
+    TEST_ASSERT_TRUE(buildQuestion(r, 5, QuizMode::Reading, rng, &q, ReadingKind::On));
     TEST_ASSERT_EQUAL(ReadingKind::Kun, q.readingKind);
     TEST_ASSERT_EQUAL_STRING("なか", q.options[q.correct].c_str());
     TEST_ASSERT_EQUAL(4, q.count);
@@ -327,11 +371,14 @@ void test_quiz_unavailable_and_tiny() {
     TEST_ASSERT_FALSE(buildQuestion(r, 7, QuizMode::Meaning, rng, &q));
 }
 
-void test_quiz_duplicate_display_strings() {
+void test_quiz_meaning_gloss_collisions() {
+    // Card 1 shares "day" but can offer "other"; card 4 is only "day" and must
+    // be skipped so two options can never both be correct.
     std::vector<CardSpec> cs = {{0x65E5, "day", "ニチ", "", {1, 2}},
-                                {0x6708, "day; other", "ゲツ", "", {}},  // same first meaning
+                                {0x6708, "day; other", "ゲツ", "", {}},
                                 {0x706B, "fire", "カ", "", {}},
-                                {0x6C34, "water", "スイ", "", {}}};
+                                {0x6C34, "water", "スイ", "", {}},
+                                {0x5929, "day", "テン", "", {}}};
     std::vector<GlyphSpec> gl;
     for (auto& c : cs) { gl.push_back({0, c.cp, 4, 4}); gl.push_back({1, c.cp, 4, 4}); }
     auto buf = makePack(cs, gl);
@@ -339,9 +386,18 @@ void test_quiz_duplicate_display_strings() {
     PackReader r;
     TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
     XorShiftRng rng(5);
-    Question q;
-    TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Meaning, rng, &q));
-    TEST_ASSERT_EQUAL(3, q.count);  // "day" twice collapses
+    for (int iter = 0; iter < 100; ++iter) {
+        Question q;
+        TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Meaning, rng, &q));
+        TEST_ASSERT_EQUAL_STRING("day", q.options[q.correct].c_str());
+        TEST_ASSERT_EQUAL(4, q.count);
+        int dayCount = 0;
+        for (int i = 0; i < q.count; ++i) {
+            if (q.options[i] == "day") ++dayCount;
+            TEST_ASSERT_TRUE(q.optionCard[i] != 4);  // only-"day" card never offered
+        }
+        TEST_ASSERT_EQUAL(1, dayCount);
+    }
 }
 
 void test_blend() {
@@ -450,7 +506,7 @@ void test_mini_fixture() {
     Question q;
     TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Meaning, rng, &q));
     TEST_ASSERT_EQUAL(3, q.count);
-    TEST_ASSERT_EQUAL_STRING("day", q.options[q.correct].c_str());
+    TEST_ASSERT_TRUE(isMeaningOf(q.options[q.correct], "day; sun; Japan"));
     TEST_ASSERT_TRUE(buildQuestion(r, 1, QuizMode::Reading, rng, &q));
     TEST_ASSERT_EQUAL_STRING("ゲツ", q.options[q.correct].c_str());
 }
@@ -492,7 +548,7 @@ int main() {
     RUN_TEST(test_quiz_distractor_priority_and_shuffle);
     RUN_TEST(test_quiz_reading_kinds);
     RUN_TEST(test_quiz_unavailable_and_tiny);
-    RUN_TEST(test_quiz_duplicate_display_strings);
+    RUN_TEST(test_quiz_meaning_gloss_collisions);
     RUN_TEST(test_blend);
     RUN_TEST(test_mini_fixture);
     RUN_TEST(test_real_pack_if_present);

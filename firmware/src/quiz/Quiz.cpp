@@ -10,9 +10,22 @@ namespace {
 const char kReadingSep[] = "\xE3\x80\x81";  // U+3001 "、"
 }
 
-std::string firstMeaning(const char* m) {
-    const char* e = std::strstr(m, "; ");
-    return e ? std::string(m, e - m) : std::string(m);
+int meaningCount(const char* m) {
+    if (!m || !*m) return 0;
+    int n = 1;
+    for (const char* p = m; (p = std::strstr(p, "; ")) != nullptr; ++p) ++n;
+    return n;
+}
+
+std::string meaningAt(const char* m, int index) {
+    const char* p = m;
+    for (int i = 0; i < index; ++i) {
+        p = std::strstr(p, "; ");
+        if (!p) return std::string();
+        p += 2;
+    }
+    const char* e = std::strstr(p, "; ");
+    return e ? std::string(p, e - p) : std::string(p);
 }
 
 std::string firstReadingDisplay(const char* r) {
@@ -30,28 +43,61 @@ ReadingKind readingKindOf(const Card& c) {
     return ReadingKind::None;
 }
 
+bool hasReading(const Card& c, ReadingKind kind) {
+    switch (kind) {
+        case ReadingKind::On: return c.onyomi[0] != 0;
+        case ReadingKind::Kun: return c.kunyomi[0] != 0;
+        default: return false;
+    }
+}
+
 namespace {
 
-// Display text for `c` in this mode/kind; empty if not available.
-std::string displayFor(const Card& c, QuizMode mode, ReadingKind kind) {
-    if (mode == QuizMode::Meaning) return firstMeaning(c.meanings);
-    if (kind == ReadingKind::On) return firstReadingDisplay(c.onyomi);
-    if (kind == ReadingKind::Kun) return firstReadingDisplay(c.kunyomi);
+// Reading display for a card: the asked kind if the card has it, else the
+// card's primary kind (for the relaxed pass). Empty if it has no reading.
+std::string readingDisplay(const Card& c, ReadingKind kind) {
+    ReadingKind k = hasReading(c, kind) ? kind : readingKindOf(c);
+    if (k == ReadingKind::On) return firstReadingDisplay(c.onyomi);
+    if (k == ReadingKind::Kun) return firstReadingDisplay(c.kunyomi);
+    return std::string();
+}
+
+// One of the card's meanings at random.
+std::string randomMeaning(const char* m, Rng& rng) {
+    int n = meaningCount(m);
+    return n ? meaningAt(m, static_cast<int>(rng.below(static_cast<uint32_t>(n)))) : std::string();
+}
+
+// A random meaning not already among `used` (so options never share a gloss);
+// "" if every meaning is taken.
+std::string pickMeaning(const char* m, Rng& rng, const std::string* used, int usedN) {
+    int n = meaningCount(m);
+    if (n == 0) return std::string();
+    int start = static_cast<int>(rng.below(static_cast<uint32_t>(n)));
+    for (int k = 0; k < n; ++k) {
+        std::string s = meaningAt(m, (start + k) % n);
+        bool clash = false;
+        for (int i = 0; i < usedN; ++i)
+            if (used[i] == s) { clash = true; break; }
+        if (!clash) return s;
+    }
     return std::string();
 }
 
 }  // namespace
 
-bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rng& rng, Question* out) {
+bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rng& rng, Question* out,
+                   ReadingKind readingKind) {
     Card target;
     if (!pack.card(cardIndex, &target)) return false;
 
     ReadingKind kind = ReadingKind::None;
     if (mode == QuizMode::Reading) {
-        kind = readingKindOf(target);
+        kind = hasReading(target, readingKind) ? readingKind : readingKindOf(target);
         if (kind == ReadingKind::None) return false;
     }
-    std::string answer = displayFor(target, mode, kind);
+    std::string answer =
+        (mode == QuizMode::Meaning) ? randomMeaning(target.meanings, rng) : readingDisplay(target, kind);
     if (answer.empty()) return false;
 
     Question q;
@@ -65,11 +111,17 @@ bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rn
     // strict: in Reading mode only accept cards of the same reading kind.
     auto tryAdd = [&](uint32_t idx, bool strict) {
         if (n >= kMaxOptions || idx == cardIndex || idx >= pack.cardCount()) return;
+        for (int i = 0; i < n; ++i)
+            if (q.optionCard[i] == idx) return;  // card already an option
         Card c;
         if (!pack.card(idx, &c)) return;
-        ReadingKind k = readingKindOf(c);
-        if (mode == QuizMode::Reading && strict && k != kind) return;
-        std::string s = displayFor(c, mode, k);
+        std::string s;
+        if (mode == QuizMode::Meaning) {
+            s = pickMeaning(c.meanings, rng, q.options, n);
+        } else {
+            if (strict && !hasReading(c, kind)) return;
+            s = readingDisplay(c, kind);
+        }
         if (s.empty()) return;
         for (int i = 0; i < n; ++i)
             if (q.options[i] == s) return;

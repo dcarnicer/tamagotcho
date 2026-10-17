@@ -21,18 +21,19 @@ def same_level_similar_strokes(
 ) -> list[list[int]]:
     """Prefer same JLPT level, then closest stroke count; seeded tie-break.
 
-    Candidates sharing the first meaning with the target are skipped since they
-    would make the question ambiguous.
+    Candidates sharing *any* meaning with the target are skipped: the quiz picks
+    one of a card's meanings at random, so an overlap could make two options
+    correct at once.
     """
     result: list[list[int]] = []
     for i, c in enumerate(cards):
         rng = random.Random(seed * 1_000_003 + c.codepoint)
-        first = c.meanings[0].lower() if c.meanings else None
+        mine = {m.lower() for m in c.meanings}
         scored = []
         for j, o in enumerate(cards):
             if j == i:
                 continue
-            if first and o.meanings and o.meanings[0].lower() == first:
+            if mine & {m.lower() for m in o.meanings}:
                 continue
             scored.append(((o.jlpt != c.jlpt), abs(o.strokes - c.strokes), rng.random(), j))
         scored.sort()

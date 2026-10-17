@@ -48,3 +48,22 @@ Short log of non-obvious choices. Newest last.
   (glyphs are pre-rendered): 18 px (`--text-px`) looked too large for four
   options on the 135 px panel, 14 px is preferred on device. Builder default
   left at 18 pending a decision.
+
+## 2026-10-17 – On/kun readings and random meanings
+
+- **Reading questions ask both on'yomi and kun'yomi.** Before, any kanji with
+  on'yomi was always asked with it, so kun readings only appeared on kun-only
+  kanji. `buildQuestion` now takes the kind to ask for and the app alternates
+  on and kun; a requested kind falls back to the card's primary kind for
+  single-kind kanji. Distractors are matched by "has a reading of the asked
+  kind", not by the distractor's own primary kind.
+- **Meaning options pick one meaning at random** from the card's list (up to 3
+  per pack) instead of always the first, so a multi-meaning kanji surfaces all
+  of them over time. Each option is picked so it does not repeat a gloss already
+  shown; a card with no free meaning is dropped as a distractor.
+- **Distractors sharing *any* meaning with the target are excluded** by the
+  builder (`same_level_similar_strokes`), not just those sharing the first,
+  since the random pick could otherwise make two options correct at once.
+- Options are deduplicated by card index, not by display string: with random
+  meanings the same card could otherwise arrive twice and produce a different
+  gloss the second time.
