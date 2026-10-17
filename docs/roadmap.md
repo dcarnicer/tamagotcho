@@ -30,8 +30,18 @@ Scope for now: **kanji only** (no vocabulary decks).
       input (tilt to choose). Also: sync NTP time while connected and store an
       epoch in the SRS state, so the scheduler finally has real days (the
       StickS3 has no RTC; see docs/decisions.md).
+      - **Download packs over Wi-Fi** from a URL (or a small catalog/JSON),
+        with progress and resume, so a fresh device gets decks without
+        `uploadfs` and without a computer.
+      - **M5Launcher compatibility.** Ship the app-only `.bin` so it can be
+        installed as an app (the launcher attaches its own SPIFFS), and provide
+        a way to put packs into that launcher-managed filesystem — the Wi-Fi
+        pack download above is the intended answer, since the launcher's SPIFFS
+        starts empty and our `uploadfs` layout is not the one in use.
 - [ ] **Phase 5 – Release.** README with photos, licences/attribution, GitHub
-      releases, ESP Web Tools browser flasher, prebuilt packs.
+      releases, ESP Web Tools browser flasher, prebuilt packs. Host prebuilt
+      packs (with a small catalog the device can read) so the Wi-Fi download has
+      something to point at.
 
 ## Cross-cutting
 
