@@ -62,6 +62,8 @@ struct UiStrings {
     const char* dateTitle;
     const char* dateRows[4];
     const char* doneBadge;
+    // Font0 is 6 px/char and each done-screen line is centred on the 135 px
+    // portrait width, so every done line must stay short (about 21 chars).
     const char* doneAllReviewed;
     const char* doneDayFmt;
     const char* doneDueFmt;
@@ -107,8 +109,8 @@ const UiStrings kUiEs = {
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", {"hoy (0)", "1 día", "2-7 días", "más (14)"},
-    "FIN", "Todo repasado por ahora", "dia %u  %u tarjetas", "pendientes %u  nuevas %u",
-    "tap/hold: +10 nuevas", "lateral: menu",
+    "FIN", "Todo repasado", "dia %u  %u tarjetas", "vencen %u  nuevas %u",
+    "toque/larga: +10", "lateral: menu",
     "  %u/%u",
     "ESTADISTICAS", "vistos %u / %u", "pendientes %u  nuevas %u", "respuestas %u",
     "precisión %u%%", "aprendidas %u",
@@ -329,16 +331,20 @@ void drawQuiz() {
     if (kanjiH > H * 45 / 100) kanjiH = H * 45 / 100;
     if (k2m) {
         const char* prompt = gQ.options[gQ.correct].c_str();
+        // Landscape puts the meaning prompt in the left column (the kanji
+        // options are in the right one); portrait keeps the full width.
+        const int pX = 0;
+        const int pW = landscape ? leftW : colW;
         uint8_t set = tgc::Renderer::kTextBuiltin;
         if (!tgc::Renderer::builtinCanDraw(prompt)) set = tgc::kGlyphSetText;
-        else if (gRender.textWidth(prompt, set) > colW - 8) set = tgc::Renderer::kTextBuiltinSmall;
+        else if (gRender.textWidth(prompt, set) > pW - 8) set = tgc::Renderer::kTextBuiltinSmall;
         // The box must be at least one line tall; the prompt is centred in it.
         const int boxY = landscape ? headerH : headerH + 2;
         const int boxH = landscape ? H - headerH : kanjiH;
         int ml = (boxH - 4) / gRender.lineHeight(set);
         if (ml < 1) ml = 1;
         if (ml > 4) ml = 4;
-        gRender.drawCentred(d, prompt, colX + 3, boxY, colW - 6, boxH - (landscape ? 2 : 0), ml,
+        gRender.drawCentred(d, prompt, pX + 3, boxY, pW - 6, boxH - (landscape ? 2 : 0), ml,
                             kWhite, kBlack, set);
     } else if (landscape) {
         gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH, leftW, H - headerH,
@@ -431,6 +437,16 @@ void drawQuiz() {
     present();
 }
 
+// Pick the built-in font size for a menu/list label: the 2x font when the box
+// is at least `minH` tall and the label fits `w`, else the 1x font so long or
+// narrow labels are never clipped.
+uint8_t labelFont(const char* label, int h, int minH, int w) {
+    if (h < minH) return tgc::Renderer::kTextBuiltinSmall;
+    if (gRender.textWidth(label, tgc::Renderer::kTextBuiltin) > w)
+        return tgc::Renderer::kTextBuiltinSmall;
+    return tgc::Renderer::kTextBuiltin;
+}
+
 // One full-width highlighted row for the settings home and the choice screens,
 // labelled with the built-in GFX font so accented Spanish renders. `h` is the
 // box height; the 2x font is used when it fits, the 1x one otherwise (needed on
@@ -439,8 +455,7 @@ void drawRow(lgfx::LovyanGFX& d, const char* label, int y, int h, bool sel) {
     const uint16_t bg = sel ? kHighlight : kBlack;
     d.fillRoundRect(2, y, W - 4, h, 5, bg);
     if (sel) d.drawRoundRect(2, y, W - 4, h, 5, kWhite);
-    const uint8_t set =
-        h >= 22 ? tgc::Renderer::kTextBuiltin : tgc::Renderer::kTextBuiltinSmall;
+    const uint8_t set = labelFont(label, h, 22, W - 10);
     gRender.drawCentred(d, label, 4, y + 1, W - 8, h - 2, 1, kWhite, bg, set);
 }
 
@@ -628,14 +643,13 @@ void drawDate() {
         rowH = (H - top - 2) / kDateRows;
         if (rowH < 12) rowH = 12;
     }
-    const uint8_t set =
-        rowH - 4 >= 22 ? tgc::Renderer::kTextBuiltin : tgc::Renderer::kTextBuiltinSmall;
     for (int i = 0; i < kDateRows; ++i) {
         const int y = top + i * rowH;
         const bool sel = i == gDateSel;
         const uint16_t bg = sel ? kHighlight : kBlack;
         d.fillRoundRect(2, y, W - 4, rowH - 4, 5, bg);
         if (sel) d.drawRoundRect(2, y, W - 4, rowH - 4, 5, kWhite);
+        const uint8_t set = labelFont(ui().dateRows[i], rowH - 4, 22, W - 10);
         gRender.drawCentred(d, ui().dateRows[i], 4, y + 2, W - 8, rowH - 8, 1, kWhite, bg, set);
     }
     present();
@@ -676,11 +690,11 @@ void drawStats() {
         step = (H - top - 2) / 6;
         if (step < 10) step = 10;
     }
-    const uint8_t set =
-        step - 2 >= 18 ? tgc::Renderer::kTextBuiltin : tgc::Renderer::kTextBuiltinSmall;
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 6; ++i) {
+        const uint8_t set = labelFont(lines[i], step - 2, 18, W - 4);
         gRender.drawCentred(d, lines[i], 2, top + i * step, W - 4, step - 4, 1,
                             i == 0 ? kYellow : kWhite, kBlack, set);
+    }
     present();
 }
 
