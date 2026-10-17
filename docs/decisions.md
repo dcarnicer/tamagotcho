@@ -259,3 +259,62 @@ Short log of non-obvious choices. Newest last.
   available height and drop to the built-in 1x font when 2x no longer fits;
   portrait keeps its original steps and 2x font exactly.
 
+## 2026-10-17 – Mistake detail card
+
+- After a **wrong** answer the reveal is no longer "tap → next": a tap (or hold)
+  now opens a new `Screen::Detail` card and the **next** input starts the
+  following question. A correct answer keeps the old one-tap flow. The last
+  answer's correctness lives in `gLastCorrect`; `afterReveal()` decides.
+- The card shows the kanji (set 0, large), all meanings, all on/kun readings (the
+  okurigana `.` markers stripped by `joinReadings`), the stroke count and the
+  card's own accuracy `(reps - lapses)/reps` from the SRS record when it has one
+  ("correct 3/5"). No new storage: everything is already in the card + record.
+- Portrait: kanji centred in the upper ~45% (the quiz's `min(large_px + 6, 45%)`
+  box), details below. Landscape: two columns mirroring the quiz (kanji left,
+  details right). Latin values use the built-in font when it covers them (2x,
+  shrunk to 1x), else the pack glyphs; readings use **set 2**, falling back to
+  set 3 only when set 2 overflows and set 3 fits (kana are short and set 2 keeps
+  the card compact). The meanings block takes the height left after reserving a
+  label + one line per optional reading and one line each for strokes/accuracy;
+  it ellipsises rather than clipping, as elsewhere in `main.cpp`.
+- Input: tap/hold/side tap → next question; side hold → the settings home.
+  `TGC_QUIZ_LOG` gains a `D U+xxxx` line when the card is shown.
+
+## 2026-10-17 – Streak and review time in the SRS header
+
+- The day streak and the lifetime review time reuse the header's reserved bytes
+  32..47 (`streak_current`, `streak_best`, `last_study_day`, `review_ms`); see
+  docs/srs.md §4.1. **No version bump**: the bytes were documented reserved, are
+  not validated, and `0` means "absent", so an old file loads as zeros and an old
+  reader still validates the CRC over the whole (unchanged, 48-byte) header.
+- The streak is advanced inside `grade()` on the first answer of a new SRS day
+  (exactly the next day → +1, any other day → 1); same-day answers never change
+  it; both counters saturate at `0xFFFF`. Known quirk: `last_study_day == 0`
+  doubles as the "never studied" sentinel, so the very first answer on day index
+  `0` (the fresh-store day) does not start a streak; it disappears after the
+  first day change. Documented rather than special-cased to keep the header
+  field's "0 = absent" meaning.
+- `addReviewMs()` is called from `holdAction()` with the same `rt_ms` that grades
+  the answer, so there is no new timing source. `Stats` grows `streakCurrent`/
+  `streakBest`/`reviewMs` and `Screen::Stats` gains "streak C/B" and "time Xh Ym"
+  lines (localised; the duration picks h/m, m/s or s).
+- Per-kanji accuracy stays derivable from the record (`(reps - lapses) / reps`)
+  and is surfaced by the detail card; no per-card storage was added.
+
+## 2026-10-17 – On-device UI language picker
+
+- The UI language used to be purely pack-driven (`setUiForLang` on the pack's
+  `lang`). A new NVS preference (`tangocho`/`ui`, int) adds **Auto (0, the
+  default)**, English (1) and Español (2). The settings home gains a
+  "Language"/"Idioma" row that opens the shared `Screen::Choice` with the three
+  endonyms (Auto / English / Español); applying persists the value and re-renders
+  immediately. Auto is byte-for-byte today's behaviour ("es" → Spanish, anything
+  else → English), so nothing changes unless the user chooses.
+- The decision is a tiny pure helper, `ui/UiLang.h`'s
+  `uiLangCodeFor(pref, packLang)` (header-only, native-tested through `-Isrc`).
+  English/Spanish force the table regardless of the pack, so an explicit choice
+  survives a pack in another language; an unknown preference behaves like Auto.
+- The settings home now has **8 rows**; `drawMenu`'s existing step/`labelFont`
+  fallback already shrinks the rows to fit both orientations (portrait keeps the
+  2x font for short labels and drops the long ones to 1x, landscape uses 1x).
+

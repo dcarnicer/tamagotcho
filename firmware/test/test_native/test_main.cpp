@@ -12,6 +12,7 @@
 #include "quiz/Quiz.h"
 #include "render/Blend565.h"
 #include "render/GlcdCp437.h"
+#include "ui/UiLang.h"
 
 using namespace tgc;
 
@@ -666,6 +667,32 @@ void test_real_pack_if_present() {
 void setUp() {}
 void tearDown() {}
 
+// The UI-language preference: Auto follows the pack, English/Spanish force the
+// table, and anything unknown falls back to Auto. Pure (ui/UiLang.h).
+void test_ui_lang_code() {
+    using tgc::uiLangCodeFor;
+    using tgc::kUiLangAuto;
+    using tgc::kUiLangEnglish;
+    using tgc::kUiLangSpanish;
+
+    // Auto reproduces today's pack-driven behaviour.
+    TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(kUiLangAuto, "es"));
+    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(kUiLangAuto, "en"));
+    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(kUiLangAuto, "fr"));
+    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(kUiLangAuto, ""));
+    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(kUiLangAuto, nullptr));
+
+    // Explicit choices ignore the pack.
+    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(kUiLangEnglish, "es"));
+    TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(kUiLangSpanish, "en"));
+    TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(kUiLangSpanish, ""));
+    TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(kUiLangSpanish, nullptr));
+
+    // Unknown values behave like Auto.
+    TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(99, "es"));
+    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(-1, "fr"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_open_and_header);
@@ -686,5 +713,6 @@ int main() {
     RUN_TEST(test_blend);
     RUN_TEST(test_mini_fixture);
     RUN_TEST(test_real_pack_if_present);
+    RUN_TEST(test_ui_lang_code);
     return UNITY_END();
 }

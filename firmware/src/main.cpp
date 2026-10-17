@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "board/Board.h"
@@ -17,6 +18,7 @@
 #include "render/Renderer.h"
 #include "srs/Queue.h"
 #include "srs/SrsStore.h"
+#include "ui/UiLang.h"
 
 using tgc::board::Button;
 
@@ -51,7 +53,7 @@ struct UiStrings {
     const char* settingsTitle;
     const char* decksTitle;
     const char* backHint;
-    const char* menuRows[7];  // continue, decks, date, new/day, speed, stats, orientation
+    const char* menuRows[8];  // continue, decks, date, new/day, speed, stats, orientation, language
     const char* newPerDayTitle;
     const char* speedTitle;
     const char* speedOff;
@@ -83,12 +85,29 @@ struct UiStrings {
     const char* errOpenPack;
     const char* orientTitle;
     const char* orientRows[2];  // portrait, landscape
+    // Detail card (shown after a wrong answer). `detailOn`/`detailKun` label the
+    // on'yomi/kun'yomi lines; the meanings label reuses quizMeaning.
+    const char* detailTitle;
+    const char* detailOn;
+    const char* detailKun;
+    const char* detailStrokesFmt;
+    const char* detailAccuracyFmt;
+    // Statistics: day streak and total time on questions.
+    const char* statsStreakFmt;  // current, best
+    const char* statsTimeFmt;    // whole line, %s = the formatted duration
+    const char* statsTimeHM;     // "%uh %um"
+    const char* statsTimeMS;     // "%um %us"
+    const char* statsTimeS;      // "%us"
+    // UI-language picker: the title and the three rows (endonyms, same in every
+    // table so a user can find their language whatever the current one is).
+    const char* langTitle;
+    const char* langRows[3];
 };
 
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS", "side: back",
-    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Orientation"},
+    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Orientation", "Language"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
     "DATE", {"today (0)", "1 day", "2-7 days", "more (14)"},
@@ -100,12 +119,15 @@ const UiStrings kUiEn = {
     "No pack found", "Put a .tgc in data/packs/ then run uploadfs",
     "Cannot open pack",
     "ORIENTATION", {"Portrait", "Landscape"},
+    "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
+    "streak %u/%u", "time %s", "%uh %um", "%um %us", "%us",
+    "LANGUAGE", {"Auto", "English", "Español"},
 };
 
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS", "lateral: atrás",
-    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Orientacion"},
+    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Orientacion", "Idioma"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", {"hoy (0)", "1 día", "2-7 días", "más (14)"},
@@ -118,13 +140,23 @@ const UiStrings kUiEs = {
     "No hay ningún mazo", "Pon un .tgc en data/packs/ y ejecuta uploadfs",
     "No se puede abrir el mazo",
     "ORIENTACION", {"Vertical", "Horizontal"},
+    "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
+    "racha %u/%u", "tiempo %s", "%uh %um", "%um %us", "%us",
+    "IDIOMA", {"Auto", "English", "Español"},
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
 const UiStrings& ui() { return *gUi; }
 
-// "es" selects the Spanish table; anything else (including no pack yet) is English.
-void setUiForLang(const char* lang) { gUi = (lang && strcmp(lang, "es") == 0) ? &kUiEs : &kUiEn; }
+// NVS `tangocho`/`ui`: the UI-language preference (Auto/English/Spanish). Auto,
+// the default, follows the pack language exactly as before.
+int gUiLangPref = tgc::kUiLangAuto;
+
+// "es" selects the Spanish table; anything else (including no pack yet) is
+// English. The user preference (see UiLang.h) decides when Auto is not set.
+void setUiForLang(const char* lang) {
+    gUi = (std::strcmp(tgc::uiLangCodeFor(gUiLangPref, lang), "es") == 0) ? &kUiEs : &kUiEn;
+}
 
 lgfx::LGFX_Sprite* gCanvas = nullptr;  // full-screen back buffer in PSRAM
 tgc::PackReader gPack;
@@ -135,6 +167,7 @@ tgc::XorShiftRng gRng;
 tgc::Question gQ;
 int gSel = 0;
 bool gRevealed = false;
+bool gLastCorrect = false;  // outcome of the last answer (drives the detail card)
 bool gNextReadingIsKun = false;
 
 tgc::SrsStore gSrs;
@@ -146,9 +179,9 @@ uint32_t gLastAnswerAt = 0;
 int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
 
-enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats };
+enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail };
 // Screen::Choice is shared by the row pickers (see openChoice()).
-enum class Choice { NewPerDay, SlowMs, Orientation };
+enum class Choice { NewPerDay, SlowMs, Orientation, UiLang };
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
@@ -461,7 +494,7 @@ void drawRow(lgfx::LovyanGFX& d, const char* label, int y, int h, bool sel) {
 
 // Settings home (hold the side button from the quiz): tap moves the highlight,
 // hold activates the row. Each row is a full-width box with a label.
-constexpr int kSettingRows = 7;
+constexpr int kSettingRows = 8;
 
 void drawMenu() {
     auto& d = *gCanvas;
@@ -525,15 +558,16 @@ void drawDecks() {
     present();
 }
 
-// Generic four-row choice screen: a title and the candidate values. Hold applies
-// the highlighted value; the side button cancels back to the settings home.
+// Generic choice screen: a title and the candidate values. Hold applies the
+// highlighted value; the side button cancels back to the settings home.
 void drawChoice() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
-    const char* title = gChoice == Choice::NewPerDay    ? ui().newPerDayTitle
-                        : gChoice == Choice::SlowMs     ? ui().speedTitle
-                                                        : ui().orientTitle;
+    const char* title = gChoice == Choice::NewPerDay  ? ui().newPerDayTitle
+                        : gChoice == Choice::SlowMs   ? ui().speedTitle
+                        : gChoice == Choice::Orientation ? ui().orientTitle
+                                                         : ui().langTitle;
     smallText(d, title, 3, 3, kWhite, kGrey);
     drawBackHint(d);
 
@@ -550,6 +584,8 @@ void drawChoice() {
         char label[16];
         if (gChoice == Choice::Orientation) {
             snprintf(label, sizeof label, "%s", ui().orientRows[i]);
+        } else if (gChoice == Choice::UiLang) {
+            snprintf(label, sizeof label, "%s", ui().langRows[i]);
         } else if (gChoice == Choice::SlowMs) {
             if (gChoiceValues[i] == 0xFFFF) snprintf(label, sizeof label, "%s", ui().speedOff);
             else snprintf(label, sizeof label, ui().speedSecondsFmt, gChoiceValues[i] / 1000.0f);
@@ -655,9 +691,25 @@ void drawDate() {
     present();
 }
 
-// Statistics screen (opened from the settings home): the internal date, cards
-// seen out of the loaded pack, its due/new counts, and the lifetime answer
-// counters from the SRS store. Read-only; the side button returns to settings.
+// "2h 5m", "5m 30s" or "30s" depending on the magnitude. The unit strings come
+// from UiStrings so a language can change them; the result stays short enough
+// for the 135 px portrait width (the stats line shrinks to the 1x font if not).
+void formatReviewTime(uint32_t ms, char* out, size_t n) {
+    const uint32_t totalS = ms / 1000u;
+    const uint32_t mins = totalS / 60u;
+    const uint32_t hours = mins / 60u;
+    if (hours > 0)
+        snprintf(out, n, ui().statsTimeHM, (unsigned)hours, (unsigned)(mins % 60u));
+    else if (mins > 0)
+        snprintf(out, n, ui().statsTimeMS, (unsigned)mins, (unsigned)(totalS % 60u));
+    else
+        snprintf(out, n, ui().statsTimeS, (unsigned)totalS);
+}
+
+// Statistics screen (opened from the settings home): the internal date, the day
+// streak and total time on questions, cards seen out of the loaded pack, its
+// due/new counts, and the lifetime answer counters from the SRS store. Read-only;
+// the side button returns to settings.
 void drawStats() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
@@ -674,28 +726,171 @@ void drawStats() {
     const uint32_t acc = st.reps ? (st.reps > st.lapses ? st.reps - st.lapses : 0) * 100u / st.reps
                                  : 0;
 
-    char date[16], seen[24], dueNew[32], answers[24], accuracy[24], learned[24];
+    char date[16], streak[24], timeLine[32], seen[24], dueNew[32], answers[24], accuracy[24],
+        learned[24], duration[16];
     formatDate(gSrs.today(), date, sizeof date);
+    snprintf(streak, sizeof streak, ui().statsStreakFmt, (unsigned)st.streakCurrent,
+             (unsigned)st.streakBest);
+    formatReviewTime(st.reviewMs, duration, sizeof duration);
+    snprintf(timeLine, sizeof timeLine, ui().statsTimeFmt, duration);
     snprintf(seen, sizeof seen, ui().statsSeenFmt, (unsigned)st.seen, (unsigned)gPack.cardCount());
     snprintf(dueNew, sizeof dueNew, ui().statsDueNewFmt, (unsigned)due, (unsigned)fresh);
     snprintf(answers, sizeof answers, ui().statsAnswersFmt, (unsigned)st.answers);
     snprintf(accuracy, sizeof accuracy, ui().statsAccuracyFmt, (unsigned)acc);
     snprintf(learned, sizeof learned, ui().statsLearnedFmt, (unsigned)st.learned);
 
-    const char* lines[] = {date, seen, dueNew, answers, accuracy, learned};
+    const char* lines[] = {date, streak, timeLine, seen, dueNew, answers, accuracy, learned};
+    constexpr int kStatsLines = 8;
     // Shrink the line step on the short landscape screen; portrait keeps 26/24.
     const int top = 26;
     int step = 24;
-    if (top + step * 6 > H) {
-        step = (H - top - 2) / 6;
+    if (top + step * kStatsLines > H) {
+        step = (H - top - 2) / kStatsLines;
         if (step < 10) step = 10;
     }
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < kStatsLines; ++i) {
         const uint8_t set = labelFont(lines[i], step - 2, 18, W - 4);
         gRender.drawCentred(d, lines[i], 2, top + i * step, W - 4, step - 4, 1,
                             i == 0 ? kYellow : kWhite, kBlack, set);
     }
     present();
+}
+
+// Joins a card's "、"-separated reading list into one display string, dropping
+// the okurigana markers ("た.べる、く.う" -> "たべる、くう") for display.
+std::string joinReadings(const char* list) {
+    std::string out;
+    if (!list || !*list) return out;
+    const char* kSep = "\xE3\x80\x81";  // U+3001 "、"
+    const char* p = list;
+    while (*p) {
+        const char* e = std::strstr(p, kSep);
+        const size_t n = e ? static_cast<size_t>(e - p) : std::strlen(p);
+        for (size_t i = 0; i < n; ++i)
+            if (p[i] != '.') out += p[i];
+        if (!e) break;
+        out += kSep;
+        p = e + 3;
+    }
+    return out;
+}
+
+// Detail card (roadmap phase 3): a tap after a wrong reveal opens this read-only
+// card with the kanji, all meanings, all on/kun readings (okurigana dots
+// removed), the stroke count and this card's own accuracy from the SRS record.
+// Portrait centres the kanji in the upper ~45% with the details below; landscape
+// mirrors the quiz (kanji left, details right). Japanese readings use the pack's
+// kana (set 2, falling back to set 3 by width as the quiz does); Latin values use
+// the built-in font when it can draw them (2x, shrunk to 1x), else pack glyphs.
+void drawDetail() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    const int headerH = 14;
+    d.fillRect(0, 0, W, headerH, kGrey);
+    smallText(d, gPack.deckName(), 3, 3, kWhite, kGrey);
+    smallText(d, ui().detailTitle, W - 3, 3, kWhite, kGrey, lgfx::top_right);
+
+    tgc::Card card;
+    gPack.card(gQ.cardIndex, &card);
+    const int largePx = gPack.header().largePx ? gPack.header().largePx : 64;
+    const bool landscape = W > H;
+
+    int x, w, top, bottom;
+    if (landscape) {
+        const int leftW = std::max(largePx, W * 2 / 5);
+        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH, leftW, H - headerH,
+                          kWhite, kBlack);
+        x = leftW + 3;
+        w = W - leftW - 6;
+        top = headerH + 2;
+        bottom = H - 2;
+    } else {
+        int kanjiH = largePx + 6;
+        if (kanjiH > H * 45 / 100) kanjiH = H * 45 / 100;
+        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH + 2, W, kanjiH, kWhite,
+                          kBlack);
+        x = 3;
+        w = W - 6;
+        top = headerH + 2 + kanjiH;
+        bottom = H - 2;
+    }
+
+    const int lh = gRender.lineHeight(tgc::kGlyphSetText);
+    const std::string on = joinReadings(card.onyomi);
+    const std::string kun = joinReadings(card.kunyomi);
+    const tgc::Record* rec = gSrs.find(card.codepoint);
+    const bool hasAcc = rec && rec->reps > 0;
+
+    // Kana: set 2, falling back to set 3 only when set 2 overflows and set 3 fits
+    // (mirrors the quiz's width test; in practice readings are short).
+    auto kanaSet = [&](const std::string& s) -> uint8_t {
+        if (gRender.textWidth(s.c_str(), tgc::kGlyphSetText) > w &&
+            gRender.textWidth(s.c_str(), tgc::kGlyphSetOption) <= w)
+            return tgc::kGlyphSetOption;
+        return tgc::kGlyphSetText;
+    };
+    // Latin: the built-in font when it covers the text (2x, shrunk to 1x), else
+    // the pack glyphs (same fallback rules as the quiz meaning options).
+    auto latinSet = [&](const char* s) -> uint8_t {
+        if (!tgc::Renderer::builtinCanDraw(s)) return tgc::kGlyphSetText;
+        return gRender.textWidth(s, tgc::Renderer::kTextBuiltin) <= w
+                   ? static_cast<uint8_t>(tgc::Renderer::kTextBuiltin)
+                   : static_cast<uint8_t>(tgc::Renderer::kTextBuiltinSmall);
+    };
+
+    // Reserve a label + one line for each optional reading and one short line
+    // each for strokes and accuracy, so the meanings block only takes what is
+    // left (it ellipsises rather than clipping, as elsewhere in this file).
+    int reserve = 11;                                       // strokes line
+    if (!on.empty()) reserve += 8 + lh;                     // ON label + value
+    if (!kun.empty()) reserve += 8 + lh;                    // KUN label + value
+    if (hasAcc) reserve += 11;                              // accuracy line
+    int meaningLines = (bottom - top - reserve - 8) / lh;
+    if (meaningLines < 1) meaningLines = 1;
+    if (meaningLines > 3) meaningLines = 3;
+
+    int y = top;
+    const uint8_t mset = latinSet(card.meanings);
+    smallText(d, ui().quizMeaning, x, y, kYellow, kBlack);
+    y += 8;
+    y += gRender.drawWrapped(d, card.meanings, x, y, w, meaningLines, kWhite, kBlack, mset) *
+         gRender.lineHeight(mset);
+    y += 3;
+
+    auto drawReading = [&](const char* label, const std::string& s) {
+        if (s.empty() || y + 8 + lh > bottom) return;
+        const uint8_t set = kanaSet(s);
+        smallText(d, label, x, y, kYellow, kBlack);
+        y += 8;
+        y += gRender.drawWrapped(d, s.c_str(), x, y, w, 1, kWhite, kBlack, set) *
+             gRender.lineHeight(set);
+        y += 3;
+    };
+    drawReading(ui().detailOn, on);
+    drawReading(ui().detailKun, kun);
+
+    if (y + 11 <= bottom) {
+        char s[32];
+        snprintf(s, sizeof s, ui().detailStrokesFmt, (unsigned)card.strokes);
+        smallText(d, s, x, y, kWhite, kBlack);
+        y += 11;
+    }
+    if (hasAcc && y + 11 <= bottom) {
+        char s[32];
+        const uint32_t total = rec->reps;
+        const uint32_t correct = rec->reps > rec->lapses ? rec->reps - rec->lapses : 0;
+        snprintf(s, sizeof s, ui().detailAccuracyFmt, (unsigned)correct, (unsigned)total);
+        smallText(d, s, x, y, kGreen, kBlack);
+    }
+    present();
+}
+
+void showDetail() {
+    tgc::Card c;
+    gPack.card(gQ.cardIndex, &c);
+    QLOG("D U+%04X\n", (unsigned)c.codepoint);
+    gScreen = Screen::Detail;
+    drawDetail();
 }
 
 // Rebuilds the queue and shows the quiz (or the done screen if nothing is due).
@@ -738,6 +933,7 @@ void drawScreen() {
     else if (gScreen == Screen::Done) drawDone();
     else if (gScreen == Screen::Date) drawDate();
     else if (gScreen == Screen::Stats) drawStats();
+    else if (gScreen == Screen::Detail) drawDetail();
     else drawQuiz();
 }
 
@@ -805,7 +1001,7 @@ void openDecks() {
     drawScreen();
 }
 
-// Opens one of the two four-row pickers (Screen::Choice) with the saved value
+// Opens one of the Screen::Choice pickers (2/3/4 rows) with the saved value
 // highlighted when it is one of the candidates.
 void openChoice(Choice which) {
     gChoice = which;
@@ -815,6 +1011,17 @@ void openChoice(Choice which) {
         gChoiceValues[0] = 0;  // portrait
         gChoiceValues[1] = 1;  // landscape
         gChoiceSel = gPrefs.getBool("land", false) ? 1 : 0;
+        gScreen = Screen::Choice;
+        drawScreen();
+        return;
+    }
+    if (which == Choice::UiLang) {
+        gChoiceCount = 3;
+        gChoiceValues[0] = tgc::kUiLangAuto;
+        gChoiceValues[1] = tgc::kUiLangEnglish;
+        gChoiceValues[2] = tgc::kUiLangSpanish;
+        gChoiceSel = gUiLangPref;  // rows are in preference order
+        if (gChoiceSel < 0 || gChoiceSel >= gChoiceCount) gChoiceSel = 0;
         gScreen = Screen::Choice;
         drawScreen();
         return;
@@ -844,6 +1051,14 @@ void applyChoice() {
     if (gChoice == Choice::Orientation) {
         gScreen = Screen::Menu;  // applyOrientation redraws the active screen
         applyOrientation(gChoiceValues[gChoiceSel] != 0);
+        return;
+    }
+    if (gChoice == Choice::UiLang) {
+        gUiLangPref = static_cast<int>(gChoiceValues[gChoiceSel]);
+        gPrefs.putInt("ui", gUiLangPref);
+        setUiForLang(gPack.header().lang);  // re-render in the chosen language
+        gScreen = Screen::Menu;
+        drawScreen();
         return;
     }
     const uint16_t v = gChoiceValues[gChoiceSel];
@@ -888,6 +1103,9 @@ void activateSetting() {
             break;
         case 6:  // Orientacion
             openChoice(Choice::Orientation);
+            break;
+        case 7:  // Idioma / Language
+            openChoice(Choice::UiLang);
             break;
     }
 }
@@ -961,6 +1179,8 @@ void setup() {
     // Apply the saved orientation right after board::begin() (which set portrait)
     // and before the canvas exists, so the buffer matches the panel from boot.
     gPrefs.begin("tangocho", false);
+    gUiLangPref = gPrefs.getInt("ui", tgc::kUiLangAuto);
+    setUiForLang(nullptr);  // localise the pre-pack error screens to the choice too
     tgc::board::setOrientation(gPrefs.getBool("land", false));
     W = tgc::board::width();
     H = tgc::board::height();
@@ -1017,10 +1237,25 @@ void setup() {
 // moves to the next card); a 600 ms hold confirms the highlighted option. The
 // tap action runs on release, and a hold suppresses it, so a long press is never
 // also a tap.
+
+// The input after the answer has been revealed: a correct answer advances as
+// before; a wrong one opens the detail card first, and the next input advances.
+void afterReveal() {
+    if (!gLastCorrect) {
+        showDetail();
+        return;
+    }
+    if (newQuestion()) {
+        gScreen = Screen::Quiz;
+        drawScreen();
+    } else {
+        showDone();
+    }
+}
+
 void tapAction() {
     if (gRevealed) {
-        if (newQuestion()) drawScreen();
-        else showDone();
+        afterReveal();
         return;
     }
     gSel = (gSel + 1) % gQ.count;
@@ -1030,13 +1265,13 @@ void tapAction() {
 
 void holdAction(uint32_t pressedAt) {
     if (gRevealed) {
-        if (newQuestion()) drawScreen();
-        else showDone();
+        afterReveal();
         return;
     }
     gRevealed = true;
 
     const bool correct = gSel == gQ.correct;
+    gLastCorrect = correct;
     const uint32_t start = gLastNavAt ? gLastNavAt : gShownAt;
     const uint32_t rt_ms = pressedAt - start;  // until the hold's press-down, not its fire
     tgc::Grade grade;
@@ -1051,6 +1286,7 @@ void holdAction(uint32_t pressedAt) {
     gPack.card(gQ.cardIndex, &card);
     const float u01 = gRng.below(1000) / 1000.0f;
     gSrs.grade(card.codepoint, grade, gSrs.today(), static_cast<uint8_t>(gQ.mode), u01);
+    gSrs.addReviewMs(rt_ms);
     gQueue.answered(gQ.cardIndex, grade);
     ++gDirty;
     gLastAnswerAt = millis();
@@ -1119,6 +1355,19 @@ void loop() {
         if (b) {  // side button returns to the settings home
             gScreen = Screen::Menu;
             drawScreen();
+        }
+    } else if (gScreen == Screen::Detail) {
+        // Any input (tap, hold or side tap) starts the next question; a side hold
+        // opens the menu, as on the quiz.
+        if (a == 1 || a == 2 || b == 1) {
+            if (newQuestion()) {
+                gScreen = Screen::Quiz;
+                drawScreen();
+            } else {
+                showDone();
+            }
+        } else if (b == 2) {
+            openMenu();
         }
     } else if (gScreen == Screen::Done) {
         if (b == 2) {

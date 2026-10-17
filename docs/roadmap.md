@@ -18,8 +18,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       the defaults with real use.
 - [~] **Phase 3 – Better cards.** Distractors done for visual similarity and
       confusable readings (shared radicals pending); meaning→kanji questions
-      done. Pending: detail card on mistakes, stroke order from KanjiVG, and
-      preferring *common* readings — KANJIDIC2's reading order is not by
+      done; the mistake detail card is done (a tap after a wrong answer opens a
+      read-only card with the kanji, all meanings/readings, strokes and the
+      card's own accuracy). Pending: stroke order from KanjiVG, and preferring
+      *common* readings — KANJIDIC2's reading order is not by
       frequency (e.g. 九's first kun reading is the rare ここの), so this needs a
       reading-frequency source or an on'yomi preference for some kanji.
       Invariant enforced: **no option may be another valid reading or meaning of
@@ -48,13 +50,17 @@ Scope for now: **kanji only** (no vocabulary decks).
 - [~] **Statistics.** Per-kanji accuracy, current streak, review/seen counts and
       time spent; a small stats screen on device and richer views in the Wi-Fi
       portal. Depends on the SRS state (phase 2). On-device screen done:
-      `SrsStore::stats()` + `Screen::Stats` show the date, seen/pack total,
-      due/new, lifetime answers, accuracy and learned count. Pending: per-kanji
-      accuracy, streak, time spent and the portal views.
+      `SrsStore::stats()` + `Screen::Stats` show the date, current/best streak,
+      time on questions, seen/pack total, due/new, lifetime answers, accuracy and
+      learned count. Single-card accuracy is on the mistake detail card. Pending:
+      an aggregate per-kanji accuracy view and the portal views.
 - [~] **Multilingual.** On-device strings are localised to the pack language
-      (`lang`: en/es today, anything else falls back to English). Pending: a
-      language picker on device (the meaning language is a property of the pack,
-      so switching packs already switches the meanings).
+      (`lang`: en/es today, anything else falls back to English). The on-device
+      language picker is done: a "Language"/"Idioma" setting chooses Auto (follow
+      the pack, the default), English or Español, persisted in NVS (`ui`) and
+      applied as a pure `uiLangCodeFor` helper. Pending: more languages (the
+      meaning language is a property of the pack, so switching packs already
+      switches the meanings).
 - [x] **Menu and settings redesign.** The settings home (Seguir / Mazos / Fecha /
       Nuevas/día / Velocidad) replaces the single deck list, with a shared
       four-row choice screen for the new/day cap and the Hard threshold. The deck

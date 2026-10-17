@@ -235,7 +235,34 @@ Header (little-endian):
 | 26  | u16    | new_introduced_count  | new cards introduced on that day              |
 | 28  | u16    | max_interval_days     | 365                                           |
 | 30  | u16    | flags                 | bit0 = clean shutdown (unused for now)        |
-| 32  | u32    | reserved[4]           | 0                                            |
+| 32  | u16    | streak_current        | consecutive SRS days with an answer (§4.1)    |
+| 34  | u16    | streak_best           | best day streak ever (§4.1)                   |
+| 36  | u16    | last_study_day        | SRS day of the last answer; 0 = never         |
+| 38  | u16    | (unused)              | 0                                             |
+| 40  | u32    | review_ms             | lifetime time on questions, ms (saturates)    |
+| 44  | u32    | (unused)              | 0                                             |
+
+#### 4.1 Header extension in the reserved bytes (v1-compatible)
+
+Bytes 32..47 were `reserved[4] = 0` in the first v1 writer and are not
+validated, so the streak and time fields reuse them **without a version bump**:
+`0` keeps meaning "absent", so a file written by the older firmware loads with
+zeroed streak/time, and an older reader ignores the new fields while still
+verifying the CRC (which covers the whole header, new bytes included).
+
+- **Day streak.** A day streak over the SRS day index (§5), not wall time. In
+  `grade(codepoint, grade, day, ...)`: when `day != last_study_day`,
+  `streak_current` becomes `streak_current + 1` if `last_study_day != 0` and
+  `day == last_study_day + 1`, otherwise `1`; then `last_study_day = day` and
+  `streak_best = max(streak_best, streak_current)`. A same-day answer changes
+  nothing. Both counters saturate at `0xFFFF`. Caveat: because `last_study_day
+  == 0` also means "never", the first answer on day index `0` (a fresh store)
+  is treated as same-day and does not start a streak; the quirk disappears from
+  the second SRS day on.
+- **Review time.** `addReviewMs(ms)` adds to `review_ms` and saturates at
+  `0xFFFFFFFF`. The app calls it once per answer with the same response time
+  that graded it (question shown / last navigation tap → the confirming
+  press-down), so it is a pure UI measure, not a clock.
 
 CRC-32 (poly `0xEDB88320`, init/final `0xFFFFFFFF`). On load: size ≥ 48, magic,
 `version == 1`, `header_size == 48`, `count` consistent with file size, CRC

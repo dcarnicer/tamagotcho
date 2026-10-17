@@ -25,7 +25,13 @@ constexpr size_t kOffNewIntroducedDay = 24;
 constexpr size_t kOffNewIntroducedCount = 26;
 constexpr size_t kOffMaxInterval = 28;
 constexpr size_t kOffFlags = 30;
-// 32..47 reserved, must be zero in v1.
+// 32..47: v1-compatible extension (docs/srs.md section 4). 0 = absent, so an
+// old file (reserved bytes were zero) loads as defaults and no version bump is
+// needed; an old reader ignores them (the CRC still covers them).
+constexpr size_t kOffStreakCurrent = 32;
+constexpr size_t kOffStreakBest = 34;
+constexpr size_t kOffLastStudyDay = 36;
+constexpr size_t kOffReviewMs = 40;
 
 inline uint16_t rd16(const uint8_t* p) {
     return static_cast<uint16_t>(p[0] | (p[1] << 8));
@@ -107,6 +113,10 @@ void SrsStore::reset() {
     newIntroducedCount_ = 0;
     maxIntervalDays_ = kSrsDefaultMaxIntervalDays;
     flags_ = 0;
+    streakCurrent_ = 0;
+    streakBest_ = 0;
+    lastStudyDay_ = 0;
+    reviewMs_ = 0;
     tickStarted_ = false;
     lastTickMs_ = 0;
 }
@@ -186,6 +196,9 @@ Stats SrsStore::stats() const {
     Stats s{};
     s.seen = static_cast<uint32_t>(records_.size());
     s.answers = answeredTotal_;
+    s.streakCurrent = streakCurrent_;
+    s.streakBest = streakBest_;
+    s.reviewMs = reviewMs_;
     for (const Record& r : records_) {
         if (r.stabilityCds / 100u >= kLearnedStabilityDays) ++s.learned;
         s.reps += r.reps;
@@ -226,6 +239,28 @@ void SrsStore::noteNewIntroduced(uint16_t day) {
     if (newIntroducedCount_ < 0xFFFF) ++newIntroducedCount_;
 }
 
+// Day streak over the SRS day index (docs/srs.md section 4, "Streak"): the first
+// answer of a new day either extends the streak (exactly the day after the last
+// study day) or resets it to 1. Same-day answers never change it. 32-bit maths
+// avoids a wrap when the last study day is 0xFFFF.
+void SrsStore::noteStudyDay(uint16_t day) {
+    if (day == lastStudyDay_) return;
+    const bool consecutive =
+        lastStudyDay_ != 0 && static_cast<uint32_t>(day) == static_cast<uint32_t>(lastStudyDay_) + 1u;
+    if (consecutive) {
+        if (streakCurrent_ < 0xFFFF) ++streakCurrent_;
+    } else {
+        streakCurrent_ = 1;
+    }
+    lastStudyDay_ = day;
+    if (streakCurrent_ > streakBest_) streakBest_ = streakCurrent_;
+}
+
+void SrsStore::addReviewMs(uint32_t ms) {
+    const uint64_t t = static_cast<uint64_t>(reviewMs_) + ms;
+    reviewMs_ = t > 0xFFFFFFFFu ? 0xFFFFFFFFu : static_cast<uint32_t>(t);
+}
+
 void SrsStore::grade(uint32_t codepoint, Grade g, uint16_t day, uint8_t mode, float uniform01) {
     Record* r = find(codepoint);
     if (!r) {
@@ -262,6 +297,7 @@ void SrsStore::grade(uint32_t codepoint, Grade g, uint16_t day, uint8_t mode, fl
     // Record encoding (section 2): 0 Again, 1 Hard, 2 Good.
     r->lastGrade = static_cast<uint8_t>(static_cast<uint8_t>(g) - 1u);
 
+    noteStudyDay(day);
     if (answeredTotal_ < 0xFFFFFFFFu) ++answeredTotal_;
     if (first) noteNewIntroduced(day);
 }
@@ -284,7 +320,11 @@ bool SrsStore::serialize(std::vector<uint8_t>& out) const {
     wr16(out.data() + kOffNewIntroducedCount, newIntroducedCount_);
     wr16(out.data() + kOffMaxInterval, maxIntervalDays_);
     wr16(out.data() + kOffFlags, flags_);
-    // reserved[4] stays zero.
+    // v1-compatible extension (32..47): zero means absent.
+    wr16(out.data() + kOffStreakCurrent, streakCurrent_);
+    wr16(out.data() + kOffStreakBest, streakBest_);
+    wr16(out.data() + kOffLastStudyDay, lastStudyDay_);
+    wr32(out.data() + kOffReviewMs, reviewMs_);
 
     uint8_t* p = out.data() + kSrsHeaderSize;
     for (const Record& r : records_) {
@@ -328,6 +368,11 @@ bool SrsStore::deserialize(const uint8_t* data, size_t len) {
     newIntroducedCount_ = rd16(data + kOffNewIntroducedCount);
     maxIntervalDays_ = rd16(data + kOffMaxInterval);
     flags_ = rd16(data + kOffFlags);
+    // An old file left 32..47 zero: they load as the defaults (0).
+    streakCurrent_ = rd16(data + kOffStreakCurrent);
+    streakBest_ = rd16(data + kOffStreakBest);
+    lastStudyDay_ = rd16(data + kOffLastStudyDay);
+    reviewMs_ = rd32(data + kOffReviewMs);
     tickStarted_ = false;
     lastTickMs_ = 0;
     return true;

@@ -54,11 +54,14 @@ static_assert(sizeof(Record) == kSrsRecordSize, "Record must stay 16 bytes");
 // Aggregate counters over the whole state table, for the statistics screen
 // (docs/roadmap.md "Statistics"). Pure and deterministic: no clock, no I/O.
 struct Stats {
-    uint32_t seen;     // records in the table (distinct kanji reviewed)
-    uint32_t learned;  // records whose stability >= kLearnedStabilityDays
-    uint32_t answers;  // lifetime answers (header counter)
-    uint32_t reps;     // sum of every card's review count
-    uint32_t lapses;   // sum of every card's Again count
+    uint32_t seen;           // records in the table (distinct kanji reviewed)
+    uint32_t learned;        // records whose stability >= kLearnedStabilityDays
+    uint32_t answers;        // lifetime answers (header counter)
+    uint32_t reps;           // sum of every card's review count
+    uint32_t lapses;         // sum of every card's Again count
+    uint32_t streakCurrent;  // current day streak (header field)
+    uint32_t streakBest;     // best day streak (header field)
+    uint32_t reviewMs;       // total time spent on questions, ms (header field)
 };
 
 // Byte sink/source for the state file. Device code implements this over
@@ -161,10 +164,20 @@ public:
     void setFlags(uint16_t v) { flags_ = v; }
     uint32_t msCarry() const { return msCarry_; }
 
+    // Day streak and total review time (docs/srs.md section 4). The streak is
+    // advanced by grade(); `lastStudyDay == 0` means no day has been studied.
+    uint16_t streakCurrent() const { return streakCurrent_; }
+    uint16_t streakBest() const { return streakBest_; }
+    uint16_t lastStudyDay() const { return lastStudyDay_; }
+    uint32_t reviewMs() const { return reviewMs_; }
+    // Adds `ms` to the total time on questions, saturating at 0xFFFFFFFF.
+    void addReviewMs(uint32_t ms);
+
 private:
     void reset();
     void resetNewIfNewDay();
     void noteNewIntroduced(uint16_t day);
+    void noteStudyDay(uint16_t day);
 
     std::vector<Record> records_;  // sorted by codepoint ascending
     Record scratch_{};             // returned by getOrCreate() past the cap
@@ -178,6 +191,10 @@ private:
     uint16_t newIntroducedCount_ = 0;
     uint16_t maxIntervalDays_ = kSrsDefaultMaxIntervalDays;
     uint16_t flags_ = 0;
+    uint16_t streakCurrent_ = 0;  // consecutive SRS days with an answer
+    uint16_t streakBest_ = 0;     // best streak ever
+    uint16_t lastStudyDay_ = 0;   // SRS day of the last answer (0 = never)
+    uint32_t reviewMs_ = 0;       // lifetime time on questions, ms
 
     bool tickStarted_ = false;
     uint32_t lastTickMs_ = 0;
