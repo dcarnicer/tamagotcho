@@ -57,6 +57,17 @@ def test_meaning_language_capped_to_english():
     assert cards[0].meanings == ["mes", "luna"]
 
 
+def test_glcd_cp437_map():
+    from tangocho_pack import glcd
+    assert glcd.glcd_index(ord("A")) == 0x41
+    assert glcd.glcd_index(0x00E9) == 0x82  # é
+    assert glcd.glcd_index(0x00E1) == 0xA0  # á
+    assert glcd.glcd_index(0x00F1) == 0xA4  # ñ
+    assert glcd.glcd_index(0x00BF) == 0xA8  # ¿
+    assert glcd.glcd_index(0x00C1) == -1    # Á (not in Font0)
+    assert glcd.can_draw("día") and not glcd.can_draw("Á")
+
+
 def test_spanish_fallback_flag():
     cards = mini_cards("fr")  # fixture only guarantees some languages
     for c in cards:

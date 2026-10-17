@@ -93,9 +93,12 @@ def cmd_preview(a) -> int:
         print("error: --card must be a single character", file=sys.stderr)
         return 2
     p = read_pack(Path(a.file).read_bytes())
-    img, info = render_preview(p, ord(a.card), a.mode, a.width, a.height, a.scale, a.seed, a.reveal)
+    img, info = render_preview(p, ord(a.card), a.mode, a.width, a.height, a.scale, a.seed, a.reveal,
+                               a.kind)
     img.save(a.output)
     print(f"{a.output}: options {[chr(c) for c in info['options']]} correct slot {info['correct_slot']}")
+    if info.get("reading_kind"):
+        print(f"  reading kind: {info['reading_kind']}")
     if info["missing"]:
         print("MISSING glyphs:", "".join(info["missing"]), file=sys.stderr)
         return 1
@@ -139,6 +142,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("file")
     s.add_argument("--card", required=True)
     s.add_argument("--mode", choices=["meaning", "reading"], default="meaning")
+    s.add_argument("--kind", choices=["on", "kun"], default="on",
+                   help="reading kind to ask for in reading mode")
     s.add_argument("--width", type=int, default=135)
     s.add_argument("--height", type=int, default=240)
     s.add_argument("--scale", type=int, default=3)

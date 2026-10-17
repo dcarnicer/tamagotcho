@@ -23,9 +23,11 @@ uv run pytest
 - `inspect FILE` validates (magic, version, offsets, alignment, glyph table
   order, set 0/1 glyph per card, every string character present in set 2, every
   reading character in set 3) and prints sizes; exit code 1 when invalid.
-- `preview FILE --card 日 --mode meaning|reading -o out.png [--width 135
-  --height 240 --scale 3 --seed 1 --reveal]` draws a mock quiz screen using
-  only bitmaps stored in the pack. `--reveal` tints the correct option.
+- `preview FILE --card 日 --mode meaning|reading [--kind on|kun] -o out.png
+  [--width 135 --height 240 --scale 3 --seed 1 --reveal]` draws a mock quiz
+  screen that mirrors the device: reading answers as a 2x2 grid of large kana
+  (set 3), meaning answers one per row in the built-in GLCD font, first gloss
+  only. `--reveal` tints the correct option (and draws nothing else differently).
 - `fixture` regenerates `fixtures/mini.tgc` and `fixtures/mini.json` (3 cards,
   large 32 / small 16 / text 12 / option 18, build_time 0) for the firmware's
   native tests. `mini.json` lists the expected decoded fields; all offsets in it

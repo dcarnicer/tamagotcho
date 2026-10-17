@@ -74,6 +74,15 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 - Suggested credit: "Glyphs rendered from Klee One, (c) Fontworks Inc.,
   SIL Open Font License 1.1."
 
+## Adafruit GLCD font (built-in UI font)
+
+- The firmware's small text and the meaning options use the built-in GLCD font
+  (Font0) from LovyanGFX/M5GFX: the classic Adafruit 5x7 font, BSD-2-Clause
+  (Copyright (c) 2012 Adafruit Industries). It is not content of a pack; no
+  attribution is required in generated packs.
+- The pack builder vendors a copy of its 256-glyph bitmap in `glcd.py` so
+  `tangocho-pack preview` can render the same font as the device.
+
 ## Combined attribution for a pack
 
 > Kanji data from KANJIDIC2 (c) EDRDG, CC BY-SA 4.0, https://www.edrdg.org/edrdg/licence.html.
