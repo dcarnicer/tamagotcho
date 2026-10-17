@@ -13,6 +13,13 @@
 
 using tgc::board::Button;
 
+// Set -DTGC_QUIZ_LOG to trace every question and answer over serial.
+#if defined(TGC_QUIZ_LOG)
+#define QLOG(...) Serial.printf(__VA_ARGS__)
+#else
+#define QLOG(...) do {} while (0)
+#endif
+
 namespace {
 
 constexpr uint16_t kBlack = 0x0000;
@@ -85,6 +92,13 @@ bool newQuestion() {
             gNextModeIsReading = !gNextModeIsReading;
             gSel = 0;
             gRevealed = false;
+            tgc::Card c;
+            gPack.card(gQ.cardIndex, &c);
+            QLOG("Q %s U+%04X", gQ.mode == tgc::QuizMode::Reading ? "read" : "mean",
+                 (unsigned)c.codepoint);
+            for (int i = 0; i < gQ.count; ++i)
+                QLOG(" |%s %s", i == gQ.correct ? "*" : " ", gQ.options[i].c_str());
+            QLOG("\n");
             return true;
         }
     }
@@ -95,10 +109,10 @@ void drawScreen() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
 
-    // Header: deck name left, battery right.
+    // Header: deck name left, battery right (both built-in font, size 1).
     const int headerH = 14;
     d.fillRect(0, 0, W, headerH, kGrey);
-    gRender.drawText(d, gPack.deckName(), 3, 0, kWhite, kGrey);
+    smallText(d, gPack.deckName(), 3, 3, kWhite, kGrey);
     int bat = tgc::board::batteryPercent();
     if (bat >= 0) {
         char b[8];
@@ -222,6 +236,7 @@ void loop() {
             drawScreen();
         } else {
             gRevealed = true;
+            QLOG("A sel=%d correct=%d %s\n", gSel, gQ.correct, gSel == gQ.correct ? "OK" : "MISS");
             drawScreen();
         }
     }

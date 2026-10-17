@@ -2,12 +2,13 @@
 
 Scope for now: **kanji only** (no vocabulary decks).
 
-- [~] **Phase 0 – Bring-up.** PlatformIO project for StickS3 + T-Display-S3,
+- [x] **Phase 0 – Bring-up.** PlatformIO project for StickS3 + T-Display-S3,
       board HAL, LittleFS, read a pack, draw a kanji glyph, buttons.
-      Code done, native tests pass, both envs build. **Pending: on-device check.**
-- [~] **Phase 1 – Minimal quiz.** (builder done for N5 en/es; quiz loop written, untested on device) Pack builder from KANJIDIC2 (JLPT N5),
+      Validated on a StickS3 (2026-10-17).
+- [x] **Phase 1 – Minimal quiz.** Pack builder from KANJIDIC2 (JLPT N5),
       kanji→meaning and kanji→reading questions with 4 options, random
-      distractors, correct/incorrect feedback.
+      distractors, correct/incorrect feedback. Validated on a StickS3
+      (2026-10-17).
 - [ ] **Phase 2 – SRS.** FSRS on device, persisted state in LittleFS,
       review/learn queues, grade from correctness + response time.
 - [ ] **Phase 3 – Better cards.** Smart distractors (visual similarity,

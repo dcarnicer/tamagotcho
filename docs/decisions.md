@@ -31,3 +31,20 @@ Short log of non-obvious choices. Newest last.
 - **Kanji square baseline is its bottom edge**; all pack offsets are absolute
   (clarified in the spec after the first implementation pass).
 - **M5Unified/M5PM1 pinned to git commits** for reproducible builds.
+
+## 2026-10-17 – Phase 0/1 validated on hardware
+
+- **On-device check done** on a StickS3 with the N5 Spanish pack: LittleFS,
+  pack open/validation, kanji + text glyphs, buttons (B moves, A selects),
+  reveal feedback, next card, and meaning/reading alternation all work.
+- **Header uses the built-in GFX font.** The deck name is now drawn with
+  `Font0`, same size as the battery indicator (left-aligned), matching the
+  MEANING/READING label. Trade-off: a non-ASCII deck name would no longer
+  render; default names are ASCII, so accepted.
+- **Quiz tracing over serial** behind `-DTGC_QUIZ_LOG` (enabled in
+  `platformio.ini` for now): prints each question (mode, codepoint, options,
+  correct) and each answer. Cheap and useful while the UI and scheduling settle.
+- **Option text size is a builder/authoring choice**, not a firmware one
+  (glyphs are pre-rendered): 18 px (`--text-px`) looked too large for four
+  options on the 135 px panel, 14 px is preferred on device. Builder default
+  left at 18 pending a decision.
