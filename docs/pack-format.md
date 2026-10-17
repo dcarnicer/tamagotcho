@@ -192,9 +192,14 @@ the pack regardless of the font used.
 ## Limits and expectations
 
 - `card_count` ≤ 65535 (distractor indices are u16).
+- `large_px` ≤ 128 when the optional stroke section is present: a stroke entry's
+  `x_off`/`y_off` are i8, so a larger em square cannot be represented.
 - Expected size: ~650 kanji (N5–N3) at large_px=96 fits well under 3 MB.
-- The optional stroke section costs roughly 0.4–0.6 KB per kanji at
-  `large_px=96` (~50 KB for the 79 N5 cards), a small fraction of the glyph data.
+- The optional stroke section costs roughly **1.1–1.2 KB per kanji** at
+  `large_px=96` (~90–95 KB for the 79 N5 cards). A mask's pixel count scales with
+  the em square's *area*, so the cost grows quadratically: the committed
+  `mini.tgc` (3 cards, `large_px=32`) carries ~130 bytes/card, i.e. ~1.2 KB/card
+  once scaled 3x to 96 px. It stays a small fraction of the glyph data.
 - The device reads packs through the filesystem with random access; the
   builder must not rely on the device loading the whole file in RAM, although
   the device may cache the header, card table and glyph table in PSRAM.

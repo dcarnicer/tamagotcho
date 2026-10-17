@@ -73,8 +73,18 @@ def write_pack(
 ) -> bytes:
     if len(cards) > 65535:
         raise ValueError("too many cards (u16 distractor indices)")
-    if strokes is not None and len(strokes) != len(cards):
-        raise ValueError("strokes must be index-aligned with cards")
+    if strokes is not None:
+        # The stroke block stores x_off/y_off as i8, so a mask placed anywhere in
+        # the em square needs large_px <= 128; the reader also rejects a block
+        # whose px disagrees with the header, hence the two checks.
+        if large_px > 128:
+            raise ValueError(f"large_px ({large_px}) > 128 cannot carry stroke masks: "
+                             "stroke x_off/y_off are signed bytes (max 127)")
+        if strokes_px != large_px:
+            raise ValueError(f"strokes_px ({strokes_px}) must equal large_px ({large_px}): "
+                             "the masks share the em square the glyphs use")
+        if len(strokes) != len(cards):
+            raise ValueError("strokes must be index-aligned with cards")
     glyphs = sorted(glyphs, key=lambda g: (g.set, g.codepoint))
 
     strings = _Strings()

@@ -94,6 +94,31 @@ def test_stroke_section_roundtrip():
     assert plain == write_pack([_card()], _glyphs(), "mini", "en", 32, 16, 12, 12, 10, build_time=1)
 
 
+def test_write_pack_rejects_strokes_px_mismatch():
+    masks = [StrokeMask(2, 3, 9, 4, bytes([0xAA, 0x80] * 4))]
+    # The reader rejects a block whose px disagrees with large_px, so the public
+    # writer must refuse to emit one.
+    with pytest.raises(ValueError, match="em square"):
+        write_pack([_card()], _glyphs(), "mini", "en", 32, 16, 12, 12, 10, build_time=1,
+                   strokes=[masks], strokes_px=16)
+
+
+def test_write_pack_rejects_large_px_with_strokes():
+    masks = [StrokeMask(2, 3, 9, 4, bytes([0xAA, 0x80] * 4))]
+    # x_off/y_off are i8: a >128 em square cannot be represented.
+    with pytest.raises(ValueError, match="128"):
+        write_pack([_card()], _glyphs(), "mini", "en", 160, 16, 12, 12, 10, build_time=1,
+                   strokes=[masks], strokes_px=160)
+
+
+def test_build_rejects_large_px_with_strokes():
+    from tangocho_pack.build import build_pack
+    # The check runs before the font is opened, so this needs no fetched font.
+    with pytest.raises(ValueError, match="128"):
+        build_pack([_card()], paths.DEFAULT_FONT, "en", "mini", 160, 16, 12, 12,
+                   strokes=True, kanjivg=mini_src())
+
+
 def test_index_entry_zero_for_unstroked_card():
     masks = [StrokeMask(1, 1, 2, 2, b"\xc0\xc0")]
     raw = write_pack([_card(), Card(0x6708, ["moon"], [], [], jlpt=5, strokes=4)],
