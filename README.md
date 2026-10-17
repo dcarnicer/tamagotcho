@@ -85,12 +85,86 @@ Honest status — **not verified on hardware**:
   launcher-installed app is the **Wi-Fi upload above**, once the firmware is
   running — it does not depend on who owns the filesystem.
 
+## Releases
+
+Every push to `main` and every pull request runs
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml): a firmware job (native
+tests plus StickS3 and T-Display-S3 builds, with `~/.platformio` cached and the
+cache keyed on the PlatformIO version) and a pack-builder job (`uv run pytest`).
+A newer push on the same ref cancels the superseded run.
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) runs on tags
+`v*` and on manual dispatch. It builds, per board, an **app-only** image and a
+**merged, single-file** image, writes an **ESP Web Tools** `manifest.json`, and
+publishes a GitHub release with those artifacts. Prebuilt packs and a catalog are
+**opt-in** (a dispatch input), because they redistribute CC BY-SA data; when they
+are attached, the attribution is added to the release notes automatically.
+
+### Flash over USB
+
+```sh
+cd firmware
+pio run -e sticks3 -t upload      # app (also -e tdisplay-s3)
+pio run -e sticks3 -t uploadfs    # LittleFS image built from data/
+```
+
+### Flash a merged image (esptool or a browser)
+
+A release's `tangocho-sticks3-merged.bin` (and the `tdisplay-s3` one) is one file
+flashed at offset 0, so it needs no offset list:
+
+```sh
+esptool --chip esp32s3 write_flash 0x0 tangocho-sticks3-merged.bin
+```
+
+It is produced from the PlatformIO build by
+[`tools/release/merge_image.py`](tools/release/merge_image.py), which runs the
+equivalent of (StickS3):
+
+```sh
+esptool --chip esp32s3 merge_bin -o tangocho-sticks3-merged.bin \
+  --flash_mode qio --flash_freq 80m --flash_size 8MB \
+  0x0     .pio/build/sticks3/bootloader.bin \
+  0x8000  .pio/build/sticks3/partitions.bin \
+  0x10000 .pio/build/sticks3/firmware.bin
+```
+
+The offsets are the ESP32-S3 bootloader (`0x0`), the partition table (`0x8000`)
+and the `app0` offset from `firmware/partitions/sticks3_8MB.csv`. Our partition
+tables have **no OTA data partition**, so no `boot_app0.bin` is added — exactly
+what PlatformIO flashes for the same table (see `docs/decisions.md`).
+
+For a **browser flash**, open an ESP Web Tools page (e.g.
+<https://esphome.github.io/esp-web-tools/>) and point it at the release's
+`tangocho-sticks3-manifest.json`. A merged image flashes an **empty
+filesystem**, so a fresh device boots straight into the Wi-Fi upload screen and
+a pack can be dropped in over the air.
+
+> Honest status — **not verified on hardware.** We have not flashed a merged
+> image through ESP Web Tools or `esptool write_flash` on a real StickS3. The
+> offsets come from the partition table and the build output and mirror
+> `pio run -t upload`, but the browser path is unconfirmed until someone tries
+> it.
+
+### Prebuilt packs and their licence
+
+When the maintainer asks for them (a release-workflow input), a release can
+attach `*.tgc` packs built with `--strokes` (for example JLPT N5 in English and
+Spanish) together with a line-oriented `catalog.txt` — the small catalog the
+device is meant to read; the on-device fetch/parse is not implemented yet (see
+`tools/pack-builder/README.md`). A pack contains **KANJIDIC2** data (CC BY-SA
+4.0) and, with `--strokes`, **KanjiVG** data (CC BY-SA 3.0), so prebuilt packs
+are licensed **CC BY-SA**. The combined attribution is in the release notes and
+in [docs/data-sources.md](docs/data-sources.md).
+
 ## Repository layout
 
 | path                  | what                                    |
 |-----------------------|-----------------------------------------|
 | `firmware/`           | PlatformIO firmware (StickS3, T-Display-S3) |
 | `tools/pack-builder/` | Python CLI that builds `.tgc` packs     |
+| `tools/release/`      | release helper: merge a build into one flashable image |
+| `.github/workflows/`  | CI and release automation               |
 | `docs/`               | architecture, pack format, decisions, roadmap |
 
 ## Licence

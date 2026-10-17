@@ -12,6 +12,7 @@ uv run tangocho-pack build --jlpt 5 --lang es --strokes -o out/n5-es-strokes.tgc
 uv run tangocho-pack inspect out/n5-es.tgc
 uv run tangocho-pack preview out/n5-es.tgc --card 水 --mode meaning -o out/preview.png
 uv run tangocho-pack preview out/n5-es-strokes.tgc --card 水 --mode strokes --stroke 2 -o out/strokes.png
+uv run tangocho-pack catalog out --base-url "https://example.com/v1" -o out/catalog.txt
 uv run pytest
 ```
 
@@ -29,7 +30,8 @@ uv run pytest
   defaults to `--large-px`.
 - `inspect FILE` validates (magic, version, offsets, alignment, glyph table
   order, set 0/1 glyph per card, every string character present in set 2, every
-  reading character in set 3) and prints sizes; exit code 1 when invalid.
+  reading character in set 3) and prints sizes and the file's `sha256`; exit
+  code 1 when invalid.
 - `preview FILE --card 日 --mode meaning|reading|kanji|strokes [--kind on|kun]
   -o out.png [--width 135 --height 240 --scale 3 --seed 1 --reveal]
   [--stroke N]` draws a mock quiz screen that mirrors the device: reading answers
@@ -42,14 +44,51 @@ uv run pytest
   large 32 / small 16 / text 12 / option 18, build_time 0) for the firmware's
   native tests. `mini.json` lists the expected decoded fields; all offsets in it
   are absolute file offsets.
+- `catalog DIRECTORY [-o FILE| -] [--base-url URL] [--json PATH]` scans a
+  directory of `*.tgc` and writes the line-oriented **catalog** the device is
+  meant to read (see below). It refuses an empty directory or a file that is not
+  a valid pack, so a broken build cannot silently enter a release. `--json` also
+  writes a human-readable `catalog.json` (never read on device).
+
+## Catalog format
+
+The roadmap wants prebuilt packs hosted with "a small catalog the device can
+read". The catalog is deliberately trivial to parse on an ESP32 without a JSON
+library: one record per line, TAB-separated, `#` comments to skip. The exact
+bytes, one example per line:
+
+```
+#tangocho-catalog<TAB>1
+# name<TAB>lang<TAB>cards<TAB>bytes<TAB>sha256<TAB>url
+n5-en<TAB>en<TAB>79<TAB>703123<TAB>ab12cd…<TAB>https://example.com/v1/n5-en.tgc
+```
+
+- The **first line** is a `#` comment that also carries the format version, so a
+  reader can detect the format and refuse an unknown version before parsing.
+- Every line starting with `#` is a comment; blank lines are ignored.
+- A **record** is exactly six TAB-separated fields:
+  - `name` — the file name without `.tgc`; the name the device should save the
+    download as (`<name>.tgc`);
+  - `lang` — the pack's meaning language (the header's `lang`);
+  - `cards` — its card count;
+  - `bytes` — the exact file size;
+  - `sha256` — lowercase hex digest of the whole file, so the device can check
+    integrity after download (the on-device check is a follow-up);
+  - `url` — absolute when `--base-url` is given, otherwise the bare file name,
+    meaning "relative to the URL the catalog was fetched from". `--base-url` may
+    contain `{file}`, which is replaced by the file name.
+- Records are sorted by file name, so the output is deterministic and safe to
+  diff.
+- **Not implemented yet:** the device does not fetch or parse a catalog. The
+  format above is the contract to implement against (roadmap phase 5).
 
 ## Layout
 
 - `kanjidic.py` parsing and card selection; `glyphs.py` rasterisation and 4bpp;
   `pack.py` writer, reader and validator; `kanjivg.py` stroke masks (KanjiVG);
   `distractors.py` distractor strategies (visual similarity for meanings,
-  confusable readings for readings); `preview.py` UI mock; `build.py`
-  orchestration.
+  confusable readings for readings); `preview.py` UI mock; `catalog.py` the
+  line-oriented device catalog; `build.py` orchestration.
 
 ## Conventions (where the spec leaves room)
 
