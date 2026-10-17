@@ -457,3 +457,78 @@ Short log of non-obvious choices. Newest last.
   `/packs` once the firmware is running, because it does not depend on who owns
   the filesystem partition. Written up in README.md.
 
+## 2026-10-17 – CI scope
+
+- **Two jobs, on push to `main`, PRs and manual dispatch.** Firmware: install
+  PlatformIO on Ubuntu, run `pio test -e native` and build `sticks3` and
+  `tdisplay-s3`. Pack builder: `uv run pytest`. The pure logic (`pack/`, `quiz/`,
+  `srs/`) is native-tested, so the host job is meaningful without a device; the
+  board builds prove both HALs still compile. A `concurrency` group cancels a
+  superseded run of the same ref.
+- **`~/.platformio` is cached, keyed on the PlatformIO version and a hash of
+  `firmware/platformio.ini`.** The version is read after `pip install` (a cache
+  restore key must be known first), and the ini hash covers the pinned platform
+  (`espressif32@6.12.0`) and the exact `lib_deps` commits, so a dependency bump
+  invalidates the cache. Action majors are pinned (`checkout@v4`,
+  `setup-python@v5`, `cache@v4`, `setup-uv@v5`); no secrets are used.
+- **CI does not build packs.** KANJIDIC2/Klee One/KanjiVG downloads are slow and
+  produce multi-MB CC BY-SA artifacts, so prebuilt packs belong in the release
+  workflow and only when the maintainer asks (below). CI also does not touch
+  hardware: everything device-specific stays "verified by hand, documented" as
+  before.
+
+## 2026-10-17 – Release artifacts: merged image and ESP Web Tools (unverified)
+
+- **Two images per board.** `pio run -e <env>` still yields the app-only
+  `firmware.bin` (published as `tangocho-<env>.bin`; what M5Launcher installs and
+  what `pio run -t upload` writes to the app slot). A **merged single-file
+  image** (`tangocho-<env>-merged.bin`, flashed at offset 0) is added for ESP Web
+  Tools, which wants one file rather than an offset list.
+- **The merged image mirrors what PlatformIO flashes, and no `boot_app0` is
+  included.** `tools/release/merge_image.py` reads the offsets from
+  `firmware/partitions/*.csv` and merges bootloader `0x0`, partition table
+  `0x8000` and the table's `app` partition. `boot_app0.bin` (the Arduino "which
+  OTA slot" record at `0xe000`) is included **only if the table has a `data,ota`
+  partition**; ours have none (single factory app, no OTA), so it is omitted —
+  which is exactly what PlatformIO does for the same table, and avoids writing
+  `boot_app0` over our `phy_init` partition at `0xe000`. Writing it anyway would
+  be harmless on the current board (phy_init is unused) but wrong.
+- **A merged image flashes an empty filesystem**, so the natural first-boot path
+  is the existing Wi-Fi upload screen rather than `uploadfs`.
+- **Least privilege.** The workflow defaults to `contents: read`; only the
+  publish job sets `contents: write`, and it is the only job with the token.
+  Triggers are tag push `v*` and `workflow_dispatch` (with an explicit tag
+  input, validated to start with `v`).
+- **Unverified on hardware.** The offsets match `pio run -t upload` and were
+  checked by running the merge locally against the real partition tables, but no
+  one has flashed a merged image from a browser (ESP Web Tools) or with
+  `esptool write_flash` on a real StickS3. Stated as such in README and in the
+  release notes.
+- **Prebuilt packs are opt-in.** A dispatch input `build_packs` (with
+  `packs_jlpt`/`packs_langs`) builds N5 (and, on request, deeper levels) for en
+  and es with `--strokes`, writes the catalog, and attaches them. Off by default
+  because redistributing CC BY-SA data is a maintainer decision ("Before
+  publishing"); when packs are attached, the release notes carry the combined
+  KANJIDIC2/KanjiVG/Klee One attribution automatically.
+
+## 2026-10-17 – Device catalog format: line-oriented text
+
+- **The catalog is TAB-separated text, not JSON.** The device has no JSON
+  library and this file is small: one `#` comment line with the format version,
+  one documented `#` column line, then one record per line
+  `name<TAB>lang<TAB>cards<TAB>bytes<TAB>sha256<TAB>url`. A firmware parser is
+  then a line split plus `strtoul`/hex, with no allocation beyond the line
+  buffer. It is also greppable and diffable for humans. An optional
+  `catalog.json` is written for release pages but is never read on device.
+- **`sha256` per file** so the device can verify integrity after download (the
+  check itself is a follow-up). `inspect` now prints the same digest.
+- **Deterministic**: records sorted by file name; `--base-url` makes URLs
+  absolute (with an optional `{file}` template) and defaults to the bare file
+  name, meaning "relative to the catalog's own URL". `name` is the file name
+  without `.tgc`, i.e. the name the device saves the download as.
+- **`catalog` refuses an empty directory or an invalid `.tgc`** (exit 1) so a
+  broken build cannot silently enter a release.
+- **The device-side fetch/parse is not implemented** (roadmap phase 5,
+  follow-up); the format is the contract to implement against and is kept
+  minimal for that reason.
+

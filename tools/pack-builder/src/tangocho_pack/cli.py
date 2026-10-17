@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 from pathlib import Path
 
@@ -71,6 +72,7 @@ def cmd_inspect(a) -> int:
     sets = [sum(1 for g in p.glyphs if g.set == s) for s in (0, 1, 2, 3)]
     data_bytes = sum(((g.width + 1) // 2) * g.height for g in p.glyphs)
     print(f"file        {a.file}")
+    print(f"sha256      {hashlib.sha256(raw).hexdigest()}")
     print(f"version     {h['version']}   lang {h['lang']}   deck {p.deck_name!r}")
     print(f"cards       {h['card_count']} ({sum(1 for c in p.cards if c.flags & 1)} English fallback)")
     print(f"glyphs      {h['glyph_count']} (set0 {sets[0]}, set1 {sets[1]}, set2 {sets[2]}, set3 {sets[3]})")
@@ -129,6 +131,38 @@ def cmd_fixture(a) -> int:
     return 0
 
 
+def cmd_catalog(a) -> int:
+    from .catalog import render, render_json, scan
+
+    directory = Path(a.directory)
+    if not directory.is_dir():
+        print(f"error: {directory} is not a directory", file=sys.stderr)
+        return 1
+    try:
+        records = scan(directory, a.base_url)
+    except (OSError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    if not records:
+        print(f"error: no *.tgc packs in {directory}", file=sys.stderr)
+        return 1
+
+    text = render(records)
+    if a.output == "-":
+        sys.stdout.write(text)
+    else:
+        out = Path(a.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        print(f"{out}: {len(records)} pack(s)")
+    if a.json:
+        jp = Path(a.json)
+        jp.parent.mkdir(parents=True, exist_ok=True)
+        jp.write_text(render_json(records), encoding="utf-8")
+        print(f"{jp}: {len(records)} pack(s), JSON")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="tangocho-pack")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -178,6 +212,16 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("fixture", help="regenerate fixtures/mini.tgc and mini.json")
     s.add_argument("--font")
     s.set_defaults(fn=cmd_fixture)
+
+    s = sub.add_parser("catalog", help="write a line-oriented catalog of .tgc packs for the device")
+    s.add_argument("directory", nargs="?", default=".", help="directory to scan for *.tgc (default: .)")
+    s.add_argument("--base-url",
+                   help="prefix for the url column; may contain {file}, otherwise joined with '/'")
+    s.add_argument("--json", metavar="PATH",
+                   help="also write a human-readable JSON catalog (not read by the device)")
+    s.add_argument("-o", "--output", required=True,
+                   help="catalog file to write, or - for stdout")
+    s.set_defaults(fn=cmd_catalog)
 
     a = ap.parse_args(argv)
     return a.fn(a)

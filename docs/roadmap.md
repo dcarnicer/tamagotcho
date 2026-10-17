@@ -48,10 +48,19 @@ Scope for now: **kanji only** (no vocabulary decks).
         one in use). Documented in README.md; **not verified on hardware**, and
         whether the launcher-created filesystem partition is large enough for
         packs is an open question.
-- [ ] **Phase 5 – Release.** README with photos, licences/attribution, GitHub
-      releases, ESP Web Tools browser flasher, prebuilt packs. Host prebuilt
-      packs (with a small catalog the device can read) so the Wi-Fi download has
-      something to point at.
+- [~] **Phase 5 – Release.** Done so far: the app-only image and a **merged
+      single-file image** per board plus an **ESP Web Tools `manifest.json`**,
+      published by `.github/workflows/release.yml` on tags `v*` (and manual
+      dispatch); CI (`.github/workflows/ci.yml`) runs the native tests and both
+      board builds plus the pack-builder tests; a `tangocho-pack catalog` command
+      that writes the small line-oriented catalog the device is meant to read;
+      README with the licence/attribution and flashing instructions.
+      Pending: **README photos**; the **device-side catalog fetch/parse** (the
+      catalog format is defined and tested, the firmware does not read it yet);
+      and hardware verification of the merged-image/ESP Web Tools path (written,
+      **not flashed on a real device**). Prebuilt packs can be attached to a
+      release, but only on request — redistributing CC BY-SA data is a
+      maintainer decision (see "Before publishing").
 
 ## Cross-cutting
 
@@ -84,4 +93,16 @@ Scope for now: **kanji only** (no vocabulary decks).
 ## Before publishing
 
 - [ ] Verify licence of tanos.co.uk JLPT lists (used via kanji-data `jlpt_new`).
-- [ ] Decide whether prebuilt packs are distributed (CC BY-SA 4.0 attribution in README and on device).
+      Not verified; left open.
+- [~] Decide whether prebuilt packs are distributed (CC BY-SA 4.0 attribution in
+      README and on device). Progress: packs built with KANJIDIC2/KanjiVG are
+      licensed CC BY-SA and the release workflow adds the combined attribution to
+      the release notes automatically, but attaching them stays **opt-in** (a
+      dispatch input) until this is a standing decision.
+- [x] Attribution for redistributed data: README's "Releases" section,
+      `docs/data-sources.md` and the release notes all carry the combined
+      KANJIDIC2 / KanjiVG / Klee One credit. (Still open: an attribution line on
+      the device itself.)
+- [ ] Flash a **merged** image on a real StickS3 — ESP Web Tools in a browser and
+      `esptool write_flash 0x0 …` — to confirm the documented offsets. The image
+      and manifest are written and locally checked, **not verified on hardware**.
