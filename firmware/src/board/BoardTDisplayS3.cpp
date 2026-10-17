@@ -139,6 +139,9 @@ bool isCharging() { return false; }
 void setBrightness(uint8_t level) { gDisplay.setBrightness(level); }
 uint32_t randomSeed() { return esp_random(); }
 
+uint32_t powerTimerSeconds() { return 0xFFFFFFFFu; }  // no M5PM1 on this board
+bool powerTimerArm(uint32_t) { return false; }
+
 }  // namespace board
 }  // namespace tgc
 #endif

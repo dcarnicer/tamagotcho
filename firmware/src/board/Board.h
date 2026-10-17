@@ -43,6 +43,14 @@ int batteryPercent();
 // Whether external power / charging is detected; false if unknown.
 bool isCharging();
 
+// PROTOTYPE: the M5PM1 always-on seconds counter (0x6E regs 0x38..0x3B), or
+// 0xFFFFFFFF if the board has none. Used to test whether real elapsed time is
+// available across power-off (see docs/srs.md section 5).
+uint32_t powerTimerSeconds();
+// PROTOTYPE: arm that counter to `seconds` (FLAG action, one-shot) so it runs.
+// False if the board has no such timer or the I2C write fails.
+bool powerTimerArm(uint32_t seconds);
+
 void setBrightness(uint8_t level);  // 0..255
 
 // Hardware random seed.
