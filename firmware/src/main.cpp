@@ -61,13 +61,20 @@ uint32_t gLastAnswerAt = 0;
 int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
 
-enum class Screen { Quiz, Menu, Done, Date };
+enum class Screen { Quiz, Menu, Decks, Choice, Done, Date };
+// Screen::Choice is shared by the two four-row pickers (see openChoice()).
+enum class Choice { NewPerDay, SlowMs };
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
 int gDateSel = 0;
 std::vector<String> gPacks;  // paths of the *.tgc files in /packs
-int gMenuSel = 0;
+int gMenuSel = 0;            // highlighted row on the settings home
+int gDeckSel = 0;            // highlighted row on the deck list
+Choice gChoice = Choice::NewPerDay;
+int gChoiceSel = 0;
+int gChoiceCount = 0;
+uint16_t gChoiceValues[4] = {0, 0, 0, 0};
 String gCurrentPack;
 Preferences gPrefs;
 
@@ -178,7 +185,7 @@ bool newQuestion() {
     }
 }
 
-void drawScreen();  // dispatches to the quiz or the deck menu
+void drawScreen();  // dispatches to the active screen
 void formatDate(uint16_t days, char* out, size_t n);
 
 void drawQuiz() {
@@ -297,37 +304,87 @@ void drawQuiz() {
     present();
 }
 
-// Deck menu: row 0 is the date, then one row per pack; the loaded one is marked
-// with '*'.
+// One full-width highlighted row for the settings home and the choice screens,
+// labelled with the built-in 2x font so accented Spanish renders.
+void drawRow(lgfx::LovyanGFX& d, const char* label, int y, bool sel) {
+    const uint16_t bg = sel ? kHighlight : kBlack;
+    d.fillRoundRect(2, y, W - 4, 32, 5, bg);
+    if (sel) d.drawRoundRect(2, y, W - 4, 32, 5, kWhite);
+    gRender.drawCentred(d, label, 4, y + 1, W - 8, 30, 1, kWhite, bg, tgc::Renderer::kTextBuiltin);
+}
+
+// Settings home (hold the side button from the quiz): tap moves the highlight,
+// hold activates the row. Each row is a full-width box with a label.
+constexpr int kSettingRows = 5;
+const char* const kSettingLabels[kSettingRows] = {"Seguir", "Mazos", "Fecha", "Nuevas/día",
+                                                  "Velocidad"};
+
 void drawMenu() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, "DECKS", 3, 3, kWhite, kGrey);
-    smallText(d, "tap=next  hold=open", W - 3, 3, kWhite, kGrey, lgfx::top_right);
+    smallText(d, "AJUSTES", 3, 3, kWhite, kGrey);
+    smallText(d, "lateral: atras", W - 3, 3, kWhite, kGrey, lgfx::top_right);
 
+    const int top = 20, step = 36;
+    for (int i = 0; i < kSettingRows; ++i) drawRow(d, kSettingLabels[i], top + i * step, i == gMenuSel);
+    present();
+}
+
+// Deck list (opened from "Mazos"): one row per pack; the loaded pack is marked
+// '*' and shows its due/new counts. Hold loads the highlighted pack; the side
+// button returns to the settings home. The date row lives in the settings home.
+void drawDecks() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, "MAZOS", 3, 3, kWhite, kGrey);
+    smallText(d, "lateral: atras", W - 3, 3, kWhite, kGrey, lgfx::top_right);
+
+    uint32_t due = 0, fresh = 0;
+    packDueNew(&due, &fresh);  // only shown on the loaded pack's row
     const int top = 18, rowH = 20;
-    const int rows = static_cast<int>(gPacks.size()) + 1;
+    const int rows = static_cast<int>(gPacks.size());
     for (int i = 0; i < rows; ++i) {
         const int y = top + i * rowH;
         if (y + rowH - 2 > H) break;  // no more room
-        const bool sel = i == gMenuSel;
+        const bool sel = i == gDeckSel;
         const uint16_t bg = sel ? kHighlight : kBlack;
         d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
         if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
-        String label;
-        if (i == 0) {
-            char date[16];
-            formatDate(gSrs.today(), date, sizeof date);
-            label = String("Fecha ") + date;
-        } else {
-            label = gPacks[i - 1];
-            const int slash = label.lastIndexOf('/');
-            if (slash >= 0) label = label.substring(slash + 1);
-            if (label.endsWith(".tgc")) label = label.substring(0, label.length() - 4);
-            if (gPacks[i - 1] == gCurrentPack) label = "* " + label;
+        String label = gPacks[i];
+        const int slash = label.lastIndexOf('/');
+        if (slash >= 0) label = label.substring(slash + 1);
+        if (label.endsWith(".tgc")) label = label.substring(0, label.length() - 4);
+        if (gPacks[i] == gCurrentPack) {
+            char counts[24];
+            snprintf(counts, sizeof counts, "  %u/%u", (unsigned)due, (unsigned)fresh);
+            label = "* " + label + counts;
         }
         smallText(d, label.c_str(), 4, y + (rowH - 2 - 8) / 2, kWhite, bg);
+    }
+    present();
+}
+
+// Generic four-row choice screen: a title and the candidate values. Hold applies
+// the highlighted value; the side button cancels back to the settings home.
+void drawChoice() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, gChoice == Choice::NewPerDay ? "NUEVAS/DIA" : "VELOCIDAD", 3, 3, kWhite, kGrey);
+    smallText(d, "lateral: atras", W - 3, 3, kWhite, kGrey, lgfx::top_right);
+
+    const int top = 40, step = 40;
+    for (int i = 0; i < gChoiceCount; ++i) {
+        char label[16];
+        if (gChoice == Choice::SlowMs) {
+            if (gChoiceValues[i] == 0xFFFF) snprintf(label, sizeof label, "no");
+            else snprintf(label, sizeof label, "%.1f s", gChoiceValues[i] / 1000.0f);
+        } else {
+            snprintf(label, sizeof label, "%u", (unsigned)gChoiceValues[i]);
+        }
+        drawRow(d, label, top + i * step, i == gChoiceSel);
     }
     present();
 }
@@ -350,7 +407,7 @@ void drawDone() {
     snprintf(line, sizeof line, "due %u  new %u", (unsigned)due, (unsigned)fresh);
     smallText(d, line, W / 2, H / 2 + 8, kWhite, kBlack, lgfx::top_center);
     smallText(d, "tap/hold: +10 new", W / 2, H / 2 + 30, kWhite, kBlack, lgfx::top_center);
-    smallText(d, "side hold: decks", W / 2, H / 2 + 44, kWhite, kBlack, lgfx::top_center);
+    smallText(d, "side hold: menu", W / 2, H / 2 + 44, kWhite, kBlack, lgfx::top_center);
     present();
 }
 
@@ -434,16 +491,30 @@ void leaveDate() {
 }
 
 // Applies the chosen number of days, persists it, rebuilds the queue (cards may
-// now be due) and shows the quiz.
+// now be due) and goes back to where the date screen was opened from: the
+// settings home, or the quiz on a power-off boot.
 void applyDate() {
     gSrs.advanceDays(kDateAdd[gDateSel]);
     gSrs.save(gSrsIo);
     gDirty = 0;
-    leaveDate();
+    gQueue.rebuild(gPack, gSrs, gRng);
+    if (gAfterDate == Screen::Menu) {
+        gScreen = Screen::Menu;
+        drawScreen();
+        return;
+    }
+    if (!newQuestion()) {
+        showDone();
+        return;
+    }
+    gScreen = Screen::Quiz;
+    drawScreen();
 }
 
 void drawScreen() {
     if (gScreen == Screen::Menu) drawMenu();
+    else if (gScreen == Screen::Decks) drawDecks();
+    else if (gScreen == Screen::Choice) drawChoice();
     else if (gScreen == Screen::Done) drawDone();
     else if (gScreen == Screen::Date) drawDate();
     else drawQuiz();
@@ -482,8 +553,6 @@ void openMenu() {
     gBeforeMenu = gScreen;
     gScreen = Screen::Menu;
     gMenuSel = 0;
-    for (size_t i = 0; i < gPacks.size(); ++i)
-        if (gPacks[i] == gCurrentPack) gMenuSel = static_cast<int>(i) + 1;  // row 0 is the date
     drawScreen();
 }
 
@@ -492,19 +561,88 @@ void closeMenu() {
     drawScreen();
 }
 
-void selectPack() {
-    if (gMenuSel == 0) {  // the date row
-        gAfterDate = Screen::Menu;
-        gDateSel = 0;
-        gScreen = Screen::Date;
-        drawScreen();
-        return;
+// Opens the deck list with the loaded pack highlighted.
+void openDecks() {
+    gDeckSel = 0;
+    for (size_t i = 0; i < gPacks.size(); ++i)
+        if (gPacks[i] == gCurrentPack) gDeckSel = static_cast<int>(i);
+    gScreen = Screen::Decks;
+    drawScreen();
+}
+
+// Opens one of the two four-row pickers (Screen::Choice) with the saved value
+// highlighted when it is one of the candidates.
+void openChoice(Choice which) {
+    gChoice = which;
+    gChoiceSel = 0;
+    gChoiceCount = 4;
+    if (which == Choice::NewPerDay) {
+        gChoiceValues[0] = 3;
+        gChoiceValues[1] = 5;
+        gChoiceValues[2] = 10;
+        gChoiceValues[3] = 20;
+        for (int i = 0; i < gChoiceCount; ++i)
+            if (gChoiceValues[i] == gSrs.newPerDay()) gChoiceSel = i;
+    } else {
+        gChoiceValues[0] = 1500;
+        gChoiceValues[1] = 3000;
+        gChoiceValues[2] = 5000;
+        gChoiceValues[3] = 0xFFFF;  // disables Hard
+        for (int i = 0; i < gChoiceCount; ++i)
+            if (gChoiceValues[i] == gSrs.slowMs()) gChoiceSel = i;
     }
+    gScreen = Screen::Choice;
+    drawScreen();
+}
+
+// Applies the highlighted choice, persists it and returns to the settings home.
+void applyChoice() {
+    const uint16_t v = gChoiceValues[gChoiceSel];
+    if (gChoice == Choice::NewPerDay) {
+        gSrs.setNewPerDay(v);
+        gSrs.save(gSrsIo);
+        gDirty = 0;
+        gQueue.rebuild(gPack, gSrs, gRng);  // the daily new-card cap changed
+    } else {
+        gSrs.setSlowMs(v);
+        gSrs.save(gSrsIo);
+        gDirty = 0;
+    }
+    gScreen = Screen::Menu;
+    drawScreen();
+}
+
+// Activates the highlighted settings row.
+void activateSetting() {
+    switch (gMenuSel) {
+        case 0:  // Seguir
+            closeMenu();
+            break;
+        case 1:  // Mazos
+            openDecks();
+            break;
+        case 2:  // Fecha
+            gAfterDate = Screen::Menu;
+            gDateSel = 0;
+            gScreen = Screen::Date;
+            drawScreen();
+            break;
+        case 3:  // Nuevas/dia
+            openChoice(Choice::NewPerDay);
+            break;
+        case 4:  // Velocidad
+            openChoice(Choice::SlowMs);
+            break;
+    }
+}
+
+// Loads the highlighted deck (replacing the live pack only after it validates),
+// resets the "study more" override and starts the quiz.
+void selectPack() {
     bool loaded = false;
     gExtraNew = 0;
-    const int pi = gMenuSel - 1;
-    if (pi >= 0 && pi < static_cast<int>(gPacks.size())) {
-        const String path = gPacks[pi];
+    if (gDeckSel >= 0 && gDeckSel < static_cast<int>(gPacks.size())) {
+        const String path = gPacks[gDeckSel];
         if (loadPack(path)) {
             gPrefs.putString("pack", path);
             loaded = true;
@@ -682,12 +820,34 @@ void loop() {
     const int b = keyB.poll(tgc::board::isHeld(Button::Next), t, tgc::board::kHoldMs);
     if (gScreen == Screen::Menu) {
         if (a == 1) {
-            gMenuSel = (gMenuSel + 1) % (static_cast<int>(gPacks.size()) + 1);  // +1 for the date row
+            gMenuSel = (gMenuSel + 1) % kSettingRows;
+            drawScreen();
+        } else if (a == 2) {
+            activateSetting();
+        }
+        if (b) closeMenu();  // side button backs out to the previous screen
+    } else if (gScreen == Screen::Decks) {
+        if (a == 1) {
+            if (!gPacks.empty()) gDeckSel = (gDeckSel + 1) % static_cast<int>(gPacks.size());
             drawScreen();
         } else if (a == 2) {
             selectPack();
         }
-        if (b) closeMenu();  // side button backs out of the menu
+        if (b) {  // side button returns to the settings home
+            gScreen = Screen::Menu;
+            drawScreen();
+        }
+    } else if (gScreen == Screen::Choice) {
+        if (a == 1) {
+            gChoiceSel = (gChoiceSel + 1) % gChoiceCount;
+            drawScreen();
+        } else if (a == 2) {
+            applyChoice();
+        }
+        if (b) {  // cancel: back to the settings home
+            gScreen = Screen::Menu;
+            drawScreen();
+        }
     } else if (gScreen == Screen::Date) {
         if (a == 1) {
             gDateSel = (gDateSel + 1) % kDateRows;

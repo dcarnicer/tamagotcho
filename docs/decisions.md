@@ -191,3 +191,19 @@ Short log of non-obvious choices. Newest last.
   (documented trade-off; the M5PM1 has no readable clock).
 - Pure logic in `firmware/src/srs/` (no Arduino, native-tested); LittleFS I/O in
   `firmware/src/platform/`; wiring in `main.cpp`.
+
+## 2026-10-17 – Settings menu hierarchy
+
+- **The menu is now settings, not a deck list.** `Screen::Menu` is a five-row
+  settings home (Seguir / Mazos / Fecha / Nuevas/día / Velocidad), still reached
+  by holding the side button from the quiz. The deck list moved to its own
+  `Screen::Decks`, and the date row to the "Fecha" setting, so new settings no
+  longer pile rows onto the deck list.
+- **One shared `Screen::Choice`** draws a title and four value rows; the open
+  picker and its candidate values are held in `gChoice`/`gChoiceValues[]`. It
+  serves both the daily new-card cap (3/5/10/20) and the Hard threshold
+  (1.5/3/5 s or "no" = 0xFFFF to disable Hard). Holding a row applies the value,
+  saves the state file and rebuilds the queue when the new-card cap changed.
+- **Rows use the built-in 2x font** (`drawCentred` with `kTextBuiltin`) so the
+  accented labels render; deck rows stay on the 1x `Font0` and only the loaded
+  pack shows `due/new` counts (counting every pack would mean opening each one).
