@@ -9,6 +9,8 @@ uv sync
 uv run tangocho-pack fetch            # KANJIDIC2, JLPT N5-N1 table, Klee One, KanjiVG -> cache/
 uv run tangocho-pack build --jlpt 5 --lang es -o out/n5-es.tgc
 uv run tangocho-pack build --jlpt 5 --lang es --strokes -o out/n5-es-strokes.tgc
+uv run tangocho-pack build --wanikani-token "$WANIKANI_TOKEN" -o out/wanikani.tgc
+uv run tangocho-pack build --wanikani-level 1 --wanikani-level 2 -o out/wanikani-l1-2.tgc
 uv run tangocho-pack inspect out/n5-es.tgc
 uv run tangocho-pack preview out/n5-es.tgc --card 水 --mode meaning -o out/preview.png
 uv run tangocho-pack preview out/n5-es-strokes.tgc --card 水 --mode strokes --stroke 2 -o out/strokes.png
@@ -28,6 +30,18 @@ uv run pytest
   stroke-order section (off by default; a pack without it is byte-identical to a
   KANJIDIC2-only v1 pack). `--strokes-px` sets the em square for the masks and
   defaults to `--large-px`.
+- `build --wanikani-token TOKEN [--wanikani-level N ...]` builds from **your own
+  WaniKani account** instead of KANJIDIC2 (so no `--jlpt`/`--grade` and no
+  `fetch` needed). It imports only the kanji you have **unlocked** (WaniKani API
+  v2, `/assignments` joined to `/subjects`), reads the token from the flag or
+  the `WANIKANI_TOKEN` environment variable, and never logs, prints or caches
+  it. `--wanikani-level` (repeatable) limits the import to those WaniKani levels;
+  without it every unlocked level is imported, ordered by level then subject id.
+  `--lang` still applies, but WaniKani has English meanings only, so any other
+  language falls back to English with the card's fallback flag set. On'yomi are
+  converted from the API's hiragana to katakana. WaniKani content is © Tofugu
+  LLC; a pack built this way is your own responsibility and must not be
+  redistributed (docs/data-sources.md).
 - `inspect FILE` validates (magic, version, offsets, alignment, glyph table
   order, set 0/1 glyph per card, every string character present in set 2, every
   reading character in set 3) and prints sizes and the file's `sha256`; exit
@@ -84,11 +98,12 @@ n5-en<TAB>en<TAB>79<TAB>703123<TAB>ab12cd…<TAB>https://example.com/v1/n5-en.tg
 
 ## Layout
 
-- `kanjidic.py` parsing and card selection; `glyphs.py` rasterisation and 4bpp;
-  `pack.py` writer, reader and validator; `kanjivg.py` stroke masks (KanjiVG);
-  `distractors.py` distractor strategies (visual similarity for meanings,
-  confusable readings for readings); `preview.py` UI mock; `catalog.py` the
-  line-oriented device catalog; `build.py` orchestration.
+- `kanjidic.py` parsing and card selection; `wanikani.py` the optional
+  WaniKani importer (own token, unlocked kanji only); `glyphs.py` rasterisation
+  and 4bpp; `pack.py` writer, reader and validator; `kanjivg.py` stroke masks
+  (KanjiVG); `distractors.py` distractor strategies (visual similarity for
+  meanings, confusable readings for readings); `preview.py` UI mock;
+  `catalog.py` the line-oriented device catalog; `build.py` orchestration.
 
 ## Conventions (where the spec leaves room)
 

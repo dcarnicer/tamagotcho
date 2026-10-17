@@ -8,8 +8,10 @@ version). Anything downloaded by `tangocho-pack fetch` lands in
 `tools/pack-builder/cache/` (git-ignored) and is never committed. The only
 third-party-derived files in the repo are the three kanji in
 `tools/pack-builder/tests/data/mini_kanjidic2.xml` (a KANJIDIC2 excerpt), the
-three KanjiVG SVG excerpts in `tools/pack-builder/tests/data/kanjivg/` and the
-fixture pack built from them.
+three KanjiVG SVG excerpts in `tools/pack-builder/tests/data/kanjivg/`, the
+fixture pack built from them, and the hand-written WaniKani API response
+fixtures in `tools/pack-builder/tests/data/wanikani/` (a handful of kanji and
+their English glosses, © Tofugu LLC, used only to test the importer offline).
 
 ## KANJIDIC2
 
@@ -60,6 +62,48 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 - Fallback if `kanji.json` is not in the cache: old level 4 -> N5, 3 -> N4,
   2 -> N3 (lossy: old 2 spans N3 and N2, so N2 is never produced), 1 -> N1.
   The builder prints a warning in that case.
+
+## WaniKani (optional; user's own token)
+
+- URL: https://api.wanikani.com/v2/ — the required `Wanikani-Revision` header is
+  `20170710`, the current (and so far only) documented revision,
+  https://docs.api.wanikani.com/. Endpoints used: `/assignments` (which kanji
+  the user has unlocked) and `/subjects` (their characters, meanings, readings).
+- Owner: **Tofugu LLC. WaniKani is a trademark of Tofugu LLC.** Tangochō is an
+  unofficial third-party tool; it is not affiliated with, endorsed by or
+  sponsored by WaniKani or Tofugu.
+- Licence/terms: WaniKani's content (subject meanings, readings, mnemonics…)
+  is © Tofugu LLC and is governed by the WaniKani terms of service and the API
+  terms. **Tangochō ships and redistributes no WaniKani content**: nothing is
+  fetched unless the user runs the importer with their *own* personal API token,
+  and a pack built this way is **the user's own responsibility**. It is intended
+  for that user's personal study, must not be redistributed, and must respect
+  the account's subscription (`max_level_granted`). The API rules apply: no
+  login/password authentication (tokens only) and no for-profit use of the
+  content.
+- Token handling: supplied at build time with `--wanikani-token` or the
+  `WANIKANI_TOKEN` environment variable. It is sent only in the request's
+  `Authorization: Bearer` header and is **never** logged, printed, committed or
+  written to `cache/`.
+- Used for: cards from the kanji the user has **unlocked** only — assignments
+  with `data.unlocked_at` set, `data.hidden` false and `data.subject_type ==
+  "kanji"` — joined by subject id to the kanji subjects. Locked and hidden
+  kanji are never imported, and nothing is ever written back to WaniKani.
+- Caveats:
+  - **Meanings are English-only.** WaniKani has no Spanish/French/Portuguese
+    meanings, so a non-English `--lang` falls back to English **and sets the
+    card's fallback flag** (bit0, the same convention as KANJIDIC2).
+  - On'yomi come back in hiragana and are shifted to **katakana** so the pack
+    contract holds (`docs/pack-format.md`: on'yomi katakana, kun'yomi hiragana);
+    kun'yomi stay hiragana. `nanori` readings are dropped.
+  - `jlpt`, `grade`, `strokes` and `freq` are 0 (unknown): WaniKani has no
+    equivalent. The ordering hint is WaniKani level, then subject id.
+  - The importer stays under the API's 60-requests/minute limit and reports a
+    clear, token-free error on 401/403/429.
+- Fixture provenance: `tools/pack-builder/tests/data/wanikani/*.json` are
+  hand-written, minimal API responses (a few subjects/assignments, including a
+  locked one) so the importer's tests run offline. They contain no real account
+  data.
 
 ## KanjiVG (stroke order)
 
@@ -125,3 +169,7 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 > (c) Fontworks Inc., SIL OFL 1.1. Stroke order data from KanjiVG
 > (c) Ulrich Apel, CC BY-SA 3.0, https://kanjivg.tagaini.net (present only in
 > packs built with `--strokes`). This pack is licensed CC BY-SA.
+
+A pack built with `--wanikani-token` is different: it contains WaniKani-derived
+content (© Tofugu LLC) and must not be redistributed; the CC BY-SA licence above
+does not apply to it. WaniKani is a trademark of Tofugu LLC.

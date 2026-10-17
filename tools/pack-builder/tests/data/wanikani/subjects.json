@@ -1,0 +1,176 @@
+{
+  "object": "collection",
+  "url": "https://api.wanikani.com/v2/subjects?types=kanji",
+  "pages": {
+    "per_page": 1000,
+    "next_url": null,
+    "previous_url": null
+  },
+  "total_count": 6,
+  "data_updated_at": "2026-10-01T12:00:00.000000Z",
+  "data": [
+    {
+      "id": 440,
+      "object": "kanji",
+      "url": "https://api.wanikani.com/v2/subjects/440",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "characters": "一",
+        "created_at": "2012-02-27T19:55:19.000000Z",
+        "document_url": "https://www.wanikani.com/kanji/%E4%B8%80",
+        "hidden_at": null,
+        "lesson_position": 2,
+        "level": 1,
+        "meanings": [
+          {"meaning": "One", "primary": true, "accepted_answer": true}
+        ],
+        "readings": [
+          {"type": "onyomi", "primary": true, "accepted_answer": true, "reading": "いち"},
+          {"type": "kunyomi", "primary": true, "accepted_answer": true, "reading": "ひと"}
+        ],
+        "slug": "一"
+      }
+    },
+    {
+      "id": 441,
+      "object": "kanji",
+      "url": "https://api.wanikani.com/v2/subjects/441",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "characters": "二",
+        "created_at": "2012-02-27T19:55:20.000000Z",
+        "document_url": "https://www.wanikani.com/kanji/%E4%BA%8C",
+        "hidden_at": null,
+        "lesson_position": 3,
+        "level": 1,
+        "meanings": [
+          {"meaning": "Two", "primary": true, "accepted_answer": true}
+        ],
+        "readings": [
+          {"type": "onyomi", "primary": true, "accepted_answer": true, "reading": "に"},
+          {"type": "kunyomi", "primary": true, "accepted_answer": true, "reading": "ふた"}
+        ],
+        "slug": "二"
+      }
+    },
+    {
+      "id": 442,
+      "object": "kanji",
+      "url": "https://api.wanikani.com/v2/subjects/442",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "characters": "三",
+        "created_at": "2012-02-27T19:55:21.000000Z",
+        "document_url": "https://www.wanikani.com/kanji/%E4%B8%89",
+        "hidden_at": null,
+        "lesson_position": 4,
+        "level": 1,
+        "meanings": [
+          {"meaning": "Three", "primary": true, "accepted_answer": true}
+        ],
+        "readings": [
+          {"type": "onyomi", "primary": true, "accepted_answer": true, "reading": "さん"},
+          {"type": "kunyomi", "primary": true, "accepted_answer": true, "reading": "み"}
+        ],
+        "slug": "三"
+      }
+    },
+    {
+      "id": 443,
+      "object": "kanji",
+      "url": "https://api.wanikani.com/v2/subjects/443",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "characters": "十",
+        "created_at": "2012-02-27T19:55:22.000000Z",
+        "document_url": "https://www.wanikani.com/kanji/%E5%8D%81",
+        "hidden_at": null,
+        "lesson_position": 5,
+        "level": 1,
+        "meanings": [
+          {"meaning": "Ten", "primary": true, "accepted_answer": true}
+        ],
+        "readings": [
+          {"type": "onyomi", "primary": true, "accepted_answer": true, "reading": "じゅう"},
+          {"type": "kunyomi", "primary": true, "accepted_answer": true, "reading": "とお"}
+        ],
+        "slug": "十"
+      }
+    },
+    {
+      "id": 450,
+      "object": "kanji",
+      "url": "https://api.wanikani.com/v2/subjects/450",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "characters": "日",
+        "created_at": "2012-02-27T20:00:00.000000Z",
+        "document_url": "https://www.wanikani.com/kanji/%E6%97%A5",
+        "hidden_at": null,
+        "lesson_position": 1,
+        "level": 2,
+        "meanings": [
+          {"meaning": "Day", "primary": false, "accepted_answer": true},
+          {"meaning": "Sun", "primary": true, "accepted_answer": true},
+          {"meaning": "Sunday", "primary": false, "accepted_answer": true},
+          {"meaning": "Japan", "primary": false, "accepted_answer": false}
+        ],
+        "readings": [
+          {"type": "onyomi", "primary": false, "accepted_answer": true, "reading": "にち"},
+          {"type": "onyomi", "primary": true, "accepted_answer": true, "reading": "じつ"},
+          {"type": "onyomi", "primary": false, "accepted_answer": true, "reading": "にち"},
+          {"type": "kunyomi", "primary": true, "accepted_answer": true, "reading": "ひ"},
+          {"type": "kunyomi", "primary": false, "accepted_answer": true, "reading": "か"},
+          {"type": "nanori", "primary": false, "accepted_answer": false, "reading": "かず"}
+        ],
+        "slug": "日"
+      }
+    },
+    {
+      "id": 451,
+      "object": "kanji",
+      "url": "https://api.wanikani.com/v2/subjects/451",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "characters": "月",
+        "created_at": "2012-02-27T20:00:01.000000Z",
+        "document_url": "https://www.wanikani.com/kanji/%E6%9C%88",
+        "hidden_at": null,
+        "lesson_position": 2,
+        "level": 2,
+        "meanings": [
+          {"meaning": "Moon", "primary": true, "accepted_answer": true},
+          {"meaning": "Month", "primary": false, "accepted_answer": true}
+        ],
+        "readings": [
+          {"type": "onyomi", "primary": true, "accepted_answer": true, "reading": "げつ"},
+          {"type": "onyomi", "primary": false, "accepted_answer": true, "reading": "がつ"},
+          {"type": "kunyomi", "primary": true, "accepted_answer": true, "reading": "つき"}
+        ],
+        "slug": "月"
+      }
+    },
+    {
+      "id": 460,
+      "object": "kanji",
+      "url": "https://api.wanikani.com/v2/subjects/460",
+      "data_updated_at": "2026-10-01T12:00:00.000000Z",
+      "data": {
+        "characters": "山",
+        "created_at": "2012-02-27T21:00:00.000000Z",
+        "document_url": "https://www.wanikani.com/kanji/%E5%B1%B1",
+        "hidden_at": null,
+        "lesson_position": 1,
+        "level": 3,
+        "meanings": [
+          {"meaning": "Mountain", "primary": true, "accepted_answer": true}
+        ],
+        "readings": [
+          {"type": "onyomi", "primary": true, "accepted_answer": true, "reading": "さん"},
+          {"type": "kunyomi", "primary": true, "accepted_answer": true, "reading": "やま"}
+        ],
+        "slug": "山"
+      }
+    }
+  ]
+}
