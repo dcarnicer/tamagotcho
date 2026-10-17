@@ -18,8 +18,11 @@ excerpt) and the fixture pack built from it.
   the property of the Electronic Dictionary Research and Development Group,
   and are used in conformance with the Group's licence."
 - Used for: codepoint, meanings (en/es/fr/pt), on'yomi, kun'yomi, stroke
-  count, school grade, newspaper frequency, and the legacy 4-level JLPT field
-  (fallback only, see below).
+  count, school grade, newspaper frequency, the legacy 4-level JLPT field
+  (fallback only, see below), and the classical KangXi radical numbers
+  (`rad_value rad_type="classical"`, 1..214) used to rank meaning distractors.
+  Radicals are a builder-side selection signal only: they are **not** stored in
+  the pack and the pack format is unchanged (see docs/decisions.md).
 
 ### Meaning and reading conventions
 

@@ -259,3 +259,31 @@ Short log of non-obvious choices. Newest last.
   available height and drop to the built-in 1x font when 2x no longer fits;
   portrait keeps its original steps and 2x font exactly.
 
+## 2026-10-17 – Meaning distractors prefer a shared classical radical
+
+- **KANJIDIC2 classical radicals are parsed** into `RawKanji`/`Card`
+  (`radicals: list[int]`, the `rad_value rad_type="classical"` numbers, 1..214).
+  Nelson reclassifications are ignored; names/Unicode are not imported. A
+  missing/empty `<radical>` block yields an empty list. Radicals are a
+  **builder-side ranking signal only** — the pack format and `docs/pack-format.md`
+  are unchanged (v1, no field, no version bump).
+- **Scoring key for the meaning list** (best first): same JLPT level, then
+  shared classical radical, then visual (ink-vector cosine) similarity, then
+  closest stroke count, then the seeded random tie-break and card index. Level
+  stays the *first* key so a radical never lifts a candidate above one at the
+  target's own level; within a level a shared radical outranks raw ink
+  similarity. **Why radical before similarity:** a shared radical is a
+  deliberate, explainable confusion axis (same dictionary family — 氵, 木, 口…)
+  and is less noise-prone than the cosine of two glyph bitmaps; the point of the
+  feature is exactly to surface those siblings when the ink score alone would
+  miss them. Same-level membership is what counts as "otherwise plausible".
+- **No-radical data degrades exactly to the old ordering:** a pair with no
+  shared radical makes the new key term constant, so hand-written fixtures and
+  the mini fixture are byte-identical (the committed `fixtures/mini.tgc` needs no
+  regeneration; its three kanji have distinct radicals anyway).
+- **Existing hard rules and the contract are unchanged:** gloss-sharing
+  candidates and `j == i` are still excluded, the result is still deterministic
+  for a seed, and `MAX_DISTRACTORS` / best-first still hold. Packs built before
+  this change **still play correctly and need no rebuild**; only future builds
+  compute different (better) distractor lists.
+

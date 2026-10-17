@@ -16,8 +16,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       each power-on plus a manual date (NTP in phase 4). `slow_ms`, the daily new
       cap and the "study more" override are all adjustable/working. Pending: tune
       the defaults with real use.
-- [~] **Phase 3 – Better cards.** Distractors done for visual similarity and
-      confusable readings (shared radicals pending); meaning→kanji questions
+- [~] **Phase 3 – Better cards.** Distractors done for visual similarity,
+      shared classical radicals and confusable readings; meaning→kanji questions
       done. Pending: detail card on mistakes, stroke order from KanjiVG, and
       preferring *common* readings — KANJIDIC2's reading order is not by
       frequency (e.g. 九's first kun reading is the rare ここの), so this needs a

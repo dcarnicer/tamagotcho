@@ -26,6 +26,9 @@ class Card:
     grade: int = 0
     strokes: int = 0
     freq: int = 0
+    # Classical KangXi radical numbers (1..214) from KANJIDIC2, used only to
+    # rank meaning distractors; empty when the source has no radical data.
+    radicals: list[int] = field(default_factory=list)
     fallback_en: bool = False
     level: int = 0
     distractors: list[int] = field(default_factory=list)
@@ -46,6 +49,7 @@ class RawKanji:
     grade: int
     strokes: int
     freq: int
+    radicals: list[int] = field(default_factory=list)
 
 
 def clean_kun(r: str) -> str:
@@ -73,6 +77,15 @@ def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
                 cp = int(c.text, 16)
         if cp is None:
             continue
+        # Classical KangXi radical numbers only (rad_type="classical"); the
+        # Nelson reclassifications are another classification and not used.
+        # Real entries always carry a <radical> block, but treat a missing or
+        # empty one as "no radical data" rather than failing.
+        radicals: list[int] = []
+        for rv in ch.iter("rad_value"):
+            if rv.get("rad_type") == "classical" and rv.text:
+                radicals.append(int(rv.text))
+
         meanings: dict[str, list[str]] = {}
         on: list[str] = []
         kun: list[str] = []
@@ -99,6 +112,7 @@ def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
                 grade=num("misc/grade"),
                 strokes=num("misc/stroke_count"),
                 freq=num("misc/freq"),
+                radicals=radicals,
             )
         )
     return out
@@ -152,6 +166,7 @@ def make_cards(
                 grade=min(k.grade, 255),
                 strokes=min(k.strokes, 255),
                 freq=min(k.freq, 65535),
+                radicals=list(k.radicals),
                 fallback_en=fallback,
             )
         )

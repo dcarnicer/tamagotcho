@@ -4,7 +4,8 @@ Two lists per card, both plain lists of card indices, best first:
 
 - **meaning**: visually similar kanji, compared from their own bitmaps, so the
   wrong options are the ones a learner might actually confuse; same JLPT level
-  first, then closest stroke count.
+  first, then shared classical radical, then visual similarity, then closest
+  stroke count.
 - **reading**: cards whose reading *of the same kind* is confusable (a kana or
   two apart, e.g. ショウ / ジョウ), same level first.
 
@@ -81,16 +82,30 @@ def meaning_distractors(cards: list, visual: list[int], k: int = MAX_DISTRACTORS
     for i, c in enumerate(cards):
         rng = random.Random(seed * 1_000_003 + c.codepoint)
         mine = {m.lower() for m in c.meanings}
+        my_radicals = set(c.radicals)
         scored = []
         for j, o in enumerate(cards):
             if j == i:
                 continue
             if mine & {m.lower() for m in o.meanings}:
                 continue  # would make two options correct
-            scored.append(((o.jlpt != c.jlpt), -_similarity(visual[i], visual[j]),
+            # Scoring key, best (smallest) first:
+            #   1. same JLPT level first        -> level always outranks radicals
+            #   2. shared classical radical     -> same dictionary family (氵, 木, 口…)
+            #   3. visual similarity (cosine)   -> how alike the glyphs look
+            #   4. closest stroke count         -> a mild, human-plausible tie-break
+            #   5. seeded random, then index    -> deterministic tie-break
+            # Sharing a radical is a deliberate, explainable confusion axis, so it
+            # is preferred over the noisier ink cosine for candidates that are
+            # otherwise plausible (same level). A card with no radical data shares
+            # nothing, so `not shared` is constant and the key degrades exactly to
+            # the pre-radical ordering.
+            shared = bool(my_radicals & set(o.radicals))
+            scored.append(((o.jlpt != c.jlpt), not shared,
+                           -_similarity(visual[i], visual[j]),
                            abs(o.strokes - c.strokes), rng.random(), j))
-        scored.sort(key=lambda s: s[:4])
-        result.append([s[4] for s in scored[:k]])
+        scored.sort(key=lambda s: s[:5])
+        result.append([s[5] for s in scored[:k]])
     return result
 
 
