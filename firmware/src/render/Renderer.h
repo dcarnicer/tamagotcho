@@ -25,10 +25,12 @@ public:
     void drawKanji(lgfx::LovyanGFX& dst, uint8_t set, uint32_t cp, int boxX, int boxY, int boxW,
                    int boxH, uint16_t fg, uint16_t bg);
 
-    // Built-in GFX font as a text style: pass kTextBuiltin as `set`. It carries
-    // ASCII plus the Latin-1 accents Font0 keeps in its CP437 slots; indices are
-    // translated in glcdIndex(). builtinCanDraw() reports full coverage.
+    // Built-in GFX font as a text style: pass kTextBuiltin (2x) or
+    // kTextBuiltinSmall (1x). It carries ASCII plus the Latin-1 accents Font0
+    // keeps in its CP437 slots; indices are translated in glcdIndex().
+    // builtinCanDraw() reports full coverage.
     static constexpr uint8_t kTextBuiltin = 0xFF;
+    static constexpr uint8_t kTextBuiltinSmall = 0xFE;
     static bool builtinCanDraw(const char* s);
 
     // Text metrics per set. `set` is 2 (small text), 3 (large option text) or

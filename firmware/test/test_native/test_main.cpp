@@ -274,27 +274,20 @@ void test_quiz_meaning() {
     XorShiftRng rng(12345);
     const char* meanings[] = {"day; sun; Japan", "month; moon",       "fire",
                               "water",            "tree; wood",        "middle"};
-    int seen[6] = {0, 0, 0, 0, 0, 0};  // distinct answers per card
-    std::vector<std::string> uniq[6];
     for (int iter = 0; iter < 300; ++iter) {
         uint32_t idx = iter % 6;
         Question q;
         TEST_ASSERT_TRUE(buildQuestion(r, idx, QuizMode::Meaning, rng, &q));
         TEST_ASSERT_EQUAL(4, q.count);
-        TEST_ASSERT_TRUE(isMeaningOf(q.options[q.correct], meanings[idx]));
+        // Only the first meaning of each card is ever shown.
+        TEST_ASSERT_EQUAL_STRING(meaningAt(meanings[idx], 0).c_str(), q.options[q.correct].c_str());
         TEST_ASSERT_EQUAL_UINT16(idx, q.optionCard[q.correct]);
         for (int i = 0; i < 4; ++i)
             for (int j = i + 1; j < 4; ++j) {
                 TEST_ASSERT_TRUE(q.options[i] != q.options[j]);
                 TEST_ASSERT_TRUE(q.optionCard[i] != q.optionCard[j]);
             }
-        std::string a = q.options[q.correct];
-        if (std::find(uniq[idx].begin(), uniq[idx].end(), a) == uniq[idx].end()) uniq[idx].push_back(a);
-        ++seen[idx];
     }
-    // A card with several meanings surfaces more than one of them over time.
-    TEST_ASSERT_TRUE(uniq[0].size() >= 2);
-    TEST_ASSERT_TRUE(uniq[1].size() >= 2);
 }
 
 void test_quiz_distractor_priority_and_shuffle() {
@@ -374,8 +367,8 @@ void test_quiz_unavailable_and_tiny() {
 }
 
 void test_quiz_meaning_gloss_collisions() {
-    // Card 1 shares "day" but can offer "other"; card 4 is only "day" and must
-    // be skipped so two options can never both be correct.
+    // Cards whose first meaning is "day" must never be offered for 日 ("day"):
+    // two options would both be correct.
     std::vector<CardSpec> cs = {{0x65E5, "day", "ニチ", "", {1, 2}},
                                 {0x6708, "day; other", "ゲツ", "", {}},
                                 {0x706B, "fire", "カ", "", {}},
@@ -392,13 +385,11 @@ void test_quiz_meaning_gloss_collisions() {
         Question q;
         TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Meaning, rng, &q));
         TEST_ASSERT_EQUAL_STRING("day", q.options[q.correct].c_str());
-        TEST_ASSERT_EQUAL(4, q.count);
-        int dayCount = 0;
+        TEST_ASSERT_EQUAL(3, q.count);  // cards 1 and 4 share "day" and are skipped
         for (int i = 0; i < q.count; ++i) {
-            if (q.options[i] == "day") ++dayCount;
-            TEST_ASSERT_TRUE(q.optionCard[i] != 4);  // only-"day" card never offered
+            TEST_ASSERT_TRUE(q.optionCard[i] != 1);
+            TEST_ASSERT_TRUE(q.optionCard[i] != 4);
         }
-        TEST_ASSERT_EQUAL(1, dayCount);
     }
 }
 

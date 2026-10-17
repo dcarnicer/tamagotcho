@@ -83,3 +83,31 @@ Short log of non-obvious choices. Newest last.
   `option_ascent`; 0 = absent, so no version bump). Reading answers use set 3
   when the whole question fits the cell, otherwise the small text. Readers fall
   back from set 3 to set 2 when a code point is absent from set 3.
+
+## 2026-10-17 – One-button quiz control
+
+- **The front button drives everything**: a tap cycles the highlight, a ~600 ms
+  hold confirms it; once revealed, a tap moves to the next card. The side button
+  stays as a tap shortcut (and is kept free for the deck menu).
+- Tap and hold are separated by acting on release: the tap runs when the button
+  goes up and is suppressed if a hold already fired, so a long press is never
+  also counted as a tap. `main.cpp` keeps its own press timing (`isHeld` +
+  `millis()`); the HAL still exposes press/hold edges.
+
+## 2026-10-17 – Typical options for beginners
+
+- **Meaning options use only a card's first gloss** (`kOptionMeanings = 1` in
+  `Quiz.cpp`, correct option and distractors alike): even the first two surfaced
+  too many odd senses, so for now the canonical first gloss is used until a
+  better meaning source is found.
+- **The builder caps non-English gloss lists to the English sense count.**
+  KANJIDIC2's Spanish lists are not a translation of the English ones and often
+  add derived or wrong senses (母: "madre", "base", "cimientos"; 火: "fuego",
+  "flama", "llama"; 39 of 79 N5 cards have more Spanish senses than English).
+  The English list is the canonical count, so `make_cards` keeps at most
+  `len(en)` entries per language. 月 keeps ["mes", "luna"]; 母 becomes ["madre"].
+  Caveat: this does not fix every odd 2nd gloss (日 still gives "día", "solar").
+- Reading options already use each card's first reading, which is the typical
+  one. Caveat: KANJIDIC's reading order is not frequency-based (九's first kun
+  reading is the rare ここの), so a per-reading frequency source may be worth
+  adding later (roadmap, phase 3).

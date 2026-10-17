@@ -128,11 +128,17 @@ def make_cards(
             continue
         if grades and k.grade not in grades:
             continue
-        ms = k.meanings.get(lang) if lang != "en" else k.meanings.get("en")
+        en = k.meanings.get("en", [])
+        ms = list(en) if lang == "en" else list(k.meanings.get(lang, []))
         fallback = False
         if not ms:
-            ms = k.meanings.get("en", [])
+            ms = list(en)
             fallback = lang != "en"
+        # The non-English lists can carry extra, derived senses the canonical
+        # English list does not (母: "madre", "base", "cimientos"); keep at most
+        # as many as English has.
+        if lang != "en" and en:
+            ms = ms[: len(en)]
         if not ms and not (k.onyomi or k.kunyomi):
             continue
         cards.append(

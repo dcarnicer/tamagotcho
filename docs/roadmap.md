@@ -14,6 +14,9 @@ Scope for now: **kanji only** (no vocabulary decks).
 - [ ] **Phase 3 – Better cards.** Smart distractors (visual similarity,
       shared radicals, confusable readings), meaning→kanji questions, detail
       card on mistakes, stroke order from KanjiVG.
+      Also: prefer *common* readings — KANJIDIC2's reading order is not by
+      frequency (e.g. 九's first kun reading is the rare ここの), so this needs a
+      reading-frequency source or an on'yomi preference for some kanji.
 - [ ] **Phase 4 – Connectivity.** Wi-Fi portal on device (upload packs, view
       stats), WaniKani importer (user's own token, unlocked kanji only), IMU
       input (tilt to choose).

@@ -42,13 +42,14 @@ No OTA: one 2 MB app slot, everything else is LittleFS (partition label
 
 ## Controls
 
-| action  | StickS3          | T-Display-S3 |
-|---------|------------------|--------------|
-| Next    | side button (B)  | GPIO14       |
-| Select  | front button (A) | GPIO0 (BOOT) |
+The front (confirm) button drives the quiz: a **tap** moves the highlight to the
+next option, a **hold** (~600 ms) confirms the highlighted one. Once the answer
+is revealed, a tap goes to the next card. The side button is a tap shortcut.
 
-Next moves the highlight, Select confirms; any button after feedback goes to the
-next card.
+| button            | StickS3          | T-Display-S3 |
+|-------------------|------------------|--------------|
+| confirm (hold)    | front button (A) | GPIO0 (BOOT) |
+| next / tap        | side button (B)  | GPIO14       |
 
 ## Layout
 

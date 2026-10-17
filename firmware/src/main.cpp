@@ -147,11 +147,12 @@ void drawScreen() {
         if (gRevealed) return i == gQ.correct ? kGreen : (i == gSel ? kRed : kBlack);
         return i == gSel ? kHighlight : kBlack;
     };
-    auto optionBox = [&](int i, int x, int y, int w, int h, uint8_t set) {
+    auto optionBox = [&](int i, int x, int y, int w, int h, uint8_t set, int maxLines) {
         uint16_t bg = optionBg(i);
         d.fillRoundRect(x, y, w, h, 4, bg);
         if (!gRevealed && i == gSel) d.drawRoundRect(x, y, w, h, 4, kWhite);
-        gRender.drawCentred(d, gQ.options[i].c_str(), x + 2, y + 1, w - 4, h - 2, 1, kWhite, bg, set);
+        gRender.drawCentred(d, gQ.options[i].c_str(), x + 2, y + 1, w - 4, h - 2, maxLines, kWhite, bg,
+                            set);
     };
 
     if (reading) {
@@ -168,7 +169,7 @@ void drawScreen() {
             }
         for (int i = 0; i < gQ.count; ++i)
             optionBox(i, margin + (i % cols) * (cellW + gap), top + (i / cols) * (cellH + gap),
-                      cellW, cellH, set);
+                      cellW, cellH, set, 1);
     } else {
         // The built-in font has no glyph for some characters; then use the pack.
         uint8_t set = tgc::Renderer::kTextBuiltin;
@@ -177,9 +178,22 @@ void drawScreen() {
                 set = tgc::kGlyphSetText;
                 break;
             }
+        const int w = W - 2 * margin;
+        // Shrink to 1x if any option would otherwise be truncated.
+        if (set == tgc::Renderer::kTextBuiltin) {
+            for (int i = 0; i < gQ.count; ++i)
+                if (gRender.textWidth(gQ.options[i].c_str(), set) > w - 4) {
+                    set = tgc::Renderer::kTextBuiltinSmall;
+                    break;
+                }
+        }
         const int rowH = area / gQ.count;
+        const int boxH = rowH - gap;
+        int maxLines = (boxH - 2) / gRender.lineHeight(set);
+        if (maxLines < 1) maxLines = 1;
+        if (maxLines > 2) maxLines = 2;
         for (int i = 0; i < gQ.count; ++i)
-            optionBox(i, margin, top + i * rowH, W - 2 * margin, rowH - gap, set);
+            optionBox(i, margin, top + i * rowH, w, boxH, set, maxLines);
     }
     present();
 }
@@ -247,21 +261,50 @@ void setup() {
     drawScreen();
 }
 
+// One button drives everything: a tap cycles the highlight (or, once revealed,
+// moves to the next card); a 600 ms hold confirms the highlighted option. The
+// tap action runs on release, and a hold suppresses it, so a long press is never
+// also a tap.
+void tapAction() {
+    if (gRevealed) {
+        if (newQuestion()) drawScreen();
+        return;
+    }
+    gSel = (gSel + 1) % gQ.count;
+    drawScreen();
+}
+
+void holdAction() {
+    if (gRevealed) {
+        if (newQuestion()) drawScreen();
+        return;
+    }
+    gRevealed = true;
+    QLOG("A sel=%d correct=%d %s\n", gSel, gQ.correct, gSel == gQ.correct ? "OK" : "MISS");
+    drawScreen();
+}
+
 void loop() {
     tgc::board::update();
-    const bool next = tgc::board::wasPressed(Button::Next);
-    const bool select = tgc::board::wasPressed(Button::Select);
-    if (next || select) {
-        if (gRevealed) {
-            if (newQuestion()) drawScreen();
-        } else if (next) {
-            gSel = (gSel + 1) % gQ.count;
-            drawScreen();
-        } else {
-            gRevealed = true;
-            QLOG("A sel=%d correct=%d %s\n", gSel, gQ.correct, gSel == gQ.correct ? "OK" : "MISS");
-            drawScreen();
-        }
+    if (tgc::board::wasPressed(Button::Next)) tapAction();  // side button shortcut
+
+    static bool down = false;
+    static bool longFired = false;
+    static uint32_t downAt = 0;
+    const bool now = tgc::board::isHeld(Button::Select);
+    const uint32_t t = millis();
+    if (now && !down) {
+        down = true;
+        longFired = false;
+        downAt = t;
+    }
+    if (now && !longFired && t - downAt >= tgc::board::kHoldMs) {
+        longFired = true;
+        holdAction();
+    }
+    if (!now && down) {
+        down = false;
+        if (!longFired) tapAction();
     }
     delay(10);
 }

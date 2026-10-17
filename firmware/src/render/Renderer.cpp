@@ -11,12 +11,16 @@ namespace tgc {
 namespace {
 const char kEllipsis[] = "...";
 
-// Font0 metrics (see lovyanGFX GLCDfont): 6 px wide, 8 px tall, baseline at 7.
-// Option text draws it at 2x so Latin answers stay legible.
-constexpr int kBuiltinScale = 2;
-constexpr int kBuiltinWidth = 6 * kBuiltinScale;
-constexpr int kBuiltinHeight = 8 * kBuiltinScale;
-constexpr int kBuiltinAscent = 7 * kBuiltinScale;
+// Font0 glyph metrics (see lovyanGFX GLCDfont): 6 px wide, 8 px tall, baseline
+// at 7. Drawn at 1x or 2x (kTextBuiltin) depending on the room available.
+constexpr int kBuiltinGlyphW = 6;
+constexpr int kBuiltinGlyphH = 8;
+constexpr int kBuiltinGlyphAscent = 7;
+
+inline bool isBuiltin(uint8_t set) {
+    return set == Renderer::kTextBuiltin || set == Renderer::kTextBuiltinSmall;
+}
+inline int builtinScale(uint8_t set) { return set == Renderer::kTextBuiltin ? 2 : 1; }
 }  // namespace
 
 void drawBitmap4bpp(lgfx::LovyanGFX& dst, int x, int y, const uint8_t* bits, int w, int h,
@@ -68,11 +72,11 @@ void Renderer::end() {
 }
 
 int Renderer::lineHeight(uint8_t set) const {
-    if (set == kTextBuiltin) return kBuiltinHeight;
+    if (isBuiltin(set)) return kBuiltinGlyphH * builtinScale(set);
     return set == kGlyphSetOption ? optLineH_ : lineH_;
 }
 int Renderer::ascent(uint8_t set) const {
-    if (set == kTextBuiltin) return kBuiltinAscent;
+    if (isBuiltin(set)) return kBuiltinGlyphAscent * builtinScale(set);
     return set == kGlyphSetOption ? optAscent_ : ascent_;
 }
 
@@ -115,7 +119,7 @@ const Glyph* Renderer::glyphFor(uint8_t set, uint32_t cp) const {
 }
 
 int Renderer::charAdvance(uint32_t cp, uint8_t set) const {
-    if (set == kTextBuiltin) return kBuiltinWidth;
+    if (isBuiltin(set)) return kBuiltinGlyphW * builtinScale(set);
     if (const Glyph* g = glyphFor(set, cp)) return g->advance;
     return textPx_ / 2 + 2;  // fallback font / '?' box width
 }
@@ -138,15 +142,15 @@ int Renderer::textRangeWidth(const char* b, const char* e, uint8_t set) const {
 
 int Renderer::drawCodepoint(lgfx::LovyanGFX& dst, uint32_t cp, int x, int y, uint16_t fg,
                             uint16_t bg, uint8_t set) {
-    if (set == kTextBuiltin) {
+    if (isBuiltin(set)) {
         dst.setFont(&lgfx::fonts::Font0);
-        dst.setTextSize(kBuiltinScale);
+        dst.setTextSize(builtinScale(set));
         dst.setTextColor(fg, bg);
         dst.setTextDatum(lgfx::top_left);
         dst.cp437(true);
         const int ix = glcdIndex(cp);
         if (ix >= 0) dst.drawChar(static_cast<uint16_t>(ix), x, y);
-        return kBuiltinWidth;
+        return kBuiltinGlyphW * builtinScale(set);
     }
     const int asc = ascent(set);
     if (const Glyph* g = glyphFor(set, cp)) {

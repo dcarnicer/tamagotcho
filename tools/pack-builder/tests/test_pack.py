@@ -6,6 +6,7 @@ import pytest
 from tangocho_pack import fixture, paths
 from tangocho_pack.build import build_pack
 from tangocho_pack.glyphs import pack_4bpp, unpack_4bpp
+from tangocho_pack.kanjidic import RawKanji
 from tangocho_pack.kanjidic import make_cards, parse_kanjidic
 from tangocho_pack.pack import read_pack
 from tangocho_pack.preview import render_preview
@@ -41,6 +42,19 @@ def test_parse_kanjidic_fields():
     assert all("-" not in k for k in nichi.kunyomi)
     assert "ニチ" in nichi.onyomi
     assert nichi.strokes == 4
+
+
+def test_meaning_language_capped_to_english():
+    # 母 has a single English sense; the Spanish list's extra senses are dropped.
+    mother = RawKanji(0x6BCD, {"en": ["mother"], "es": ["madre", "base", "cimientos"]},
+                      ["ボ"], ["はは"], 4, 2, 5, 0)
+    cards = make_cards([mother], "es", {5}, None, {0x6BCD: 5})
+    assert cards[0].meanings == ["madre"]
+    # 月 has two English senses; both Spanish ones are kept.
+    moon = RawKanji(0x6708, {"en": ["month", "moon"], "es": ["mes", "luna", "extra"]},
+                    ["ゲツ"], ["つき"], 4, 2, 4, 0)
+    cards = make_cards([moon], "es", {5}, None, {0x6708: 5})
+    assert cards[0].meanings == ["mes", "luna"]
 
 
 def test_spanish_fallback_flag():

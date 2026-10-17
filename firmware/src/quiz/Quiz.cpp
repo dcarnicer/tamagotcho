@@ -53,6 +53,12 @@ bool hasReading(const Card& c, ReadingKind kind) {
 
 namespace {
 
+// Only this many of a card's meanings are offered as options. 1 = always the
+// first (most typical) one: the lists in other languages carry derived or wrong
+// extra senses (母: "madre", "base", "cimientos"), so for now we keep to the
+// canonical first gloss and revisit with a better meaning source later.
+constexpr int kOptionMeanings = 1;
+
 // Reading display for a card: the asked kind if the card has it, else the
 // card's primary kind (for the relaxed pass). Empty if it has no reading.
 std::string readingDisplay(const Card& c, ReadingKind kind) {
@@ -62,16 +68,18 @@ std::string readingDisplay(const Card& c, ReadingKind kind) {
     return std::string();
 }
 
-// One of the card's meanings at random.
+// One of the card's (first kOptionMeanings) meanings at random.
 std::string randomMeaning(const char* m, Rng& rng) {
     int n = meaningCount(m);
+    if (n > kOptionMeanings) n = kOptionMeanings;
     return n ? meaningAt(m, static_cast<int>(rng.below(static_cast<uint32_t>(n)))) : std::string();
 }
 
-// A random meaning not already among `used` (so options never share a gloss);
-// "" if every meaning is taken.
+// A random meaning (among the first kOptionMeanings) not already among `used`
+// (so options never share a gloss); "" if every meaning is taken.
 std::string pickMeaning(const char* m, Rng& rng, const std::string* used, int usedN) {
     int n = meaningCount(m);
+    if (n > kOptionMeanings) n = kOptionMeanings;
     if (n == 0) return std::string();
     int start = static_cast<int>(rng.below(static_cast<uint32_t>(n)));
     for (int k = 0; k < n; ++k) {
