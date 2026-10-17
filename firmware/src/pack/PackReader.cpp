@@ -79,6 +79,7 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
     hd.optionLineHeight = h[54];
     hd.optionAscent = h[55];
     hd.buildTime = rd32(h + 56);
+    hd.strokeOff = rd32(h + 60);
 
     if (hd.cardCount > 65535 || hd.cardCount == 0) return PackError::BadHeader;
     const uint64_t cardBytes = static_cast<uint64_t>(hd.cardCount) * kCardSize;
@@ -146,6 +147,47 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
         uint32_t dr = rd32(c + 28);
         if (dr != 0 && (dr < hd.distractOff || !inBounds(dr, 2, total)))
             return fail(PackError::BadTable);
+    }
+
+    // Stroke section (optional; stroke_off != 0). Validate the whole index,
+    // every block and every mask so a corrupt pack is rejected here, exactly
+    // like the other tables, instead of failing at draw time.
+    if (hd.strokeOff != 0) {
+        if ((hd.strokeOff & 3u) || !inBounds(hd.strokeOff, static_cast<uint64_t>(hd.cardCount) * 4, total))
+            return fail(PackError::BadTable);
+        uint8_t idx[256];
+        for (uint32_t i = 0; i < hd.cardCount;) {
+            uint32_t m = hd.cardCount - i;
+            if (m > sizeof(idx) / 4) m = sizeof(idx) / 4;
+            if (!src.read(hd.strokeOff + i * 4u, idx, m * 4u)) return fail(PackError::Io);
+            for (uint32_t q = 0; q < m; ++q, ++i) {
+                const uint32_t blk = rd32(idx + q * 4);
+                if (blk == 0) continue;  // no stroke data for this card
+                if ((blk & 3u) || !inBounds(blk, 8, total)) return fail(PackError::BadTable);
+                uint8_t sh[8];
+                if (!src.read(blk, sh, 8)) return fail(PackError::Io);
+                const uint16_t count = rd16(sh);
+                const uint16_t px = rd16(sh + 2);
+                if (px == 0 || px != hd.largePx) return fail(PackError::BadTable);
+                if (!inBounds(blk + 8, static_cast<uint64_t>(count) * 8, total))
+                    return fail(PackError::BadTable);
+                uint8_t eb[8 * 32];
+                for (uint16_t k = 0; k < count;) {
+                    uint16_t z = count - k;
+                    if (z > 32) z = 32;
+                    if (!src.read(blk + 8 + k * 8u, eb, z * 8u)) return fail(PackError::Io);
+                    for (uint16_t j = 0; j < z; ++j) {
+                        const uint8_t* e = eb + j * 8;
+                        const uint8_t w = e[2], hgt = e[3];
+                        if (w == 0 || hgt == 0) return fail(PackError::BadTable);
+                        const uint32_t doff = rd32(e + 4);
+                        const uint64_t msz = static_cast<uint64_t>((w + 7) / 8) * hgt;
+                        if (!inBounds(doff, msz, total)) return fail(PackError::BadTable);
+                    }
+                    k += z;
+                }
+            }
+        }
     }
     return PackError::Ok;
 }
@@ -216,6 +258,56 @@ bool PackReader::readGlyphBitmap(const Glyph& g, uint8_t* buf, size_t cap) const
     if (n > cap) return false;
     if (n == 0) return true;
     return src_->read(g.dataOff, buf, n);
+}
+
+bool PackReader::strokeBlock(uint32_t cardIdx, uint32_t* entriesOff, uint16_t* count,
+                             uint16_t* px) const {
+    if (!src_ || hdr_.strokeOff == 0 || cardIdx >= hdr_.cardCount) return false;
+    uint8_t ib[4];
+    if (!src_->read(hdr_.strokeOff + cardIdx * 4u, ib, 4)) return false;
+    const uint32_t blk = rd32(ib);
+    if (blk == 0) return false;  // no stroke data for this card
+    uint8_t sh[8];
+    if (!src_->read(blk, sh, 8)) return false;
+    if (entriesOff) *entriesOff = blk + 8;
+    if (count) *count = rd16(sh);
+    if (px) *px = rd16(sh + 2);
+    return true;
+}
+
+uint16_t PackReader::strokeCount(uint32_t cardIdx) const {
+    uint16_t n = 0;
+    return strokeBlock(cardIdx, nullptr, &n, nullptr) ? n : 0;
+}
+
+bool PackReader::strokeInfo(uint32_t cardIdx, uint16_t* count, uint16_t* px) const {
+    uint16_t n = 0, p = 0;
+    if (!strokeBlock(cardIdx, nullptr, &n, &p)) return false;
+    if (count) *count = n;
+    if (px) *px = p;
+    return true;
+}
+
+bool PackReader::strokeAt(uint32_t cardIdx, uint16_t i, Stroke* out) const {
+    uint32_t entries = 0;
+    uint16_t count = 0;
+    if (!out || !strokeBlock(cardIdx, &entries, &count, nullptr) || i >= count) return false;
+    uint8_t e[8];
+    if (!src_->read(entries + i * 8u, e, 8)) return false;
+    out->xOff = static_cast<int8_t>(e[0]);
+    out->yOff = static_cast<int8_t>(e[1]);
+    out->w = e[2];
+    out->h = e[3];
+    out->dataOff = rd32(e + 4);
+    return true;
+}
+
+bool PackReader::readStrokeBitmap(const Stroke& s, uint8_t* buf, size_t cap) const {
+    if (!src_) return false;
+    const size_t n = strokeBitmapSize(s);
+    if (n > cap) return false;
+    if (n == 0) return true;
+    return src_->read(s.dataOff, buf, n);
 }
 
 }  // namespace tgc

@@ -346,3 +346,43 @@ Short log of non-obvious choices. Newest last.
   this change **still play correctly and need no rebuild**; only future builds
   compute different (better) distractor lists.
 
+## 2026-10-17 – Stroke order from KanjiVG
+
+- **Format: a new optional section, not a version bump.** The header's old
+  `reserved` u32 at offset 60 becomes `stroke_off`; `0` means "no stroke data",
+  which is every pack built before this change and every pack built without
+  `--strokes`. Old readers ignore offset 60, so the extension is v1-compatible
+  (the same pattern as the reading-distractor and set-3 extensions). The section
+  carries a per-card index, per-card blocks and 1bpp masks; the full layout is
+  in docs/pack-format.md.
+- **Per-stroke masks, not pre-rendered frames.** Storing one 1bpp mask per
+  stroke and compositing on device costs ~0.4-0.6 KB per kanji at 96 px
+  (`--strokes` adds ~50 KB to the 79-card N5 pack) and lets the device choose
+  colour, pacing and orientation. Pre-rendering N frames per kanji
+  (or one 4bpp image per frame) would multiply the size and freeze the look;
+  the strip is also only loaded on demand, like glyph bitmaps.
+- **1bpp, own ink only.** A mask is one stroke's ink (not the earlier strokes
+  baked in), so the device composites `0..i-1` in full ink and `i` highlighted.
+  Full coverage is the right model for a hand-drawn stroke mask; 4bpp would only
+  add antialiasing bytes the 135 px panel cannot show.
+- **The em square is the reference, not the glyph's ink box.** Masks are placed
+  in the same `large_px` square `Renderer::drawKanji` uses for set 0
+  (`(boxX + (boxW - px)/2, boxY + (boxH - px)/2)`), so stroke data is
+  independent of how the font cropped a particular kanji and of the font in use.
+  `blocks.px` is required to equal `large_px`; the reader rejects a mismatch.
+- **KanjiVG paths are centre lines, so they are stroked, not filled.** The task
+  sketch said "polygon"; KanjiVG actually ships open centre-line paths
+  (`stroke-width:3` in a `109x109` viewBox), and filling a straight stroke as a
+  polygon would draw nothing. The builder flattens M/L/H/V/C/S/Q/T/Z into
+  polylines and strokes them with `ImageDraw.line(width ≈ 3*px/109, round caps)`,
+  then crops each stroke to its bounding box. Unsupported commands (arcs) skip
+  that path with a warning.
+- **`--strokes` is opt-in.** Default packs stay small and need no KanjiVG
+  download; with the flag omitted the emitted bytes are identical to the v1
+  writer's for the same inputs (asserted by a test against a committed baseline).
+- **Animation** runs only on the mistake detail card, only when the loaded pack
+  has stroke data for the shown card: one stroke every ~550 ms with the current
+  one in yellow, a ~1.2 s hold on the last, then loop; the frame is redrawn only
+  when it changes. With no stroke data the card is byte-for-byte today's card
+  (no input-handling change).
+

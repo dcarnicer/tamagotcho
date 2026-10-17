@@ -1,12 +1,15 @@
 # Data sources and licences
 
 Code in this repository is MIT. **Generated packs (`*.tgc`) contain data
-derived from KANJIDIC2 and are licensed CC BY-SA 4.0**, regardless of the
-licence of the code that produced them. Anything downloaded by
-`tangocho-pack fetch` lands in `tools/pack-builder/cache/` (git-ignored) and is
-never committed. The only third-party-derived files in the repo are the three
-kanji in `tools/pack-builder/tests/data/mini_kanjidic2.xml` (a KANJIDIC2
-excerpt) and the fixture pack built from it.
+derived from KANJIDIC2** and, when built with `--strokes`, from **KanjiVG**,
+and are licensed **CC BY-SA** (KANJIDIC2 is CC BY-SA 4.0, KanjiVG is CC BY-SA
+3.0 and ShareAlike permits redistribution of the combined work as a later
+version). Anything downloaded by `tangocho-pack fetch` lands in
+`tools/pack-builder/cache/` (git-ignored) and is never committed. The only
+third-party-derived files in the repo are the three kanji in
+`tools/pack-builder/tests/data/mini_kanjidic2.xml` (a KANJIDIC2 excerpt), the
+three KanjiVG SVG excerpts in `tools/pack-builder/tests/data/kanjivg/` and the
+fixture pack built from them.
 
 ## KANJIDIC2
 
@@ -58,6 +61,34 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
   2 -> N3 (lossy: old 2 spans N3 and N2, so N2 is never produced), 1 -> N1.
   The builder prints a warning in that case.
 
+## KanjiVG (stroke order)
+
+- URL: https://github.com/KanjiVG/kanjivg/releases/tag/r20260714 (asset
+  `kanjivg-20260714-main.zip`, published 2026-07-14; pinned in `fetch.py`).
+- Owner: Ulrich Apel.
+- Licence: Creative Commons Attribution-ShareAlike 3.0
+  (https://creativecommons.org/licenses/by-sa/3.0/; the release ships its
+  `COPYING`, fetched to `cache/kanjivg/COPYING`).
+- Required attribution: "Stroke order data from KanjiVG, (c) Ulrich Apel,
+  CC BY-SA 3.0, https://kanjivg.tagaini.net."
+- Used for: the optional per-stroke masks in a pack's stroke section
+  (`--strokes`). Each SVG `<path>`, in document order, is one stroke. The
+  centre line is flattened into polylines and stroked into a 1bpp mask at
+  `--strokes-px` (default: `--large-px`); KanjiVG's `109x109` viewBox is mapped
+  onto the `px` em square (see docs/pack-format.md).
+- Rasterisation note: KanjiVG paths are *centre lines* (the group carries
+  `stroke-width:3`), not filled outlines, so the builder strokes the polyline
+  with a width proportional to `3/109` of `px` (`ImageDraw.line` with round
+  caps) rather than filling it as a polygon. A path that uses an unsupported
+  command (arcs, `A`) is skipped with a warning; coordinates outside the viewBox
+  are clamped.
+- `--strokes` is off by default: a pack without it is byte-identical to a
+  KANJIDIC2-only v1 pack (no KanjiVG is redistributed unless asked for).
+- Fixture provenance: `tools/pack-builder/tests/data/kanjivg/065e5.svg`,
+  `06708.svg` and `0706b.svg` are verbatim excerpts from the r20260714 release
+  (the three mini kanji 日/月/火). They are committed, with this attribution, so
+  the `mini.tgc` fixture and its tests need no network.
+
 ## Klee One (font)
 
 - URL: https://github.com/fontworks-fonts/Klee (`fonts/ttf/KleeOne-SemiBold.ttf`,
@@ -91,4 +122,6 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 > Kanji data from KANJIDIC2 (c) EDRDG, CC BY-SA 4.0, https://www.edrdg.org/edrdg/licence.html.
 > JLPT levels from Jonathan Waller's JLPT Resources (tanos.co.uk) via
 > davidluzgouveia/kanji-data (MIT). Glyphs rendered from Klee One
-> (c) Fontworks Inc., SIL OFL 1.1. This pack is licensed CC BY-SA 4.0.
+> (c) Fontworks Inc., SIL OFL 1.1. Stroke order data from KanjiVG
+> (c) Ulrich Apel, CC BY-SA 3.0, https://kanjivg.tagaini.net (present only in
+> packs built with `--strokes`). This pack is licensed CC BY-SA.

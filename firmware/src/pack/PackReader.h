@@ -49,6 +49,7 @@ struct PackHeader {
     uint8_t largePx, smallPx, textPx, textLineHeight, textAscent;
     uint8_t optionPx, optionLineHeight, optionAscent;  // set 3; 0 = absent
     uint32_t buildTime;
+    uint32_t strokeOff;  // absolute offset of the stroke section; 0 = absent
 };
 
 struct Card {
@@ -67,6 +68,14 @@ struct Glyph {
     uint8_t set, encoding, width, height;
     int8_t xOff, yOff;
     uint8_t advance;
+    uint32_t dataOff;
+};
+
+// One stroke's mask: position/size inside the em square plus where its 1bpp
+// bitmap lives in the file (see docs/pack-format.md).
+struct Stroke {
+    int8_t xOff, yOff;
+    uint8_t w, h;
     uint32_t dataOff;
 };
 
@@ -112,7 +121,24 @@ public:
     // Reads the bitmap into buf (cap >= bitmapSize). Only encoding 0 is supported.
     bool readGlyphBitmap(const Glyph& g, uint8_t* buf, size_t cap) const;
 
+    // --- stroke order (optional section; all false/0 when absent) ------------
+    // True when the pack carries a stroke section (stroke_off != 0).
+    bool hasStrokeOrder() const { return hdr_.strokeOff != 0; }
+    // Number of strokes of a card (0 when it has none / on any error).
+    uint16_t strokeCount(uint32_t cardIdx) const;
+    // Fills count/px (px = the em square the masks live in). False when absent.
+    bool strokeInfo(uint32_t cardIdx, uint16_t* count, uint16_t* px) const;
+    // The i-th stroke of a card. False when out of range / absent.
+    bool strokeAt(uint32_t cardIdx, uint16_t i, Stroke* out) const;
+    // Bytes of 1bpp mask data for a stroke: ceil(w/8)*h.
+    static size_t strokeBitmapSize(const Stroke& s) { return static_cast<size_t>((s.w + 7) / 8) * s.h; }
+    // Reads the 1bpp mask into buf (cap >= strokeBitmapSize), like readGlyphBitmap.
+    bool readStrokeBitmap(const Stroke& s, uint8_t* buf, size_t cap) const;
+
 private:
+    // Offset of the first stroke entry of a card; false when the card has none.
+    bool strokeBlock(uint32_t cardIdx, uint32_t* entriesOff, uint16_t* count, uint16_t* px) const;
+
     PackSource* src_ = nullptr;
     Allocator alloc_{nullptr, nullptr};
     PackHeader hdr_{};

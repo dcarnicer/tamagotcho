@@ -8,6 +8,7 @@ from pathlib import Path
 from .distractors import meaning_distractors, reading_distractors, square_vector
 from .glyphs import SET_LARGE, SET_OPTION, SET_SMALL, SET_TEXT, FontRenderer, Glyph
 from .kanjidic import Card
+from .kanjivg import KanjiVGDir, KanjiVGZip, default_source, masks_for
 from .pack import card_strings, write_pack
 
 
@@ -30,6 +31,9 @@ def build_pack(
     text_px: int = 18,
     option_px: int = 20,
     build_time: int | None = None,
+    strokes: bool = False,
+    strokes_px: int | None = None,
+    kanjivg: KanjiVGDir | KanjiVGZip | None = None,
 ) -> bytes:
     font = FontRenderer(font_path)
     kept = []
@@ -73,7 +77,30 @@ def build_pack(
         glyphs.append(font.text_glyph(cp, option_px, SET_OPTION))
     option_line_h, option_ascent = font.text_metrics(option_px)
 
+    # Optional stroke order from KanjiVG. Masks are drawn in the same em square
+    # as the set-0 glyphs, so strokes_px must equal large_px (docs/pack-format.md).
+    px = strokes_px or large_px
+    if strokes and px != large_px:
+        raise ValueError(f"strokes_px ({px}) must equal large_px ({large_px}): "
+                         "the masks share the em square the glyphs use")
+    card_strokes = None
+    if strokes:
+        src = kanjivg
+        own = kanjivg is None
+        if src is None:
+            src = default_source()
+        try:
+            card_strokes = [masks_for(c.codepoint, px, src) for c in cards]
+        finally:
+            if own:
+                src.close()
+        no_strokes = sum(1 for s in card_strokes if not s)
+        if no_strokes:
+            print(f"warning: no KanjiVG strokes for {no_strokes}/{len(cards)} cards",
+                  file=sys.stderr)
+
     return write_pack(
         cards, glyphs, deck_name, lang, large_px, small_px, text_px, line_h, ascent,
         option_px, option_line_h, option_ascent, build_time,
+        strokes=card_strokes, strokes_px=px,
     )

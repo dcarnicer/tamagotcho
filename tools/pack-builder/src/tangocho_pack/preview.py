@@ -223,12 +223,61 @@ def _draw_kanji(img, pack: Pack, cp: int, box_x: int, box_y: int, box_w: int, bo
     _blit_pack(img, pack, g, pen_x, base_y, INK, box_x + box_w)
 
 
+def _blit_stroke(img, s, pen_x: int, pen_y: int, ink) -> None:
+    """Blit a 1bpp stroke mask (bit 7 = leftmost pixel, rows byte-aligned)."""
+    stride = (s.w + 7) // 8
+    for y in range(s.h):
+        row = y * stride
+        for x in range(s.w):
+            if s.data[row + (x >> 3)] & (0x80 >> (x & 7)):
+                X, Y = pen_x + s.x_off + x, pen_y + s.y_off + y
+                if 0 <= X < img.width and 0 <= Y < img.height:
+                    img.putpixel((X, Y), ink)
+
+
+def _render_strokes(pack: Pack, idx: int, width: int, height: int, scale: int,
+                    stroke: int) -> tuple[Image.Image, dict]:
+    """Detail-card kanji area drawn from the pack's stroke masks (mock animation).
+
+    `stroke` < 0 draws every stroke in ink; otherwise strokes 0..stroke are drawn
+    with the current one highlighted, as the device animates them.
+    """
+    h = pack.header
+    px = h["large_px"]
+    img = Image.new("RGB", (width, height), BG)
+    fill_rect(img, 0, 0, width, HEADER_H, HEADER)
+    draw_glcd(img, pack.deck_name, 3, 3, 1, INK)
+    lw = glcd_width("STROKES", 1)
+    draw_glcd(img, "STROKES", (width - lw) // 2, HEADER_H + 2, 1, LABEL)
+    missing: list[str] = []
+    masks = pack.strokes_of(idx)
+    if not masks:
+        missing.append(chr(pack.cards[idx].codepoint))
+        return img.resize((width * scale, height * scale), Image.NEAREST), {
+            "options": [], "correct_slot": -1, "reading_kind": None, "missing": missing,
+            "stroke_count": 0, "row_h": 0,
+        }
+    box_h = min(px + 6, height * 45 // 100)
+    em_x = (width - px) // 2
+    em_y = HEADER_H + 2 + (box_h - px) // 2
+    last = len(masks) - 1 if stroke < 0 else min(stroke, len(masks) - 1)
+    for i, s in enumerate(masks[: last + 1]):
+        ink = LABEL if (stroke >= 0 and i == last) else INK
+        _blit_stroke(img, s, em_x, em_y, ink)
+    return img.resize((width * scale, height * scale), Image.NEAREST), {
+        "options": [], "correct_slot": -1, "reading_kind": None, "missing": missing,
+        "stroke_count": len(masks), "row_h": 0,
+    }
+
+
 def render_preview(pack: Pack, cp: int, mode: str, width: int = 135, height: int = 240,
                    scale: int = 3, seed: int = 1, reveal: bool = False,
-                   kind: str = "on") -> tuple[Image.Image, dict]:
+                   kind: str = "on", stroke: int = -1) -> tuple[Image.Image, dict]:
     idx = pack.find_card(cp)
     if idx is None:
         raise ValueError(f"U+{cp:04X} not in pack")
+    if mode == "strokes":
+        return _render_strokes(pack, idx, width, height, scale, stroke)
     h = pack.header
     if mode == "reading":
         kind = reading_kind(pack, idx, kind)

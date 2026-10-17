@@ -8,16 +8,20 @@ from pathlib import Path
 from . import paths
 from .build import build_pack
 from .kanjidic import make_cards, parse_kanjidic
+from .kanjivg import KanjiVGDir
 from .pack import read_pack
 
 MINI_XML = Path(__file__).resolve().parents[2] / "tests" / "data" / "mini_kanjidic2.xml"
+# Committed KanjiVG excerpts for the three mini kanji (see docs/data-sources.md).
+MINI_KANJIVG = Path(__file__).resolve().parents[2] / "tests" / "data" / "kanjivg"
 MINI_JLPT = {0x65E5: 5, 0x6708: 5, 0x706B: 5}
 SIZES = dict(large_px=32, small_px=16, text_px=12, option_px=18)
 
 
-def build_mini(font_path: Path) -> bytes:
+def build_mini(font_path: Path, strokes: bool = True) -> bytes:
     cards = make_cards(parse_kanjidic(MINI_XML.read_bytes()), "en", {5}, None, MINI_JLPT)
-    return build_pack(cards, font_path, "en", "JLPT N5", build_time=0, **SIZES)
+    return build_pack(cards, font_path, "en", "JLPT N5", build_time=0, strokes=strokes,
+                      kanjivg=KanjiVGDir(MINI_KANJIVG) if strokes else None, **SIZES)
 
 
 def expected_json(raw: bytes) -> dict:
@@ -33,7 +37,7 @@ def expected_json(raw: bytes) -> dict:
             "version", "header_size", "card_count", "glyph_count", "cards_off", "glyphs_off",
             "distract_off", "strings_off", "strings_size", "glyph_data_off", "deck_name",
             "lang", "large_px", "small_px", "text_px", "text_line_height", "text_ascent",
-            "option_px", "option_line_height", "option_ascent", "build_time")},
+            "option_px", "option_line_height", "option_ascent", "build_time", "stroke_off")},
         "deck_name": p.deck_name,
         "cards": [{
             "codepoint": c.codepoint, "char": chr(c.codepoint), "meanings": c.meanings,
@@ -51,6 +55,12 @@ def expected_json(raw: bytes) -> dict:
             if g is not None
         ],
         "glyph_counts_per_set": {str(s): sum(1 for g in p.glyphs if g.set == s) for s in (0, 1, 2, 3)},
+        "strokes": [{
+            "codepoint": c.codepoint, "char": chr(c.codepoint), "px": h["large_px"],
+            "count": len(s),
+            "masks": [{"x_off": m.x_off, "y_off": m.y_off, "w": m.w, "h": m.h,
+                       "data_off": m.data_off, "bits": m.data.hex()} for m in s],
+        } for c, s in zip(p.cards, p.strokes)],
     }
 
 

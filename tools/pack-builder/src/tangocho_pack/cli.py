@@ -18,6 +18,7 @@ def cmd_fetch(a) -> int:
 def cmd_build(a) -> int:
     from .build import build_pack, default_deck_name
     from .kanjidic import load_new_jlpt, make_cards, parse_kanjidic
+    from .kanjivg import KanjiVGError
     from .pack import read_pack
 
     jlpt, grades = set(a.jlpt or []), set(a.grade or [])
@@ -37,14 +38,21 @@ def cmd_build(a) -> int:
         print("error: no cards selected", file=sys.stderr)
         return 1
     name = a.name or default_deck_name(jlpt, grades)
-    raw = build_pack(cards, a.font, a.lang, name, a.large_px, a.small_px, a.text_px, a.option_px)
+    try:
+        raw = build_pack(cards, a.font, a.lang, name, a.large_px, a.small_px, a.text_px, a.option_px,
+                         strokes=a.strokes, strokes_px=a.strokes_px)
+    except (KanjiVGError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     out = Path(a.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(raw)
     p = read_pack(raw)
     fb = sum(1 for c in p.cards if c.flags & 1)
+    stroked = sum(1 for s in p.strokes if s)
+    stroke_note = f", strokes for {stroked}/{len(p.cards)} cards" if p.header["stroke_off"] else ""
     print(f"{out}: {len(p.cards)} cards ({fb} with English fallback), "
-          f"{len(p.glyphs)} glyphs, {len(raw):,} bytes")
+          f"{len(p.glyphs)} glyphs, {len(raw):,} bytes{stroke_note}")
     if p.errors:
         print("pack validation errors:", *p.errors[:10], sep="\n  ", file=sys.stderr)
         return 1
@@ -76,6 +84,11 @@ def cmd_inspect(a) -> int:
     print(f"  distractors     {h['strings_off'] - h['distract_off']:>9,}")
     print(f"  strings         {h['strings_size']:>9,}")
     print(f"  glyph bitmaps   {data_bytes:>9,}")
+    if h["stroke_off"]:
+        stroked = sum(1 for s in p.strokes if s)
+        strokes = sum(len(s) for s in p.strokes)
+        print(f"  strokes         {len(raw) - h['stroke_off']:>9,} "
+              f"({stroked} cards, {strokes} masks)")
     print(f"  total           {len(raw):>9,}")
     if p.errors:
         print(f"INVALID: {len(p.errors)} problem(s)")
@@ -94,9 +107,13 @@ def cmd_preview(a) -> int:
         return 2
     p = read_pack(Path(a.file).read_bytes())
     img, info = render_preview(p, ord(a.card), a.mode, a.width, a.height, a.scale, a.seed, a.reveal,
-                               a.kind)
+                               a.kind, a.stroke)
     img.save(a.output)
-    print(f"{a.output}: options {[chr(c) for c in info['options']]} correct slot {info['correct_slot']}")
+    if a.mode == "strokes":
+        print(f"{a.output}: {info['stroke_count']} strokes")
+    else:
+        print(f"{a.output}: options {[chr(c) for c in info['options']]} "
+              f"correct slot {info['correct_slot']}")
     if info.get("reading_kind"):
         print(f"  reading kind: {info['reading_kind']}")
     if info["missing"]:
@@ -116,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="tangocho-pack")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("fetch", help="download KANJIDIC2, JLPT levels and Klee One into cache/")
+    s = sub.add_parser("fetch", help="download KANJIDIC2, JLPT levels, Klee One and KanjiVG into cache/")
     s.add_argument("--force", action="store_true")
     s.set_defaults(fn=cmd_fetch)
 
@@ -130,6 +147,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--text-px", type=int, default=18)
     s.add_argument("--option-px", type=int, default=20,
                    help="size of set 3 (large text for reading answers); 0 to omit")
+    s.add_argument("--strokes", action="store_true",
+                   help="include KanjiVG stroke-order masks (needs `tangocho-pack fetch`)")
+    s.add_argument("--strokes-px", type=int,
+                   help="em square for stroke masks; must equal --large-px (the default)")
     s.add_argument("--name", help="deck name (default derived from filters)")
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(fn=cmd_build)
@@ -141,9 +162,11 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("preview", help="render a simulated device screen from a pack")
     s.add_argument("file")
     s.add_argument("--card", required=True)
-    s.add_argument("--mode", choices=["meaning", "reading", "kanji"], default="meaning")
+    s.add_argument("--mode", choices=["meaning", "reading", "kanji", "strokes"], default="meaning")
     s.add_argument("--kind", choices=["on", "kun"], default="on",
                    help="reading kind to ask for in reading mode")
+    s.add_argument("--stroke", type=int, default=-1,
+                   help="strokes mode: 0-based last stroke to draw highlighted, -1 = all")
     s.add_argument("--width", type=int, default=135)
     s.add_argument("--height", type=int, default=240)
     s.add_argument("--scale", type=int, default=3)

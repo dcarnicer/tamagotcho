@@ -13,6 +13,11 @@ namespace tgc {
 void drawBitmap4bpp(lgfx::LovyanGFX& dst, int x, int y, const uint8_t* bits, int w, int h,
                     uint16_t fg, uint16_t bg);
 
+// Draw a raw 1bpp bitmap (bit 7 = leftmost pixel, rows byte-aligned) in solid
+// `ink`; zero bits are skipped (used for stroke masks).
+void drawBitmap1bpp(lgfx::LovyanGFX& dst, int x, int y, const uint8_t* bits, int w, int h,
+                    uint16_t ink);
+
 class Renderer {
 public:
     ~Renderer() { end(); }
@@ -24,6 +29,12 @@ public:
     // as an em square. Draws a '?' box if the glyph is missing.
     void drawKanji(lgfx::LovyanGFX& dst, uint8_t set, uint32_t cp, int boxX, int boxY, int boxW,
                    int boxH, uint16_t fg, uint16_t bg);
+
+    // Draws stroke `i` of `cardIdx` with its mask top-left at
+    // (emX + x_off, emY + y_off), where (emX, emY) is the top-left of the
+    // pack's `large_px` em square. False when the pack/stroke cannot be read.
+    bool drawStroke(lgfx::LovyanGFX& dst, uint32_t cardIdx, uint16_t i, int emX, int emY,
+                    uint16_t ink);
 
     // Built-in GFX font as a text style: pass kTextBuiltin (2x) or
     // kTextBuiltinSmall (1x). It carries ASCII plus the Latin-1 accents Font0

@@ -38,6 +38,18 @@ void drawBitmap4bpp(lgfx::LovyanGFX& dst, int x, int y, const uint8_t* bits, int
     dst.endWrite();
 }
 
+void drawBitmap1bpp(lgfx::LovyanGFX& dst, int x, int y, const uint8_t* bits, int w, int h,
+                    uint16_t ink) {
+    const int stride = (w + 7) / 8;
+    dst.startWrite();
+    for (int row = 0; row < h; ++row) {
+        const uint8_t* p = bits + row * stride;
+        for (int col = 0; col < w; ++col)
+            if (p[col >> 3] & (0x80 >> (col & 7))) dst.drawPixel(x + col, y + row, ink);
+    }
+    dst.endWrite();
+}
+
 bool Renderer::begin(const PackReader& pack) {
     end();
     pack_ = &pack;
@@ -289,6 +301,25 @@ void Renderer::drawKanji(lgfx::LovyanGFX& dst, uint8_t set, uint32_t cp, int box
     }
     const uint8_t* bits = bitmapFor(*g);
     if (bits) drawBitmap4bpp(dst, penX + g->xOff, baseY + g->yOff, bits, g->width, g->height, fg, bg);
+}
+
+bool Renderer::drawStroke(lgfx::LovyanGFX& dst, uint32_t cardIdx, uint16_t i, int emX, int emY,
+                          uint16_t ink) {
+    if (!pack_) return false;
+    Stroke s;
+    if (!pack_->strokeAt(cardIdx, i, &s)) return false;
+    const size_t n = PackReader::strokeBitmapSize(s);
+    if (n == 0) return false;
+    const Allocator& a = pack_->allocator();
+    if (n > scratchCap_) {
+        if (scratch_) a.release(scratch_);
+        scratch_ = static_cast<uint8_t*>(a.alloc(n));
+        scratchCap_ = scratch_ ? n : 0;
+        if (!scratch_) return false;
+    }
+    if (!pack_->readStrokeBitmap(s, scratch_, n)) return false;
+    drawBitmap1bpp(dst, emX + s.xOff, emY + s.yOff, scratch_, s.w, s.h, ink);
+    return true;
 }
 
 }  // namespace tgc
