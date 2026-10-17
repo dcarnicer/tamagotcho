@@ -50,9 +50,10 @@ Scope for now: **kanji only** (no vocabulary decks).
 - [~] **Statistics.** Per-kanji accuracy, current streak, review/seen counts and
       time spent; a small stats screen on device and richer views in the Wi-Fi
       portal. Depends on the SRS state (phase 2). On-device screen done:
-      `SrsStore::stats()` + `Screen::Stats` show the date, seen/pack total,
-      due/new, lifetime answers, accuracy and learned count. Pending: per-kanji
-      accuracy, streak, time spent and the portal views.
+      `SrsStore::stats()` + `Screen::Stats` show the date, current/best streak,
+      time on questions, seen/pack total, due/new, lifetime answers, accuracy and
+      learned count. Single-card accuracy is on the mistake detail card. Pending:
+      an aggregate per-kanji accuracy view and the portal views.
 - [~] **Multilingual.** On-device strings are localised to the pack language
       (`lang`: en/es today, anything else falls back to English). Pending: a
       language picker on device (the meaning language is a property of the pack,

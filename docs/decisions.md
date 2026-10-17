@@ -280,3 +280,24 @@ Short log of non-obvious choices. Newest last.
 - Input: tap/hold/side tap → next question; side hold → the settings home.
   `TGC_QUIZ_LOG` gains a `D U+xxxx` line when the card is shown.
 
+## 2026-10-17 – Streak and review time in the SRS header
+
+- The day streak and the lifetime review time reuse the header's reserved bytes
+  32..47 (`streak_current`, `streak_best`, `last_study_day`, `review_ms`); see
+  docs/srs.md §4.1. **No version bump**: the bytes were documented reserved, are
+  not validated, and `0` means "absent", so an old file loads as zeros and an old
+  reader still validates the CRC over the whole (unchanged, 48-byte) header.
+- The streak is advanced inside `grade()` on the first answer of a new SRS day
+  (exactly the next day → +1, any other day → 1); same-day answers never change
+  it; both counters saturate at `0xFFFF`. Known quirk: `last_study_day == 0`
+  doubles as the "never studied" sentinel, so the very first answer on day index
+  `0` (the fresh-store day) does not start a streak; it disappears after the
+  first day change. Documented rather than special-cased to keep the header
+  field's "0 = absent" meaning.
+- `addReviewMs()` is called from `holdAction()` with the same `rt_ms` that grades
+  the answer, so there is no new timing source. `Stats` grows `streakCurrent`/
+  `streakBest`/`reviewMs` and `Screen::Stats` gains "streak C/B" and "time Xh Ym"
+  lines (localised; the duration picks h/m, m/s or s).
+- Per-kanji accuracy stays derivable from the record (`(reps - lapses) / reps`)
+  and is surfaced by the detail card; no per-card storage was added.
+

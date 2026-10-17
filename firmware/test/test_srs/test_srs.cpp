@@ -500,6 +500,9 @@ void test_stats() {
     TEST_ASSERT_EQUAL_UINT32(0, empty.answers);
     TEST_ASSERT_EQUAL_UINT32(0, empty.reps);
     TEST_ASSERT_EQUAL_UINT32(0, empty.lapses);
+    TEST_ASSERT_EQUAL_UINT32(0, empty.streakCurrent);
+    TEST_ASSERT_EQUAL_UINT32(0, empty.streakBest);
+    TEST_ASSERT_EQUAL_UINT32(0, empty.reviewMs);
 
     // Three distinct cards, different grades: 日 Good twice, 月 a lapse, 火 Good.
     srs.grade(0x65E5, Grade::Good, 0, 0, 0.5f);
@@ -513,6 +516,13 @@ void test_stats() {
     TEST_ASSERT_EQUAL_UINT32(4, st.reps);    // one per grade call
     TEST_ASSERT_EQUAL_UINT32(1, st.lapses);  // only the Again on 月
     TEST_ASSERT_EQUAL_UINT32(0, st.learned); // young cards stay below the threshold
+    // All answers above were on SRS day 0, which collides with the "never
+    // studied" sentinel of `last_study_day`: the literal rule (`day ==
+    // last_study_day` means same-day) leaves the streak at 0. A real streak
+    // starts on the first day with a non-zero index (see test_streak).
+    TEST_ASSERT_EQUAL_UINT32(0, st.streakCurrent);
+    TEST_ASSERT_EQUAL_UINT32(0, st.streakBest);
+    TEST_ASSERT_EQUAL_UINT32(0, st.reviewMs);
 
     // The 21-day threshold is inclusive and measured in whole days.
     srs.getOrCreate(0x6C34).stabilityCds = kLearnedStabilityDays * 100u;  // 水
@@ -785,6 +795,114 @@ void test_queue_interleaves_modes() {
     TEST_ASSERT_FALSE(q.next(&it));
 }
 
+// Day streak over the SRS day index: consecutive days extend it, a gap resets
+// it and the best is retained (docs/srs.md section 4).
+void test_streak() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    TEST_ASSERT_EQUAL_UINT16(0, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(0, s.streakBest());
+    TEST_ASSERT_EQUAL_UINT16(0, s.lastStudyDay());
+
+    // First ever answer starts the streak at 1.
+    s.grade(0x65E5, Grade::Good, 10, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakBest());
+    TEST_ASSERT_EQUAL_UINT16(10, s.lastStudyDay());
+
+    // Same-day answers do not change the streak.
+    s.grade(0x6708, Grade::Good, 10, 1, 0.5f);
+    s.grade(0x65E5, Grade::Hard, 10, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakBest());
+
+    // Consecutive days increment it.
+    s.grade(0x65E5, Grade::Good, 11, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(2, s.streakCurrent());
+    s.grade(0x65E5, Grade::Good, 12, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(3, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(3, s.streakBest());
+
+    // A gap resets the current streak; the best is retained.
+    s.grade(0x65E5, Grade::Good, 20, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(3, s.streakBest());
+    TEST_ASSERT_EQUAL_UINT16(20, s.lastStudyDay());
+
+    // A single skipped day is a gap too.
+    s.grade(0x65E5, Grade::Good, 22, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(3, s.streakBest());
+}
+
+void test_review_ms_saturation() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    TEST_ASSERT_EQUAL_UINT32(0, s.reviewMs());
+    s.addReviewMs(1500);
+    TEST_ASSERT_EQUAL_UINT32(1500, s.reviewMs());
+    s.addReviewMs(2500);
+    TEST_ASSERT_EQUAL_UINT32(4000, s.reviewMs());
+    // Saturates at 0xFFFFFFFF and never wraps.
+    s.addReviewMs(0xFFFFFF00u);
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFFu, s.reviewMs());
+    s.addReviewMs(1000);
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFFu, s.reviewMs());
+    s.addReviewMs(0);  // a no-op, stays saturated
+    TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFFu, s.reviewMs());
+}
+
+// The 32..47 extension fields survive a save/load, at their documented offsets.
+void test_serialize_new_header_roundtrip() {
+    SrsStore a;
+    MemoryIo empty;
+    a.begin(empty);
+    // Four consecutive SRS days -> streak 4, last study day 4.
+    for (uint16_t day = 1; day <= 4; ++day) a.grade(0x65E5, Grade::Good, day, 0, 0.5f);
+    a.addReviewMs(1234);
+    a.addReviewMs(2000);
+
+    MemoryIo io;
+    TEST_ASSERT_TRUE(a.save(io));
+    TEST_ASSERT_EQUAL_UINT32(48 + 1 * 16 + 4, static_cast<uint32_t>(io.bytes.size()));
+    // Raw offsets: streak_current @32, best @34, last_study_day @36, review_ms @40.
+    TEST_ASSERT_EQUAL_UINT8(4, io.bytes[32]);
+    TEST_ASSERT_EQUAL_UINT8(0, io.bytes[33]);
+    TEST_ASSERT_EQUAL_UINT8(4, io.bytes[34]);
+    TEST_ASSERT_EQUAL_UINT8(4, io.bytes[36]);
+    TEST_ASSERT_EQUAL_UINT8(0xA2, io.bytes[40]);  // 3234 = 0x00000CA2, LE
+    TEST_ASSERT_EQUAL_UINT8(0x0C, io.bytes[41]);
+
+    SrsStore b;
+    TEST_ASSERT_TRUE(b.begin(io));
+    TEST_ASSERT_EQUAL_UINT16(4, b.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(4, b.streakBest());
+    TEST_ASSERT_EQUAL_UINT16(4, b.lastStudyDay());
+    TEST_ASSERT_EQUAL_UINT32(3234, b.reviewMs());
+}
+
+// A file whose bytes 32..47 are zero (an old v1 writer, or a store that never
+// recorded a streak/time) loads with zeros/defaults.
+void test_serialize_old_file_has_defaults() {
+    SrsStore a;
+    MemoryIo empty;
+    a.begin(empty);
+    a.getOrCreate(0x65E5).reps = 1;  // a record, but no grade: no streak, no time
+    MemoryIo io;
+    TEST_ASSERT_TRUE(a.save(io));
+    for (size_t i = 32; i < 48; ++i) TEST_ASSERT_EQUAL_UINT8(0, io.bytes[i]);
+
+    SrsStore b;
+    TEST_ASSERT_TRUE(b.begin(io));
+    TEST_ASSERT_EQUAL_UINT16(0, b.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(0, b.streakBest());
+    TEST_ASSERT_EQUAL_UINT16(0, b.lastStudyDay());
+    TEST_ASSERT_EQUAL_UINT32(0, b.reviewMs());
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(b.count()));
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -808,5 +926,9 @@ int main() {
     RUN_TEST(test_queue_no_repeat_within_session);
     RUN_TEST(test_queue_relearn_requeues_and_caps);
     RUN_TEST(test_queue_interleaves_modes);
+    RUN_TEST(test_streak);
+    RUN_TEST(test_review_ms_saturation);
+    RUN_TEST(test_serialize_new_header_roundtrip);
+    RUN_TEST(test_serialize_old_file_has_defaults);
     return UNITY_END();
 }

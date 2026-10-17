@@ -91,6 +91,12 @@ struct UiStrings {
     const char* detailKun;
     const char* detailStrokesFmt;
     const char* detailAccuracyFmt;
+    // Statistics: day streak and total time on questions.
+    const char* statsStreakFmt;  // current, best
+    const char* statsTimeFmt;    // whole line, %s = the formatted duration
+    const char* statsTimeHM;     // "%uh %um"
+    const char* statsTimeMS;     // "%um %us"
+    const char* statsTimeS;      // "%us"
 };
 
 const UiStrings kUiEn = {
@@ -109,6 +115,7 @@ const UiStrings kUiEn = {
     "Cannot open pack",
     "ORIENTATION", {"Portrait", "Landscape"},
     "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
+    "streak %u/%u", "time %s", "%uh %um", "%um %us", "%us",
 };
 
 const UiStrings kUiEs = {
@@ -128,6 +135,7 @@ const UiStrings kUiEs = {
     "No se puede abrir el mazo",
     "ORIENTACION", {"Vertical", "Horizontal"},
     "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
+    "racha %u/%u", "tiempo %s", "%uh %um", "%um %us", "%us",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -666,9 +674,25 @@ void drawDate() {
     present();
 }
 
-// Statistics screen (opened from the settings home): the internal date, cards
-// seen out of the loaded pack, its due/new counts, and the lifetime answer
-// counters from the SRS store. Read-only; the side button returns to settings.
+// "2h 5m", "5m 30s" or "30s" depending on the magnitude. The unit strings come
+// from UiStrings so a language can change them; the result stays short enough
+// for the 135 px portrait width (the stats line shrinks to the 1x font if not).
+void formatReviewTime(uint32_t ms, char* out, size_t n) {
+    const uint32_t totalS = ms / 1000u;
+    const uint32_t mins = totalS / 60u;
+    const uint32_t hours = mins / 60u;
+    if (hours > 0)
+        snprintf(out, n, ui().statsTimeHM, (unsigned)hours, (unsigned)(mins % 60u));
+    else if (mins > 0)
+        snprintf(out, n, ui().statsTimeMS, (unsigned)mins, (unsigned)(totalS % 60u));
+    else
+        snprintf(out, n, ui().statsTimeS, (unsigned)totalS);
+}
+
+// Statistics screen (opened from the settings home): the internal date, the day
+// streak and total time on questions, cards seen out of the loaded pack, its
+// due/new counts, and the lifetime answer counters from the SRS store. Read-only;
+// the side button returns to settings.
 void drawStats() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
@@ -685,23 +709,29 @@ void drawStats() {
     const uint32_t acc = st.reps ? (st.reps > st.lapses ? st.reps - st.lapses : 0) * 100u / st.reps
                                  : 0;
 
-    char date[16], seen[24], dueNew[32], answers[24], accuracy[24], learned[24];
+    char date[16], streak[24], timeLine[32], seen[24], dueNew[32], answers[24], accuracy[24],
+        learned[24], duration[16];
     formatDate(gSrs.today(), date, sizeof date);
+    snprintf(streak, sizeof streak, ui().statsStreakFmt, (unsigned)st.streakCurrent,
+             (unsigned)st.streakBest);
+    formatReviewTime(st.reviewMs, duration, sizeof duration);
+    snprintf(timeLine, sizeof timeLine, ui().statsTimeFmt, duration);
     snprintf(seen, sizeof seen, ui().statsSeenFmt, (unsigned)st.seen, (unsigned)gPack.cardCount());
     snprintf(dueNew, sizeof dueNew, ui().statsDueNewFmt, (unsigned)due, (unsigned)fresh);
     snprintf(answers, sizeof answers, ui().statsAnswersFmt, (unsigned)st.answers);
     snprintf(accuracy, sizeof accuracy, ui().statsAccuracyFmt, (unsigned)acc);
     snprintf(learned, sizeof learned, ui().statsLearnedFmt, (unsigned)st.learned);
 
-    const char* lines[] = {date, seen, dueNew, answers, accuracy, learned};
+    const char* lines[] = {date, streak, timeLine, seen, dueNew, answers, accuracy, learned};
+    constexpr int kStatsLines = 8;
     // Shrink the line step on the short landscape screen; portrait keeps 26/24.
     const int top = 26;
     int step = 24;
-    if (top + step * 6 > H) {
-        step = (H - top - 2) / 6;
+    if (top + step * kStatsLines > H) {
+        step = (H - top - 2) / kStatsLines;
         if (step < 10) step = 10;
     }
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < kStatsLines; ++i) {
         const uint8_t set = labelFont(lines[i], step - 2, 18, W - 4);
         gRender.drawCentred(d, lines[i], 2, top + i * step, W - 4, step - 4, 1,
                             i == 0 ? kYellow : kWhite, kBlack, set);
@@ -1215,6 +1245,7 @@ void holdAction(uint32_t pressedAt) {
     gPack.card(gQ.cardIndex, &card);
     const float u01 = gRng.below(1000) / 1000.0f;
     gSrs.grade(card.codepoint, grade, gSrs.today(), static_cast<uint8_t>(gQ.mode), u01);
+    gSrs.addReviewMs(rt_ms);
     gQueue.answered(gQ.cardIndex, grade);
     ++gDirty;
     gLastAnswerAt = millis();
