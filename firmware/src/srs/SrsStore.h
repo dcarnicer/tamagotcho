@@ -29,7 +29,11 @@ constexpr uint16_t kSrsDefaultNewPerDay = 10;
 constexpr uint16_t kSrsDefaultMaxIntervalDays = 365;
 
 // Header `flags` bits (bit0 reserved for a future clean-shutdown marker).
+// bit1 records that at least one answer has ever been given: it is what tells
+// "never studied" apart from "studied on day index 0", which lastStudyDay_ alone
+// cannot (see noteStudyDay and docs/srs.md section 4.1).
 constexpr uint16_t kSrsFlagNone = 0;
+constexpr uint16_t kSrsFlagHasStudied = 0x0002;
 
 // A card counts as "learned" once its stability reaches a ~3-week interval
 // (docs/roadmap.md "Statistics"). Stability is in centidays, so 21 days.
@@ -165,10 +169,14 @@ public:
     uint32_t msCarry() const { return msCarry_; }
 
     // Day streak and total review time (docs/srs.md section 4). The streak is
-    // advanced by grade(); `lastStudyDay == 0` means no day has been studied.
+    // advanced by grade(); `lastStudyDay()` is the SRS day of the last answer
+    // and is only meaningful while `hasStudied()` is true.
     uint16_t streakCurrent() const { return streakCurrent_; }
     uint16_t streakBest() const { return streakBest_; }
     uint16_t lastStudyDay() const { return lastStudyDay_; }
+    // True once any answer has ever been given (persisted flags bit). Tells
+    // "never studied" apart from a study day with index 0.
+    bool hasStudied() const { return (flags_ & kSrsFlagHasStudied) != 0; }
     uint32_t reviewMs() const { return reviewMs_; }
     // Adds `ms` to the total time on questions, saturating at 0xFFFFFFFF.
     void addReviewMs(uint32_t ms);
@@ -193,7 +201,7 @@ private:
     uint16_t flags_ = 0;
     uint16_t streakCurrent_ = 0;  // consecutive SRS days with an answer
     uint16_t streakBest_ = 0;     // best streak ever
-    uint16_t lastStudyDay_ = 0;   // SRS day of the last answer (0 = never)
+    uint16_t lastStudyDay_ = 0;   // SRS day of the last answer (valid while studied)
     uint32_t reviewMs_ = 0;       // lifetime time on questions, ms
 
     bool tickStarted_ = false;

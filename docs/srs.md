@@ -234,7 +234,7 @@ Header (little-endian):
 | 24  | u16    | new_introduced_day    | day the counter below belongs to              |
 | 26  | u16    | new_introduced_count  | new cards introduced on that day              |
 | 28  | u16    | max_interval_days     | 365                                           |
-| 30  | u16    | flags                 | bit0 = clean shutdown (unused for now)        |
+| 30  | u16    | flags                 | bit0 = clean shutdown (unused); bit1 = has studied (streak §4.1) |
 | 32  | u16    | streak_current        | consecutive SRS days with an answer (§4.1)    |
 | 34  | u16    | streak_best           | best day streak ever (§4.1)                   |
 | 36  | u16    | last_study_day        | SRS day of the last answer; 0 = never         |
@@ -251,14 +251,17 @@ zeroed streak/time, and an older reader ignores the new fields while still
 verifying the CRC (which covers the whole header, new bytes included).
 
 - **Day streak.** A day streak over the SRS day index (§5), not wall time. In
-  `grade(codepoint, grade, day, ...)`: when `day != last_study_day`,
-  `streak_current` becomes `streak_current + 1` if `last_study_day != 0` and
-  `day == last_study_day + 1`, otherwise `1`; then `last_study_day = day` and
-  `streak_best = max(streak_best, streak_current)`. A same-day answer changes
-  nothing. Both counters saturate at `0xFFFF`. Caveat: because `last_study_day
-  == 0` also means "never", the first answer on day index `0` (a fresh store)
-  is treated as same-day and does not start a streak; the quirk disappears from
-  the second SRS day on.
+  `grade(codepoint, grade, day, ...)`: when `day != last_study_day` (or nothing
+  has ever been studied), `streak_current` becomes `streak_current + 1` if a
+  study day already exists and `day == last_study_day + 1`, otherwise `1`; then
+  `last_study_day = day` and `streak_best = max(streak_best, streak_current)`. A
+  same-day answer changes nothing. Both counters saturate at `0xFFFF`.
+  **First-vs-consecutive is decided by a persisted "has studied" flag** (header
+  `flags` bit1), not by `last_study_day == 0`: day index `0` is a valid study
+  day, so the first answer a fresh store sees — even on day `0` — starts the
+  streak at `1`. `last_study_day == 0` alone would be ambiguous with "never". A
+  file written before the flag existed recovers it from a non-zero
+  `last_study_day` on load.
 - **Review time.** `addReviewMs(ms)` adds to `review_ms` and saturates at
   `0xFFFFFFFF`. The app calls it once per answer with the same response time
   that graded it (question shown / last navigation tap → the confirming
