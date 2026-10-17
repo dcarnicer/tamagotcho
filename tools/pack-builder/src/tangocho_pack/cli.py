@@ -37,7 +37,7 @@ def cmd_build(a) -> int:
         print("error: no cards selected", file=sys.stderr)
         return 1
     name = a.name or default_deck_name(jlpt, grades)
-    raw = build_pack(cards, a.font, a.lang, name, a.large_px, a.small_px, a.text_px)
+    raw = build_pack(cards, a.font, a.lang, name, a.large_px, a.small_px, a.text_px, a.option_px)
     out = Path(a.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(raw)
@@ -60,14 +60,15 @@ def cmd_inspect(a) -> int:
         print(f"INVALID: {e}")
         return 1
     h = p.header
-    sets = [sum(1 for g in p.glyphs if g.set == s) for s in (0, 1, 2)]
+    sets = [sum(1 for g in p.glyphs if g.set == s) for s in (0, 1, 2, 3)]
     data_bytes = sum(((g.width + 1) // 2) * g.height for g in p.glyphs)
     print(f"file        {a.file}")
     print(f"version     {h['version']}   lang {h['lang']}   deck {p.deck_name!r}")
     print(f"cards       {h['card_count']} ({sum(1 for c in p.cards if c.flags & 1)} English fallback)")
-    print(f"glyphs      {h['glyph_count']} (set0 {sets[0]}, set1 {sets[1]}, set2 {sets[2]})")
+    print(f"glyphs      {h['glyph_count']} (set0 {sets[0]}, set1 {sets[1]}, set2 {sets[2]}, set3 {sets[3]})")
     print(f"px          large {h['large_px']}  small {h['small_px']}  text {h['text_px']} "
-          f"(line {h['text_line_height']}, ascent {h['text_ascent']})")
+          f"(line {h['text_line_height']}, ascent {h['text_ascent']})  option {h['option_px']} "
+          f"(line {h['option_line_height']}, ascent {h['option_ascent']})")
     print("sections    bytes")
     print(f"  header          {h['header_size']:>9,}")
     print(f"  cards           {h['card_count'] * CARD_SIZE:>9,}")
@@ -124,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--large-px", type=int, default=96)
     s.add_argument("--small-px", type=int, default=40)
     s.add_argument("--text-px", type=int, default=18)
+    s.add_argument("--option-px", type=int, default=20,
+                   help="size of set 3 (large text for reading answers); 0 to omit")
     s.add_argument("--name", help="deck name (default derived from filters)")
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(fn=cmd_build)

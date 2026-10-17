@@ -11,6 +11,7 @@
 #include "pack/Utf8.h"
 #include "quiz/Quiz.h"
 #include "render/Blend565.h"
+#include "render/GlcdCp437.h"
 
 using namespace tgc;
 
@@ -156,6 +157,7 @@ void test_open_and_header() {
     TEST_ASSERT_EQUAL_STRING("en", r.header().lang);
     TEST_ASSERT_EQUAL_UINT8(32, r.header().largePx);
     TEST_ASSERT_EQUAL_UINT8(14, r.header().textAscent);
+    TEST_ASSERT_EQUAL_UINT8(0, r.header().optionPx);  // makePack ships no set 3
 }
 
 void test_cards() {
@@ -400,6 +402,26 @@ void test_quiz_meaning_gloss_collisions() {
     }
 }
 
+void test_glcd_cp437_map() {
+    // ASCII maps to itself.
+    TEST_ASSERT_EQUAL(0x41, glcdIndex('A'));
+    TEST_ASSERT_EQUAL(0x20, glcdIndex(' '));
+    // Spanish accents live in CP437 slots, not at their Unicode positions.
+    TEST_ASSERT_EQUAL(0x82, glcdIndex(0x00E9));  // é
+    TEST_ASSERT_EQUAL(0xA0, glcdIndex(0x00E1));  // á
+    TEST_ASSERT_EQUAL(0xA1, glcdIndex(0x00ED));  // í
+    TEST_ASSERT_EQUAL(0xA2, glcdIndex(0x00F3));  // ó
+    TEST_ASSERT_EQUAL(0xA3, glcdIndex(0x00FA));  // ú
+    TEST_ASSERT_EQUAL(0x81, glcdIndex(0x00FC));  // ü
+    TEST_ASSERT_EQUAL(0xA4, glcdIndex(0x00F1));  // ñ
+    TEST_ASSERT_EQUAL(0xA5, glcdIndex(0x00D1));  // Ñ
+    TEST_ASSERT_EQUAL(0xA8, glcdIndex(0x00BF));  // ¿
+    TEST_ASSERT_EQUAL(0xAD, glcdIndex(0x00A1));  // ¡
+    // Font0 has no glyph for these (meaning text falls back to the pack font).
+    TEST_ASSERT_EQUAL(-1, glcdIndex(0x00C1));  // Á
+    TEST_ASSERT_EQUAL(-1, glcdIndex(0x6F22));  // 漢
+}
+
 void test_blend() {
     TEST_ASSERT_EQUAL_HEX16(0xFFFF, blend565(0xFFFF, 0x0000, 15));
     TEST_ASSERT_EQUAL_HEX16(0x0000, blend565(0xFFFF, 0x0000, 0));
@@ -414,25 +436,28 @@ static const char* kMini = "../tools/pack-builder/fixtures/mini.tgc";
 void test_mini_fixture() {
     StdioSource src(kMini);
     if (!src.ok()) TEST_IGNORE_MESSAGE("mini.tgc not found");
-    TEST_ASSERT_EQUAL_UINT32(6360, src.size());
+    TEST_ASSERT_EQUAL_UINT32(7880, src.size());
     PackReader r;
     TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
     const PackHeader& h = r.header();
     TEST_ASSERT_EQUAL_UINT16(1, h.version);
     TEST_ASSERT_EQUAL_UINT32(3, h.cardCount);
-    TEST_ASSERT_EQUAL_UINT32(115, h.glyphCount);
+    TEST_ASSERT_EQUAL_UINT32(129, h.glyphCount);
     TEST_ASSERT_EQUAL_UINT32(64, h.cardsOff);
     TEST_ASSERT_EQUAL_UINT32(160, h.glyphsOff);
-    TEST_ASSERT_EQUAL_UINT32(2000, h.distractOff);
-    TEST_ASSERT_EQUAL_UINT32(2020, h.stringsOff);
+    TEST_ASSERT_EQUAL_UINT32(2224, h.distractOff);
+    TEST_ASSERT_EQUAL_UINT32(2244, h.stringsOff);
     TEST_ASSERT_EQUAL_UINT32(116, h.stringsSize);
-    TEST_ASSERT_EQUAL_UINT32(2136, h.glyphDataOff);
+    TEST_ASSERT_EQUAL_UINT32(2360, h.glyphDataOff);
     TEST_ASSERT_EQUAL_STRING("en", h.lang);
     TEST_ASSERT_EQUAL_UINT8(32, h.largePx);
     TEST_ASSERT_EQUAL_UINT8(16, h.smallPx);
     TEST_ASSERT_EQUAL_UINT8(12, h.textPx);
     TEST_ASSERT_EQUAL_UINT8(18, h.textLineHeight);
     TEST_ASSERT_EQUAL_UINT8(14, h.textAscent);
+    TEST_ASSERT_EQUAL_UINT8(18, h.optionPx);
+    TEST_ASSERT_EQUAL_UINT8(27, h.optionLineHeight);
+    TEST_ASSERT_EQUAL_UINT8(21, h.optionAscent);
     TEST_ASSERT_EQUAL_UINT32(0, h.buildTime);
     TEST_ASSERT_EQUAL_STRING("JLPT N5", r.deckName());
 
@@ -442,7 +467,7 @@ void test_mini_fixture() {
         {26376, "month; moon", "ゲツ、ガツ", "つき", {0, 2}, 23, 1},
         {28779, "fire", "カ", "ひ、び、ほ", {1, 0}, 574, 2},
     };
-    const uint32_t distOffs[3] = {2000, 2006, 2012};
+    const uint32_t distOffs[3] = {2224, 2230, 2236};
     for (uint32_t i = 0; i < 3; ++i) {
         Card c;
         TEST_ASSERT_TRUE(r.card(i, &c));
@@ -469,16 +494,16 @@ void test_mini_fixture() {
     TEST_ASSERT_EQUAL_INT8(6, g->xOff);
     TEST_ASSERT_EQUAL_INT8(-29, g->yOff);
     TEST_ASSERT_EQUAL_UINT8(32, g->advance);
-    TEST_ASSERT_EQUAL_UINT32(2136, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(2360, g->dataOff);
     g = r.findGlyph(0, 28779);
     TEST_ASSERT_EQUAL_UINT8(29, g->width);
-    TEST_ASSERT_EQUAL_UINT32(2732, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(2956, g->dataOff);
     g = r.findGlyph(1, 26085);
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(11, g->width);
     TEST_ASSERT_EQUAL_UINT8(13, g->height);
     TEST_ASSERT_EQUAL_INT8(-15, g->yOff);
-    TEST_ASSERT_EQUAL_UINT32(3167, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(3391, g->dataOff);
     g = r.findGlyph(2, 'A');
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(9, g->width);
@@ -494,12 +519,20 @@ void test_mini_fixture() {
     g = r.findGlyph(2, 12491);
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(6, g->height);
-    TEST_ASSERT_EQUAL_UINT32(6327, g->dataOff);
-    int cnt[3] = {0, 0, 0};
+    TEST_ASSERT_EQUAL_UINT32(6551, g->dataOff);
+    // Set 3: the same ニ rendered larger for reading answers.
+    g = r.findGlyph(3, 12491);
+    TEST_ASSERT_NOT_NULL(g);
+    TEST_ASSERT_EQUAL_UINT8(14, g->width);
+    TEST_ASSERT_EQUAL_UINT8(9, g->height);
+    TEST_ASSERT_EQUAL_UINT8(18, g->advance);
+    TEST_ASSERT_EQUAL_UINT32(7817, g->dataOff);
+    int cnt[4] = {0, 0, 0, 0};
     for (uint32_t i = 0; i < r.glyphCount(); ++i) ++cnt[r.glyphAt(i)->set];
     TEST_ASSERT_EQUAL(3, cnt[0]);
     TEST_ASSERT_EQUAL(3, cnt[1]);
     TEST_ASSERT_EQUAL(109, cnt[2]);
+    TEST_ASSERT_EQUAL(14, cnt[3]);
 
     // Quiz on a 3-card pack: 3 options max.
     XorShiftRng rng(3);
@@ -549,6 +582,7 @@ int main() {
     RUN_TEST(test_quiz_reading_kinds);
     RUN_TEST(test_quiz_unavailable_and_tiny);
     RUN_TEST(test_quiz_meaning_gloss_collisions);
+    RUN_TEST(test_glcd_cp437_map);
     RUN_TEST(test_blend);
     RUN_TEST(test_mini_fixture);
     RUN_TEST(test_real_pack_if_present);

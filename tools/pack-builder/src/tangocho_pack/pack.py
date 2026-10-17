@@ -14,7 +14,7 @@ VERSION = 1
 HEADER_SIZE = 64
 CARD_SIZE = 32
 GLYPH_SIZE = 16
-HEADER_FMT = "<4sHHIIIIIIIII4sBBBBB3xII"
+HEADER_FMT = "<4sHHIIIIIIIII4sBBBBBBBBII"
 CARD_FMT = "<IIIIIBBBBHHI"
 GLYPH_FMT = "<IBBBBbbBBI"
 assert struct.calcsize(HEADER_FMT) == HEADER_SIZE
@@ -60,6 +60,9 @@ def write_pack(
     text_px: int,
     text_line_height: int,
     text_ascent: int,
+    option_px: int = 0,
+    option_line_height: int = 0,
+    option_ascent: int = 0,
     build_time: int | None = None,
 ) -> bytes:
     if len(cards) > 65535:
@@ -106,6 +109,7 @@ def write_pack(
         cards_off, glyphs_off, distract_off, strings_off, strings_size, glyph_data_off,
         strings_off + deck_rel, lang.encode("ascii").ljust(4, b"\0"),
         large_px, small_px, text_px, text_line_height, text_ascent,
+        option_px, option_line_height, option_ascent,
         int(time.time()) if build_time is None else build_time, 0,
     )
     out = bytearray(header)
@@ -199,7 +203,8 @@ def read_pack(raw: bytes) -> Pack:
     names = ["magic", "version", "header_size", "card_count", "glyph_count", "cards_off",
              "glyphs_off", "distract_off", "strings_off", "strings_size", "glyph_data_off",
              "deck_name", "lang", "large_px", "small_px", "text_px", "text_line_height",
-             "text_ascent", "build_time", "reserved"]
+             "text_ascent", "option_px", "option_line_height", "option_ascent",
+             "build_time", "reserved"]
     h = dict(zip(names, f))
     h["lang"] = h["lang"].rstrip(b"\0").decode("ascii", "replace")
     if h["magic"] != MAGIC:
@@ -268,7 +273,7 @@ def read_pack(raw: bytes) -> Pack:
         if prev is not None and (gs, cp) <= prev:
             errs.append(f"glyph table not strictly sorted at index {i}")
         prev = (gs, cp)
-        if gs > 2:
+        if gs > 3:
             errs.append(f"glyph {i}: bad set {gs}")
         if enc != 0:
             errs.append(f"glyph {i}: unsupported encoding {enc}")
@@ -292,4 +297,11 @@ def read_pack(raw: bytes) -> Pack:
     for ch in pack.deck_name:
         if not 0x20 <= ord(ch) <= 0x7E and (2, ord(ch)) not in present:
             errs.append(f"deck name: U+{ord(ch):04X} missing from set 2")
+    # If the pack ships large option text, every reading character must be in it.
+    if h["option_px"]:
+        for i, c in enumerate(pack.cards):
+            for what, txt in (("onyomi", c.onyomi), ("kunyomi", c.kunyomi)):
+                for ch in txt:
+                    if (3, ord(ch)) not in present:
+                        errs.append(f"card {i} {what}: U+{ord(ch):04X} {ch!r} missing from set 3")
     return pack

@@ -55,7 +55,9 @@ Sections are 4-byte aligned. Readers must use the offsets, not assume order.
 | 50  | u8       | text_px          | nominal pixel size of set 2 glyphs             |
 | 51  | u8       | text_line_height | recommended line height for set 2, px          |
 | 52  | u8       | text_ascent      | baseline offset from line top for set 2, px    |
-| 53  | u8[3]    | reserved         | 0                                              |
+| 53  | u8       | option_px        | nominal pixel size of set 3 glyphs, 0 = no set 3 |
+| 54  | u8       | option_line_height | recommended line height for set 3, px        |
+| 55  | u8       | option_ascent    | baseline offset from line top for set 3, px    |
 | 56  | u32      | build_time       | unix seconds                                   |
 | 60  | u32      | reserved         | 0                                              |
 
@@ -94,7 +96,7 @@ Sorted ascending by `(set, codepoint)` so the device can binary-search.
 | off | type | field     | notes                                                  |
 |-----|------|-----------|--------------------------------------------------------|
 | 0   | u32  | codepoint |                                                        |
-| 4   | u8   | set       | 0 = large kanji (quiz prompt), 1 = small kanji (answer options / lists), 2 = text (kana, Latin, punctuation for meanings and readings) |
+| 4   | u8   | set       | 0 = large kanji (quiz prompt), 1 = small kanji (answer options / lists), 2 = text (kana, Latin, punctuation for meanings and readings), 3 = large option text (kana for reading answers) |
 | 5   | u8   | encoding  | 0 = raw 4bpp. (1 = RLE 4bpp, reserved for v2)           |
 | 6   | u8   | width     | bitmap width, px (may be 0 for space)                  |
 | 7   | u8   | height    | bitmap height, px                                      |
@@ -110,6 +112,13 @@ the bottom edge of that square**, so `y_off = top_in_square - px` (always
 negative) and `x_off` is the left offset inside the square. To draw a kanji
 in a box whose top-left is `(x, y)`: bitmap top-left = `(x + x_off, y + px + y_off)`.
 All kanji of one set share the same visual box.
+
+Sets 2 and 3 are normal text: `y_off` and `x_off` are relative to the pen
+position and the baseline (`text_ascent` / `option_ascent` from the line top).
+Set 3 holds the same kind of glyphs as set 2, rendered larger, for kana used in
+reading answers where legibility matters. A reader that wants a set-3 glyph
+**must fall back to set 2** if the code point is not present in set 3 (packs may
+omit set 3 entirely: `option_px = 0`).
 
 ## Bitmap encoding 0: raw 4bpp
 

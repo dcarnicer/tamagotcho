@@ -67,3 +67,19 @@ Short log of non-obvious choices. Newest last.
 - Options are deduplicated by card index, not by display string: with random
   meanings the same card could otherwise arrive twice and produce a different
   gloss the second time.
+
+## 2026-10-17 – Quiz layout: per-mode options and large kana
+
+- **Reading answers: a 2×2 grid.** Readings are short (1–3 kana) and wasted the
+  full width; the grid gives each cell about 65×52 px and fits larger kana.
+- **Meaning answers: one per row, full width**, drawn with the built-in GFX font
+  (Font0) at 2× so Latin text is legible, matching the header and labels. The
+  font has no glyph for some characters (e.g. uppercase-accented letters); such
+  a question falls back to the pack's set-2 glyphs (never mixing fonts inside a
+  word). `render/GlcdCp437.h` maps the Latin-1 letters Font0 keeps in its CP437
+  slots and is unit-tested natively.
+- **New glyph set 3 = large option text**, rendered at `--option-px` (default
+  20) and described by header bytes 53–55 (`option_px`, `option_line_height`,
+  `option_ascent`; 0 = absent, so no version bump). Reading answers use set 3
+  when the whole question fits the cell, otherwise the small text. Readers fall
+  back from set 3 to set 2 when a code point is absent from set 3.

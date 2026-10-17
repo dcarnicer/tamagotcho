@@ -137,32 +137,49 @@ void drawScreen() {
     smallText(d, reading ? "READING" : "MEANING", W / 2, headerH + 2 + kanjiH, kYellow, kBlack,
               lgfx::top_center);
 
-    // Options.
+    // Readings: 2x2 grid with large kana (set 3). Meanings: one per row, full
+    // width, in the built-in font at 2x (falling back to the pack glyphs).
     const int top = headerH + kanjiH + 14;
     const int area = H - top - 2;
-    const int rowH = area / gQ.count;
-    const int lh = gRender.lineHeight();
-    const int pad = 3;
-    for (int i = 0; i < gQ.count; ++i) {
-        int y = top + i * rowH;
-        uint16_t bg = kBlack;
-        if (gRevealed) {
-            if (i == gQ.correct) bg = kGreen;
-            else if (i == gSel) bg = kRed;
-        } else if (i == gSel) {
-            bg = kHighlight;
-        }
-        d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
-        if (!gRevealed && i == gSel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
-        int maxLines = (rowH - 2 - 2 * pad + 2) / lh;
-        if (maxLines < 1) maxLines = 1;
-        int textH = (maxLines < 2 ? 1 : maxLines) * lh;
-        // Centre single-line options vertically.
-        int usedLines = 1;
-        (void)usedLines;
-        int ty = y + (rowH - 2 - (maxLines >= 2 ? textH : lh)) / 2;
-        gRender.drawWrapped(d, gQ.options[i].c_str(), 1 + pad + 2, ty, W - 2 - 2 * (pad + 2), maxLines,
-                            kWhite, bg);
+    const int margin = 1, gap = 3;
+
+    auto optionBg = [&](int i) -> uint16_t {
+        if (gRevealed) return i == gQ.correct ? kGreen : (i == gSel ? kRed : kBlack);
+        return i == gSel ? kHighlight : kBlack;
+    };
+    auto optionBox = [&](int i, int x, int y, int w, int h, uint8_t set) {
+        uint16_t bg = optionBg(i);
+        d.fillRoundRect(x, y, w, h, 4, bg);
+        if (!gRevealed && i == gSel) d.drawRoundRect(x, y, w, h, 4, kWhite);
+        gRender.drawCentred(d, gQ.options[i].c_str(), x + 2, y + 1, w - 4, h - 2, 1, kWhite, bg, set);
+    };
+
+    if (reading) {
+        const int cols = 2;
+        const int rows = (gQ.count + cols - 1) / cols;
+        const int cellW = (W - 2 * margin - (cols - 1) * gap) / cols;
+        const int cellH = (area - (rows - 1) * gap) / rows;
+        // Large kana if the whole question fits the cell, else the small text.
+        uint8_t set = tgc::kGlyphSetOption;
+        for (int i = 0; i < gQ.count; ++i)
+            if (gRender.textWidth(gQ.options[i].c_str(), set) > cellW - 4) {
+                set = tgc::kGlyphSetText;
+                break;
+            }
+        for (int i = 0; i < gQ.count; ++i)
+            optionBox(i, margin + (i % cols) * (cellW + gap), top + (i / cols) * (cellH + gap),
+                      cellW, cellH, set);
+    } else {
+        // The built-in font has no glyph for some characters; then use the pack.
+        uint8_t set = tgc::Renderer::kTextBuiltin;
+        for (int i = 0; i < gQ.count; ++i)
+            if (!tgc::Renderer::builtinCanDraw(gQ.options[i].c_str())) {
+                set = tgc::kGlyphSetText;
+                break;
+            }
+        const int rowH = area / gQ.count;
+        for (int i = 0; i < gQ.count; ++i)
+            optionBox(i, margin, top + i * rowH, W - 2 * margin, rowH - gap, set);
     }
     present();
 }

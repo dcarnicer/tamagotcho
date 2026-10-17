@@ -4,11 +4,19 @@
 
 #include "pack/Utf8.h"
 #include "render/Blend565.h"
+#include "render/GlcdCp437.h"
 
 namespace tgc {
 
 namespace {
 const char kEllipsis[] = "...";
+
+// Font0 metrics (see lovyanGFX GLCDfont): 6 px wide, 8 px tall, baseline at 7.
+// Option text draws it at 2x so Latin answers stay legible.
+constexpr int kBuiltinScale = 2;
+constexpr int kBuiltinWidth = 6 * kBuiltinScale;
+constexpr int kBuiltinHeight = 8 * kBuiltinScale;
+constexpr int kBuiltinAscent = 7 * kBuiltinScale;
 }  // namespace
 
 void drawBitmap4bpp(lgfx::LovyanGFX& dst, int x, int y, const uint8_t* bits, int w, int h,
@@ -33,6 +41,9 @@ bool Renderer::begin(const PackReader& pack) {
     lineH_ = h.textLineHeight ? h.textLineHeight : 14;
     ascent_ = h.textAscent ? h.textAscent : lineH_ - 3;
     textPx_ = h.textPx ? h.textPx : 12;
+    // No set 3 in the pack -> set 3 uses set 2's metrics and glyphs.
+    optLineH_ = h.optionLineHeight ? h.optionLineHeight : lineH_;
+    optAscent_ = h.optionAscent ? h.optionAscent : ascent_;
     size_t n = sizeof(uint8_t*) * (h.glyphCount ? h.glyphCount : 1);
     cache_ = static_cast<uint8_t**>(pack.allocator().alloc(n));
     if (!cache_) return false;
@@ -54,6 +65,22 @@ void Renderer::end() {
     scratch_ = nullptr;
     scratchCap_ = 0;
     pack_ = nullptr;
+}
+
+int Renderer::lineHeight(uint8_t set) const {
+    if (set == kTextBuiltin) return kBuiltinHeight;
+    return set == kGlyphSetOption ? optLineH_ : lineH_;
+}
+int Renderer::ascent(uint8_t set) const {
+    if (set == kTextBuiltin) return kBuiltinAscent;
+    return set == kGlyphSetOption ? optAscent_ : ascent_;
+}
+
+bool Renderer::builtinCanDraw(const char* s) {
+    const char* p = s;
+    while (uint32_t cp = utf8Next(&p))
+        if (glcdIndex(cp) < 0) return false;
+    return true;
 }
 
 // Returns bitmap bytes (cached for small glyph sets, scratch for set 0).
@@ -81,39 +108,50 @@ const uint8_t* Renderer::bitmapFor(const Glyph& g) {
     return pack_->readGlyphBitmap(g, scratch_, n) ? scratch_ : nullptr;
 }
 
-void Renderer::drawKanji(lgfx::LovyanGFX& dst, uint8_t set, uint32_t cp, int boxX, int boxY,
-                         int boxW, int boxH, uint16_t fg, uint16_t bg) {
-    const Glyph* g = pack_->findGlyph(set, cp);
-    const int px = set == kGlyphSetLarge ? pack_->header().largePx : pack_->header().smallPx;
-    const int penX = boxX + (boxW - px) / 2;
-    const int baseY = boxY + (boxH - px) / 2 + px;  // baseline = bottom edge of the em square
-    if (!g) {
-        dst.drawRect(penX, baseY - px, px, px, fg);
-        dst.setTextColor(fg, bg);
-        dst.drawString("?", penX + px / 2 - 3, baseY - px / 2 - 4);
-        return;
-    }
-    const uint8_t* bits = bitmapFor(*g);
-    if (bits) drawBitmap4bpp(dst, penX + g->xOff, baseY + g->yOff, bits, g->width, g->height, fg, bg);
+const Glyph* Renderer::glyphFor(uint8_t set, uint32_t cp) const {
+    if (const Glyph* g = pack_->findGlyph(set, cp)) return g;
+    if (set != kGlyphSetText) return pack_->findGlyph(kGlyphSetText, cp);
+    return nullptr;
 }
 
-int Renderer::charAdvance(uint32_t cp) {
-    const Glyph* g = pack_->findGlyph(kGlyphSetText, cp);
-    if (g) return g->advance;
+int Renderer::charAdvance(uint32_t cp, uint8_t set) const {
+    if (set == kTextBuiltin) return kBuiltinWidth;
+    if (const Glyph* g = glyphFor(set, cp)) return g->advance;
     return textPx_ / 2 + 2;  // fallback font / '?' box width
 }
 
-int Renderer::textWidth(const char* s) {
+int Renderer::textWidth(const char* s, uint8_t set) const {
     int w = 0;
-    while (uint32_t cp = utf8Next(&s)) w += charAdvance(cp);
+    while (uint32_t cp = utf8Next(&s)) w += charAdvance(cp, set);
     return w;
 }
 
-int Renderer::drawChar(lgfx::LovyanGFX& dst, uint32_t cp, int x, int y, uint16_t fg, uint16_t bg) {
-    const Glyph* g = pack_->findGlyph(kGlyphSetText, cp);
-    if (g) {
+int Renderer::textRangeWidth(const char* b, const char* e, uint8_t set) const {
+    int w = 0;
+    while (b < e) {
+        uint32_t cp = utf8Next(&b);
+        if (!cp) break;
+        w += charAdvance(cp, set);
+    }
+    return w;
+}
+
+int Renderer::drawCodepoint(lgfx::LovyanGFX& dst, uint32_t cp, int x, int y, uint16_t fg,
+                            uint16_t bg, uint8_t set) {
+    if (set == kTextBuiltin) {
+        dst.setFont(&lgfx::fonts::Font0);
+        dst.setTextSize(kBuiltinScale);
+        dst.setTextColor(fg, bg);
+        dst.setTextDatum(lgfx::top_left);
+        dst.cp437(true);
+        const int ix = glcdIndex(cp);
+        if (ix >= 0) dst.drawChar(static_cast<uint16_t>(ix), x, y);
+        return kBuiltinWidth;
+    }
+    const int asc = ascent(set);
+    if (const Glyph* g = glyphFor(set, cp)) {
         const uint8_t* bits = bitmapFor(*g);
-        if (bits) drawBitmap4bpp(dst, x + g->xOff, y + ascent_ + g->yOff, bits, g->width, g->height, fg, bg);
+        if (bits) drawBitmap4bpp(dst, x + g->xOff, y + asc + g->yOff, bits, g->width, g->height, fg, bg);
         return g->advance;
     }
     const int adv = textPx_ / 2 + 2;
@@ -123,36 +161,38 @@ int Renderer::drawChar(lgfx::LovyanGFX& dst, uint32_t cp, int x, int y, uint16_t
         dst.setTextSize(1);
         dst.setTextColor(fg, bg);
         dst.setTextDatum(lgfx::top_left);
-        dst.drawString(buf, x, y + ascent_ - 7);
+        dst.drawString(buf, x, y + asc - 7);
     } else {
-        dst.drawRect(x, y + ascent_ - textPx_ + 2, adv - 1, textPx_ - 2, fg);
+        dst.drawRect(x, y + asc - textPx_ + 2, adv - 1, textPx_ - 2, fg);
     }
     return adv;
 }
 
-int Renderer::drawText(lgfx::LovyanGFX& dst, const char* s, int x, int y, uint16_t fg, uint16_t bg) {
-    int pen = x;
-    while (uint32_t cp = utf8Next(&s)) pen += drawChar(dst, cp, pen, y, fg, bg);
-    return pen - x;
-}
-
 int Renderer::drawRange(lgfx::LovyanGFX& dst, const char* b, const char* e, int x, int y,
-                        uint16_t fg, uint16_t bg) {
+                        uint16_t fg, uint16_t bg, uint8_t set) {
     int pen = x;
     while (b < e) {
         uint32_t cp = utf8Next(&b);
         if (!cp) break;
-        pen += drawChar(dst, cp, pen, y, fg, bg);
+        pen += drawCodepoint(dst, cp, pen, y, fg, bg, set);
     }
     return pen - x;
 }
 
-int Renderer::drawWrapped(lgfx::LovyanGFX& dst, const char* s, int x, int y, int maxW, int maxLines,
-                          uint16_t fg, uint16_t bg) {
+int Renderer::drawText(lgfx::LovyanGFX& dst, const char* s, int x, int y, uint16_t fg, uint16_t bg,
+                       uint8_t set) {
+    int pen = x;
+    while (uint32_t cp = utf8Next(&s)) pen += drawCodepoint(dst, cp, pen, y, fg, bg, set);
+    return pen - x;
+}
+
+// Greedy wrap; fills `out` with up to `cap` line ranges and returns the count.
+// The final line carries an ellipsis flag when the text did not fit.
+int Renderer::wrap(const char* s, int maxW, int maxLines, uint8_t set, Line* out, int cap) const {
     int lines = 0;
     const char* p = s;
-    const int ellW = textWidth(kEllipsis);
-    while (*p && lines < maxLines) {
+    const int ellW = textWidth(kEllipsis, set);
+    while (*p && lines < maxLines && lines < cap) {
         const bool lastLine = (lines == maxLines - 1);
         const char* q = p;
         const char* lastBreak = nullptr;   // end of text at the last break opportunity
@@ -164,7 +204,7 @@ int Renderer::drawWrapped(lgfx::LovyanGFX& dst, const char* s, int x, int y, int
         while (*q) {
             const char* start = q;
             uint32_t cp = utf8Next(&q);
-            int adv = charAdvance(cp);
+            int adv = charAdvance(cp, set);
             if (w + adv > maxW && start != p) {
                 overflow = true;
                 break;
@@ -181,23 +221,70 @@ int Renderer::drawWrapped(lgfx::LovyanGFX& dst, const char* s, int x, int y, int
                 afterBreak = q;
             }
         }
-        const int ly = y + lines * lineH_;
-        ++lines;
         if (!overflow) {
-            drawRange(dst, p, fitEnd, x, ly, fg, bg);
+            out[lines++] = Line{p, fitEnd, false};
             break;
         }
         if (lastLine) {
-            int dw = drawRange(dst, p, ellEnd, x, ly, fg, bg);
-            drawRange(dst, kEllipsis, kEllipsis + 3, x + dw, ly, fg, bg);
+            out[lines++] = Line{p, ellEnd, true};
             break;
         }
         const bool useBreak = lastBreak && lastBreak > p;
-        drawRange(dst, p, useBreak ? lastBreak : fitEnd, x, ly, fg, bg);
+        out[lines++] = Line{p, useBreak ? lastBreak : fitEnd, false};
         p = useBreak ? afterBreak : fitEnd;
         while (*p == ' ') ++p;
     }
     return lines;
+}
+
+int Renderer::drawWrapped(lgfx::LovyanGFX& dst, const char* s, int x, int y, int maxW, int maxLines,
+                          uint16_t fg, uint16_t bg, uint8_t set) {
+    Line lines[kMaxWrapLines];
+    const int n = wrap(s, maxW, maxLines, set, lines, kMaxWrapLines);
+    const int lh = lineHeight(set);
+    for (int i = 0; i < n; ++i) {
+        const int ly = y + i * lh;
+        int dw = drawRange(dst, lines[i].begin, lines[i].end, x, ly, fg, bg, set);
+        if (lines[i].ellipsis) drawRange(dst, kEllipsis, kEllipsis + 3, x + dw, ly, fg, bg, set);
+    }
+    return n;
+}
+
+int Renderer::drawCentred(lgfx::LovyanGFX& dst, const char* s, int x, int y, int w, int h,
+                          int maxLines, uint16_t fg, uint16_t bg, uint8_t set) {
+    Line lines[kMaxWrapLines];
+    const int n = wrap(s, w, maxLines, set, lines, kMaxWrapLines);
+    const int lh = lineHeight(set);
+    const int top = y + (h - n * lh) / 2;
+    for (int i = 0; i < n; ++i) {
+        int dw = textRangeWidth(lines[i].begin, lines[i].end, set);
+        if (lines[i].ellipsis) dw += textWidth(kEllipsis, set);
+        int tx = x + (w - dw) / 2;
+        if (tx < x) tx = x;
+        const int ly = top + i * lh;
+        int drawn = drawRange(dst, lines[i].begin, lines[i].end, tx, ly, fg, bg, set);
+        if (lines[i].ellipsis) drawRange(dst, kEllipsis, kEllipsis + 3, tx + drawn, ly, fg, bg, set);
+    }
+    return n;
+}
+
+void Renderer::drawKanji(lgfx::LovyanGFX& dst, uint8_t set, uint32_t cp, int boxX, int boxY,
+                         int boxW, int boxH, uint16_t fg, uint16_t bg) {
+    const Glyph* g = pack_->findGlyph(set, cp);
+    const int px = set == kGlyphSetLarge ? pack_->header().largePx : pack_->header().smallPx;
+    const int penX = boxX + (boxW - px) / 2;
+    const int baseY = boxY + (boxH - px) / 2 + px;  // baseline = bottom edge of the em square
+    if (!g) {
+        dst.drawRect(penX, baseY - px, px, px, fg);
+        dst.setFont(&lgfx::fonts::Font0);
+        dst.setTextSize(1);
+        dst.setTextColor(fg, bg);
+        dst.setTextDatum(lgfx::top_left);
+        dst.drawString("?", penX + px / 2 - 3, baseY - px / 2 - 4);
+        return;
+    }
+    const uint8_t* bits = bitmapFor(*g);
+    if (bits) drawBitmap4bpp(dst, penX + g->xOff, baseY + g->yOff, bits, g->width, g->height, fg, bg);
 }
 
 }  // namespace tgc

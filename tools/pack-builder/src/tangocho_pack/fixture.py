@@ -12,7 +12,7 @@ from .pack import read_pack
 
 MINI_XML = Path(__file__).resolve().parents[2] / "tests" / "data" / "mini_kanjidic2.xml"
 MINI_JLPT = {0x65E5: 5, 0x6708: 5, 0x706B: 5}
-SIZES = dict(large_px=32, small_px=16, text_px=12)
+SIZES = dict(large_px=32, small_px=16, text_px=12, option_px=18)
 
 
 def build_mini(font_path: Path) -> bytes:
@@ -33,7 +33,7 @@ def expected_json(raw: bytes) -> dict:
             "version", "header_size", "card_count", "glyph_count", "cards_off", "glyphs_off",
             "distract_off", "strings_off", "strings_size", "glyph_data_off", "deck_name",
             "lang", "large_px", "small_px", "text_px", "text_line_height", "text_ascent",
-            "build_time")},
+            "option_px", "option_line_height", "option_ascent", "build_time")},
         "deck_name": p.deck_name,
         "cards": [{
             "codepoint": c.codepoint, "char": chr(c.codepoint), "meanings": c.meanings,
@@ -49,7 +49,7 @@ def expected_json(raw: bytes) -> dict:
                       p.find_glyph(2, ord(" ")), p.find_glyph(2, 0x30CB))
             if g is not None
         ],
-        "glyph_counts_per_set": {str(s): sum(1 for g in p.glyphs if g.set == s) for s in (0, 1, 2)},
+        "glyph_counts_per_set": {str(s): sum(1 for g in p.glyphs if g.set == s) for s in (0, 1, 2, 3)},
     }
 
 

@@ -35,6 +35,7 @@ constexpr uint32_t kGlyphEntrySize = 16;
 constexpr uint8_t kGlyphSetLarge = 0;
 constexpr uint8_t kGlyphSetSmall = 1;
 constexpr uint8_t kGlyphSetText = 2;
+constexpr uint8_t kGlyphSetOption = 3;  // large text (reading answers)
 constexpr uint8_t kCardFlagMeaningFallback = 0x01;
 
 struct PackHeader {
@@ -46,6 +47,7 @@ struct PackHeader {
     uint32_t deckNameOff;
     char lang[5];  // NUL terminated
     uint8_t largePx, smallPx, textPx, textLineHeight, textAscent;
+    uint8_t optionPx, optionLineHeight, optionAscent;  // set 3; 0 = absent
     uint32_t buildTime;
 };
 

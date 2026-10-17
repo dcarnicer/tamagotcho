@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from .distractors import DEFAULT_STRATEGY, DistractorStrategy
-from .glyphs import SET_LARGE, SET_SMALL, FontRenderer, Glyph
+from .glyphs import SET_LARGE, SET_OPTION, SET_SMALL, SET_TEXT, FontRenderer, Glyph
 from .kanjidic import Card
 from .pack import card_strings, write_pack
 
@@ -28,6 +28,7 @@ def build_pack(
     large_px: int = 96,
     small_px: int = 40,
     text_px: int = 18,
+    option_px: int = 20,
     strategy: DistractorStrategy = DEFAULT_STRATEGY,
     build_time: int | None = None,
 ) -> bytes:
@@ -53,8 +54,22 @@ def build_pack(
     for cp in sorted(text_cps):
         if not font.has(cp):
             raise ValueError(f"font lacks text glyph U+{cp:04X} {chr(cp)!r}")
-        glyphs.append(font.text_glyph(cp, text_px))
+        glyphs.append(font.text_glyph(cp, text_px, SET_TEXT))
     line_h, ascent = font.text_metrics(text_px)
+
+    # Set 3: the same readings rendered larger, for legible kana in answers.
+    option_cps: set[int] = set()
+    for c in cards:
+        _, o, k = card_strings(c)
+        option_cps.update(ord(ch) for ch in o)
+        option_cps.update(ord(ch) for ch in k)
+    for cp in sorted(option_cps):
+        if not font.has(cp):
+            raise ValueError(f"font lacks option glyph U+{cp:04X} {chr(cp)!r}")
+        glyphs.append(font.text_glyph(cp, option_px, SET_OPTION))
+    option_line_h, option_ascent = font.text_metrics(option_px)
+
     return write_pack(
-        cards, glyphs, deck_name, lang, large_px, small_px, text_px, line_h, ascent, build_time
+        cards, glyphs, deck_name, lang, large_px, small_px, text_px, line_h, ascent,
+        option_px, option_line_h, option_ascent, build_time,
     )

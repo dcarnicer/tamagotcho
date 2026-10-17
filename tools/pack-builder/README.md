@@ -17,19 +17,19 @@ uv run pytest
 
 - `fetch [--force]` downloads into `cache/` (git-ignored).
 - `build --jlpt N [--jlpt M ...] [--grade G ...] --lang en|es|fr|pt
-  [--font PATH] [--large-px 96] [--small-px 40] [--text-px 18] [--name NAME]
-  -o FILE`. `--jlpt` and `--grade` filters are AND-ed when both are given.
-  Cards are ordered easiest first (N5 before N1, lower grade, frequency).
+  [--font PATH] [--large-px 96] [--small-px 40] [--text-px 18] [--option-px 20]
+  [--name NAME] -o FILE`. `--jlpt` and `--grade` filters are AND-ed when both are
+  given. Cards are ordered easiest first (N5 before N1, lower grade, frequency).
 - `inspect FILE` validates (magic, version, offsets, alignment, glyph table
-  order, set 0/1 glyph per card, every string character present in set 2) and
-  prints sizes; exit code 1 when invalid.
+  order, set 0/1 glyph per card, every string character present in set 2, every
+  reading character in set 3) and prints sizes; exit code 1 when invalid.
 - `preview FILE --card 日 --mode meaning|reading -o out.png [--width 135
   --height 240 --scale 3 --seed 1 --reveal]` draws a mock quiz screen using
   only bitmaps stored in the pack. `--reveal` tints the correct option.
 - `fixture` regenerates `fixtures/mini.tgc` and `fixtures/mini.json` (3 cards,
-  large 32 / small 16 / text 12, build_time 0) for the firmware's native
-  tests. `mini.json` lists the expected decoded fields; all offsets in it are
-  absolute file offsets.
+  large 32 / small 16 / text 12 / option 18, build_time 0) for the firmware's
+  native tests. `mini.json` lists the expected decoded fields; all offsets in it
+  are absolute file offsets.
 
 ## Layout
 
@@ -45,6 +45,9 @@ uv run pytest
   its top-left at `(pen_x, baseline_y - px)`.
 - Set 2: normal font baseline; `text_ascent` / `text_line_height` come from
   the font metrics at `text_px`.
+- Set 3: the same readings rendered at `option_px` (`option_ascent` /
+  `option_line_height`), for legible kana in reading answers. Readers must fall
+  back to set 2 when a code point is absent from set 3; `--option-px 0` omits it.
 - String and distractor offsets in cards and the header are absolute file
   offsets, consistent with the spec's global rule.
 

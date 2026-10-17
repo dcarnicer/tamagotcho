@@ -8,7 +8,7 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 from PIL import Image, ImageDraw, ImageFont
 
-SET_LARGE, SET_SMALL, SET_TEXT = 0, 1, 2
+SET_LARGE, SET_SMALL, SET_TEXT, SET_OPTION = 0, 1, 2, 3
 
 
 @dataclass
@@ -95,15 +95,15 @@ class FontRenderer:
         top = (px - h) // 2
         return Glyph(cp, gset, w, h, left, top - px, px, pack_4bpp(_vals(crop), w, h))
 
-    def text_glyph(self, cp: int, px: int) -> Glyph:
+    def text_glyph(self, cp: int, px: int, gset: int = SET_TEXT) -> Glyph:
         img, ox, oy = self._render(cp, px)
         adv = int(round(self.font(px).getlength(chr(cp))))
         c = self._crop(img)
         if c is None:
-            return Glyph(cp, SET_TEXT, 0, 0, 0, 0, adv, b"")
+            return Glyph(cp, gset, 0, 0, 0, 0, adv, b"")
         crop, bx, by = c
         w, h = crop.size
-        return Glyph(cp, SET_TEXT, w, h, bx - ox, by - oy, adv, pack_4bpp(_vals(crop), w, h))
+        return Glyph(cp, gset, w, h, bx - ox, by - oy, adv, pack_4bpp(_vals(crop), w, h))
 
     def text_metrics(self, px: int) -> tuple[int, int]:
         """(line_height, ascent) for set 2."""

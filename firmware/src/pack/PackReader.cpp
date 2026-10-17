@@ -75,6 +75,9 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
     hd.textPx = h[50];
     hd.textLineHeight = h[51];
     hd.textAscent = h[52];
+    hd.optionPx = h[53];
+    hd.optionLineHeight = h[54];
+    hd.optionAscent = h[55];
     hd.buildTime = rd32(h + 56);
 
     if (hd.cardCount > 65535 || hd.cardCount == 0) return PackError::BadHeader;
@@ -121,6 +124,7 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
             g.yOff = static_cast<int8_t>(e[9]);
             g.advance = e[10];
             g.dataOff = rd32(e + 12);
+            if (g.set > kGlyphSetOption) return fail(PackError::BadTable);
             if (i > 0) {
                 const Glyph& p = glyphs_[i - 1];
                 if (g.set < p.set || (g.set == p.set && g.codepoint <= p.codepoint)) return fail(PackError::BadTable);
