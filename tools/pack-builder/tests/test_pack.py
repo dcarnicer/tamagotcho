@@ -42,6 +42,67 @@ def test_parse_kanjidic_fields():
     assert all("-" not in k for k in nichi.kunyomi)
     assert "ニチ" in nichi.onyomi
     assert nichi.strokes == 4
+    # classical KangXi radical numbers, one per fixture kanji
+    assert nichi.radicals == [72]
+    assert raw[0x6708].radicals == [74]
+    assert raw[0x706B].radicals == [86]
+
+
+def _kd2(*characters: str) -> bytes:
+    """Wrap character fragments in a minimal, DTD-shaped KANJIDIC2 document."""
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<kanjidic2><header><file_version>4</file_version>"
+        "<database_version>test</database_version></header>"
+        + "".join(characters)
+        + "</kanjidic2>"
+    ).encode("utf-8")
+
+
+def test_parse_kanjidic_classical_radicals():
+    # 本 is a verbatim KANJIDIC2 example entry: it carries several rad_value
+    # elements (classical 75 = 木, plus Nelson's reclassification 2). Only the
+    # classical one is kept.
+    hon = (
+        "<character><literal>本</literal>"
+        '<codepoint><cp_value cp_type="ucs">672c</cp_value></codepoint>'
+        "<radical>"
+        '<rad_value rad_type="classical">75</rad_value>'
+        '<rad_value rad_type="nelson_c">2</rad_value>'
+        "</radical>"
+        "<misc><grade>1</grade><stroke_count>5</stroke_count></misc>"
+        "<reading_meaning><rmgroup>"
+        '<reading r_type="ja_on">ホン</reading><meaning>book</meaning>'
+        "</rmgroup></reading_meaning></character>"
+    )
+    # Robustness case (DTD-valid): every classical value is kept, in order.
+    several = (
+        "<character><literal>林</literal>"
+        '<codepoint><cp_value cp_type="ucs">6797</cp_value></codepoint>'
+        "<radical>"
+        '<rad_value rad_type="classical">75</rad_value>'
+        '<rad_value rad_type="classical">86</rad_value>'
+        "</radical>"
+        "<misc><grade>1</grade><stroke_count>8</stroke_count></misc>"
+        "<reading_meaning><rmgroup>"
+        '<reading r_type="ja_on">リン</reading><meaning>grove</meaning>'
+        "</rmgroup></reading_meaning></character>"
+    )
+    # A character whose <radical> block is absent: empty list, no failure.
+    none = (
+        "<character><literal>〇</literal>"
+        '<codepoint><cp_value cp_type="ucs">3007</cp_value></codepoint>'
+        "<misc><stroke_count>1</stroke_count></misc>"
+        "<reading_meaning><rmgroup><meaning>zero</meaning></rmgroup></reading_meaning>"
+        "</character>"
+    )
+    raw = {k.codepoint: k for k in parse_kanjidic(_kd2(hon, several, none))}
+    assert raw[0x672C].radicals == [75]
+    assert raw[0x6797].radicals == [75, 86]
+    assert raw[0x3007].radicals == []
+    # make_cards carries the radicals onto the card.
+    cards = make_cards([raw[0x672C]], "en", {5}, None, {0x672C: 5})
+    assert cards[0].radicals == [75]
 
 
 def test_meaning_language_capped_to_english():
