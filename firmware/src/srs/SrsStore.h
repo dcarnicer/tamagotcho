@@ -28,6 +28,10 @@ constexpr uint16_t kSrsDefaultSlowMs = 3000;
 constexpr uint16_t kSrsDefaultNewPerDay = 10;
 constexpr uint16_t kSrsDefaultMaxIntervalDays = 365;
 
+// Header `flags` bits. kSrsFlagAnswered is set when the user answers and cleared
+// on the next boot, so only a session with answers advances the day index.
+constexpr uint16_t kSrsFlagAnswered = 0x0002;
+
 // Per-card state, 16 bytes in memory and on disk (docs/srs.md section 2).
 // `dueDay == 0` means "new, never reviewed"; `lastGrade == 0xFF` means never.
 struct Record {

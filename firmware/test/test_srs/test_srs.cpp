@@ -486,7 +486,7 @@ void test_store_cap() {
 }
 
 void test_clock_boot_and_uptime() {
-    // A boot after a used session advances exactly one day.
+    // A boot after a session *with answers* advances exactly one day.
     SrsStore used;
     MemoryIo io;
     used.begin(io);
@@ -495,6 +495,11 @@ void test_clock_boot_and_uptime() {
     TEST_ASSERT_EQUAL_UINT32(1, used.answeredTotal());
     used.beginSession();
     TEST_ASSERT_EQUAL_UINT16(8, used.today());
+    // A reboot with no answers in between must not advance the day.
+    used.beginSession();
+    TEST_ASSERT_EQUAL_UINT16(8, used.today());
+    // After answering again, the next boot does.
+    used.grade(0x65E5, Grade::Good, 8, 0, 0.5f);
     used.beginSession();
     TEST_ASSERT_EQUAL_UINT16(9, used.today());
 

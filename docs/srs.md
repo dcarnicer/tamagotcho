@@ -284,10 +284,11 @@ There is no RTC and no network, so "what day is it" has to be derived. We use a
 
 - `now_day` (u16) is a monotonic day index. Absolute epoch is irrelevant; only
   differences matter, and `0` means "never".
-- **Boot rule** (`beginSession()`): if the last session recorded any answer
-  (`answered_total > 0`), `now_day += 1`. Rationale: a power-up that follows
-  real use is the device's only available proxy for "time has passed", and for
-  a learner who picks the thing up roughly daily this is exactly one day.
+- **Boot rule** (`beginSession()`): if the *previous session* had at least one
+  answer — a persisted flag set on every answer and cleared on the next boot —
+  `now_day += 1`. Rationale: a power-up that follows real use is the device's
+  only available proxy for "time has passed". A quick reboot with no answers
+  must not advance the day, or the schedule inflates with every restart.
 - **Uptime rule** (`tick(now_ms)` from `loop()`): accumulate elapsed
   `millis()` into `ms_carry`; every 86 400 000 ms, `now_day += 1`, carry the
   remainder. This covers a device left on for a long time.

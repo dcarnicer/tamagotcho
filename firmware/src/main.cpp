@@ -486,12 +486,6 @@ void setup() {
     Serial.printf("srs: day %u, records %u, due %u, new %u%s\n", (unsigned)gSrs.today(),
                   (unsigned)gSrs.count(), (unsigned)due, (unsigned)fresh,
                   srsLoaded ? "" : " (new)");
-    uint32_t pm1 = tgc::board::powerTimerSeconds();
-    Serial.printf("pm1 timer: %u%s\n", (unsigned)pm1,
-                  pm1 == 0xFFFFFFFFu ? " (unavailable)" : " s");
-    if (pm1 == 0 && tgc::board::powerTimerArm(2000000)) {  // ~23 days, one-shot FLAG
-        Serial.printf("pm1 timer armed: %u s\n", (unsigned)tgc::board::powerTimerSeconds());
-    }
 
     if (!newQuestion()) showDone();
     else drawScreen();

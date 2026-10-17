@@ -149,6 +149,20 @@ Short log of non-obvious choices. Newest last.
   rotates Meaning -> Reading -> MeaningToKanji and falls back to another mode
   when a card cannot be asked one way. `preview.py` gained `--mode kanji`.
 
+## 2026-10-17 – No wall clock on the StickS3; day rule tightened
+
+- The M5PM1 (I2C 0x6E) has an RTC domain with 32 B of retained RAM and a "timer
+  counter" (0x38..0x3B), but after arming it the read-back is the programmed
+  value (2 000 000 s) on every boot, including across a power-off: it is a reload
+  register, not a free-running clock. So the StickS3 has no accessible wall
+  clock and the session-day heuristic stays; real time needs Wi-Fi/NTP (phase 4)
+  or a user-set date. The prototype was removed.
+- The boot rule was too loose anyway: `beginSession()` advanced the day whenever
+  `answered_total > 0` (lifetime), so *every* reboot after the first answer
+  advanced a day. It now advances only when the *previous session* had an
+  answer, tracked by a persisted `flags` bit that is set on every answer and
+  cleared on boot (a reboot with no answers no longer moves the day).
+
 ## 2026-10-17 – Options must not duplicate the target's readings/meanings
 
 - A reading option that is *another* reading of the prompt kanji (日 = ニチ/ジツ;
@@ -169,8 +183,9 @@ Short log of non-obvious choices. Newest last.
 - **State is keyed by codepoint and shared across packs** (knowing 日 does not
   reset when the deck changes). A 16-byte record; the file is `/state/srs.bin`
   with a CRC-32 and a temp+rename atomic write, flushed every 8 answers or 120 s.
-- **No RTC**: a persisted monotonic *day index*, +1 per used boot session and +1
-  per 24 h of uptime. Only differences matter; intervals therefore mean
-  "sessions", not wall-clock days (documented trade-off).
+- **No wall clock**: a persisted monotonic *day index*, +1 per boot that follows
+  a session with answers (a `flags` bit) and +1 per 24 h of uptime. Only
+  differences matter; intervals therefore mean "sessions", not wall-clock days
+  (documented trade-off; the M5PM1 has no readable clock).
 - Pure logic in `firmware/src/srs/` (no Arduino, native-tested); LittleFS I/O in
   `firmware/src/platform/`; wiring in `main.cpp`.
