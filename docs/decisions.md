@@ -148,3 +148,18 @@ Short log of non-obvious choices. Newest last.
   gloss, gloss-deduped options, so no two options can mean the same). The app
   rotates Meaning -> Reading -> MeaningToKanji and falls back to another mode
   when a card cannot be asked one way. `preview.py` gained `--mode kanji`.
+
+## 2026-10-17 – Phase 2 SRS design (see docs/srs.md)
+
+- **FSRS-5, fixed default weights, three grades** (Again on a miss, Hard on a
+  slow correct, Good on a fast correct), day granularity. At 90% retention the
+  constants cancel and the interval is `round(S)`, clamped to [1, 365] days,
+  with ±5% fuzz. No on-device optimisation.
+- **State is keyed by codepoint and shared across packs** (knowing 日 does not
+  reset when the deck changes). A 16-byte record; the file is `/state/srs.bin`
+  with a CRC-32 and a temp+rename atomic write, flushed every 8 answers or 120 s.
+- **No RTC**: a persisted monotonic *day index*, +1 per used boot session and +1
+  per 24 h of uptime. Only differences matter; intervals therefore mean
+  "sessions", not wall-clock days (documented trade-off).
+- Pure logic in `firmware/src/srs/` (no Arduino, native-tested); LittleFS I/O in
+  `firmware/src/platform/`; wiring in `main.cpp`.

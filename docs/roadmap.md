@@ -11,10 +11,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       (2026-10-17).
 - [ ] **Phase 2 – SRS.** FSRS on device, persisted state in LittleFS,
       review/learn queues, grade from correctness + response time.
-- [ ] **Phase 3 – Better cards.** Smart distractors (visual similarity,
-      shared radicals, confusable readings), meaning→kanji questions, detail
-      card on mistakes, stroke order from KanjiVG.
-      Also: prefer *common* readings — KANJIDIC2's reading order is not by
+- [~] **Phase 3 – Better cards.** Distractors done for visual similarity and
+      confusable readings (shared radicals pending); meaning→kanji questions
+      done. Pending: detail card on mistakes, stroke order from KanjiVG, and
+      preferring *common* readings — KANJIDIC2's reading order is not by
       frequency (e.g. 九's first kun reading is the rare ここの), so this needs a
       reading-frequency source or an on'yomi preference for some kanji.
 - [ ] **Phase 4 – Connectivity.** Wi-Fi portal on device (upload packs, view
@@ -22,6 +22,15 @@ Scope for now: **kanji only** (no vocabulary decks).
       input (tilt to choose).
 - [ ] **Phase 5 – Release.** README with photos, licences/attribution, GitHub
       releases, ESP Web Tools browser flasher, prebuilt packs.
+
+## Cross-cutting
+
+- [ ] **Statistics.** Per-kanji accuracy, current streak, review/seen counts and
+      time spent; a small stats screen on device and richer views in the Wi-Fi
+      portal. Depends on the SRS state (phase 2).
+- [ ] **Multilingual.** Localise the on-device strings (currently English) and
+      let the user pick the meaning language on device; packs already carry
+      `lang`, and the builder supports en/es/fr/pt.
 
 ## Before publishing
 
