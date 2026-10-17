@@ -170,6 +170,16 @@ bool gRevealed = false;
 bool gLastCorrect = false;  // outcome of the last answer (drives the detail card)
 bool gNextReadingIsKun = false;
 
+// Stroke-order animation on the mistake detail card. Only active while the
+// shown card's pack carries stroke data (docs/pack-format.md); otherwise the
+// card is drawn exactly as before.
+bool gAnimOn = false;
+uint16_t gAnimStrokes = 0;
+int gAnimFrame = 0;
+uint32_t gAnimNext = 0;
+constexpr uint32_t kStrokeMs = 550;       // one stroke step
+constexpr uint32_t kStrokePauseMs = 1200; // hold on the last stroke before looping
+
 tgc::SrsStore gSrs;
 tgc::FsSrsFile gSrsIo;
 tgc::Queue gQueue;
@@ -775,6 +785,24 @@ std::string joinReadings(const char* list) {
     return out;
 }
 
+// The detail card's kanji: the static set-0 glyph, or -- when the pack carries
+// stroke data for the card and the animation is running -- the strokes of the
+// current frame: completed ones in white, the current one in yellow, the
+// undrawn ones absent. The masks live in the same em square drawKanji uses.
+void drawDetailKanji(int boxX, int boxY, int boxW, int boxH, uint32_t cp) {
+    auto& d = *gCanvas;
+    const int px = gPack.header().largePx ? gPack.header().largePx : 64;
+    if (!gAnimOn) {
+        gRender.drawKanji(d, tgc::kGlyphSetLarge, cp, boxX, boxY, boxW, boxH, kWhite, kBlack);
+        return;
+    }
+    const int emX = boxX + (boxW - px) / 2;
+    const int emY = boxY + (boxH - px) / 2;
+    for (int i = 0; i <= gAnimFrame; ++i)
+        gRender.drawStroke(d, gQ.cardIndex, static_cast<uint16_t>(i), emX, emY,
+                           i == gAnimFrame ? kYellow : kWhite);
+}
+
 // Detail card (roadmap phase 3): a tap after a wrong reveal opens this read-only
 // card with the kanji, all meanings, all on/kun readings (okurigana dots
 // removed), the stroke count and this card's own accuracy from the SRS record.
@@ -782,6 +810,8 @@ std::string joinReadings(const char* list) {
 // mirrors the quiz (kanji left, details right). Japanese readings use the pack's
 // kana (set 2, falling back to set 3 by width as the quiz does); Latin values use
 // the built-in font when it can draw them (2x, shrunk to 1x), else pack glyphs.
+// When the pack carries stroke data for the card, the kanji animates instead
+// (see drawDetailKanji and the Screen::Detail branch of loop()).
 void drawDetail() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
@@ -795,11 +825,13 @@ void drawDetail() {
     const int largePx = gPack.header().largePx ? gPack.header().largePx : 64;
     const bool landscape = W > H;
 
-    int x, w, top, bottom;
+    int x, w, top, bottom, kx, ky, kw, kh;
     if (landscape) {
         const int leftW = std::max(largePx, W * 2 / 5);
-        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH, leftW, H - headerH,
-                          kWhite, kBlack);
+        kx = 0;
+        ky = headerH;
+        kw = leftW;
+        kh = H - headerH;
         x = leftW + 3;
         w = W - leftW - 6;
         top = headerH + 2;
@@ -807,13 +839,16 @@ void drawDetail() {
     } else {
         int kanjiH = largePx + 6;
         if (kanjiH > H * 45 / 100) kanjiH = H * 45 / 100;
-        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH + 2, W, kanjiH, kWhite,
-                          kBlack);
+        kx = 0;
+        ky = headerH + 2;
+        kw = W;
+        kh = kanjiH;
         x = 3;
         w = W - 6;
         top = headerH + 2 + kanjiH;
         bottom = H - 2;
     }
+    drawDetailKanji(kx, ky, kw, kh, card.codepoint);
 
     const int lh = gRender.lineHeight(tgc::kGlyphSetText);
     const std::string on = joinReadings(card.onyomi);
@@ -888,7 +923,16 @@ void drawDetail() {
 void showDetail() {
     tgc::Card c;
     gPack.card(gQ.cardIndex, &c);
-    QLOG("D U+%04X\n", (unsigned)c.codepoint);
+    // Start the stroke animation when the pack has stroke data for this card.
+    uint16_t sc = 0;
+    gAnimOn = gPack.strokeInfo(gQ.cardIndex, &sc, nullptr) && sc > 0;
+    gAnimStrokes = sc;
+    gAnimFrame = 0;
+    gAnimNext = millis() + kStrokeMs;
+    if (gAnimOn)
+        QLOG("D U+%04X strokes=%u animating\n", (unsigned)c.codepoint, (unsigned)sc);
+    else
+        QLOG("D U+%04X\n", (unsigned)c.codepoint);
     gScreen = Screen::Detail;
     drawDetail();
 }
@@ -1357,6 +1401,14 @@ void loop() {
             drawScreen();
         }
     } else if (gScreen == Screen::Detail) {
+        // Animate the stroke order while idle: one stroke every ~550 ms, a
+        // ~1.2 s hold on the last one, then loop. Redraw only on a new frame.
+        if (gAnimOn && static_cast<int32_t>(t - gAnimNext) >= 0) {
+            const int count = static_cast<int>(gAnimStrokes);
+            gAnimFrame = (gAnimFrame + 1) % count;
+            gAnimNext = t + (gAnimFrame == count - 1 ? kStrokePauseMs : kStrokeMs);
+            drawDetail();
+        }
         // Any input (tap, hold or side tap) starts the next question; a side hold
         // opens the menu, as on the quiz.
         if (a == 1 || a == 2 || b == 1) {

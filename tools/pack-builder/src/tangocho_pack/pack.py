@@ -5,9 +5,13 @@ from __future__ import annotations
 import struct
 import time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from .glyphs import Glyph, unpack_4bpp
 from .kanjidic import Card
+
+if TYPE_CHECKING:  # avoid a runtime import cycle (kanjivg imports paths only)
+    from .kanjivg import StrokeMask
 
 MAGIC = b"TNGC"
 VERSION = 1
@@ -64,9 +68,13 @@ def write_pack(
     option_line_height: int = 0,
     option_ascent: int = 0,
     build_time: int | None = None,
+    strokes: list[list["StrokeMask"]] | None = None,
+    strokes_px: int = 0,
 ) -> bytes:
     if len(cards) > 65535:
         raise ValueError("too many cards (u16 distractor indices)")
+    if strokes is not None and len(strokes) != len(cards):
+        raise ValueError("strokes must be index-aligned with cards")
     glyphs = sorted(glyphs, key=lambda g: (g.set, g.codepoint))
 
     strings = _Strings()
@@ -114,13 +122,21 @@ def write_pack(
             c.freq, c.level, dr,
         )
 
+    # Optional stroke section, appended after the glyph data (so packs built
+    # without strokes stay byte-identical to v1 output).
+    stroke_off = 0
+    stroke_sec = b""
+    if strokes is not None:
+        stroke_off = align4(glyph_data_off + len(data))
+        stroke_sec = _stroke_section(strokes, strokes_px, stroke_off)
+
     header = struct.pack(
         HEADER_FMT, MAGIC, VERSION, HEADER_SIZE, len(cards), len(glyphs),
         cards_off, glyphs_off, distract_off, strings_off, strings_size, glyph_data_off,
         strings_off + deck_rel, lang.encode("ascii").ljust(4, b"\0"),
         large_px, small_px, text_px, text_line_height, text_ascent,
         option_px, option_line_height, option_ascent,
-        int(time.time()) if build_time is None else build_time, 0,
+        int(time.time()) if build_time is None else build_time, stroke_off,
     )
     out = bytearray(header)
     out += ctable
@@ -131,7 +147,45 @@ def write_pack(
     out += strings.buf
     out += b"\0" * (glyph_data_off - len(out))
     out += data
+    out += stroke_sec
     return bytes(out)
+
+
+def _stroke_section(card_strokes: list[list["StrokeMask"]], px: int, base_off: int) -> bytes:
+    """Serialise the stroke section: index, blocks and 1bpp masks (4-byte aligned)."""
+    n = len(card_strokes)
+    blocks_start = align4(base_off + 4 * n)
+    block_off: list[int] = []
+    cursor = blocks_start
+    for s in card_strokes:
+        if not s:
+            block_off.append(0)
+            continue
+        block_off.append(cursor)
+        cursor += 8 + 8 * len(s)
+    mask_off: list[list[int]] = []
+    for s in card_strokes:
+        offs = []
+        for m in s:
+            cursor = align4(cursor)
+            offs.append(cursor)
+            cursor += len(m.data)
+        mask_off.append(offs)
+
+    sec = bytearray(struct.pack(f"<{n}I", *block_off))
+    sec += b"\0" * (blocks_start - (base_off + len(sec)))
+    for ci, s in enumerate(card_strokes):
+        if not s:
+            continue
+        assert base_off + len(sec) == block_off[ci]
+        sec += struct.pack("<HHI", len(s), px, 0)
+        for off, m in zip(mask_off[ci], s):
+            sec += struct.pack("<bbBBI", m.x_off, m.y_off, m.w, m.h, off)
+    for ci, s in enumerate(card_strokes):
+        for off, m in zip(mask_off[ci], s):
+            sec += b"\0" * (off - (base_off + len(sec)))
+            sec += m.data
+    return bytes(sec)
 
 
 # ---------------------------------------------------------------- reader
@@ -169,12 +223,23 @@ class PGlyph:
 
 
 @dataclass
+class PStroke:
+    x_off: int
+    y_off: int
+    w: int
+    h: int
+    data_off: int
+    data: bytes = b""
+
+
+@dataclass
 class Pack:
     raw: bytes
     header: dict
     deck_name: str
     cards: list[PCard] = field(default_factory=list)
     glyphs: list[PGlyph] = field(default_factory=list)
+    strokes: list[list[PStroke]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     def find_card(self, cp: int) -> int | None:
@@ -182,6 +247,10 @@ class Pack:
             if c.codepoint == cp:
                 return i
         return None
+
+    def strokes_of(self, card_idx: int) -> list[PStroke]:
+        """Stroke masks of a card (empty when the pack carries none for it)."""
+        return self.strokes[card_idx] if 0 <= card_idx < len(self.strokes) else []
 
     def find_glyph(self, gset: int, cp: int) -> PGlyph | None:
         lo, hi = 0, len(self.glyphs)
@@ -217,7 +286,7 @@ def read_pack(raw: bytes) -> Pack:
              "glyphs_off", "distract_off", "strings_off", "strings_size", "glyph_data_off",
              "deck_name", "lang", "large_px", "small_px", "text_px", "text_line_height",
              "text_ascent", "option_px", "option_line_height", "option_ascent",
-             "build_time", "reserved"]
+             "build_time", "stroke_off"]
     h = dict(zip(names, f))
     h["lang"] = h["lang"].rstrip(b"\0").decode("ascii", "replace")
     if h["magic"] != MAGIC:
@@ -304,6 +373,39 @@ def read_pack(raw: bytes) -> Pack:
             if doff < h["glyph_data_off"] or doff + n > size:
                 errs.append(f"glyph {i} (U+{cp:04X} set {gs}): bitmap out of range")
         pack.glyphs.append(g)
+
+    # Stroke section (optional): validate the index, blocks and masks.
+    pack.strokes = [[] for _ in range(cc)]
+    so = h["stroke_off"]
+    if so:
+        if so % 4:
+            errs.append(f"stroke_off {so} not 4-byte aligned")
+        elif so + 4 * cc > size:
+            errs.append(f"stroke index [{so}, {so + 4 * cc}) exceeds file size {size}")
+        else:
+            for i, blk in enumerate(struct.unpack_from(f"<{cc}I", raw, so)):
+                if blk == 0:
+                    continue
+                if blk % 4 or blk + 8 > size:
+                    errs.append(f"card {i}: stroke block offset {blk} out of range")
+                    continue
+                cnt, px, _res = struct.unpack_from("<HHI", raw, blk)
+                if px == 0 or px != h["large_px"]:
+                    errs.append(f"card {i}: stroke block px {px} != large_px {h['large_px']}")
+                if blk + 8 + 8 * cnt > size:
+                    errs.append(f"card {i}: {cnt} stroke entries out of range")
+                    continue
+                for k in range(cnt):
+                    xo, yo, w, ht, doff = struct.unpack_from("<bbBBI", raw, blk + 8 + 8 * k)
+                    if w == 0 or ht == 0:
+                        errs.append(f"card {i} stroke {k}: empty mask")
+                        continue
+                    nbytes = ((w + 7) // 8) * ht
+                    if doff + nbytes > size:
+                        errs.append(f"card {i} stroke {k}: mask out of range")
+                        continue
+                    pack.strokes[i].append(
+                        PStroke(xo, yo, w, ht, doff, raw[doff:doff + nbytes]))
 
     present = {(g.set, g.codepoint) for g in pack.glyphs}
     for i, c in enumerate(pack.cards):

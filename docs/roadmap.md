@@ -20,8 +20,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       shared classical radicals and confusable readings; meaning→kanji questions
       done; the mistake detail card is done (a tap after a wrong answer opens a
       read-only card with the kanji, all meanings/readings, strokes and the
-      card's own accuracy). Pending: stroke order from KanjiVG, and preferring
-      *common* readings — KANJIDIC2's reading order is not by
+      card's own accuracy), and it now plays the kanji's **stroke order from
+      KanjiVG** when the pack was built with `--strokes` (a v1-compatible
+      optional pack section; packs without it behave exactly as before).
+      Pending: preferring *common* readings — KANJIDIC2's reading order is not by
       frequency (e.g. 九's first kun reading is the rare ここの), so this needs a
       reading-frequency source or an on'yomi preference for some kanji.
       Invariant enforced: **no option may be another valid reading or meaning of

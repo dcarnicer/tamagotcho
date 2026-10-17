@@ -13,7 +13,9 @@ with **multiple-choice reviews** and spaced repetition, fully offline.
    All glyphs are pre-rendered, so the device needs no Japanese font.
 2. Upload the pack to the device.
 3. Review: a kanji appears, pick the right meaning or reading from four
-   options. Distractors are chosen to be genuinely confusable.
+   options. Distractors are chosen to be genuinely confusable. A wrong answer
+   opens a detail card that shows all meanings and readings — and animates the
+   kanji's stroke order from KanjiVG, if the pack was built with `--strokes`.
 
 ## Repository layout
 

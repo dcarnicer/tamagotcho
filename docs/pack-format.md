@@ -28,10 +28,17 @@ string section.
 | String pool         |  strings_size bytes
 +---------------------+  glyph_data_off
 | Glyph bitmaps       |
++---------------------+  stroke_off (0 = no stroke data)
+| Stroke section      |  optional, see below
 +---------------------+
 ```
 
 Sections are 4-byte aligned. Readers must use the offsets, not assume order.
+
+The **stroke section** is optional: `stroke_off` is 0 for every pack built
+without `--strokes`, which is what all packs written before this extension have.
+A reader that does not know about strokes ignores `stroke_off` and treats the
+pack exactly as before, so this is a v1-compatible extension (no version bump).
 
 ## Header (64 bytes)
 
@@ -59,7 +66,7 @@ Sections are 4-byte aligned. Readers must use the offsets, not assume order.
 | 54  | u8       | option_line_height | recommended line height for set 3, px        |
 | 55  | u8       | option_ascent    | baseline offset from line top for set 3, px    |
 | 56  | u32      | build_time       | unix seconds                                   |
-| 60  | u32      | reserved         | 0                                              |
+| 60  | u32      | stroke_off       | absolute offset of the stroke section, 0 = none. Was `reserved` in earlier packs |
 
 ## Card (32 bytes)
 
@@ -133,10 +140,61 @@ row starts on a byte boundary (row stride = `ceil(width/2)`). Value 0 =
 background, 15 = full ink. The device alpha-blends ink colour over
 background with `v/15`.
 
+## Stroke order section (optional)
+
+Enabled by the builder's `--strokes` flag; absent (offset 60 = 0) otherwise.
+It lets the device animate a kanji stroke by stroke, from KanjiVG data. All
+offsets are absolute file offsets, as everywhere else, and the section is
+4-byte aligned.
+
+```
++----------------------------------+  stroke_off
+| Card stroke index                |  card_count x u32 absolute offsets, 0 = no data for that card
++----------------------------------+  (4-byte aligned)
+| Per-card stroke blocks (aligned) |
++----------------------------------+  (4-byte aligned)
+| 1bpp stroke masks                |
++----------------------------------+
+```
+
+**Per-card stroke block** (always starts 4-byte aligned; `8 + 8*stroke_count`
+bytes):
+
+| off | type     | field        | notes                                             |
+|-----|----------|--------------|---------------------------------------------------|
+| 0   | u16      | stroke_count |                                                   |
+| 2   | u16      | px           | em-square size the masks are drawn in (`== header large_px`) |
+| 4   | u32      | reserved     | 0 (keeps the stroke entries 8-byte aligned)       |
+| 8   | entry[]  | strokes      | `stroke_count` entries, 8 bytes each (below)      |
+
+**Stroke entry** (8 bytes):
+
+| off | type | field    | notes                                                       |
+|-----|------|----------|-------------------------------------------------------------|
+| 0   | i8   | x_off    | mask left, relative to the em-square left (0..px-1)         |
+| 1   | i8   | y_off    | mask top, relative to the em-square top (0..px-1)           |
+| 2   | u8   | w        | mask width, px (`> 0`)                                      |
+| 3   | u8   | h        | mask height, px (`> 0`)                                     |
+| 4   | u32  | data_off | absolute offset of the 1bpp mask                            |
+
+**Mask encoding: 1bpp.** Row-major, top to bottom, **bit 7 = leftmost pixel**,
+row stride `ceil(w/8)`, 1 = ink, 0 = nothing. A mask is the stroke's **own ink
+only**: the earlier strokes are never baked in. To show stroke `i` of a kanji
+the device composites strokes `0..i-1` in full ink and stroke `i` in a highlight
+colour; strokes after `i` are simply not drawn.
+
+The em square is the same one `Renderer::drawKanji` uses for set 0: a `px x px`
+square whose top-left is `(boxX + (boxW - px)/2, boxY + (boxH - px)/2)`. A mask
+is drawn at `(emX + x_off, emY + y_off)`. The em square (not the font glyph's
+cropped ink box) is the reference frame, so stroke masks line up for any card of
+the pack regardless of the font used.
+
 ## Limits and expectations
 
 - `card_count` ≤ 65535 (distractor indices are u16).
 - Expected size: ~650 kanji (N5–N3) at large_px=96 fits well under 3 MB.
+- The optional stroke section costs roughly 0.4–0.6 KB per kanji at
+  `large_px=96` (~50 KB for the 79 N5 cards), a small fraction of the glyph data.
 - The device reads packs through the filesystem with random access; the
   builder must not rely on the device loading the whole file in RAM, although
   the device may cache the header, card table and glyph table in PSRAM.
@@ -145,4 +203,5 @@ background with `v/15`.
 
 - Unknown `version` → device refuses the pack and shows an error.
 - New fields go into `reserved` bytes when possible (no version bump needed if
-  0 means "absent").
+  0 means "absent"). The stroke section follows this rule: it reuses the old
+  `reserved` u32 at offset 60 and 0 means "no stroke data".

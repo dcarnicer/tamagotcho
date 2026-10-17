@@ -38,10 +38,15 @@ struct GlyphSpec {
     uint32_t cp;
     uint8_t w, h;
 };
+struct StrokeSpec {  // one mask: position in the em square + size
+    uint8_t x, y, w, h;
+};
 
 // Builds a valid v1 pack in memory. Glyph bitmaps are filled with a
-// deterministic pattern: byte i = (cp + i) & 0xFF.
-std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<GlyphSpec> glyphs) {
+// deterministic pattern: byte i = (cp + i) & 0xFF. `strokes` (optional, aligned
+// with `cards`) appends a stroke section, mask bytes = (0xA0 + i) & 0xFF.
+std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<GlyphSpec> glyphs,
+                              const std::vector<std::vector<StrokeSpec>>& strokes = {}) {
     std::sort(glyphs.begin(), glyphs.end(), [](const GlyphSpec& a, const GlyphSpec& b) {
         return a.set != b.set ? a.set < b.set : a.cp < b.cp;
     });
@@ -117,7 +122,57 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
     for (char ch : pool) b.u8(ch);
     for (auto& g : glyphs)
         for (int i = 0; i < ((g.w + 1) / 2) * g.h; ++i) b.u8((g.cp + i) & 0xFF);
+
+    if (!strokes.empty()) {
+        b.pad4();
+        const uint32_t strokeOff = static_cast<uint32_t>(b.v.size());
+        const uint32_t n = static_cast<uint32_t>(cards.size());
+        std::vector<uint32_t> blockOff(n, 0);
+        uint32_t cursor = (strokeOff + 4 * n + 3) & ~3u;
+        for (uint32_t i = 0; i < n; ++i) {
+            if (strokes[i].empty()) continue;
+            blockOff[i] = cursor;
+            cursor += 8 + 8 * static_cast<uint32_t>(strokes[i].size());
+        }
+        std::vector<std::vector<uint32_t>> maskOff(n);
+        for (uint32_t i = 0; i < n; ++i)
+            for (auto& s : strokes[i]) {
+                cursor = (cursor + 3) & ~3u;
+                maskOff[i].push_back(cursor);
+                cursor += ((s.w + 7) / 8) * s.h;
+            }
+        for (uint32_t i = 0; i < n; ++i) b.u32(blockOff[i]);
+        while (b.v.size() < ((strokeOff + 4 * n + 3) & ~3u)) b.u8(0);
+        for (uint32_t i = 0; i < n; ++i) {
+            if (strokes[i].empty()) continue;
+            b.u16(static_cast<uint16_t>(strokes[i].size()));
+            b.u16(32);  // px == header large_px
+            b.u32(0);
+            for (size_t k = 0; k < strokes[i].size(); ++k) {
+                const StrokeSpec& s = strokes[i][k];
+                b.u8(s.x); b.u8(s.y); b.u8(s.w); b.u8(s.h);
+                b.u32(maskOff[i][k]);
+            }
+        }
+        for (uint32_t i = 0; i < n; ++i)
+            for (size_t k = 0; k < strokes[i].size(); ++k) {
+                const StrokeSpec& s = strokes[i][k];
+                while (b.v.size() < maskOff[i][k]) b.u8(0);
+                for (int j = 0; j < ((s.w + 7) / 8) * s.h; ++j) b.u8((0xA0 + j) & 0xFF);
+            }
+        b.v[60] = strokeOff & 0xFF;
+        b.v[61] = (strokeOff >> 8) & 0xFF;
+        b.v[62] = (strokeOff >> 16) & 0xFF;
+        b.v[63] = (strokeOff >> 24) & 0xFF;
+    }
     return b.v;
+}
+
+std::vector<std::vector<StrokeSpec>> someStrokes();
+
+uint32_t rd32le(const std::vector<uint8_t>& v, size_t off) {
+    return static_cast<uint32_t>(v[off]) | (static_cast<uint32_t>(v[off + 1]) << 8) |
+           (static_cast<uint32_t>(v[off + 2]) << 16) | (static_cast<uint32_t>(v[off + 3]) << 24);
 }
 
 std::vector<CardSpec> sixCards() {
@@ -141,6 +196,13 @@ std::vector<GlyphSpec> someGlyphs() {
     g.push_back({2, 0x30CB, 9, 6});
     g.push_back({2, 'a', 7, 9});
     return g;
+}
+
+std::vector<std::vector<StrokeSpec>> someStrokes() {
+    std::vector<std::vector<StrokeSpec>> s(sixCards().size());
+    s[0] = {{5, 4, 8, 3}, {6, 8, 3, 9}};
+    s[2] = {{1, 1, 4, 4}};
+    return s;
 }
 
 // True if the UTF-8 string contains a code point in [lo, hi].
@@ -174,6 +236,7 @@ void test_open_and_header() {
     TEST_ASSERT_EQUAL_UINT8(32, r.header().largePx);
     TEST_ASSERT_EQUAL_UINT8(14, r.header().textAscent);
     TEST_ASSERT_EQUAL_UINT8(0, r.header().optionPx);  // makePack ships no set 3
+    TEST_ASSERT_FALSE(r.hasStrokeOrder());
 }
 
 void test_cards() {
@@ -300,6 +363,78 @@ void test_rejects_unsupported_glyph_encoding() {
     MemorySource src(buf);
     PackReader r;
     TEST_ASSERT_EQUAL(PackError::BadTable, r.open(src));
+    TEST_ASSERT_FALSE(r.isOpen());
+}
+
+// ---------------------------------------------------------------- strokes
+void test_stroke_section_read() {
+    auto buf = makePack(sixCards(), someGlyphs(), someStrokes());
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_TRUE(r.hasStrokeOrder());
+
+    uint16_t count = 0, px = 0;
+    TEST_ASSERT_TRUE(r.strokeInfo(0, &count, &px));
+    TEST_ASSERT_EQUAL_UINT16(2, count);
+    TEST_ASSERT_EQUAL_UINT16(32, px);
+    TEST_ASSERT_EQUAL_UINT16(2, r.strokeCount(0));
+    TEST_ASSERT_EQUAL_UINT16(0, r.strokeCount(1));  // card 1 has no data
+    TEST_ASSERT_FALSE(r.strokeInfo(1, &count, &px));
+    TEST_ASSERT_EQUAL_UINT16(1, r.strokeCount(2));
+    TEST_ASSERT_EQUAL_UINT16(0, r.strokeCount(6));  // out of range
+
+    Stroke s;
+    TEST_ASSERT_TRUE(r.strokeAt(0, 0, &s));
+    TEST_ASSERT_EQUAL_INT8(5, s.xOff);
+    TEST_ASSERT_EQUAL_INT8(4, s.yOff);
+    TEST_ASSERT_EQUAL_UINT8(8, s.w);
+    TEST_ASSERT_EQUAL_UINT8(3, s.h);
+    TEST_ASSERT_EQUAL_UINT32(3, PackReader::strokeBitmapSize(s));  // ceil(8/8)*3
+    uint8_t bm[64];
+    TEST_ASSERT_TRUE(r.readStrokeBitmap(s, bm, sizeof bm));
+    for (size_t i = 0; i < 3; ++i) TEST_ASSERT_EQUAL_UINT8((0xA0 + i) & 0xFF, bm[i]);
+    TEST_ASSERT_FALSE(r.readStrokeBitmap(s, bm, 2));  // cap too small
+
+    TEST_ASSERT_TRUE(r.strokeAt(0, 1, &s));
+    TEST_ASSERT_EQUAL_UINT8(3, s.w);
+    TEST_ASSERT_EQUAL_UINT8(9, s.h);
+    TEST_ASSERT_EQUAL_UINT32(9, PackReader::strokeBitmapSize(s));  // ceil(3/8)*9
+    TEST_ASSERT_FALSE(r.strokeAt(0, 2, &s));  // out of range
+    TEST_ASSERT_FALSE(r.strokeAt(1, 0, &s));  // card without stroke data
+}
+
+void test_rejects_bad_stroke_section() {
+    auto good = makePack(sixCards(), someGlyphs(), someStrokes());
+    const uint32_t base = rd32le(good, 60);
+    PackReader r;
+    {  // stroke_off far out of bounds
+        auto b = good;
+        b[60] = 0xFF; b[61] = 0xFF; b[62] = 0xFF; b[63] = 0x7F;
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+    }
+    {  // an index entry pointing out of bounds
+        auto b = good;
+        b[base] = static_cast<uint8_t>(b.size() - 2);
+        b[base + 1] = b[base + 2] = b[base + 3] = 0;
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+    }
+    {  // a mask data_off past the end of the file
+        auto b = good;
+        uint32_t blk = rd32le(good, base);  // first card's block
+        b[blk + 12] = 0xFF; b[blk + 13] = 0xFF; b[blk + 14] = 0xFF; b[blk + 15] = 0x7F;
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+    }
+    {  // a block px that disagrees with the header
+        auto b = good;
+        uint32_t blk = rd32le(good, base);
+        b[blk + 2] = 99;
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+    }
     TEST_ASSERT_FALSE(r.isOpen());
 }
 
@@ -522,7 +657,7 @@ static const char* kMini = "../tools/pack-builder/fixtures/mini.tgc";
 void test_mini_fixture() {
     StdioSource src(kMini);
     if (!src.ok()) TEST_IGNORE_MESSAGE("mini.tgc not found");
-    TEST_ASSERT_EQUAL_UINT32(7892, src.size());
+    TEST_ASSERT_EQUAL_UINT32(8288, src.size());
     PackReader r;
     TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
     const PackHeader& h = r.header();
@@ -631,6 +766,29 @@ void test_mini_fixture() {
     TEST_ASSERT_EQUAL(109, cnt[2]);
     TEST_ASSERT_EQUAL(14, cnt[3]);
 
+    // Stroke order section (KanjiVG excerpts for the three mini kanji).
+    TEST_ASSERT_EQUAL_UINT32(7892, h.strokeOff);
+    TEST_ASSERT_TRUE(r.hasStrokeOrder());
+    uint16_t sc = 0, spx = 0;
+    TEST_ASSERT_TRUE(r.strokeInfo(0, &sc, &spx));
+    TEST_ASSERT_EQUAL_UINT16(4, sc);
+    TEST_ASSERT_EQUAL_UINT16(32, spx);
+    TEST_ASSERT_EQUAL_UINT16(4, r.strokeCount(2));
+    Stroke st;
+    TEST_ASSERT_TRUE(r.strokeAt(0, 0, &st));
+    TEST_ASSERT_EQUAL_INT8(8, st.xOff);
+    TEST_ASSERT_EQUAL_INT8(6, st.yOff);
+    TEST_ASSERT_EQUAL_UINT8(3, st.w);
+    TEST_ASSERT_EQUAL_UINT8(21, st.h);
+    TEST_ASSERT_EQUAL_UINT32(8024, st.dataOff);
+    TEST_ASSERT_EQUAL_UINT32(21, PackReader::strokeBitmapSize(st));  // ceil(3/8)*21
+    uint8_t sb[64];
+    TEST_ASSERT_TRUE(r.readStrokeBitmap(st, sb, sizeof sb));
+    TEST_ASSERT_EQUAL_HEX8(0xC0, sb[0]);
+    TEST_ASSERT_EQUAL_HEX8(0xC0, sb[1]);
+    TEST_ASSERT_EQUAL_HEX8(0x20, sb[2]);
+    TEST_ASSERT_FALSE(r.strokeAt(0, 4, &st));  // 日 has exactly 4 strokes
+
     // Quiz on a 3-card pack: 3 options max.
     XorShiftRng rng(3);
     Question q;
@@ -701,6 +859,8 @@ int main() {
     RUN_TEST(test_glyph_lookup_and_bitmap);
     RUN_TEST(test_rejects_bad_packs);
     RUN_TEST(test_rejects_unsupported_glyph_encoding);
+    RUN_TEST(test_stroke_section_read);
+    RUN_TEST(test_rejects_bad_stroke_section);
     RUN_TEST(test_quiz_text_helpers);
     RUN_TEST(test_quiz_meaning);
     RUN_TEST(test_quiz_meaning_to_kanji);
