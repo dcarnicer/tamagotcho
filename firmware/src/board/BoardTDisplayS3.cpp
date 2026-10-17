@@ -129,6 +129,10 @@ lgfx::LGFX_Device& display() { return gDisplay; }
 int width() { return gDisplay.width(); }
 int height() { return gDisplay.height(); }
 
+// Rotation 0 = native portrait, 1 = landscape. width()/height() follow it.
+void setOrientation(bool landscape) { gDisplay.setRotation(landscape ? 1 : 0); }
+bool landscape() { return gDisplay.width() > gDisplay.height(); }
+
 bool wasPressed(Button b) { return pin(b).pressedEdge; }
 bool isHeld(Button b) { return pin(b).down; }
 bool wasHeld(Button b) { return pin(b).holdEdge; }

@@ -51,7 +51,7 @@ struct UiStrings {
     const char* settingsTitle;
     const char* decksTitle;
     const char* backHint;
-    const char* menuRows[6];  // continue, decks, date, new/day, speed, stats
+    const char* menuRows[7];  // continue, decks, date, new/day, speed, stats, orientation
     const char* newPerDayTitle;
     const char* speedTitle;
     const char* speedOff;
@@ -79,12 +79,14 @@ struct UiStrings {
     const char* errNoPack;
     const char* errNoPackHint;
     const char* errOpenPack;
+    const char* orientTitle;
+    const char* orientRows[2];  // portrait, landscape
 };
 
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS", "side: back",
-    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics"},
+    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Orientation"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
     "DATE", {"today (0)", "1 day", "2-7 days", "more (14)"},
@@ -95,12 +97,13 @@ const UiStrings kUiEn = {
     "Filesystem not found", "Run: pio run -t uploadfs",
     "No pack found", "Put a .tgc in data/packs/ then run uploadfs",
     "Cannot open pack",
+    "ORIENTATION", {"Portrait", "Landscape"},
 };
 
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS", "lateral: atrás",
-    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas"},
+    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Orientacion"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", {"hoy (0)", "1 día", "2-7 días", "más (14)"},
@@ -112,6 +115,7 @@ const UiStrings kUiEs = {
     "No se encuentra el sistema de archivos", "Ejecuta: pio run -t uploadfs",
     "No hay ningún mazo", "Pon un .tgc en data/packs/ y ejecuta uploadfs",
     "No se puede abrir el mazo",
+    "ORIENTACION", {"Vertical", "Horizontal"},
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -141,8 +145,8 @@ int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
 
 enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats };
-// Screen::Choice is shared by the two four-row pickers (see openChoice()).
-enum class Choice { NewPerDay, SlowMs };
+// Screen::Choice is shared by the row pickers (see openChoice()).
+enum class Choice { NewPerDay, SlowMs, Orientation };
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
@@ -169,6 +173,23 @@ void smallText(lgfx::LovyanGFX& d, const char* s, int x, int y, uint16_t fg, uin
 }
 
 void present() { gCanvas->pushSprite(&tgc::board::display(), 0, 0); }
+
+// (Re)create the full-screen back buffer for the current W x H, PSRAM first with
+// an internal-RAM fallback. Used at boot and on an orientation change.
+void createCanvas() {
+    auto& disp = tgc::board::display();
+    if (gCanvas) {
+        delete gCanvas;
+        gCanvas = nullptr;
+    }
+    gCanvas = new lgfx::LGFX_Sprite(&disp);
+    gCanvas->setColorDepth(16);
+    gCanvas->setPsram(true);
+    if (!gCanvas->createSprite(W, H)) {
+        gCanvas->setPsram(false);  // fall back to internal RAM
+        gCanvas->createSprite(W, H);
+    }
+}
 
 // Right-aligned header hint. Drawn with the built-in GFX font (not the pack
 // font) so accented Spanish ("atrás") renders; the 1x size matches smallText.
@@ -274,6 +295,7 @@ bool newQuestion() {
 }
 
 void drawScreen();  // dispatches to the active screen
+void applyOrientation(bool landscape);
 void formatDate(uint16_t days, char* out, size_t n);
 
 void drawQuiz() {
@@ -297,27 +319,44 @@ void drawQuiz() {
     tgc::Card card;
     gPack.card(gQ.cardIndex, &card);
     const int largePx = gPack.header().largePx ? gPack.header().largePx : 64;
+    // Landscape: prompt in the left column, options bounded to the right one.
+    const bool landscape = W > H;
+    const int leftW = std::max(largePx, W * 2 / 5);
+    const int colX = landscape ? leftW : 0;
+    const int colW = landscape ? W - leftW : W;
+
     int kanjiH = largePx + 6;
     if (kanjiH > H * 45 / 100) kanjiH = H * 45 / 100;
     if (k2m) {
         const char* prompt = gQ.options[gQ.correct].c_str();
         uint8_t set = tgc::Renderer::kTextBuiltin;
         if (!tgc::Renderer::builtinCanDraw(prompt)) set = tgc::kGlyphSetText;
-        else if (gRender.textWidth(prompt, set) > W - 8) set = tgc::Renderer::kTextBuiltinSmall;
-        int ml = (kanjiH - 4) / gRender.lineHeight(set);
+        else if (gRender.textWidth(prompt, set) > colW - 8) set = tgc::Renderer::kTextBuiltinSmall;
+        // The box must be at least one line tall; the prompt is centred in it.
+        const int boxY = landscape ? headerH : headerH + 2;
+        const int boxH = landscape ? H - headerH : kanjiH;
+        int ml = (boxH - 4) / gRender.lineHeight(set);
         if (ml < 1) ml = 1;
         if (ml > 4) ml = 4;
-        gRender.drawCentred(d, prompt, 3, headerH + 2, W - 6, kanjiH, ml, kWhite, kBlack, set);
+        gRender.drawCentred(d, prompt, colX + 3, boxY, colW - 6, boxH - (landscape ? 2 : 0), ml,
+                            kWhite, kBlack, set);
+    } else if (landscape) {
+        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH, leftW, H - headerH,
+                          kWhite, kBlack);
     } else {
         gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH + 2, W, kanjiH, kWhite,
                           kBlack);
     }
-    smallText(d, k2m ? ui().quizKanji : (reading ? ui().quizReading : ui().quizMeaning), W / 2,
-              headerH + 2 + kanjiH, kYellow, kBlack, lgfx::top_center);
+    if (landscape)
+        smallText(d, k2m ? ui().quizKanji : (reading ? ui().quizReading : ui().quizMeaning),
+                  leftW / 2, H - 11, kYellow, kBlack, lgfx::top_center);
+    else
+        smallText(d, k2m ? ui().quizKanji : (reading ? ui().quizReading : ui().quizMeaning), W / 2,
+                  headerH + 2 + kanjiH, kYellow, kBlack, lgfx::top_center);
 
     // Readings: 2x2 grid with large kana (set 3). Meanings: one per row, full
     // width, in the built-in font at 2x (falling back to the pack glyphs).
-    const int top = headerH + kanjiH + 14;
+    const int top = landscape ? headerH + 2 : headerH + kanjiH + 14;
     const int area = H - top - 2;
     const int margin = 1, gap = 3;
 
@@ -337,10 +376,10 @@ void drawQuiz() {
         // Meaning prompt: the options are kanji (set 1) in the same 2x2 grid.
         const int cols = 2;
         const int rows = (gQ.count + cols - 1) / cols;
-        const int cellW = (W - 2 * margin - (cols - 1) * gap) / cols;
+        const int cellW = (colW - 2 * margin - (cols - 1) * gap) / cols;
         const int cellH = (area - (rows - 1) * gap) / rows;
         for (int i = 0; i < gQ.count; ++i) {
-            const int cx = margin + (i % cols) * (cellW + gap);
+            const int cx = colX + margin + (i % cols) * (cellW + gap);
             const int cy = top + (i / cols) * (cellH + gap);
             const uint16_t bg = optionBg(i);
             d.fillRoundRect(cx, cy, cellW, cellH, 4, bg);
@@ -352,7 +391,7 @@ void drawQuiz() {
     } else if (reading) {
         const int cols = 2;
         const int rows = (gQ.count + cols - 1) / cols;
-        const int cellW = (W - 2 * margin - (cols - 1) * gap) / cols;
+        const int cellW = (colW - 2 * margin - (cols - 1) * gap) / cols;
         const int cellH = (area - (rows - 1) * gap) / rows;
         // Large kana if the whole question fits the cell, else the small text.
         uint8_t set = tgc::kGlyphSetOption;
@@ -362,7 +401,7 @@ void drawQuiz() {
                 break;
             }
         for (int i = 0; i < gQ.count; ++i)
-            optionBox(i, margin + (i % cols) * (cellW + gap), top + (i / cols) * (cellH + gap),
+            optionBox(i, colX + margin + (i % cols) * (cellW + gap), top + (i / cols) * (cellH + gap),
                       cellW, cellH, set, 1);
     } else {
         // The built-in font has no glyph for some characters; then use the pack.
@@ -372,7 +411,7 @@ void drawQuiz() {
                 set = tgc::kGlyphSetText;
                 break;
             }
-        const int w = W - 2 * margin;
+        const int w = colW - 2 * margin;
         // Shrink to 1x if any option would otherwise be truncated.
         if (set == tgc::Renderer::kTextBuiltin) {
             for (int i = 0; i < gQ.count; ++i)
@@ -387,23 +426,27 @@ void drawQuiz() {
         if (maxLines < 1) maxLines = 1;
         if (maxLines > 2) maxLines = 2;
         for (int i = 0; i < gQ.count; ++i)
-            optionBox(i, margin, top + i * rowH, w, boxH, set, maxLines);
+            optionBox(i, colX + margin, top + i * rowH, w, boxH, set, maxLines);
     }
     present();
 }
 
 // One full-width highlighted row for the settings home and the choice screens,
-// labelled with the built-in 2x font so accented Spanish renders.
-void drawRow(lgfx::LovyanGFX& d, const char* label, int y, bool sel) {
+// labelled with the built-in GFX font so accented Spanish renders. `h` is the
+// box height; the 2x font is used when it fits, the 1x one otherwise (needed on
+// the short landscape settings/choice screens).
+void drawRow(lgfx::LovyanGFX& d, const char* label, int y, int h, bool sel) {
     const uint16_t bg = sel ? kHighlight : kBlack;
-    d.fillRoundRect(2, y, W - 4, 32, 5, bg);
-    if (sel) d.drawRoundRect(2, y, W - 4, 32, 5, kWhite);
-    gRender.drawCentred(d, label, 4, y + 1, W - 8, 30, 1, kWhite, bg, tgc::Renderer::kTextBuiltin);
+    d.fillRoundRect(2, y, W - 4, h, 5, bg);
+    if (sel) d.drawRoundRect(2, y, W - 4, h, 5, kWhite);
+    const uint8_t set =
+        h >= 22 ? tgc::Renderer::kTextBuiltin : tgc::Renderer::kTextBuiltinSmall;
+    gRender.drawCentred(d, label, 4, y + 1, W - 8, h - 2, 1, kWhite, bg, set);
 }
 
 // Settings home (hold the side button from the quiz): tap moves the highlight,
 // hold activates the row. Each row is a full-width box with a label.
-constexpr int kSettingRows = 6;
+constexpr int kSettingRows = 7;
 
 void drawMenu() {
     auto& d = *gCanvas;
@@ -412,9 +455,17 @@ void drawMenu() {
     smallText(d, ui().settingsTitle, 3, 3, kWhite, kGrey);
     drawBackHint(d);
 
-    const int top = 20, step = 36;
+    // Shrink the row step on the short landscape screen so all rows fit; in
+    // portrait (or when there is room) this keeps the original 36 px step.
+    const int top = 20;
+    int step = 36;
+    if (top + step * kSettingRows > H) {
+        step = (H - top - 2) / kSettingRows;
+        if (step < 10) step = 10;
+    }
+    const int rowH = step - 4 < 32 ? step - 4 : 32;
     for (int i = 0; i < kSettingRows; ++i)
-        drawRow(d, ui().menuRows[i], top + i * step, i == gMenuSel);
+        drawRow(d, ui().menuRows[i], top + i * step, rowH, i == gMenuSel);
     present();
 }
 
@@ -430,8 +481,14 @@ void drawDecks() {
 
     uint32_t due = 0, fresh = 0;
     packDueNew(&due, &fresh);  // only shown on the loaded pack's row
-    const int top = 18, rowH = 20;
+    const int top = 18;
     const int rows = static_cast<int>(gPacks.size());
+    int rowH = 20;
+    if (rows > 0) {
+        const int fit = (H - top - 2) / rows;  // shrink so the list fits landscape
+        if (fit < rowH) rowH = fit;
+    }
+    if (rowH < 10) rowH = 10;
     for (int i = 0; i < rows; ++i) {
         const int y = top + i * rowH;
         if (y + rowH - 2 > H) break;  // no more room
@@ -459,20 +516,32 @@ void drawChoice() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, gChoice == Choice::NewPerDay ? ui().newPerDayTitle : ui().speedTitle, 3, 3, kWhite,
-              kGrey);
+    const char* title = gChoice == Choice::NewPerDay    ? ui().newPerDayTitle
+                        : gChoice == Choice::SlowMs     ? ui().speedTitle
+                                                        : ui().orientTitle;
+    smallText(d, title, 3, 3, kWhite, kGrey);
     drawBackHint(d);
 
-    const int top = 40, step = 40;
+    // Shrink the row step on the short landscape screen so all rows fit; portrait
+    // keeps the original 40 px step and 32 px box.
+    const int top = 40;
+    int step = 40;
+    if (top + step * gChoiceCount > H) {
+        step = (H - top - 2) / gChoiceCount;
+        if (step < 10) step = 10;
+    }
+    const int rowH = step - 4 < 32 ? step - 4 : 32;
     for (int i = 0; i < gChoiceCount; ++i) {
         char label[16];
-        if (gChoice == Choice::SlowMs) {
+        if (gChoice == Choice::Orientation) {
+            snprintf(label, sizeof label, "%s", ui().orientRows[i]);
+        } else if (gChoice == Choice::SlowMs) {
             if (gChoiceValues[i] == 0xFFFF) snprintf(label, sizeof label, "%s", ui().speedOff);
             else snprintf(label, sizeof label, ui().speedSecondsFmt, gChoiceValues[i] / 1000.0f);
         } else {
             snprintf(label, sizeof label, "%u", (unsigned)gChoiceValues[i]);
         }
-        drawRow(d, label, top + i * step, i == gChoiceSel);
+        drawRow(d, label, top + i * step, rowH, i == gChoiceSel);
     }
     present();
 }
@@ -552,15 +621,22 @@ void drawDate() {
     formatDate(gSrs.today(), date, sizeof date);
     gRender.drawCentred(d, date, 2, 18, W - 4, 18, 1, kYellow, kBlack, tgc::Renderer::kTextBuiltin);
 
-    const int top = 44, rowH = 32;
+    // Shrink the rows on the short landscape screen; portrait keeps 44/32.
+    int top = 44, rowH = 32;
+    if (top + rowH * kDateRows > H - 2) {
+        top = 38;
+        rowH = (H - top - 2) / kDateRows;
+        if (rowH < 12) rowH = 12;
+    }
+    const uint8_t set =
+        rowH - 4 >= 22 ? tgc::Renderer::kTextBuiltin : tgc::Renderer::kTextBuiltinSmall;
     for (int i = 0; i < kDateRows; ++i) {
         const int y = top + i * rowH;
         const bool sel = i == gDateSel;
         const uint16_t bg = sel ? kHighlight : kBlack;
         d.fillRoundRect(2, y, W - 4, rowH - 4, 5, bg);
         if (sel) d.drawRoundRect(2, y, W - 4, rowH - 4, 5, kWhite);
-        gRender.drawCentred(d, ui().dateRows[i], 4, y + 2, W - 8, rowH - 8, 1, kWhite, bg,
-                            tgc::Renderer::kTextBuiltin);
+        gRender.drawCentred(d, ui().dateRows[i], 4, y + 2, W - 8, rowH - 8, 1, kWhite, bg, set);
     }
     present();
 }
@@ -593,10 +669,18 @@ void drawStats() {
     snprintf(learned, sizeof learned, ui().statsLearnedFmt, (unsigned)st.learned);
 
     const char* lines[] = {date, seen, dueNew, answers, accuracy, learned};
-    const int top = 26, step = 24;
+    // Shrink the line step on the short landscape screen; portrait keeps 26/24.
+    const int top = 26;
+    int step = 24;
+    if (top + step * 6 > H) {
+        step = (H - top - 2) / 6;
+        if (step < 10) step = 10;
+    }
+    const uint8_t set =
+        step - 2 >= 18 ? tgc::Renderer::kTextBuiltin : tgc::Renderer::kTextBuiltinSmall;
     for (int i = 0; i < 6; ++i)
-        gRender.drawCentred(d, lines[i], 2, top + i * step, W - 4, 20, 1,
-                            i == 0 ? kYellow : kWhite, kBlack, tgc::Renderer::kTextBuiltin);
+        gRender.drawCentred(d, lines[i], 2, top + i * step, W - 4, step - 4, 1,
+                            i == 0 ? kYellow : kWhite, kBlack, set);
     present();
 }
 
@@ -641,6 +725,19 @@ void drawScreen() {
     else if (gScreen == Screen::Date) drawDate();
     else if (gScreen == Screen::Stats) drawStats();
     else drawQuiz();
+}
+
+// Switch the panel between portrait (default) and landscape: rotate, pick up the
+// new width/height, recreate the back buffer for it, persist the choice in NVS
+// and redraw. The canvas is recreated here so a landscape change can never leave
+// the portrait default (or the previous orientation) mis-sized.
+void applyOrientation(bool landscape) {
+    tgc::board::setOrientation(landscape);
+    W = tgc::board::width();
+    H = tgc::board::height();
+    createCanvas();
+    gPrefs.putBool("land", landscape);
+    drawScreen();
 }
 
 // Opens `path`, replacing the live pack only after the new one validates.
@@ -699,6 +796,15 @@ void openDecks() {
 void openChoice(Choice which) {
     gChoice = which;
     gChoiceSel = 0;
+    if (which == Choice::Orientation) {
+        gChoiceCount = 2;
+        gChoiceValues[0] = 0;  // portrait
+        gChoiceValues[1] = 1;  // landscape
+        gChoiceSel = gPrefs.getBool("land", false) ? 1 : 0;
+        gScreen = Screen::Choice;
+        drawScreen();
+        return;
+    }
     gChoiceCount = 4;
     if (which == Choice::NewPerDay) {
         gChoiceValues[0] = 3;
@@ -721,6 +827,11 @@ void openChoice(Choice which) {
 
 // Applies the highlighted choice, persists it and returns to the settings home.
 void applyChoice() {
+    if (gChoice == Choice::Orientation) {
+        gScreen = Screen::Menu;  // applyOrientation redraws the active screen
+        applyOrientation(gChoiceValues[gChoiceSel] != 0);
+        return;
+    }
     const uint16_t v = gChoiceValues[gChoiceSel];
     if (gChoice == Choice::NewPerDay) {
         gSrs.setNewPerDay(v);
@@ -760,6 +871,9 @@ void activateSetting() {
         case 5:  // Estadisticas
             gScreen = Screen::Stats;
             drawScreen();
+            break;
+        case 6:  // Orientacion
+            openChoice(Choice::Orientation);
             break;
     }
 }
@@ -824,22 +938,19 @@ void setup() {
     gPowerMagic = kPowerMagic;
     gPowerMagicInv = ~kPowerMagic;
     auto& disp = tgc::board::display();
-    W = tgc::board::width();
-    H = tgc::board::height();
     kGrey = disp.color565(60, 60, 70);
     kHighlight = disp.color565(30, 60, 150);
     kGreen = disp.color565(0, 130, 40);
     kRed = disp.color565(170, 20, 20);
     kYellow = disp.color565(255, 210, 60);
 
-    gCanvas = new lgfx::LGFX_Sprite(&disp);
-    gCanvas->setColorDepth(16);
-    gCanvas->setPsram(true);
-    if (!gCanvas->createSprite(W, H)) {
-        // Fall back to internal RAM.
-        gCanvas->setPsram(false);
-        gCanvas->createSprite(W, H);
-    }
+    // Apply the saved orientation right after board::begin() (which set portrait)
+    // and before the canvas exists, so the buffer matches the panel from boot.
+    gPrefs.begin("tangocho", false);
+    tgc::board::setOrientation(gPrefs.getBool("land", false));
+    W = tgc::board::width();
+    H = tgc::board::height();
+    createCanvas();
     gRng = tgc::XorShiftRng(tgc::board::randomSeed());
 
     if (!LittleFS.begin(false)) {
@@ -851,7 +962,6 @@ void setup() {
         showError(ui().errNoPack, ui().errNoPackHint);
         halt();
     }
-    gPrefs.begin("tangocho", false);
     String want = gPrefs.getString("pack", "");
     if (std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end()) want = gPacks[0];
     if (!loadPack(want)) {

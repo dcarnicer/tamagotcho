@@ -237,3 +237,25 @@ Short log of non-obvious choices. Newest last.
 - Accuracy is computed in the UI from `Stats`, not stored: the header already
   keeps `reps`/`lapses` per card and `answered_total`, so no format change was
   needed (v1-compatible).
+
+## 2026-10-17 – Landscape orientation option
+
+- The panel rotation is a user setting ("Orientation"/"Orientación", appended to
+  the settings home) persisted in NVS (`Preferences` namespace `tangocho`, key
+  `land`, default false = portrait). **Portrait is untouched by default**: the
+  landscape branches are guarded by `W > H`, so a bug in landscape cannot change
+  the portrait rendering or the boot path.
+- The HAL gained `setOrientation(bool)`/`landscape()`; `width()`/`height()` read
+  the display and therefore follow the rotation. `setup()` applies the saved
+  value right after `board::begin()` (which sets portrait) and before the canvas,
+  so the back buffer matches the panel from the first frame.
+- `applyOrientation()` (called when the setting is confirmed) rotates, picks up
+  the new `W`/`H`, deletes and recreates `gCanvas` (PSRAM, internal-RAM
+  fallback), persists the choice and redraws.
+- Landscape quiz (240x135) is two columns: the prompt (kanji, or the meaning for
+  meaning→kanji) is centred in the left column `max(largePx, W*2/5)` wide, and
+  the existing option layout (rows / 2×2) is bounded to the right column. Lists
+  (settings home, deck list, date, choice, stats) compute their row step from the
+  available height and drop to the built-in 1x font when 2x no longer fits;
+  portrait keeps its original steps and 2x font exactly.
+

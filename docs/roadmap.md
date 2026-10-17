@@ -47,10 +47,12 @@ Scope for now: **kanji only** (no vocabulary decks).
       Nuevas/día / Velocidad) replaces the single deck list, with a shared
       four-row choice screen for the new/day cap and the Hard threshold. The deck
       list moved to its own screen and shows `due/new` for the loaded pack.
-- [ ] **Landscape orientation.** The panel is natively portrait (135x240); a
+- [x] **Landscape orientation.** The panel is natively portrait (135x240); a
       horizontal layout (240x135) gives much more room, especially for menus and
-      the four options. Needs layout work: `main.cpp` computes everything from
-      portrait `W x H` and the HAL returns portrait.
+      the four options. Selectable from the settings home and persisted in NVS
+      (portrait is the default and is unchanged). Landscape puts the quiz prompt
+      in a left column and the options on the right, and shrinks the list rows to
+      fit the shorter screen.
 
 ## Before publishing
 

@@ -43,6 +43,10 @@ lgfx::LGFX_Device& display() { return M5.Display; }
 int width() { return M5.Display.width(); }
 int height() { return M5.Display.height(); }
 
+// Rotation 0 = native portrait, 1 = landscape. width()/height() follow it.
+void setOrientation(bool landscape) { M5.Display.setRotation(landscape ? 1 : 0); }
+bool landscape() { return M5.Display.width() > M5.Display.height(); }
+
 bool wasPressed(Button b) { return btn(b).wasPressed(); }
 bool isHeld(Button b) { return btn(b).isPressed(); }
 bool wasHeld(Button b) { return btn(b).wasHold(); }

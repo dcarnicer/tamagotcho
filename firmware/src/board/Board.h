@@ -28,8 +28,14 @@ void begin();
 void update();
 
 lgfx::LGFX_Device& display();
-int width();   // portrait
-int height();
+int width();   // width of the current rotation
+int height();  // height of the current rotation
+
+// Display rotation. Portrait is the default (begin() sets it); landscape swaps
+// the panel's width and height (e.g. 135x240 -> 240x135). width()/height()
+// follow the current rotation.
+void setOrientation(bool landscape);
+bool landscape();
 
 // True once on the press edge (this update() cycle only).
 bool wasPressed(Button b);
