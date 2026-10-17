@@ -85,8 +85,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install PlatformIO
-        run: pip install "platformio>=6.1,<7"
+      - name: Install PlatformIO and esptool
+        run: pip install "platformio>=6.1,<7" "esptool>=4,<6"
 
       - name: PlatformIO version
         id: pio
@@ -117,6 +117,7 @@ jobs:
             -name boot_app0.bin -print -quit 2>/dev/null || true)"
           extra=()
           if [ -n "$boot_app0" ]; then extra=(--boot-app0 "$boot_app0"); fi
+          # merge_image.py shells out to the `esptool` CLI (installed above).
           python3 ../tools/release/merge_image.py \
             --build-dir ".pio/build/${{ matrix.env }}" \
             --partitions "partitions/${{ matrix.partitions }}" \
