@@ -5,10 +5,10 @@ import pytest
 
 from tangocho_pack import fixture, paths
 from tangocho_pack.build import build_pack
-from tangocho_pack.glyphs import pack_4bpp, unpack_4bpp
+from tangocho_pack.glyphs import Glyph, pack_4bpp, unpack_4bpp
 from tangocho_pack.kanjidic import RawKanji
 from tangocho_pack.kanjidic import make_cards, parse_kanjidic
-from tangocho_pack.pack import read_pack
+from tangocho_pack.pack import read_pack, write_pack
 from tangocho_pack.preview import render_preview
 
 XML = Path(__file__).parent / "data" / "mini_kanjidic2.xml"
@@ -106,6 +106,22 @@ def test_spanish_fallback_flag():
     for c in cards:
         assert c.meanings  # always falls back to English at worst
         assert len(c.meanings) <= 3
+
+
+def test_english_fallback_flag_roundtrip():
+    # 日 has English meanings only: asking for Spanish falls back to English and
+    # sets the card's fallback flag, which must survive the pack round-trip.
+    nichi = RawKanji(0x65E5, {"en": ["day", "sun"]}, [], [], 4, 1, 4, 1)
+    cards = make_cards([nichi], "es", {5}, None, {0x65E5: 5})
+    assert cards[0].fallback_en
+    assert cards[0].meanings == ["day", "sun"]
+    # Tiny hand-made glyphs so the round-trip needs no font.
+    glyphs = [Glyph(0x65E5, 0, 4, 4, 0, -4, 32, b"\x00" * 8),
+              Glyph(0x65E5, 1, 4, 4, 0, -4, 16, b"\x00" * 8)]
+    raw = write_pack(cards, glyphs, "mini", "es", 32, 16, 12, 12, 10, build_time=1)
+    p = read_pack(raw)
+    assert p.errors == []
+    assert p.cards[0].flags & 1  # kCardFlagMeaningFallback
 
 
 @needs_font

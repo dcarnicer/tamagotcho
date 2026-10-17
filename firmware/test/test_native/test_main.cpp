@@ -290,6 +290,18 @@ void test_rejects_bad_packs() {
     TEST_ASSERT_FALSE(r.isOpen());
 }
 
+void test_rejects_unsupported_glyph_encoding() {
+    // Only encoding 0 (raw 4bpp) is defined. A pack declaring a future encoding
+    // must be refused at open time, not later at draw time.
+    auto buf = makePack(sixCards(), someGlyphs());
+    const uint32_t glyphsOff = 64 + 6 * 32;  // header + card table
+    buf[glyphsOff + 5] = 1;                   // first glyph entry's encoding byte
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::BadTable, r.open(src));
+    TEST_ASSERT_FALSE(r.isOpen());
+}
+
 // ---------------------------------------------------------------- quiz
 void test_quiz_text_helpers() {
     TEST_ASSERT_EQUAL(3, meaningCount("day; sun; Japan"));
@@ -661,6 +673,7 @@ int main() {
     RUN_TEST(test_reading_distractor_list);
     RUN_TEST(test_glyph_lookup_and_bitmap);
     RUN_TEST(test_rejects_bad_packs);
+    RUN_TEST(test_rejects_unsupported_glyph_encoding);
     RUN_TEST(test_quiz_text_helpers);
     RUN_TEST(test_quiz_meaning);
     RUN_TEST(test_quiz_meaning_to_kanji);

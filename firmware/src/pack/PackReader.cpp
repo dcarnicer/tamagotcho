@@ -125,6 +125,7 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
             g.advance = e[10];
             g.dataOff = rd32(e + 12);
             if (g.set > kGlyphSetOption) return fail(PackError::BadTable);
+            if (g.encoding != 0) return fail(PackError::BadTable);  // only raw 4bpp is defined
             if (i > 0) {
                 const Glyph& p = glyphs_[i - 1];
                 if (g.set < p.set || (g.set == p.set && g.codepoint <= p.codepoint)) return fail(PackError::BadTable);
