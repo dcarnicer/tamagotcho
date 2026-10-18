@@ -13,6 +13,7 @@
 #include "platform/NetFetch.h"
 #include "portal/PortalLogic.h"
 #include "portal/PortalText.h"
+#include "Credits.h"
 #include "Version.h"
 
 // mDNS ("http://tangocho.local/") in home mode. Off with -DTGC_PORTAL_MDNS=0.
@@ -293,6 +294,8 @@ String pageHeader(const PortalText& t, int refreshS = 0) {
     h += "h2{font-size:1.05rem;margin:1.2rem 0 .3rem}h3{font-size:.95rem;margin:.9rem 0 .2rem}";
     h += "details{margin:1.2rem 0}summary{font-weight:600;cursor:pointer}progress{width:100%}";
     h += ".muted{color:#666}.err{color:#b00}.ok{color:#070}.status{margin-top:0}";
+    h += "footer{margin-top:1.5rem;padding-top:.4rem;border-top:1px solid #ccc;font-size:.8rem;";
+    h += "color:#666}";
     h += "</style></head><body><h1>Tangoch\xC5\x8D</h1>";
     return h;
 }
@@ -307,6 +310,28 @@ String messagePage(const PortalText& t, const String& body, bool backLink) {
         h += "</a></p>";
     }
     h += "</body></html>";
+    return h;
+}
+
+// The page footer: the firmware version and licence, the decks' licence and
+// data credits (what Settings > About shows on the device, Credits.h) and the
+// source repository.
+String pageFooter(const PortalText& t) {
+    auto credit = [](const char* c) {
+        String s = c;
+        s.replace("(c)", "\xC2\xA9");  // the built-in font's "(c)" as a copyright sign
+        return s;
+    };
+    String h = "<footer>";
+    h += fmt(t.footVersionFmt, htmlEscape(firmwareVersion()).c_str());
+    h += " &middot; ";
+    h += fmt(t.footDecksFmt, credit(credits::kKanjidic).c_str(), credit(credits::kKanjiVg).c_str(),
+             credit(credits::kJlpt).c_str(), credit(credits::kGlyphs).c_str());
+    h += " &middot; <a href=\"https://";
+    h += credits::kRepo;
+    h += "\">";
+    h += credits::kRepo;
+    h += "</a></footer>";
     return h;
 }
 
@@ -709,6 +734,7 @@ void WifiPortal::handleRoot() {
         h += t.language;
         h += " <a href=\"/?lang=en\">English</a> &middot; <a href=\"/?lang=es\">Espa\xC3\xB1ol</a></p>";
     }
+    h += pageFooter(t);
     h += kTimeScript;
     h += "</body></html>";
     server_->send(200, "text/html", h);

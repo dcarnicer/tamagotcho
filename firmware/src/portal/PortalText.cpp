@@ -195,6 +195,10 @@ PortalText makeSpanish() {
     t.reconnectFmt =
         "El dispositivo deja la red y se une a <b>%s</b>, así que esta página deja de responder "
         "un momento. Luego abre la dirección que muestra el dispositivo (puede cambiar).";
+
+    t.footVersionFmt = "Tangochō %s &middot; firmware con licencia MIT";
+    t.footDecksFmt =
+        "Mazos: CC BY-SA. Datos de kanji: %s; orden de trazos: %s; niveles JLPT: %s; glifos: %s.";
     return t;
 }
 
