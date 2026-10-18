@@ -195,8 +195,11 @@ Scope for now: **kanji only** (no vocabulary decks).
 
 ## Before publishing
 
-- [ ] Verify licence of tanos.co.uk JLPT lists (used via kanji-data `jlpt_new`).
-      Not verified; left open.
+- [x] Verify licence of tanos.co.uk JLPT lists (used via kanji-data `jlpt_new`).
+      Verified 2026-10-18: the site's "Use my data!" page licenses everything
+      not for sale under Creative Commons BY (credit the site), which may be
+      included in our CC BY-SA packs with attribution. The site no longer
+      resolves; the evidence is an archived copy (see docs/data-sources.md).
 - [~] Decide whether prebuilt packs are distributed (CC BY-SA 4.0 attribution in
       README and on device). Progress: the mechanics are done. Packs built with
       KANJIDIC2/KanjiVG are licensed CC BY-SA; `.github/workflows/decks.yml`
@@ -205,9 +208,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       (`decks-v2`), which is never marked "latest" so firmware releases cannot
       hide it. The device's default Get decks catalog
       (`releases/download/decks-v2/catalog.txt` on `dcarnicer/tangocho`) answers
-      404 until that first run. **Running it is still blocked** on the licence
-      of the tanos.co.uk JLPT lists (above), which stays open, and on pack
-      format v2 (the N1 and Jōyō decks do not fit the 5 MiB cap in v1).
+      404 until that first run. Both former blockers are resolved (the JLPT
+      lists are CC BY, above; pack format v2 fits N1 and Jōyō), so running it
+      is now only the maintainer's call.
 - [x] Attribution for redistributed data: README's "Releases" section,
       `docs/data-sources.md` and the release notes all carry the combined
       KANJIDIC2 / KanjiVG / Noto Sans JP credit. (Still open: an attribution line on
