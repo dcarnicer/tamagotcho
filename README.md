@@ -192,9 +192,10 @@ what PlatformIO flashes for the same table (see `docs/decisions.md`).
 
 For a **browser flash**, open an ESP Web Tools page (e.g.
 <https://esphome.github.io/esp-web-tools/>) and point it at the release's
-`tangocho-sticks3-manifest.json`. A merged image flashes an **empty
-filesystem**, so a fresh device boots straight into the Wi-Fi upload screen and
-a pack can be dropped in over the air.
+`tangocho-sticks3-manifest.json`. A merged image carries **no filesystem**:
+on the first boot the firmware finds no LittleFS on the data partition (erased,
+or left by another firmware), formats it ("Preparing storage...") and boots
+into the Wi-Fi upload screen, where a pack can be dropped in over the air.
 
 > Honest status — **not verified on hardware.** We have not flashed a merged
 > image through ESP Web Tools or `esptool write_flash` on a real StickS3. The

@@ -1189,3 +1189,21 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   fails that way, Get decks now shows its error screen: "Not enough space" and
   "An update needs room for both copies. Delete the old one first: Settings >
   Wi-Fi, 192.168.4.1" (es: "Hace falta sitio para las dos copias...").
+
+## 2026-10-18 – First boot formats a data partition with no LittleFS
+
+- **Found while preparing an onboarding test.** The merged release image
+  carries no filesystem (earlier docs said "an empty filesystem", which was
+  wrong): the data partition is whatever was there before -- erased by a browser
+  flasher, or another firmware's data. `LittleFS.begin(false)` fails on both, and
+  the app stopped on "Filesystem not found / Run: pio run -t uploadfs", so no new
+  user could ever reach the Wi-Fi upload screen.
+- **Format only what is not ours.** `mountFilesystem()` formats the partition
+  (with a "Preparing storage..." notice) only when it holds no LittleFS at all:
+  neither block of the root metadata pair has the superblock's `"littlefs"`
+  magic at byte 8. A LittleFS that is there but will not mount is damage, not a
+  fresh device, and is never erased silently: the error screen ("Storage
+  damaged") erases it only on a long press of the front button, after the press
+  that woke the chip was released, then restarts. `LittleFS.begin(true)`
+  (format on any failure) was rejected because it would wipe decks and progress
+  on a transient or partial corruption without asking.

@@ -32,7 +32,8 @@ A GitHub release carries, per board, the app-only `tangocho-<env>.bin` (the same
 file `pio run` produces, e.g. for M5Launcher) and a **merged**
 `tangocho-<env>-merged.bin` that `esptool write_flash 0x0 …` or a browser (ESP
 Web Tools, via the release's `manifest.json`) can flash in one go. A merged image
-flashes an **empty filesystem**, so a fresh device boots into the Wi-Fi upload
+carries **no filesystem**: the first boot formats the data partition when it
+holds no LittleFS (erased or foreign), so a fresh device boots into the Wi-Fi upload
 screen and a pack can be sent over the air. Offsets and the exact
 `esptool merge_bin` command are in the root README; the merged image is **not
 verified on hardware** yet (docs/decisions.md).

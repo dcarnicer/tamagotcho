@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <Preferences.h>
+#include <esp_partition.h>
 
 #include <algorithm>
 #include <cstring>
@@ -114,8 +115,12 @@ struct UiStrings {
     const char* statsAnswersFmt;
     const char* statsAccuracyFmt;
     const char* statsLearnedFmt;
-    const char* errNoFilesystem;
-    const char* errNoFilesystemHint;
+    const char* errNoFilesystem;      // LittleFS present but will not mount
+    const char* errNoFilesystemHint;  // hold the front button to erase it
+    // First boot on an erased (or foreign) data partition: formatting it takes
+    // a few seconds. 2x title (words of at most 10 characters) + 1x hint.
+    const char* fsPreparing;
+    const char* fsPreparingHint;
     const char* errNoPack;
     const char* errNoPackHint;
     const char* errOpenPack;
@@ -197,7 +202,8 @@ const UiStrings kUiEn = {
     "side hold: menu",
     "  %u/%u",
     "STATISTICS", "seen %u / %u", "due %u  new %u", "answers %u", "accuracy %u%%", "learned %u",
-    "Filesystem not found", "Run: pio run -t uploadfs",
+    "Storage damaged", "Hold the front button to erase it. Decks and progress are lost.",
+    "Preparing storage...", "First start: this takes a few seconds.",
     "No pack found", "Put a .tgc in data/packs/ then run uploadfs",
     "Cannot open pack",
     "ORIENTATION", {"Portrait", "Landscape", "Auto"},
@@ -236,7 +242,8 @@ const UiStrings kUiEs = {
     "  %u/%u",
     "ESTADISTICAS", "vistos %u / %u", "pendientes %u  nuevas %u", "respuestas %u",
     "precisión %u%%", "aprendidas %u",
-    "No se encuentra el sistema de archivos", "Ejecuta: pio run -t uploadfs",
+    "Memoria dañada", "Mantén el botón frontal para borrarla. Se pierden mazos y progreso.",
+    "Preparando memoria...", "Primer arranque: tarda unos segundos.",
     "No hay ningún mazo", "Pon un .tgc en data/packs/ y ejecuta uploadfs",
     "No se puede abrir el mazo",
     "ORIENTACION", {"Vertical", "Horizontal", "Auto"},
@@ -2554,6 +2561,58 @@ void halt() {
     }
 }
 
+// True when the LittleFS partition holds a LittleFS (the "littlefs" magic of the
+// superblock, at byte 8 of either block of the root metadata pair). An erased
+// partition (a browser flasher's "erase device", a fresh merged image) or one
+// left by another firmware does not. Unknown layout: true, so it is never
+// formatted blindly.
+bool partitionHasLittleFs() {
+    const esp_partition_t* p = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
+    if (!p) return true;
+    char magic[8];
+    for (uint32_t block = 0; block < 2; ++block)
+        if (esp_partition_read(p, block * 4096u + 8u, magic, sizeof magic) == ESP_OK &&
+            std::memcmp(magic, "littlefs", sizeof magic) == 0)
+            return true;
+    return false;
+}
+
+// Mounts LittleFS. A partition with no LittleFS on it is a fresh device: it is
+// formatted, and the empty /packs then leads into the Wi-Fi upload screen. A
+// LittleFS that will not mount is damage instead: false, and the caller asks.
+bool mountFilesystem() {
+    if (LittleFS.begin(false)) return true;
+    if (partitionHasLittleFs()) return false;
+    Serial.println("fs: no LittleFS on the data partition, formatting (first start)");
+    showNotice(ui().fsPreparing, ui().fsPreparingHint, kWhite);
+    return LittleFS.format() && LittleFS.begin(false);
+}
+
+// A damaged filesystem: nothing on it can be read, but it is only erased on a
+// long press of the front button (decks and progress are lost), then the device
+// restarts into the fresh-device path. The press that woke the chip must be
+// released first, so it cannot become that long press.
+[[noreturn]] void askFormat() {
+    showError(ui().errNoFilesystem, ui().errNoFilesystemHint);
+    bool released = !tgc::board::isHeld(tgc::board::Button::Select);
+    const uint32_t start = millis();
+    for (;;) {
+        tgc::board::update();
+        if (!tgc::board::isHeld(tgc::board::Button::Select)) released = true;
+        if (released && tgc::board::wasHeld(tgc::board::Button::Select)) {
+            Serial.println("fs: erased on request");
+            showNotice(ui().fsPreparing, ui().fsPreparingHint, kWhite);
+            LittleFS.format();
+            ESP.restart();
+        }
+        if (millis() - start >= kSleepAfterMs && !tgc::board::externalPower())
+            tgc::board::deepSleep();
+        if (tgc::board::powerButtonClicked()) tgc::board::deepSleep();
+        delay(20);
+    }
+}
+
 }  // namespace
 
 void setup() {
@@ -2608,10 +2667,7 @@ void setup() {
     }
     gSleptCritical = false;
 
-    if (!LittleFS.begin(false)) {
-        showError(ui().errNoFilesystem, ui().errNoFilesystemHint);
-        halt();
-    }
+    if (!mountFilesystem()) askFormat();
     // A power cut in the middle of a download or an upload leaves its temp
     // behind (up to 5 MB), which would count against every later free-space
     // check. Nothing can be in flight at boot.
@@ -2622,9 +2678,9 @@ void setup() {
     // No packs yet: do not halt. Start the Wi-Fi portal so a pack can be
     // uploaded from a phone (or downloaded from a URL); loop() moves on to the
     // quiz as soon as one arrives. This is the practical answer to a fresh (or
-    // launcher-formatted) filesystem. A missing filesystem stays fatal above,
-    // and an AP that will not start leaves nothing to do, so that keeps the old
-    // error screen.
+    // launcher-formatted) filesystem, including one mountFilesystem() has just
+    // formatted. An AP that will not start leaves nothing to do, so that keeps
+    // the old error screen.
     if (gPacks.empty()) {
         gSrsLoaded = gSrs.begin(gSrsIo);
         gBootDay = gSrs.today();
