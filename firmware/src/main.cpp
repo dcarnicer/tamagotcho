@@ -562,8 +562,27 @@ void drawGetDecks();
 void formatDate(uint16_t days, char* out, size_t n);
 [[noreturn]] void sleepNow(bool critical);
 void netRadioOff();
+void openDecks();
+
+// The card of the question on screen. False when there is none to draw or
+// grade: no pack open, no question built yet, or an index the open pack does
+// not have. (A question left over from a pack the portal or Get decks replaced
+// is replaced itself, in portalPacksChanged().)
+bool questionCard(tgc::Card* out) {
+    return gPack->isOpen() && gQ.count > 0 && gPack->card(gQ.cardIndex, out);
+}
+
+// Stand-in for the quiz or detail screen when questionCard() fails (a deck that
+// could not be loaded): says so and how to get out, since a side hold opens
+// the settings home on both screens.
+void drawNoQuestion() { showError(ui().errOpenPack, ui().doneMenuHint); }
 
 void drawQuiz() {
+    tgc::Card card;
+    if (!questionCard(&card)) {
+        drawNoQuestion();
+        return;
+    }
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
 
@@ -582,8 +601,6 @@ void drawQuiz() {
     // Prompt: the kanji, or (meaning -> kanji) the meaning text.
     const bool reading = gQ.mode == tgc::QuizMode::Reading;
     const bool k2m = gQ.mode == tgc::QuizMode::MeaningToKanji;
-    tgc::Card card;
-    gPack->card(gQ.cardIndex, &card);
     const int largePx = gPack->header().largePx ? gPack->header().largePx : 64;
     // Landscape: prompt in the left column, options bounded to the right one.
     const bool landscape = W > H;
@@ -1250,6 +1267,11 @@ void drawDetailKanji(int boxX, int boxY, int boxW, int boxH, uint32_t cp) {
 // When the pack carries stroke data for the card, the kanji animates instead
 // (see drawDetailKanji and the Screen::Detail branch of loop()).
 void drawDetail() {
+    tgc::Card card;
+    if (!questionCard(&card)) {
+        drawNoQuestion();
+        return;
+    }
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     const int headerH = 14;
@@ -1257,8 +1279,6 @@ void drawDetail() {
     smallText(d, gPack->deckName(), 3, 3, kWhite, kGrey);
     smallText(d, ui().detailTitle, W - 3, 3, kWhite, kGrey, lgfx::top_right);
 
-    tgc::Card card;
-    gPack->card(gQ.cardIndex, &card);
     const int largePx = gPack->header().largePx ? gPack->header().largePx : 64;
     const bool landscape = W > H;
 
@@ -1358,8 +1378,8 @@ void drawDetail() {
 }
 
 void showDetail() {
-    tgc::Card c;
-    gPack->card(gQ.cardIndex, &c);
+    tgc::Card c{};  // stays zero when there is no card (drawDetail() then says so)
+    questionCard(&c);
     // Start the stroke animation when the pack has stroke data for this card.
     uint16_t sc = 0;
     gAnimOn = gPack->strokeInfo(gQ.cardIndex, &sc, nullptr) && sc > 0;
@@ -1675,10 +1695,19 @@ void portalFillStats(tgc::PortalStats& out) {
     out.packCards = gPack->isOpen() ? gPack->cardCount() : 0;
 }
 
-// Called by the portal after /packs changed. Rescans the folder and keeps the
-// live pack usable: reload the loaded pack (its contents may have changed),
-// else fall back to the first remaining one, else leave no pack open.
+// Called by the portal after /packs changed, and by Get decks after a download.
+// Rescans the folder and keeps the live pack usable: reload the loaded pack (its
+// contents may have changed), else fall back to the first remaining one, else
+// leave no pack open. Both callers run under the settings home, whose
+// "Continue" returns to the quiz, detail or done screen; when the live reader
+// was replaced or closed, the question kept for it belongs to the old pack and
+// must never be shown or graded. So Continue gets a fresh question from the
+// rebuilt queue (or the done screen) -- or, with no pack left, the deck list,
+// where "+ Get decks" still works. A failed reload that kept the old reader
+// keeps its question too.
 bool portalPacksChanged() {
+    const tgc::PackReader* const before = gPack->isOpen() ? gPack.get() : nullptr;
+    const String pathBefore = gCurrentPack;
     listPacks(gPacks);
     if (gPacks.empty()) {
         gRender.end();
@@ -1686,15 +1715,21 @@ bool portalPacksChanged() {
         gSource.reset();
         gCurrentPack = "";
         gPrefs.remove("pack");
-        return false;
+    } else {
+        String want = gCurrentPack;
+        if (want.isEmpty() || std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end())
+            want = gPacks[0];
+        if (loadPack(want) || loadPack(gPacks[0])) gPrefs.putString("pack", gCurrentPack);
     }
-    String want = gCurrentPack;
-    if (want.isEmpty() || std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end())
-        want = gPacks[0];
-    if (!loadPack(want) && !loadPack(gPacks[0])) return false;
-    gPrefs.putString("pack", gCurrentPack);
-    gQueue.rebuild(*gPack, gSrs, gRng);
-    return true;
+    if (!gPack->isOpen()) {
+        gQueue.rebuild(*gPack, gSrs, gRng);  // empty: nothing refers to the old cards
+        gBeforeMenu = Screen::Decks;
+    } else if (gPack.get() != before) {
+        if (gCurrentPack != pathBefore) gExtraNew = 0;  // another deck, as in selectPack()
+        gQueue.rebuild(*gPack, gSrs, gRng, gExtraNew);
+        gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
+    }
+    return gPack->isOpen();
 }
 
 // Called by the portal with the browser's clock (POST /time on every page load).
@@ -1764,7 +1799,18 @@ void openMenu() {
 }
 
 void closeMenu() {
+    if (gBeforeMenu == Screen::Decks) {  // no pack open (see portalPacksChanged())
+        openDecks();
+        return;
+    }
     gScreen = gBeforeMenu;
+    // The question was hidden behind the settings, or even built there (see
+    // portalPacksChanged()): restart its answer clock, as wakeScreen() does,
+    // so the time away does not grade it Hard.
+    if (gScreen == Screen::Quiz && !gRevealed) {
+        gShownAt = millis();
+        gNavTaps = 0;
+    }
     drawScreen();
 }
 
@@ -2172,12 +2218,9 @@ void netDownload(int i) {
                   (unsigned)(millis() - started), r.httpCode, r.tlsError);
 
     // Rescan /packs the portal's way; that also reopens the deck closed above, or
-    // loads the first one when none was open (the boot-time path).
-    const bool packOpen = gPack->isOpen();
-    if (r.packsChanged || !packOpen) portalPacksChanged();
-    // A deck that was (re)loaded invalidates the question the quiz was showing:
-    // prepare a fresh one for when the settings home's "Continue" returns there.
-    if (!packOpen && gPack->isOpen()) gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
+    // loads the first one when none was open (the boot-time path), and gives
+    // the settings home's "Continue" a question from the deck now loaded.
+    if (r.packsChanged || !gPack->isOpen()) portalPacksChanged();
     netRefreshStates();
     char buf[48];
     if (r.status == tgc::FetchStatus::Ok) {
@@ -2609,6 +2652,8 @@ void tapAction() {
         afterReveal();
         return;
     }
+    tgc::Card card;
+    if (!questionCard(&card)) return;  // also keeps gQ.count from being 0 below
     gSel = (gSel + 1) % gQ.count;
     ++gNavTaps;
     drawScreen();
@@ -2619,6 +2664,10 @@ void holdAction(uint32_t pressedAt) {
         afterReveal();
         return;
     }
+    // No card, no grade: a record must never be written for a card that is not
+    // the one on screen (see questionCard()).
+    tgc::Card card;
+    if (!questionCard(&card)) return;
     gRevealed = true;
 
     const bool correct = gSel == gQ.correct;
@@ -2637,8 +2686,6 @@ void holdAction(uint32_t pressedAt) {
     else
         grade = tgc::Grade::Good;
 
-    tgc::Card card;
-    gPack->card(gQ.cardIndex, &card);
     const float u01 = gRng.below(1000) / 1000.0f;
     gSrs.grade(card.codepoint, grade, gSrs.today(), static_cast<uint8_t>(gQ.mode), u01);
     gSrs.addReviewMs(rt_ms);

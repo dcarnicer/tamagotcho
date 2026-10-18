@@ -1140,3 +1140,25 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   carry and the RTC timestamp describe the same moment. The critical-battery
   re-sleep at boot (keeps the first sleep's timestamp) and `halt()` (SRS maybe
   not loaded) stay as they were.
+- **A pack change under the settings refreshes "Continue".** The portal (upload,
+  delete, URL download) and Get decks reload, swap or close the live pack while
+  the settings home waits to "Continue" into the quiz, detail or done screen,
+  but only `netDownload()` refreshed the question kept for it, and only when
+  it had closed the live deck itself to replace it (or none was open).
+  Deleting every pack and pressing Continue drew a closed pack (crash);
+  replacing or deleting the live pack showed the old question and a hold graded
+  whatever card sat at that index in the new pack. `portalPacksChanged()`, the
+  path both share, now notices when the live reader was replaced or closed:
+  with a pack open it rebuilds the queue and builds the question Continue
+  returns to (or the done screen); with none, Continue opens the deck list,
+  whose "+ Get decks" row still works. The deck list was chosen over the
+  boot-time upload screen because that one deliberately makes the side button
+  inert, and the portal opened from the settings must stay leavable. A failed
+  reload that kept the old reader keeps its question. Continue also restarts
+  the answer clock of an unrevealed question, as a wake from a dark panel does:
+  the question was hidden (or built) behind the settings, and that time must
+  not grade it Hard. As a last line of defence, `drawQuiz()`, `drawDetail()`,
+  `tapAction()` and `holdAction()` check `questionCard()` (pack open, a question
+  built, its card readable) and otherwise draw "Cannot open pack / side hold:
+  menu" or do nothing, so nothing is ever graded for a card that is not on
+  screen.
