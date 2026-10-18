@@ -383,6 +383,26 @@ void test_deck_summary() {
     s = deckSummary(closed, srs);
     TEST_ASSERT_EQUAL_UINT32(0, s.total);
     TEST_ASSERT_EQUAL_UINT32(0, s.seen());
+
+    // Introduced today: a first grade today counts, another deck's card does not.
+    TEST_ASSERT_EQUAL_UINT32(0, deckSummary(pack, srs).introducedToday);
+    srs.getOrCreate(0x4E94).dueDay = 0;
+    srs.grade(0x4E94, Grade::Good, 10, 0, 0.5f);
+    srs.grade(0x9998, Grade::Good, 10, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT32(1, deckSummary(pack, srs).introducedToday);
+}
+
+void test_study_more_extra() {
+    // Cap 10, 10 introduced, no extra: 10 more.
+    TEST_ASSERT_EQUAL_UINT16(10, studyMoreExtra(10, 10, 0));
+    // A second "+10" on the same deck: 20.
+    TEST_ASSERT_EQUAL_UINT16(20, studyMoreExtra(10, 20, 10));
+    // Back on a deck that used "+10" earlier today (the extra reset to 0):
+    // still 10 beyond the 20 it introduced.
+    TEST_ASSERT_EQUAL_UINT16(20, studyMoreExtra(10, 20, 0));
+    // Cap not reached (e.g. the deck ran out of other work): the extra grows by 10.
+    TEST_ASSERT_EQUAL_UINT16(10, studyMoreExtra(10, 4, 0));
+    TEST_ASSERT_EQUAL_UINT16(0xFFFF, studyMoreExtra(10, 70000, 0));
 }
 
 // ---------------------------------------------------------------- pack peek
@@ -445,6 +465,7 @@ int main(int, char**) {
     RUN_TEST(test_layout_date);
     RUN_TEST(test_layout_done);
     RUN_TEST(test_deck_summary);
+    RUN_TEST(test_study_more_extra);
     RUN_TEST(test_peek_pack_info);
     RUN_TEST(test_peek_long_utf8_name);
     return UNITY_END();

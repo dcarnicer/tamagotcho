@@ -5279,7 +5279,8 @@ void loop() {
             openMenu();
         } else if (a || b == 1) {
             // Nothing due and the daily new cap is spent: study 10 more today.
-            gExtraNew = static_cast<uint16_t>(extraNewToday() + 10);
+            gExtraNew = tgc::studyMoreExtra(gSrs.newPerDay(), deckCounts().introducedToday,
+                                            extraNewToday());
             gExtraNewDay = gSrs.today();
             gQueue.rebuild(*gPack, gSrs, gRng, gExtraNew);
             if (newQuestion()) {

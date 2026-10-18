@@ -376,7 +376,7 @@ void test_serialize_roundtrip() {
         TEST_ASSERT_EQUAL_UINT8(x.lapses, y->lapses);
         TEST_ASSERT_EQUAL_UINT8(x.modeSeen, y->modeSeen);
         TEST_ASSERT_EQUAL_UINT8(x.lastGrade, y->lastGrade);
-        TEST_ASSERT_EQUAL_UINT8(x.reserved, y->reserved);
+        TEST_ASSERT_EQUAL_UINT8(x.flags, y->flags);
     }
     // modeSeen accumulated bits 0 and 2 on 日.
     TEST_ASSERT_EQUAL_UINT8(0x5, b.find(0x65E5)->modeSeen);
@@ -670,34 +670,77 @@ void test_queue_new_cap_resets_on_new_day() {
     srs.begin(io);
     srs.setToday(5);
     srs.setNewPerDay(2);
-    srs.setNewIntroducedDay(5);
-    srs.setNewIntroducedCount(1);
 
     XorShiftRng rng(1);
     Queue q;
     q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(q.remaining()));
+
+    // Grading a new card marks it introduced today and counts it against the cap.
+    srs.grade(0x65E5, Grade::Good, 5, static_cast<uint8_t>(QuizMode::Meaning), 0.5f);
+    TEST_ASSERT_TRUE(introducedOn(*srs.find(0x65E5), 5));
+    q.rebuild(pack, srs, rng);
     TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(q.remaining()));  // 2 - 1
     QueueItem it;
     TEST_ASSERT_TRUE(q.next(&it));
-    TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);  // first by level
+    TEST_ASSERT_EQUAL_UINT32(1, it.cardIndex);  // the next by level
 
-    srs.setNewIntroducedCount(2);
+    srs.grade(0x6708, Grade::Good, 5, static_cast<uint8_t>(QuizMode::Meaning), 0.5f);
     q.rebuild(pack, srs, rng);
     TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(q.remaining()));
+    // "+10 new" (extraNew) opens the cap again.
+    q.rebuild(pack, srs, rng, 10);
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(q.remaining()));
 
-    // A new day resets the counter in the store, so the cap is available again.
+    // A new day: yesterday's cards no longer count, so the cap is available again.
     srs.setToday(6);
-    TEST_ASSERT_EQUAL_UINT16(6, srs.newIntroducedDay());
-    TEST_ASSERT_EQUAL_UINT16(0, srs.newIntroducedCount());
+    TEST_ASSERT_FALSE(introducedOn(*srs.find(0x65E5), 6));
     q.rebuild(pack, srs, rng);
     TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(q.remaining()));
     TEST_ASSERT_TRUE(q.next(&it));
-    TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);
+    TEST_ASSERT_EQUAL_UINT32(2, it.cardIndex);
 
-    // Grading a new card counts it against the day.
+    // A review on a later day clears the mark; a same-day repeat keeps it.
+    srs.grade(0x706B, Grade::Again, 6, static_cast<uint8_t>(QuizMode::Meaning), 0.5f);
+    srs.grade(0x706B, Grade::Good, 6, static_cast<uint8_t>(QuizMode::Meaning), 0.5f);
+    TEST_ASSERT_TRUE(introducedOn(*srs.find(0x706B), 6));
     srs.grade(0x65E5, Grade::Good, 6, static_cast<uint8_t>(QuizMode::Meaning), 0.5f);
-    TEST_ASSERT_EQUAL_UINT16(6, srs.newIntroducedDay());
-    TEST_ASSERT_EQUAL_UINT16(1, srs.newIntroducedCount());
+    TEST_ASSERT_EQUAL_UINT8(0, srs.find(0x65E5)->flags & kRecordFlagIntroducedOnLastDay);
+}
+
+// The cap is per deck: new cards of another deck do not use it up, but a card
+// the two decks share counts in both (progress is keyed by code point).
+void test_queue_new_cap_per_deck() {
+    std::vector<CardSpec> ca = {{0x65E5, "day", "ニチ", "ひ", {}},
+                                {0x6708, "month", "ゲツ", "つき", {}}};
+    std::vector<CardSpec> cb = {{0x706B, "fire", "カ", "ひ", {}},
+                                {0x6C34, "water", "スイ", "みず", {}}};
+    std::vector<CardSpec> cc = {{0x65E5, "day", "ニチ", "ひ", {}},
+                                {0x6728, "tree", "モク", "き", {}}};
+    auto ba = makePack(ca, glyphsFor(ca));
+    auto bb = makePack(cb, glyphsFor(cb));
+    auto bc = makePack(cc, glyphsFor(cc));
+    MemorySource sa(ba), sb(bb), sc(bc);
+    PackReader a, b, c;
+    TEST_ASSERT_EQUAL(PackError::Ok, a.open(sa));
+    TEST_ASSERT_EQUAL(PackError::Ok, b.open(sb));
+    TEST_ASSERT_EQUAL(PackError::Ok, c.open(sc));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(5);
+    srs.setNewPerDay(1);
+    srs.grade(0x65E5, Grade::Good, 5, static_cast<uint8_t>(QuizMode::Meaning), 0.5f);
+
+    XorShiftRng rng(1);
+    Queue q;
+    q.rebuild(a, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(q.remaining()));
+    q.rebuild(b, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(q.remaining()));
+    q.rebuild(c, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(q.remaining()));
 }
 
 void test_queue_no_repeat_within_session() {
@@ -1397,6 +1440,7 @@ int main() {
     RUN_TEST(test_clock_boot_and_uptime);
     RUN_TEST(test_queue_due_before_new);
     RUN_TEST(test_queue_new_cap_resets_on_new_day);
+    RUN_TEST(test_queue_new_cap_per_deck);
     RUN_TEST(test_queue_no_repeat_within_session);
     RUN_TEST(test_queue_relearn_requeues_and_caps);
     RUN_TEST(test_queue_interleaves_modes);

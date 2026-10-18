@@ -2157,3 +2157,20 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
 - **Flash** (`git describe` versions): StickS3 1,431,805 → 1,442,773 bytes
   (+10.7 KB), static RAM 54,700 → 54,828; T-Display-S3 1,272,469 → 1,283,561,
   RAM 52,704 → 52,832. **Not verified on hardware.**
+
+## 2026-10-18 – New-card cap per deck; "+10 new" always adds ten
+
+- **Found on the StickS3:** after finishing JLPT N5 (cap and one "+10 new"
+  spent), switching to N4 showed the done screen, and the first press on
+  "+10 new" did nothing, the second worked (it looked like "hold fails, tap
+  works"). Both came from the cap being global: the header's
+  `new_introduced_count` counted every deck's new cards, while the "+10"
+  extra resets on a deck change.
+- **Per deck now.** The record's former reserved byte is `flags`; bit0 marks
+  a card whose first review was on `last_day` (set by its first grade,
+  cleared by a grade on a later day). `Queue::rebuild()` counts the loaded
+  deck's cards introduced today against `new_per_day`. No file format bump:
+  old files have 0 there, which only under-counts the day of the update.
+- **"+10 new" adds ten beyond today's introductions** of the loaded deck
+  (`studyMoreExtra()` in `ui/DeckSummary.h`), whatever extra was in force, so
+  the first press always brings cards when the deck has any left.
