@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "srs/Srs.h"
+#include "srs/TimeZone.h"
 
 namespace tgc {
 
@@ -21,7 +22,8 @@ constexpr size_t kSrsCrcSize = 4;
 constexpr size_t kSrsMaxRecords = 8192;
 
 // Session clock: one day index per 24 h of uptime (section 5); after a
-// wall-clock sync the 24 h end at 04:00 local (section 5.1).
+// wall-clock sync the day ends at 04:00 local (section 5.1), 23 or 25 h later
+// on a daylight-saving change when the time zone has a rule.
 constexpr uint32_t kSrsMsPerDay = 86400000u;
 
 // Header defaults (docs/srs.md section 3).
@@ -141,7 +143,21 @@ public:
     // is ahead and re-base the display (never the index) when it is behind.
     // Every accepted sync aligns the day carry so the uptime and sleep rules roll
     // over at kSrsRolloverHour local. A Rejected result changes nothing.
+    // The rule form takes the offset in effect at `utcMs` from `zone`; the
+    // offset form is a fixed rule. Neither changes timeZone().
     ClockSyncResult syncWallClock(int64_t utcMs, int tzOffsetMin);
+    ClockSyncResult syncWallClock(int64_t utcMs, const TzRule& zone);
+
+    // The time zone the uptime and sleep rules count study days in (docs/srs.md
+    // section 5.1): with a daylight-saving rule and a wall-clock anchor, the
+    // day that contains a change lasts 23 or 25 h, so the rollover stays at
+    // 04:00 local. Not persisted (the app keeps the rule in NVS and sets it at
+    // boot, before addElapsedMs()); UTC by default, which gives 24 h days.
+    void setTimeZone(const TzRule& zone);
+    const TzRule& timeZone() const { return tz_; }
+    // Real length of the current index day: 24 h unless the zone has a
+    // daylight-saving rule and the store has an anchor (section 5.1).
+    uint32_t dayLengthMs() const;
 
     // Days since 1970-01-01 of SRS day 0 (header byte 38); 0 = never synced.
     uint16_t epochAnchor() const { return epochAnchor_; }
@@ -248,6 +264,10 @@ private:
 
     bool tickStarted_ = false;
     uint32_t lastTickMs_ = 0;
+
+    TzRule tz_;                          // not part of the file, kept by reset()
+    mutable int32_t lenCacheDay_ = -1;   // epoch day dayLengthMs() last computed
+    mutable uint32_t lenCacheMs_ = kSrsMsPerDay;
 };
 
 }  // namespace tgc

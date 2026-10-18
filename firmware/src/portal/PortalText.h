@@ -18,7 +18,7 @@ struct PortalText {
     const char* freeFmt = "%s free";
     const char* viaFmt = "via <b>%s</b>";
     const char* ownNetFmt = "on the device's own network <b>%s</b>";
-    const char* clockHint = "Opening this page sets the device date from this browser's clock.";
+    const char* clockHint = "Opening this page sets the device date and time zone from this browser.";
     const char* clockOk = "Device date set from this browser: ";
     const char* clockBad = "The device did not accept this browser's clock.";
     const char* clockErr = "Could not send the clock to the device.";

@@ -5,6 +5,8 @@
 // Design: docs/srs.md sections 4.1 and 5.1.
 #include <cstdint>
 
+#include "srs/TimeZone.h"
+
 namespace tgc {
 
 // Days since 1970-01-01 for a proleptic Gregorian date (Howard Hinnant's
@@ -45,10 +47,29 @@ constexpr int kTzOffsetMinHighest = 14 * 60;
 // UTC": +120 for CEST, -300 for EST), i.e. JavaScript's -getTimezoneOffset().
 bool wallClockPlausible(int64_t utcMs, int tzOffsetMin);
 
+// The same for a time zone rule: the time is plausible and both offsets of the
+// rule are (see tzRuleOffsetsPlausible()).
+bool wallClockPlausible(int64_t utcMs, const TzRule& zone);
+
 // Splits a wall-clock instant into its study day (days since 1970-01-01 of the
-// local date, where the day starts at kSrsRolloverHour) and the milliseconds
-// since that day's rollover. False, outputs untouched, when the time is not
-// plausible.
+// local date, where the day starts at kSrsRolloverHour local) and the
+// milliseconds since that day's rollover. With a daylight-saving rule the local
+// date uses the offset in effect at `utcMs`, and the milliseconds are real
+// elapsed time since the rollover instant. False, outputs untouched, when the
+// time is not plausible. The offset form is a fixed rule (fixedTzRule()).
+bool studyDayOf(int64_t utcMs, const TzRule& zone, int32_t* epochDay, uint32_t* msIntoDay);
 bool studyDayOf(int64_t utcMs, int tzOffsetMin, int32_t* epochDay, uint32_t* msIntoDay);
+
+// The UTC instant (ms) at which study day `epochDay` begins: local 04:00 that
+// date. When the local clock passes 04:00 twice (daylight time ending at that
+// hour) the first one counts; when it skips 04:00 (a jump over it), the moment
+// of the jump.
+int64_t studyDayStartUtcMs(const TzRule& zone, int32_t epochDay);
+
+// How long study day `epochDay` lasts in real time: 24 h, or 23 h / 25 h (or
+// 23.5 h / 24.5 h) when a daylight-saving change falls inside it. This is what
+// the SRS uptime and sleep rules count down, so the rollover stays at 04:00
+// local across a change.
+uint32_t studyDayLengthMs(const TzRule& zone, int32_t epochDay);
 
 }  // namespace tgc

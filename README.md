@@ -82,12 +82,15 @@ setup mode and a tap tries again.
 - **Settings → Wi-Fi » → Home: <network>** tests the saved network: it joins,
   shows the IP address, the signal, whether the deck catalog answers and
   whether the network time works, then turns the radio off again.
-- Opening the page sets the device's **date** from the phone's clock and time
-  zone, so the review day rolls over at 04:00 local. With a home Wi-Fi saved
-  the device also takes the time from NTP whenever it joins, and after a
-  power-off the date question tries the same in the background ("Syncing via
-  <network>..."); you can still answer it by hand meanwhile. Both use the time
-  zone the page last sent and skip the sync until the page has been opened once.
+- Opening the page sets the device's **date** from the phone's clock and **time
+  zone**, so the review day rolls over at 04:00 local -- daylight-saving changes
+  included: the page sends the zone's rules, not just today's offset. With a
+  home Wi-Fi saved the device also takes the time from NTP whenever it joins,
+  and after a power-off it **tries the network first** ("Getting the date via
+  <network>...", about 15 s at most; a tap skips it) before asking for the
+  date by hand. NTP needs the time zone: the one the page last sent, or one
+  chosen in **Settings → Date » → Time zone** (a short list of zones, for when
+  no phone has set one; the next page visit replaces it with the phone's).
 
 ### Changing networks
 
@@ -254,7 +257,11 @@ or left by another firmware), formats it ("Preparing storage..."), asks for the
 language (English / Español) and boots into the Wi-Fi portal's setup mode,
 where decks can be fetched or uploaded over the air. A device that still has
 its decks after a merged-image flash does not ask: its settings are gone, so
-the language follows the loaded deck (Auto) until you change it.
+the language follows the loaded deck (Auto) until you change it. The flash
+counts as a power cut, so it does ask for the **date**, by hand: with the home
+Wi-Fi and the time zone erased it cannot get it from the network first. Set it
+with the stepper (or skip), then open the portal page once to save the Wi-Fi
+and the zone again.
 
 > Status: the **esptool** path is verified — a v0.1.0 candidate's merged
 > image, written at `0x0` on a real StickS3, booted, kept its decks and
