@@ -86,15 +86,17 @@ n5-en<TAB>en<TAB>79<TAB>703123<TAB>ab12cd…<TAB>https://example.com/v1/n5-en.tg
   - `lang` — the pack's meaning language (the header's `lang`);
   - `cards` — its card count;
   - `bytes` — the exact file size;
-  - `sha256` — lowercase hex digest of the whole file, so the device can check
-    integrity after download (the on-device check is a follow-up);
+  - `sha256` — lowercase hex digest of the whole file; the device checks it
+    (and `bytes`) before it keeps a download;
   - `url` — absolute when `--base-url` is given, otherwise the bare file name,
     meaning "relative to the URL the catalog was fetched from". `--base-url` may
     contain `{file}`, which is replaced by the file name.
 - Records are sorted by file name, so the output is deterministic and safe to
   diff.
-- **Not implemented yet:** the device does not fetch or parse a catalog. The
-  format above is the contract to implement against (roadmap phase 5).
+- The device reads this file for **Get decks** (`firmware/src/catalog/`): it
+  refuses an unknown version, skips a record that does not validate (and keeps
+  the others), caps the list at 32 decks, and resolves a bare-file-name `url`
+  against the catalog URL it was configured with (before any redirect).
 
 ## Layout
 

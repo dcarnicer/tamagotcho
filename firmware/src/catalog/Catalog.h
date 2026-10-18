@@ -1,0 +1,87 @@
+#pragma once
+// Parser for the line-oriented deck catalog written by `tangocho-pack catalog`
+// (format: tools/pack-builder/README.md, "Catalog format"), plus the small URL
+// and file-name helpers the on-device "Get decks" screen needs. Pure C++, no
+// Arduino: unit tested natively in test/test_catalog.
+//
+//     #tangocho-catalog<TAB>1
+//     # name<TAB>lang<TAB>cards<TAB>bytes<TAB>sha256<TAB>url
+//     n5-en<TAB>en<TAB>79<TAB>703123<TAB>ab12...<TAB>https://.../n5-en.tgc
+//
+// The first non-blank line must carry the format tag and a version this reader
+// knows; any other version is refused as a whole. Every other `#` line and every
+// blank line is skipped. A record that does not validate (wrong field count, bad
+// number or digest, unsafe name, unusable URL, duplicate name) is skipped and
+// counted, so one bad line does not hide the rest of the catalog.
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace tgc {
+
+constexpr int kCatalogVersion = 1;
+// Valid records beyond this many are ignored (`truncated`): the device lists the
+// catalog on a small screen and keeps it in RAM.
+constexpr size_t kCatalogMaxEntries = 32;
+// `name` + ".tgc" must stay within the Wi-Fi portal's 48-character file-name cap.
+constexpr size_t kCatalogMaxNameLen = 43;
+constexpr size_t kCatalogMaxLangLen = 8;
+constexpr size_t kCatalogMaxUrlLen = 1024;
+// Same cap as WifiPortal::kMaxPackBytes: the StickS3 filesystem is ~5.9 MB.
+constexpr uint32_t kCatalogMaxPackBytes = 5u * 1024u * 1024u;
+// A pack is at least its 64-byte header.
+constexpr uint32_t kCatalogMinPackBytes = 64u;
+
+struct CatalogEntry {
+    std::string name;  // file name without ".tgc"; safe as a /packs file name
+    std::string lang;  // the pack's meaning language ("en", "es"); may be empty
+    uint32_t cards = 0;
+    uint32_t bytes = 0;      // exact file size
+    uint8_t sha256[32] = {};  // digest of the whole file
+    std::string url;         // absolute http(s) URL (bare file names resolved)
+};
+
+enum class CatalogError : uint8_t {
+    Ok,
+    NotACatalog,         // no "#tangocho-catalog<TAB>N" first line (e.g. an HTML error page)
+    UnsupportedVersion,  // a format version this firmware does not know
+    NoValidEntries,      // records were present but none of them validated
+};
+
+struct CatalogParse {
+    CatalogError error = CatalogError::Ok;
+    int version = 0;          // the version from the tag line, when present
+    size_t skipped = 0;       // records ignored as invalid, unsafe or duplicate
+    bool truncated = false;   // more than kCatalogMaxEntries valid records
+    std::vector<CatalogEntry> entries;
+};
+
+// Parses `len` bytes of catalog text. `catalogUrl` is the URL the catalog was
+// requested from (before any redirect): a record whose `url` is a bare file name
+// is resolved against it, so `.../releases/latest/download/catalog.txt` lists
+// `.../releases/latest/download/<file>`. An empty catalog (tag line only) is Ok
+// with no entries.
+CatalogParse parseCatalog(const char* text, size_t len, const char* catalogUrl);
+
+// True for a name the device may save as "/packs/<name>.tgc": 1..43 characters
+// from [A-Za-z0-9._-], not starting with '.' (hidden: the pack listers skip it),
+// and no "..".
+bool catalogNameIsSafe(const char* name, size_t len);
+
+// Exactly 64 hex digits (either case) -> 32 bytes.
+bool parseSha256Hex(const char* hex, size_t len, uint8_t out[32]);
+
+// "http://" or "https://" followed by a non-empty host, no whitespace or
+// control characters, at most kCatalogMaxUrlLen.
+bool isHttpUrl(const std::string& url);
+
+// Resolves a catalog `url` field. An absolute http(s) URL is kept; a bare file
+// name (no '/', '\\', ':', '?', '#', whitespace, not "." or "..") replaces the
+// last path segment of `base` (query and fragment dropped). Anything else is
+// refused. `out` is untouched on failure.
+bool resolveCatalogUrl(const std::string& base, const std::string& ref, std::string* out);
+
+const char* catalogErrorString(CatalogError e);
+
+}  // namespace tgc

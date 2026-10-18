@@ -165,6 +165,19 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 - The pack builder vendors a copy of its 256-glyph bitmap in `glcd.py` so
   `tangocho-pack preview` can render the same font as the device.
 
+## Root CA certificates (firmware)
+
+`firmware/src/platform/RootCerts.h` embeds eleven public root CA certificates
+(ISRG, USERTrust/Sectigo, DigiCert, Google Trust Services, Amazon) so the
+device can verify HTTPS for Get decks. They are copied verbatim from Mozilla's
+root store as packaged by certifi (MPL-2.0 for the bundle); CA certificates are
+published by their issuers for exactly this use. Not data in any pack. The list,
+expiry dates and the update procedure are in docs/decisions.md.
+
+Packs the device downloads through Get decks are the release's prebuilt packs
+(CC BY-SA, attribution in the release notes and below); nothing is bundled with
+the firmware.
+
 ## Combined attribution for a pack
 
 > Kanji data from KANJIDIC2 (c) EDRDG, CC BY-SA 4.0, https://www.edrdg.org/edrdg/licence.html.

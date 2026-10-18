@@ -4,26 +4,28 @@
 #include <LittleFS.h>
 #include <esp_mac.h>
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstring>
+#include <utility>
 
-#include <HTTPClient.h>
-
-#include "pack/PackReader.h"
-#include "platform/FsPackSource.h"
+#include "platform/HomeWifi.h"
+#include "platform/NetFetch.h"
 
 namespace tgc {
 
 namespace {
 
 // Keep this much of the filesystem free so a pack (and the SRS state file and a
-// download temp) can never fill it completely and strand the device.
-constexpr size_t kFsReserveBytes = 96u * 1024u;
+// download temp) can never fill it completely and strand the device. Shared
+// with every other pack writer (NetFetch.h).
+constexpr size_t kFsReserveBytes = kPackFsReserveBytes;
 
-constexpr uint16_t kHttpTimeoutMs = 8000;    // per read
 constexpr uint32_t kFetchIdleMs = 5000;      // no data for this long -> abort
 constexpr uint32_t kFetchTotalMs = 60000;    // whole download budget
-constexpr size_t kFetchBufSize = 1024;
+
+// Nearby networks offered as SSID suggestions on the page.
+constexpr size_t kMaxNearby = 12;
 
 // A multipart upload body carries a boundary/header envelope around the file,
 // so the request's declared Content-Length is slightly larger than the `.tgc`
@@ -191,6 +193,7 @@ String pageHeader(const char* title) {
     h += "table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:.25rem .3rem;";
     h += "border-bottom:1px solid #ccc}form{margin:.5rem 0}button{padding:.35rem .7rem}";
     h += "input[type=url]{width:100%;max-width:26rem;padding:.3rem}";
+    h += "input[type=text],input[type=password]{width:100%;max-width:16rem;padding:.3rem;margin:.15rem 0}";
     h += "code{background:#eee;padding:0 .2rem}h1{font-size:1.25rem}h2{font-size:1rem;margin:1rem 0 .3rem}";
     h += ".muted{color:#666}.err{color:#b00}";
     h += "</style></head><body><h1>Tangocho</h1>";
@@ -204,6 +207,7 @@ bool WifiPortal::begin(const Hooks& hooks) {
     hooks_ = hooks;
     LittleFS.mkdir(kPacksDir);
 
+    scanNearby();
     WiFi.mode(WIFI_AP);
     // Stable SSID suffix from the AP MAC's last two bytes ("Tangocho-A1B2").
     uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
@@ -245,6 +249,9 @@ void WifiPortal::registerRoutes() {
     server_->on("/api/stats", HTTP_GET, [this]() { touch(); handleApiStats(); });
     server_->on("/delete", HTTP_POST, [this]() { touch(); handleDelete(); });
     server_->on("/fetch", HTTP_POST, [this]() { touch(); handleFetchRequest(); });
+    server_->on("/wifi", HTTP_POST, [this]() { touch(); handleHomeWifi(); });
+    server_->on("/wifi/forget", HTTP_POST, [this]() { touch(); handleForgetWifi(); });
+    server_->on("/catalog", HTTP_POST, [this]() { touch(); handleCatalogUrl(); });
     server_->on("/upload", HTTP_POST, [this]() { touch(); handleUploadDone(); },
                 [this]() { touch(); handleUploadChunk(); });
     server_->on("/time", HTTP_POST, [this]() { touch(); handleTime(); });
@@ -348,7 +355,47 @@ void WifiPortal::handleRoot() {
     h += "<h2>Download from a URL</h2><form method=\"post\" action=\"/fetch\">";
     h += "<input type=\"url\" name=\"url\" placeholder=\"http://example.com/deck.tgc\" required> ";
     h += "<button type=\"submit\">Download</button></form>";
-    h += "<p class=\"muted\">Plain <code>http://</code> only; TLS to arbitrary hosts is untested.</p>";
+    h += "<p class=\"muted\">Plain <code>http://</code> only (on its own access point the device ";
+    h += "has no internet). For decks from the internet, use the home Wi-Fi below.</p>";
+
+    // Home Wi-Fi for "Get decks". The password is write-only: only the saved
+    // network name is ever shown.
+    const String homeSsid = HomeWifi::savedSsid();
+    h += "<h2>Home Wi-Fi (for Get decks)</h2>";
+    if (homeSsid.length()) {
+        h += "<div>Saved network: <b>";
+        h += htmlEscape(homeSsid);
+        h += "</b> <form method=\"post\" action=\"/wifi/forget\" style=\"display:inline\">";
+        h += "<button type=\"submit\">forget</button></form></div>";
+    } else {
+        h += "<p class=\"muted\">No home network saved yet.</p>";
+    }
+    h += "<form method=\"post\" action=\"/wifi\">";
+    h += "<input type=\"text\" name=\"ssid\" list=\"ssids\" maxlength=\"32\" ";
+    h += "placeholder=\"network name\" autocomplete=\"off\" required><br>";
+    h += "<input type=\"password\" name=\"pass\" maxlength=\"64\" placeholder=\"password\" ";
+    h += "autocomplete=\"new-password\"> <button type=\"submit\">Save</button>";
+    if (!nearby_.empty()) {
+        h += "<datalist id=\"ssids\">";
+        for (const String& n : nearby_) {
+            h += "<option value=\"";
+            h += htmlEscape(n);
+            h += "\">";
+        }
+        h += "</datalist>";
+    }
+    h += "</form><p class=\"muted\">Leave the password empty for an open network. On the device, ";
+    h += "open <b>Decks</b> and pick <b>+ Get decks</b>: it joins this network only for the ";
+    h += "download. The password stays on the device (stored unencrypted) and is never shown ";
+    h += "again.</p>";
+
+    h += "<h2>Deck catalog</h2><form method=\"post\" action=\"/catalog\">";
+    h += "<input type=\"url\" name=\"url\" maxlength=\"256\" value=\"";
+    h += htmlEscape(HomeWifi::catalogUrlOverride());
+    h += "\" placeholder=\"default catalog\"> <button type=\"submit\">Save</button></form>";
+    h += "<p class=\"muted\">Empty = the latest Tangocho release: <code>";
+    h += HomeWifi::kDefaultCatalogUrl;
+    h += "</code></p>";
 
     h += "<h2>Statistics</h2><ul>";
     h += "<li>date <span id=\"dt\">";
@@ -500,6 +547,69 @@ void WifiPortal::handleDelete() {
     server_->send(303, "text/plain", "");
 }
 
+// --- home Wi-Fi and catalog URL ----------------------------------------------
+
+void WifiPortal::handleHomeWifi() {
+    String ssid = server_->arg("ssid");
+    ssid.trim();  // a phone keyboard's trailing space is likelier than a real one
+    if (!HomeWifi::saveCredentials(ssid, server_->arg("pass"))) {
+        server_->send(400, "text/html",
+                      pageHeader("Home Wi-Fi") +
+                          "<p class=\"err\">Not saved: the network name must be 1-32 characters "
+                          "and the password empty (open network), 8-63 characters or 64 hex "
+                          "digits.</p><p><a href=\"/\">Back</a></p></body></html>");
+        return;
+    }
+    setMsg("home Wi-Fi saved");
+    server_->sendHeader("Location", "/", true);
+    server_->send(303, "text/plain", "");
+}
+
+void WifiPortal::handleForgetWifi() {
+    HomeWifi::forgetCredentials();
+    setMsg("home Wi-Fi forgotten");
+    server_->sendHeader("Location", "/", true);
+    server_->send(303, "text/plain", "");
+}
+
+void WifiPortal::handleCatalogUrl() {
+    if (!HomeWifi::saveCatalogUrl(server_->arg("url"))) {
+        server_->send(400, "text/html",
+                      pageHeader("Catalog") +
+                          "<p class=\"err\">Not saved: use an <code>http://</code> or "
+                          "<code>https://</code> URL of at most 256 characters, or leave it "
+                          "empty for the default.</p><p><a href=\"/\">Back</a></p></body></html>");
+        return;
+    }
+    setMsg("catalog URL saved");
+    server_->sendHeader("Location", "/", true);
+    server_->send(303, "text/plain", "");
+}
+
+void WifiPortal::scanNearby() {
+    nearby_.clear();
+    WiFi.mode(WIFI_STA);
+    // Active scan at ~100 ms per channel: about 1.5 s, once per portal start.
+    const int16_t n = WiFi.scanNetworks(false, false, false, 100);
+    std::vector<std::pair<int32_t, String>> seen;
+    for (int16_t i = 0; i < n; ++i) {
+        const String s = WiFi.SSID(i);
+        if (s.isEmpty()) continue;  // hidden network
+        seen.emplace_back(WiFi.RSSI(i), s);
+    }
+    WiFi.scanDelete();
+    std::sort(seen.begin(), seen.end(),
+              [](const std::pair<int32_t, String>& a, const std::pair<int32_t, String>& b) {
+                  return a.first > b.first;
+              });
+    for (const auto& e : seen) {
+        if (nearby_.size() >= kMaxNearby) break;
+        if (std::find(nearby_.begin(), nearby_.end(), e.second) == nearby_.end())
+            nearby_.push_back(e.second);
+    }
+    Serial.printf("[wifi] scan: %d networks, %u names\n", (int)n, (unsigned)nearby_.size());
+}
+
 // --- upload ----------------------------------------------------------------
 
 // Aborts the upload in flight. Only the temp file is removed: the destination
@@ -648,132 +758,54 @@ bool WifiPortal::doFetch(const String& url) {
         setMsg("bad URL");
         return false;
     }
-    const String dst = String(kPacksDir) + "/" + name;
-    const String tmp = String(kPacksDir) + "/.fetch.tmp";
-
-    const size_t total = LittleFS.totalBytes();
-    const size_t used = LittleFS.usedBytes();
-    const size_t freeB = total > used ? total - used : 0;
-    if (freeB < kFsReserveBytes) {
-        setMsg("no space for %s", name.c_str());
-        return false;
-    }
-
-    HTTPClient http;
-    http.setTimeout(kHttpTimeoutMs);
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    if (!http.begin(url)) {
-        setMsg("bad URL");
-        return false;
-    }
-    const int code = http.GET();
-    if (code != 200) {
-        setMsg("HTTP %d", code);
-        http.end();
-        return false;
-    }
-    int remaining = http.getSize();
-    if (remaining > 0 && (size_t)remaining > kMaxPackBytes) {
-        setMsg("pack too big");
-        http.end();
-        return false;
-    }
-    if (remaining > 0 && (size_t)remaining + kFsReserveBytes > freeB) {
-        setMsg("no space");
-        http.end();
-        return false;
-    }
-
-    LittleFS.remove(tmp);
-    File f = LittleFS.open(tmp, "w");
-    if (!f) {
-        setMsg("write failed");
-        http.end();
-        return false;
-    }
-
-    WiFiClient* stream = http.getStreamPtr();
-    uint8_t buf[kFetchBufSize];
-    size_t written = 0;
-    bool ok = true;
-    const uint32_t start = millis();
-    uint32_t lastData = millis();
-    while (http.connected() && (remaining > 0 || remaining == -1)) {
-        if (millis() - start > kFetchTotalMs) {
-            ok = false;
-            break;
-        }
-        const size_t avail = stream->available();
-        if (avail) {
-            const size_t want = avail > sizeof buf ? sizeof buf : avail;
-            const int r = stream->read(buf, want);
-            if (r <= 0) {
-                ok = false;
-                break;
-            }
-            if (written + (size_t)r + kFsReserveBytes > freeB ||
-                written + (size_t)r > kMaxPackBytes) {
-                ok = false;
-                break;
-            }
-            if (f.write(buf, r) != (size_t)r) {
-                ok = false;
-                break;
-            }
-            written += r;
-            lastData = millis();
-            if (remaining > 0) {
-                remaining -= r;
-                if (remaining <= 0) break;
-            }
-        } else {
-            if (millis() - lastData > kFetchIdleMs) {
-                ok = false;
-                break;
-            }
-            delay(1);
-        }
-    }
-    f.close();
-    http.end();
-
-    if (ok && written >= 4 && validatePackFile(tmp)) {
-        const bool hadDst = LittleFS.exists(dst);
-        if (hadDst) LittleFS.remove(dst);
-        if (LittleFS.rename(tmp, dst)) {
-            setMsg("downloaded %s (%u KB)", name.c_str(), (unsigned)(written / 1024));
-            Serial.printf("[wifi] fetch ok %s %u bytes\n", name.c_str(), (unsigned)written);
+    // The shared atomic download (NetFetch.h): /packs/.fetch.tmp, validated,
+    // then renamed over the destination.
+    PackFetchRequest req;
+    req.url = url;
+    req.fileName = name;
+    req.maxBytes = kMaxPackBytes;
+    req.idleTimeoutMs = kFetchIdleMs;
+    req.totalTimeoutMs = kFetchTotalMs;
+    const FetchResult r = fetchPackFile(req);
+    switch (r.status) {
+        case FetchStatus::Ok:
+            setMsg("downloaded %s (%u KB)", name.c_str(), (unsigned)(r.bytes / 1024));
+            Serial.printf("[wifi] fetch ok %s %u bytes\n", name.c_str(), (unsigned)r.bytes);
             if (hooks_.onPacksChanged) hooks_.onPacksChanged();
             return true;
-        }
-        LittleFS.remove(tmp);
-        // The old pack was already removed, so /packs did change: let the app
-        // rescan rather than keep a handle to a file that is gone.
-        if (hadDst && hooks_.onPacksChanged) hooks_.onPacksChanged();
-        setMsg("rename failed");
-        return false;
+        case FetchStatus::RenameFailed:
+            // The old pack was already removed, so /packs did change: let the app
+            // rescan rather than keep a handle to a file that is gone.
+            if (r.packsChanged && hooks_.onPacksChanged) hooks_.onPacksChanged();
+            setMsg("rename failed");
+            return false;
+        case FetchStatus::InvalidPack:
+            setMsg("not a valid .tgc");
+            break;
+        default:
+            if (r.bodyStarted) {
+                setMsg("download failed");
+                break;
+            }
+            // Refused before the body: nothing was written.
+            if (r.status == FetchStatus::BadUrl)
+                setMsg("bad URL");
+            else if (r.status == FetchStatus::NoSpace && r.httpCode == 0)
+                setMsg("no space for %s", name.c_str());
+            else if (r.status == FetchStatus::NoSpace)
+                setMsg("no space");
+            else if (r.status == FetchStatus::TooLarge)
+                setMsg("pack too big");
+            else if (r.status == FetchStatus::WriteFailed)
+                setMsg("write failed");
+            else
+                setMsg("HTTP %d", r.httpCode);
+            return false;
     }
-    LittleFS.remove(tmp);
-    setMsg(ok ? "not a valid .tgc" : "download failed");
-    Serial.printf("[wifi] fetch failed %s (%u bytes)\n", url.c_str(), (unsigned)written);
+    Serial.printf("[wifi] fetch failed %s (%u bytes)\n", url.c_str(), (unsigned)r.bytes);
     return false;
 }
 
-bool WifiPortal::validatePackFile(const String& path) const {
-    File f = LittleFS.open(path, "r");
-    if (!f) return false;
-    uint8_t magic[4] = {0, 0, 0, 0};
-    const size_t n = f.read(magic, sizeof magic);
-    f.close();
-    if (n != sizeof magic || memcmp(magic, "TNGC", 4) != 0) return false;
-
-    // Cheap structural probe (PSRAM-backed); freed again before we return.
-    auto src = std::make_unique<FsPackSource>(LittleFS.open(path, "r"));
-    if (!src->ok()) return false;
-    PackReader probe;
-    const PackError e = probe.open(*src, psramAllocator());
-    if (e != PackError::Ok) Serial.printf("[wifi] pack probe failed: %s\n", packErrorString(e));
-    return e == PackError::Ok;
-}
+bool WifiPortal::validatePackFile(const String& path) const { return tgc::validatePackFile(path); }
 
 }  // namespace tgc
