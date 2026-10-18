@@ -302,7 +302,7 @@ void test_order_for_lang() {
     // A record keeps its fields when it moves.
     TEST_ASSERT_EQUAL_STRING("n4-en", v[1].name.c_str());
     TEST_ASSERT_EQUAL_STRING("en", v[1].lang.c_str());
-    TEST_ASSERT_EQUAL_STRING("https://github.com/dcarnicer/tangocho/releases/latest/download/x.tgc",
+    TEST_ASSERT_EQUAL_STRING("https://github.com/dcarnicer/tangocho/releases/download/decks-v2/x.tgc",
                              v[1].url.c_str());
 
     // No deck in the UI language, or no language at all: the catalog order.

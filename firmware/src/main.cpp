@@ -392,6 +392,7 @@ enum DeckState : uint8_t { kDeckNew, kDeckOnDevice, kDeckUpdate };
 tgc::HomeWifi gHome;
 NetStep gNetStep = NetStep::Connecting;
 bool gNetFromBoot = false;   // opened from the boot-time upload screen
+std::string gGetDecksLangHint;  // the phone's language from the portal page, or ""
 std::vector<tgc::CatalogEntry> gCatalog;
 std::vector<uint8_t> gCatalogState;  // DeckState per gCatalog entry
 int gNetSel = 0;
@@ -1775,7 +1776,10 @@ bool portalTime(int64_t utcMs, int16_t tzOffsetMin) {
 // hook, called from poll() once its response is out) from the boot-time portal
 // or the settings one. Get decks then leaves as it always does: back to the
 // boot-time screen (or into the quiz once a deck is loaded), else the deck list.
-void wifiToGetDecks() {
+void wifiToGetDecks(const char* phoneLang) {
+    // Only an Auto UI with no deck loaded has no language of its own (it shows
+    // English); then the phone's language orders the deck list instead.
+    gGetDecksLangHint = phoneLang ? phoneLang : "";
     gPortal.end();
     setCpuFrequencyMhz(kCpuMhz);  // openGetDecks() raises it again while the radio is on
     QLOG("W wifi: stopped for Get decks\n");
@@ -2108,6 +2112,7 @@ void openGetDecks(bool fromBoot) {
 // loaded, else back to that screen.
 void closeGetDecks() {
     netRadioOff();
+    gGetDecksLangHint.clear();
     gCatalog.clear();
     gCatalogState.clear();
     QLOG("N get decks: closed\n");
@@ -2186,8 +2191,12 @@ void netLoadCatalog() {
     gCatalog = std::move(parsed.entries);
     // The decks in the screen's language first, the catalog order otherwise
     // (every other language is still listed after them).
-    tgc::orderCatalogForLang(gCatalog, uiLangCode());
-    Serial.printf("[net] catalog: \"%s\" decks first\n", uiLangCode());
+    const char* firstLang =
+        (gUiLangPref == tgc::kUiLangAuto && !gPack->isOpen() && !gGetDecksLangHint.empty())
+            ? gGetDecksLangHint.c_str()
+            : uiLangCode();
+    tgc::orderCatalogForLang(gCatalog, firstLang);
+    Serial.printf("[net] catalog: \"%s\" decks first\n", firstLang);
     netRefreshStates();
     // Start on the first deck that is not here yet.
     gNetSel = 0;
@@ -2979,7 +2988,7 @@ void loop() {
                 closeWifi();
             } else if (a == 2 && gWifiBootUpload && tgc::HomeWifi::hasCredentials()) {
                 // Boot-time screen with a saved home Wi-Fi: fetch a deck instead.
-                wifiToGetDecks();
+                wifiToGetDecks(nullptr);
             }
         }
     } else if (gScreen == Screen::GetDecks) {

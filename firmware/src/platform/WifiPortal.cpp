@@ -286,7 +286,10 @@ void WifiPortal::poll() {
     if (getDecksPending_ && millis() - getDecksAt_ >= kGetDecksGraceMs) {
         getDecksPending_ = false;
         Serial.printf("[wifi] page asked for Get decks: leaving the portal\n");
-        if (hooks_.onGetDecks) hooks_.onGetDecks();
+        if (hooks_.onGetDecks) {
+            const String lang = getDecksLang_;  // the hook usually ends this portal
+            hooks_.onGetDecks(lang.c_str());
+        }
         return;
     }
 }
@@ -310,6 +313,7 @@ void WifiPortal::end() {
     fetchPending_ = "";
     fetchUrl_ = "";
     getDecksPending_ = false;
+    getDecksLang_ = "";
     ssid_[0] = 0;
     Serial.printf("[wifi] portal stopped\n");
 }
@@ -387,10 +391,14 @@ void WifiPortal::handleRoot() {
         if (hooks_.onGetDecks) {
             if (server_->arg("wifi") == "saved")
                 h += "<p class=\"ok\">Saved. Press <b>Get decks now</b> to download decks over it.</p>";
-            h += "<form method=\"post\" action=\"/getdecks\"><button type=\"submit\">Get decks now</button> ";
+            // The phone's language orders the deck list on a device that has
+            // no deck to take it from yet (see wifiToGetDecks()).
+            h += "<form method=\"post\" action=\"/getdecks\"><input type=\"hidden\" name=\"lang\" ";
+            h += "id=\"gdlang\"><button type=\"submit\">Get decks now</button> ";
             h += "<span class=\"muted\">the device leaves this Wi-Fi and joins <b>";
             h += htmlEscape(homeSsid);
-            h += "</b></span></form>";
+            h += "</b></span></form><script>document.getElementById('gdlang').value=";
+            h += "navigator.language||'';</script>";
         }
     } else {
         h += "<p class=\"muted\">No home network saved yet.</p>";
@@ -418,7 +426,7 @@ void WifiPortal::handleRoot() {
     h += "<input type=\"url\" name=\"url\" maxlength=\"256\" value=\"";
     h += htmlEscape(HomeWifi::catalogUrlOverride());
     h += "\" placeholder=\"default catalog\"> <button type=\"submit\">Save</button></form>";
-    h += "<p class=\"muted\">Empty = the latest Tangocho release: <code>";
+    h += "<p class=\"muted\">Empty = the Tangocho decks release: <code>";
     h += HomeWifi::kDefaultCatalogUrl;
     h += "</code></p>";
 
@@ -628,6 +636,13 @@ void WifiPortal::handleGetDecks() {
     }
     getDecksPending_ = true;
     getDecksAt_ = millis();
+    // A BCP 47 tag such as "es-ES": keep letters, digits and '-' only, short.
+    getDecksLang_ = "";
+    const String lang = server_->arg("lang");
+    for (size_t i = 0; i < lang.length() && getDecksLang_.length() < 15; ++i) {
+        const char c = lang[i];
+        if (isalnum(static_cast<unsigned char>(c)) || c == '-') getDecksLang_ += c;
+    }
     setMsg("starting Get decks...");
     const String homeEsc = htmlEscape(home);
     String h = pageHeader("Get decks");

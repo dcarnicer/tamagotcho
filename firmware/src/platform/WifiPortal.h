@@ -61,7 +61,9 @@ public:
         // Get decks over the home Wi-Fi. Called from poll(), once the response
         // page has had time to reach the phone; the app normally calls end()
         // from it, so poll() touches nothing afterwards. Null hides the button.
-        void (*onGetDecks)() = nullptr;
+        // `phoneLang` is the phone's language tag (navigator.language, e.g.
+        // "es-ES"; letters, digits and '-' only) or "" when the page sent none.
+        void (*onGetDecks)(const char* phoneLang) = nullptr;
     };
 
     WifiPortal() = default;
@@ -162,6 +164,7 @@ private:
     // went out while the access point was still up.
     bool getDecksPending_ = false;
     uint32_t getDecksAt_ = 0;  // millis() of the request
+    String getDecksLang_;      // the phone's language tag sent with it, or ""
 
     std::vector<String> nearby_;  // SSIDs seen by scanNearby()
 };

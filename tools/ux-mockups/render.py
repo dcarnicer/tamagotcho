@@ -8,7 +8,7 @@ GLCD / KanjiVG code come from there):
 
 Options: ``--cache DIR`` (default ``tools/pack-builder/cache``; needs
 ``fonts/KleeOne-SemiBold.ttf`` and the KanjiVG zip, i.e. ``uv run tangocho-pack
-fetch``), ``--out DIR`` (default ``docs/ux``) and ``--tokens`` (print the colour
+fetch --klee-one``), ``--out DIR`` (default ``docs/ux``) and ``--tokens`` (print the colour
 token table with contrast ratios used in docs/ux-refresh.md, then exit).
 
 * **Before** screens are line-by-line ports of the ``draw*`` functions in

@@ -210,7 +210,7 @@ Scope for now: **kanji only** (no vocabulary decks).
       format v2 (the N1 and Jōyō decks do not fit the 5 MiB cap in v1).
 - [x] Attribution for redistributed data: README's "Releases" section,
       `docs/data-sources.md` and the release notes all carry the combined
-      KANJIDIC2 / KanjiVG / Klee One credit. (Still open: an attribution line on
+      KANJIDIC2 / KanjiVG / Noto Sans JP credit. (Still open: an attribution line on
       the device itself.)
 - [ ] Flash a **merged** image on a real StickS3 — ESP Web Tools in a browser and
       `esptool write_flash 0x0 …` — to confirm the documented offsets. The image

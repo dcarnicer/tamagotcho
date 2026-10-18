@@ -1346,6 +1346,10 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   which is what the screen still shows. The primary subtag is compared without
   case (`es-MX` counts as Spanish). The selection still starts on the first
   deck not on the device, so now in the user's language when there is one. A
-  fresh device has no pack, hence an English UI under Auto, and lists English
-  first; using the phone's language there was left for later.
+  fresh device has no pack, hence an English UI under Auto; so the page's button
+  also posts the phone's `navigator.language` (hidden field, filtered to
+  letters, digits and `-`), and when the setting is Auto **and no pack is
+  open** that tag orders the list instead (also after every pack was deleted).
+  The screens stay in their own language; the hint lives until Get decks closes
+  and the boot-time hold sends none.
 - **Flash:** +3.8 KB on the StickS3 build. **Not verified on hardware.**
