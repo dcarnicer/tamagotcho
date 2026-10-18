@@ -1,6 +1,7 @@
 // Deck catalog parser. Pure C++; see Catalog.h for the format and the rules.
 #include "catalog/Catalog.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace tgc {
@@ -244,6 +245,28 @@ const char* catalogErrorString(CatalogError e) {
         case CatalogError::NoValidEntries: return "no valid entries";
     }
     return "?";
+}
+
+bool catalogLangMatches(const std::string& lang, const char* uiLang) {
+    if (!uiLang) return false;
+    auto primaryLen = [](const char* s, size_t n) {
+        size_t i = 0;
+        while (i < n && s[i] != '-' && s[i] != '_') ++i;
+        return i;
+    };
+    auto lower = [](char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; };
+    const size_t a = primaryLen(lang.data(), lang.size());
+    const size_t b = primaryLen(uiLang, std::strlen(uiLang));
+    if (a == 0 || a != b) return false;
+    for (size_t i = 0; i < a; ++i)
+        if (lower(lang[i]) != lower(uiLang[i])) return false;
+    return true;
+}
+
+void orderCatalogForLang(std::vector<CatalogEntry>& entries, const char* uiLang) {
+    std::stable_partition(entries.begin(), entries.end(), [uiLang](const CatalogEntry& e) {
+        return catalogLangMatches(e.lang, uiLang);
+    });
 }
 
 }  // namespace tgc

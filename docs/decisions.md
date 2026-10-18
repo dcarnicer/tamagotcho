@@ -1309,3 +1309,43 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
 - **Still open:** running the decks workflow is a maintainer decision, blocked
   on the licence of the tanos.co.uk JLPT lists ("Before publishing" in the
   roadmap).
+
+## 2026-10-18 – Get decks from the portal page; own language first
+
+- **One step from the page.** With a home Wi-Fi saved, the portal page's Home
+  Wi-Fi section has a **Get decks now** button (`POST /getdecks`); saving the
+  network redirects to `/?wifi=saved#home`, which confirms the save and points
+  at it. The device stops the portal and opens Get decks: the boot-time upload
+  screen's hold, now one function (`wifiToGetDecks()`), from the boot-time
+  portal and the Settings one alike. Its exit is the existing one: from the
+  boot-time state the upload screen again, or the quiz once a deck is loaded;
+  from Settings the deck list, whose side button goes to the settings home. The
+  boot-only upload-ready flag is not touched. No home Wi-Fi saved: no button,
+  and `POST /getdecks` answers 400.
+- **The response goes out before the AP goes down.** As with the URL download,
+  the handler only records the request and sends the page; `poll()` calls the
+  new `Hooks::onGetDecks` 1 s later, so `WifiPortal` still never reaches into
+  `main.cpp`. The WebServer closes the connection right after `send()` and lwIP
+  delivers the buffered page in the background, so leaving on the very next
+  poll could pull the AP from under it; a second is ample on a local link. A
+  side press, an upload that starts the quiz or the idle timeout within that
+  second stops the portal, and `end()` drops the request. `loop()` ignores the
+  Wi-Fi screen's input once `poll()` has left it, so a press in that iteration
+  cannot `closeWifi()` over the Get decks screen. The page says the device
+  leaves this Wi-Fi to download over the home network, that the phone can go
+  back to its own network, and to follow the device screen; the switch undoes
+  an idle dim, since typing on the phone is not button input. A network
+  forgotten within that second gets Get decks' own "No home Wi-Fi saved".
+- **Own language first.** Get decks orders the catalog so that the decks whose
+  `lang` is the screen's language come first, in catalog order, followed by all
+  the others in catalog order (a stable partition, `orderCatalogForLang()` in
+  the pure `catalog/` module, native-tested); nothing is hidden. The language is
+  the string table the screens are drawn with: the Language setting, or the
+  pack's language under Auto (`uiLangCodeFor()` through `setUiForLang()`).
+  After every pack was deleted under Auto it stays the last pack's language,
+  which is what the screen still shows. The primary subtag is compared without
+  case (`es-MX` counts as Spanish). The selection still starts on the first
+  deck not on the device, so now in the user's language when there is one. A
+  fresh device has no pack, hence an English UI under Auto, and lists English
+  first; using the phone's language there was left for later.
+- **Flash:** +3.8 KB on the StickS3 build. **Not verified on hardware.**
