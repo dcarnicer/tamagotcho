@@ -1,11 +1,14 @@
 #pragma once
 // On-device Wi-Fi access point + HTTP portal (roadmap phase 4): upload, delete
 // and download packs under /packs and read the SRS statistics from a phone or
-// laptop -- no computer running `uploadfs`. Arduino/ESP32 only; not part of the
-// native build.
+// laptop -- no computer running `uploadfs`. The page also stores the home Wi-Fi
+// network and the deck catalog URL that "Get decks" uses (HomeWifi.h); the
+// password is write-only from the page's point of view. Arduino/ESP32 only; not
+// part of the native build.
 //
 // Security: the AP is intentionally open (no password) so joining it is easy.
-// Anyone in radio range can list, upload or delete packs and read the stats.
+// Anyone in radio range can list, upload or delete packs, read the stats and
+// replace the saved home Wi-Fi or catalog URL (but never read the password).
 // The portal is meant to be started for a moment and stopped again, not left
 // running on an untrusted network.
 //
@@ -18,6 +21,7 @@
 #include <WiFi.h>
 
 #include <memory>
+#include <vector>
 
 namespace tgc {
 
@@ -94,6 +98,12 @@ private:
     void handleUploadChunk();
     void handleUploadDone();
     void handleNotFound();
+    void handleHomeWifi();
+    void handleForgetWifi();
+    void handleCatalogUrl();
+    // Remembers the nearby network names (strongest first) for the page's SSID
+    // suggestions. Runs once in begin(), before the AP starts.
+    void scanNearby();
 
     // Blocking download of `url` into /packs; true on success.
     bool doFetch(const String& url);
@@ -127,6 +137,8 @@ private:
     // on-device screen can paint "downloading..." before the loop blocks.
     String fetchPending_;
     String fetchUrl_;
+
+    std::vector<String> nearby_;  // SSIDs seen by scanNearby()
 };
 
 }  // namespace tgc
