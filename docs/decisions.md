@@ -1606,3 +1606,83 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   portrait; the 20 px kana ink fits it although its 30 px line box does not.
   `tangocho-pack preview` mirrors the rule.
 
+## 2026-10-18 – About screen and firmware version
+
+- **Why.** Before the first firmware release (v0.1.0): the packs are CC BY-SA
+  and redistribute KANJIDIC2, KanjiVG, the tanos.co.uk JLPT lists and glyphs
+  rendered from Noto Sans JP, but the device itself showed no attribution (the
+  last open item of "Attribution for redistributed data" in the roadmap); and
+  nothing told which build a device or a portal page runs.
+- **The version string.** `firmware/scripts/version.py`, a PlatformIO `pre:`
+  script on every board env: `$TGC_VERSION` if set, else `git describe --tags
+  --always --dirty --match "v[0-9]*"`, else `"dev"`; characters outside
+  `[0-9A-Za-z._+~-]` become `_`, 40 at most. The `--match` matters: the nearest
+  tag in this repo is the decks release `decks-v2`, which would otherwise name
+  firmware builds `decks-v2-9-g5be0ac9`.
+  - **One file sees it.** A global `-D` changes every compile command, so each
+    commit would rebuild the Arduino core and every library. The define goes to
+    `src/Version.cpp` only (`env.AddBuildMiddleware()`), and the rest of the
+    firmware calls `tgc::firmwareVersion()`; a new version recompiles that file
+    and relinks (checked). `Version.cpp` falls back to `"dev"` without the
+    define, and the native env never compiles it, so the pure modules and their
+    tests do not depend on it.
+  - **Per context.** Local: `git describe` (`v0.1.0-3-gabc1234-dirty`, or the
+    commit id while no `v*` tag exists). CI (`ci.yml`): the shallow checkout has
+    no tags, so the commit id. Release (`release.yml`): the firmware job exports
+    `TGC_VERSION` = the resolved tag as job env (never interpolated into a
+    script), and a new step fails the job when `strings firmware.bin` does not
+    contain it (a tag with characters the script replaces). Permissions are
+    unchanged. A manual dispatch builds the dispatched ref and labels it with
+    the input tag, as its release name already did.
+  - **Where it shows:** the first boot log line `Tangocho <version>`,
+    `"version"` first in `/api/stats` and `/api/status`, Settings › About and
+    the portal footer.
+- **Settings › About.** A 12th settings row, "About" / "Acerca de", after
+  Sleep (the group refactor of docs/ux-refresh.md moves it under `Device ›`).
+  Built-in Font0 only, so it works with no deck. Two groups:
+  - *Firmware:* "Tangochō" in the 2x font (Font0 has no "ō": a 6x2 px macron
+    is drawn over the "o", whose rows 0-1 are blank), the version, "Firmware:
+    MIT", "Decks: CC BY-SA", `github.com/dcarnicer/tangocho`.
+  - *Deck:* "Deck: <name>" ("none" with no deck) and its credits:
+    KANJIDIC2 (c) EDRDG, CC BY-SA 4.0; KanjiVG (c) Ulrich Apel, CC BY-SA 3.0,
+    only when the loaded pack has a stroke section (or no deck is loaded);
+    Jonathan Waller (tanos.co.uk), CC BY; Noto Sans JP, SIL OFL 1.1. "(c)"
+    because Font0 has no copyright sign. The strings live in `src/Credits.h`,
+    shared with the portal; labels are in the `ui()` tables (yellow, the value
+    follows on the same line).
+  - *Layout:* `ui/TextLayout.h`, pure and native-tested: wraps by code points
+    (Font0 is 6 px monospace) at spaces; U+00A0 in Credits.h keeps "CC BY-SA
+    4.0", "Ulrich Apel" or "Noto Sans JP" on one line (Font0 draws it blank);
+    a word longer than a line breaks after '/' or '-' (the URL, a long `git
+    describe`). Paging keeps a group together when it fits an empty page, and
+    everything goes on one page when it fits. Checked with a host build of the
+    same calls rendered with the vendored Font0: StickS3 portrait 1 page in
+    English (content to y = 233 of 240), 2 in Spanish; landscape 2 in both;
+    T-Display 1 in both orientations. When paged, the footer says "1/2  tap:
+    more".
+  - *Input:* as Statistics: the side button returns to the settings home; a
+    front tap turns the page (after the last, back to the first). Presses count
+    for the dim and sleep timers as on every screen.
+  - *Spanish header:* "ACERCA DE" and "lateral: atrás" (54 + 84 px) do not fit
+    135 px, so on that screen the hint moves to the footer. Other Spanish
+    headers (VELOCIDAD, ESTADISTICAS...) already overlap the hint in portrait;
+    left to the UX refresh's hint bar.
+- **The settings home scrolls in landscape.** 12 rows at the 10 px floor below
+  the 20 px top need 140 px of 135. Squeezing the top margin would fit exactly
+  once and never again, so the list shows 11 rows and follows the highlight as
+  the Get decks list does, with a 2 px scroll bar in the right margin. Portrait
+  (18 px steps) and the T-Display (12 px in landscape) still show all 12.
+- **Portal footer.** The main page ends with one small `<footer>`:
+  "Tangochō <version> · MIT-licensed firmware · Decks: CC BY-SA. Kanji data: …;
+  stroke order: …; JLPT levels: …; glyphs: …" and the repository link, from
+  the same Credits.h strings ("(c)" becomes ©). Two new PortalText strings in
+  English and Spanish; a native test checks both templates take exactly the
+  arguments passed.
+- **Accepted gap:** a pack records no list of its sources, so the device shows
+  these credits for any deck, including one built with another `--font` or
+  from WaniKani. A pack-format field (e.g. an attribution string) would fix
+  that; the published decks need none.
+- **Flash:** StickS3 1,386,965 → 1,395,241 bytes (+8.1 KB: version 0.4 KB,
+  About and TextLayout 5.9 KB, portal footer 1.8 KB), static RAM 54,148 →
+  54,156 bytes. **Not verified on hardware.**
+

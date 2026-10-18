@@ -178,6 +178,16 @@ A newer push on the same ref cancels the superseded run.
 publishes a GitHub release with those artifacts. Firmware releases carry **no
 packs**; their notes link to the decks release below.
 
+**Version.** Every firmware build carries a version string, shown under
+**Settings › About**, in the portal page's footer, as `"version"` in
+`/api/stats` and `/api/status`, and as the first boot log line
+(`Tangocho v0.1.0`). [`firmware/scripts/version.py`](firmware/scripts/version.py)
+sets it: the `TGC_VERSION` environment variable if present (the release
+workflow passes the tag), else `git describe --tags --always --dirty --match
+"v[0-9]*"` (e.g. `v0.1.0-3-gabc1234-dirty`, or just the commit id when no `v*`
+tag is reachable, as in CI's shallow checkout), else `dev`. To label a local
+build by hand: `TGC_VERSION=v0.1.0-rc1 pio run -e sticks3`.
+
 ### Flash over USB
 
 ```sh
@@ -251,7 +261,9 @@ To install a deck by hand, download a `.tgc` from that release and upload it
 from the Wi-Fi portal page (Advanced). A pack contains **KANJIDIC2** data (CC
 BY-SA 4.0) and, with `--strokes`, **KanjiVG** data (CC BY-SA 3.0), so prebuilt
 packs are licensed **CC BY-SA**. The combined attribution is in the decks release notes
-and in [docs/data-sources.md](docs/data-sources.md).
+and in [docs/data-sources.md](docs/data-sources.md); the device shows it under
+**Settings › About** (with the loaded deck's name) and the portal page in its
+footer.
 
 ## Repository layout
 
@@ -267,4 +279,7 @@ and in [docs/data-sources.md](docs/data-sources.md).
 
 Code: MIT. Generated packs contain data from KANJIDIC2 (© EDRDG, CC BY-SA 4.0)
 and glyphs from the selected font (default Noto Sans JP, © Adobe, SIL OFL
-1.1). See [docs/data-sources.md](docs/data-sources.md).
+1.1). See [docs/data-sources.md](docs/data-sources.md). On the device,
+**Settings › About** shows the firmware version and licence, the decks' licence
+and the data credits (KANJIDIC2, KanjiVG, the JLPT level lists, Noto Sans JP),
+and the Wi-Fi portal page repeats them in its footer.
