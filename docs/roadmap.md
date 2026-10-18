@@ -237,8 +237,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       five groups, Study and Device pages with the Auto-advance and Hold time
       pickers), the deck list from pack headers, and the date, stats, done,
       Get decks, Wi-Fi portal, About and error screens in the flat style.
-      Phases 2 and 3 are integrated on `integrate/ux-round2`, not yet verified
-      on hardware.
+      Phases 1-3 are on `main`, checked on the StickS3 (2026-10-18). Left:
+      phase 5 polish (kanji fade-in, maybe slides).
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
       (picking an option on the device takes longer than in Anki).
 - [ ] **Learning mode** (idea, 2026-10-18). A mode for learning kanji, not

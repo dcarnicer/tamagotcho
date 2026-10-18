@@ -3,8 +3,8 @@
 > **Status: approved with changes (2026-10-18).** Phase 1 (foundations, with
 > the UI font of Phase 4) is on `main` and verified on the StickS3; Phase 2
 > (quiz, feedback, detail card) and Phase 3 (the settings tree and the
-> secondary screens) are implemented and integrated on `integrate/ux-round2`,
-> not yet verified on hardware. See §4. Section 6 records the maintainer's
+> secondary screens) are on `main` too and were checked on the StickS3 the
+> same day. See §4. Section 6 records the maintainer's
 > answers; where they differ from §2–§4 (flat corners, the UI font, the side
 > tap, the date's group), §6 wins.
 
@@ -497,8 +497,8 @@ Settings                     header: "SETTINGS" · date · battery
   drawn, instead of Klee One), paged by a tap. It moves under `Device ›` with
   the group refactor. See docs/decisions.md, "About screen and firmware
   version".
-- **Status of the tree (2026-10-18, `feature/ux-settings`; not yet verified
-  on hardware).** Implemented as amended by §6.6: the summary card and Decks ›
+- **Status of the tree (2026-10-18, `feature/ux-settings`; verified on the
+  StickS3).** Implemented as amended by §6.6: the summary card and Decks ›
   (count), Study › (`10/day`: New per day, Hard after, Auto-advance), Stats ›
   (accuracy), Wi-Fi › (`off`: the existing submenu) and Device › (Orientation,
   Brightness, Language, Hold time, Date ›, Sleep, About ›); "Continue" is gone.
@@ -531,7 +531,7 @@ portrait/landscape working.
 - Timing: under `TGC_QUIZ_LOG`, log `micros()` around each `draw*` and
   `present()`.
 
-*Status (2026-10-18, `feature/ui-foundation`; not yet verified on hardware).*
+*Status (2026-10-18, `feature/ui-foundation`; verified on the StickS3).*
 Delivered:
 - `ui/Theme.h` (the §2.2 tokens, gutter 4, gap 2, radius 0, `layoutFor(w, h)`
   for 135×240, 240×135, 170×320 and a derived 320×170), `ui/Icons.h` (the
@@ -574,7 +574,7 @@ docs/decisions.md, "UX refresh phase 1: UI font, widgets, scrolling menus".
 - `drawDetail`: picked option, ghost kanji + stroke counter, `ON`/`KUN` pills,
   and an animation redraw limited to the kanji box.
 
-*Status (2026-10-18, `feature/ux-quiz`; not yet verified on hardware).*
+*Status (2026-10-18, `feature/ux-quiz`; verified on the StickS3).*
 Delivered:
 - Quiz header: the mode pill (`MEANING`/`SIGNIFICADO` in `accent-hi`, `ON` or
   `KUN` in `mode-reading`, `KANJI` in `mode-kanji`), the cards left
@@ -636,7 +636,7 @@ conflicts).**
   done on `feature/portal-home-wifi`, see §3.)*
 - New `UiStrings` entries in en/es, and `menuRows[10]` removed.
 
-*Status (2026-10-18, `feature/ux-settings`; not yet verified on hardware).*
+*Status (2026-10-18, `feature/ux-settings`; verified on the StickS3).*
 Delivered:
 - The §3 tree as amended by §6.6 (see §3's status): summary card, five groups
   with values, the Study and Device pages, the Auto-advance and Hold time
