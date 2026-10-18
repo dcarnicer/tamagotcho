@@ -684,3 +684,18 @@ Short log of non-obvious choices. Newest last.
   `sticks3-dev` env turns it on.
 - The quiz header re-reads the battery every 30 s and redraws when it changed.
 - `docs/srs.md` §5 described a boot rule the code no longer had; rewritten.
+
+## 2026-10-18 – UX refresh: generated mockups, proposal first
+
+- The UX refresh starts as a **proposal** (`docs/ux-refresh.md`), not code: an
+  audit of every screen, design tokens, a type scale, components, a regrouped
+  settings tree and a phased plan, all awaiting the maintainer's approval.
+- **Mockups are generated, not drawn.** `tools/ux-mockups/render.py` runs in the
+  pack builder's environment and reuses its `FontRenderer`, Font0 table and
+  KanjiVG rasteriser. "Before" screens are line-by-line ports of the `draw*`
+  functions in `main.cpp`, rendered in RGB565 with `blend565`, so the audit's
+  numbers (row heights, fallbacks to the 6×8 font) come from the real layout
+  code, not from screenshots. Output is deterministic; the PNGs (native + 3x +
+  a contact sheet, ~0.6 MB) are committed so the proposal can be reviewed
+  without a device. The script is not part of the builder and does not change
+  its behaviour.
