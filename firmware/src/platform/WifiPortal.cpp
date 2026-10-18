@@ -13,6 +13,7 @@
 #include "platform/NetFetch.h"
 #include "portal/PortalLogic.h"
 #include "portal/PortalText.h"
+#include "srs/TimeZone.h"
 #include "Credits.h"
 #include "Version.h"
 
@@ -173,6 +174,19 @@ String sanitizeZone(const String& in) {
     return in;
 }
 
+// A POSIX TZ rule from the page ("<+01>-1<+02>,M3.5.0,M10.5.0/3"): at most
+// kTzRuleMaxLen characters out of letters, digits and < > + - , . / :, else
+// "". The app parses it (srs/TimeZone).
+String sanitizeTzRule(const String& in) {
+    if (in.length() > tgc::kTzRuleMaxLen) return String();
+    for (size_t i = 0; i < in.length(); ++i) {
+        const char c = in[i];
+        const bool ok = isalnum(static_cast<unsigned char>(c)) || std::strchr("<>+-,./:", c);
+        if (!ok || c == '\0') return String();
+    }
+    return in;
+}
+
 // A BCP 47 tag such as "es-ES": letters, digits and '-' only, at most 15.
 String sanitizeLangTag(const String& in) {
     String out;
@@ -185,10 +199,14 @@ String sanitizeLangTag(const String& in) {
 
 // Posts the browser's clock to /time once per page load (docs/srs.md section
 // 5.1) and shows the device's answer in #clk and the stats date (#dt). The
-// localised messages come from #clk's data attributes.
+// localised messages come from #clk's data attributes. Besides the offset of
+// the moment (`tz`) it sends the zone as a POSIX TZ rule (`tzr`, kTzRuleJs,
+// which closes the script) so the device follows daylight-saving changes; an
+// error there sends none and the offset alone still works.
 const char kTimeScript[] = R"JS(<script>
-(function(){var d=new Date(),z='',e=document.getElementById('clk');
+(function(){var d=new Date(),z='',r='',e=document.getElementById('clk');
 try{z=Intl.DateTimeFormat().resolvedOptions().timeZone||''}catch(_){}
+try{r=tzr(d.getTime())}catch(_){}
 var x=new XMLHttpRequest();x.open('POST','/time');
 x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
 x.onload=function(){if(x.status!=200){e.textContent=e.dataset.bad;return}
@@ -196,7 +214,45 @@ e.textContent=e.dataset.ok+x.responseText+(z?' ('+z+')':'');
 var t=document.getElementById('dt'),n=document.getElementById('dtn');
 if(t)t.textContent=x.responseText;if(n)n.textContent=''};
 x.onerror=function(){e.textContent=e.dataset.err};
-x.send('ms='+d.getTime()+'&tz='+(-d.getTimezoneOffset())+'&zone='+encodeURIComponent(z))})();
+x.send('ms='+d.getTime()+'&tz='+(-d.getTimezoneOffset())+'&zone='+encodeURIComponent(z)+
+'&tzr='+encodeURIComponent(r))})();
+)JS";
+
+// tzr(now): the browser's time zone as a POSIX TZ rule, from the browser's own
+// tzdata through getTimezoneOffset(). It finds this year's offset changes (a
+// probe a day, then a binary search to the minute); none, or anything but one
+// change each way, gives the fixed rule of the current offset ("<+09>-9").
+// Otherwise the lower offset is standard time and each change is written as
+// Mm.w.d/time in the local time before it, choosing among the readings of that
+// instant (the day itself, the day before at 24:00+, the day after at a
+// negative time; the nth weekday, or "the last" when it falls in the month's
+// last seven days) the one that also gives most of the next five years'
+// changes. Names are numeric ("<+01>", "<-0330>"); one hour of daylight time
+// leaves its offset implicit. scripts/check_tz_rules.py runs this function
+// under Node for many zones and checks the rules against tzdata.
+const char kTzRuleJs[] = R"JS(function tzr(now){var D=864e5,M=6e4,y=new Date(now).getUTCFullYear(),a,c,F=[],i,s,d,u;
+function off(t){return -new Date(t).getTimezoneOffset()}
+function p2(n){return(n<10?'0':'')+n}
+function nm(o){var a=Math.abs(o);return'<'+(o<0?'-':'+')+p2(a/60|0)+(a%60?p2(a%60):'')+'>'}
+function po(o){var a=Math.abs(o);return(o>0?'-':'')+(a/60|0)+(a%60?':'+p2(a%60):'')}
+function tr(y){var r=[],t=Date.UTC(y,0,1),b=Date.UTC(y+1,0,1),o=off(t),q,l,h,m;
+for(;t<b;t+=D){q=off(t+D);if(q!=o){l=t;h=t+D;while(h-l>M){m=l+Math.floor((h-l)/2/M)*M;if(off(m)==o)l=m;else h=m}r.push([h,o,q]);o=q}}return r}
+function at(r,y,o){var f=new Date(Date.UTC(y,r[0],1)).getUTCDay(),n=new Date(Date.UTC(y,r[0]+1,0)).getUTCDate(),d=1+(r[2]-f+7)%7+(r[1]-1)*7;
+while(d>n)d-=7;return Date.UTC(y,r[0],d)+r[3]*1e3-o*M}
+function tm(s){return s==7200?'':'/'+(s<0?'-':'')+(Math.abs(s)/3600|0)+(s%3600?':'+p2(Math.abs(s)/60%60|0):'')}
+a=tr(y);c=off(now);
+if(a.length!=2||a[0][1]!=a[1][2]||a[0][2]!=a[1][1])return nm(c)+po(c);
+for(i=1;i<6;i++)F.push(tr(y+i));
+s=Math.min(a[0][1],a[0][2]);d=s==a[0][1]?a[0][2]:a[0][1];u=nm(s)+po(s)+nm(d)+(d-s==60?'':po(d));
+[s,d].forEach(function(o){var x=a[0][1]==o?a[0]:a[1],L=x[0]+o*M,b,top=-1;
+[0,-1,1].forEach(function(k){var l=new Date(L+k*D),m=l.getUTCMonth(),e=l.getUTCDate(),
+n=new Date(Date.UTC(l.getUTCFullYear(),m+1,0)).getUTCDate(),w=[Math.floor((e-1)/7)+1];
+if(e+7>n)w.unshift(5);
+w.forEach(function(v){var r=[m,v,l.getUTCDay(),L%D/1e3-k*86400],h=0;
+F.forEach(function(f,j){f.forEach(function(z){if(z[1]==o&&z[0]==at(r,y+j+1,o))h++})});
+if(h>top){top=h;b=r}})});
+u+=',M'+(b[0]+1)+'.'+b[1]+'.'+b[2]+tm(b[3])});
+return u}
 </script>)JS";
 
 // Escape a string for a JSON value (quotes, backslashes and control chars).
@@ -736,6 +792,7 @@ void WifiPortal::handleRoot() {
     }
     h += pageFooter(t);
     h += kTimeScript;
+    h += kTzRuleJs;
     h += "</body></html>";
     server_->send(200, "text/html", h);
 }
@@ -1165,10 +1222,12 @@ void WifiPortal::handleStatus() {
 }
 
 // POST /time, form fields `ms` (the browser's Date.now()), `tz` (minutes east of
-// UTC, -getTimezoneOffset()) and an optional `zone` (IANA name, message only).
-// The page posts it on every load; posting the same clock again is harmless.
-// The portal only checks the syntax: whether the time is plausible, and what it
-// means for the SRS day, is the app's call (hooks_.onTime, docs/srs.md 5.1).
+// UTC, -getTimezoneOffset()), an optional `zone` (IANA name, for messages and
+// the device's "From phone" row) and an optional `tzr` (the zone as a POSIX TZ
+// rule, see kTzRuleJs; pages from before it send none). The page posts it on
+// every load; posting the same clock again is harmless. The portal only checks
+// the syntax: whether the time and the rule are plausible, and what they mean
+// for the SRS day, is the app's call (hooks_.onTime, docs/srs.md 5.1).
 void WifiPortal::handleTime() {
     int64_t ms = 0, tz = 0;
     if (!parseDecimal(server_->arg("ms"), &ms) || !parseDecimal(server_->arg("tz"), &tz) ||
@@ -1176,17 +1235,19 @@ void WifiPortal::handleTime() {
         server_->send(400, "text/plain", "bad time");
         return;
     }
-    if (!hooks_.onTime || !hooks_.onTime(ms, static_cast<int16_t>(tz))) {
+    const String zone = sanitizeZone(server_->arg("zone"));
+    const String rule = sanitizeTzRule(server_->arg("tzr"));
+    if (!hooks_.onTime ||
+        !hooks_.onTime(ms, static_cast<int16_t>(tz), rule.c_str(), zone.c_str())) {
         setMsg("browser clock rejected");
         server_->send(400, "text/plain", "time rejected");
         return;
     }
     PortalStats st;
     if (hooks_.fillStats) hooks_.fillStats(st);
-    const String zone = sanitizeZone(server_->arg("zone"));
     if (!deckInFlight()) setMsg("date set %s%s%s", st.date, zone.length() ? " " : "", zone.c_str());
-    Serial.printf("[wifi] date from browser: %s (tz %+d min %s)\n", st.date, (int)tz,
-                  zone.c_str());
+    Serial.printf("[wifi] date from browser: %s (tz %+d min, zone %s, rule %s)\n", st.date,
+                  (int)tz, zone.length() ? zone.c_str() : "-", rule.length() ? rule.c_str() : "-");
     server_->send(200, "text/plain", st.date);
 }
 

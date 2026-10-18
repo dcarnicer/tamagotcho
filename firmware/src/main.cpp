@@ -79,8 +79,8 @@ struct UiStrings {
     const char* appName;  // error screen title bar
     const char* settingsTitle;
     const char* decksTitle;
-    // continue, decks, date, new/day, speed, stats, wifi (a submenu), orientation,
-    // language, brightness, sleep, about
+    // continue, decks, date (a submenu), new/day, speed, stats, wifi (a submenu),
+    // orientation, language, brightness, sleep, about
     const char* menuRows[12];
     const char* newPerDayTitle;
     const char* speedTitle;
@@ -95,14 +95,29 @@ struct UiStrings {
     const char* dateToday;     // label of the proposed date
     const char* dateOneDay;    // "+1 day"
     const char* dateDaysFmt;   // "+%u days" (0 and 2 and up)
-    const char* dateHintTap;   // what a tap / hold of the front button does
-    const char* dateHintSide;  // what a side-button hold does
+    // The stepper's button hints, packed into as few 1x lines as the width
+    // allows (drawDate()): front tap, front hold, side hold, side tap.
+    const char* dateHints[4];
     const char* weekdays[7];   // short names, Sunday first
-    // Date screen status line while (or after) the boot-time question tries the
-    // network time over the home Wi-Fi. 1x font, two lines in portrait.
-    const char* dateSyncingFmt;  // %s = home Wi-Fi name
+    // The boot-time question tries the network time first (docs/srs.md 5.1):
+    // a 2x title (words of at most 10 characters), the network in the 1x font
+    // and the hint that a tap gives up and sets the date by hand.
+    const char* dateNetTitle;
+    const char* dateNetViaFmt;  // %s = home Wi-Fi name
+    const char* dateNetHint;
+    // Stepper status line when that failed. 1x font, two lines in portrait.
     const char* dateNoNetwork;   // could not join
     const char* dateNoTime;      // joined, but no (plausible) time came back
+    // Settings > Date: the submenu (rows by drawRow(), 1x when long) and the
+    // time zone list (1x rows: a city and its offsets, see drawTzList()).
+    const char* dateMenuRows[2];  // "Date: %s" (the date), "Zone: %s" (a city)
+    const char* tzNone;           // the zone row's value when no zone is known
+    const char* tzTitle;          // header (ASCII)
+    const char* tzFromPhone;      // first row: the zone the portal page last sent
+    const char* tzSummerFmt;      // footer: "UTC+1, summer UTC+2"
+    const char* tzPhoneNone;      // footer of "From phone" when the page never sent one
+    const char* tzHoldHint;
+    const char* tzSaved;          // Date submenu note after a choice
     const char* doneBadge;
     // Font0 is 6 px/char and each done-screen line is centred on the 135 px
     // portrait width, so every done line must stay short (about 21 chars).
@@ -245,13 +260,17 @@ struct UiStrings {
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS",
-    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi »", "Orientation",
+    {"Continue", "Decks", "Date »", "New/day", "Speed", "Statistics", "Wi-Fi »", "Orientation",
      "Language", "Brightness", "Sleep", "About"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
-    "DATE", "last used", "today", "+1 day", "+%u days", "tap +1  hold: OK", "side hold: -1",
+    "DATE", "last used", "today", "+1 day", "+%u days",
+    {"tap: +1 day", "hold: OK", "side hold: -1 day", "side: cancel"},
     {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
-    "Syncing via %s...", "No network: set it by hand", "No network time: set it by hand",
+    "Getting the date", "via %s...", "tap: set it by hand",
+    "No network: set it by hand", "No network time: set it by hand",
+    {"Date: %s", "Zone: %s"}, "none", "TIME ZONE", "From phone", "%s, summer %s",
+    "open the web portal", "hold: choose", "Time zone saved",
     "DONE", "All reviewed for now", "day %u  %u cards", "due %u  new %u", "tap/hold: +10 new",
     "side hold: menu",
     "  %u/%u",
@@ -295,13 +314,17 @@ const UiStrings kUiEn = {
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS",
-    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi »", "Orientacion",
+    {"Seguir", "Mazos", "Fecha »", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi »", "Orientacion",
      "Idioma", "Brillo", "Suspender", "Acerca de"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
-    "FECHA", "último uso", "hoy", "+1 día", "+%u días", "toque +1  larga: OK", "lateral larga: -1",
+    "FECHA", "último uso", "hoy", "+1 día", "+%u días",
+    {"toque: +1 día", "larga: OK", "lateral larga: -1 día", "lateral: cancelar"},
     {"dom", "lun", "mar", "mié", "jue", "vie", "sáb"},
-    "Sincronizando vía %s...", "Sin red: ajústala a mano", "Sin hora de red: ajústala a mano",
+    "Obteniendo la fecha", "de %s...", "toque: ponerla a mano",
+    "Sin red: ajústala a mano", "Sin hora de red: ajústala a mano",
+    {"Fecha: %s", "Zona: %s"}, "ninguna", "ZONA HORARIA", "Del móvil", "%s, verano %s",
+    "abre el portal web", "larga: elegir", "Zona horaria guardada",
     "FIN", "Todo repasado", "dia %u  %u tarjetas", "vencen %u  nuevas %u",
     "toque/larga: +10", "lateral: menu",
     "  %u/%u",
@@ -400,7 +423,7 @@ uint16_t gExtraNewDay = 0;
 
 enum class Screen {
     Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks, WifiMenu, NetTest, About,
-    FirstLang
+    FirstLang, DateMenu, TzList
 };
 // Screen::Choice is shared by the row pickers (see openChoice()).
 enum class Choice { NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi };
@@ -412,20 +435,37 @@ uint16_t gBootDay = 0;    // persisted day index at boot: "last used" on the dat
 // A real wall-clock time was applied since boot (applyWallClock), so the
 // power-cut date question is not needed.
 bool gWallClockSynced = false;
-// NVS `tangocho`/`tz`: the UTC offset of the last wall-clock sync, in minutes
-// east of UTC (int16). Absent until the first sync; reused by the NTP sync,
-// which only yields UTC (docs/srs.md section 5.1).
+// The time zone (docs/srs.md section 5.1), in NVS `tangocho`:
+// - `tzr` (string): the POSIX TZ rule the portal page last sent, `tzn` its IANA
+//   name ("" when the page sent none);
+// - `tz` (int16): the UTC offset in minutes east the page last sent; the only
+//   zone a page from before the rule left, read as a fixed rule then;
+// - `tzm` (string): the IANA name of a zone chosen by hand from kTzZones
+//   (Settings > Date > Time zone). It wins while set; the next page visit that
+//   sends a zone removes it.
+// NTP yields UTC only, so without a zone the network time is not used.
 constexpr const char* kPrefTz = "tz";
+constexpr const char* kPrefTzRule = "tzr";
+constexpr const char* kPrefTzName = "tzn";
+constexpr const char* kPrefTzManual = "tzm";
+tgc::TzRule gTz;                // the zone in use (valid while gTzKnown)
+bool gTzKnown = false;
+bool gTzManual = false;         // gTz came from Settings > Date > Time zone
+char gTzName[48] = "";          // its IANA name, "" when unknown
+char gTzRuleText[tgc::kTzRuleMaxLen + 1] = "";
+tgc::TzRule gPhoneTz;           // the zone the page last sent (the "From phone" row)
+bool gPhoneTzKnown = false;
+char gPhoneTzName[48] = "";
 // NTP over the home Wi-Fi gets this long once the network is up.
 constexpr uint32_t kNtpTimeoutMs = 3000;
 // Network time for the boot-time date question (docs/srs.md section 5.1): with a
-// home Wi-Fi and an offset saved, the date screen joins in the background and
-// asks NTP; the manual answer works meanwhile and is the fallback. Tried once
-// per boot. The radio (gHome, shared with Get decks, which cannot be opened from
-// this screen) is on only while Joining; the other states are the status line.
+// home Wi-Fi and a time zone known, the date screen first joins and asks NTP,
+// on a screen of its own ("Getting the date via ...", a tap gives up); the
+// stepper follows only when that fails or is skipped. Tried once per boot. The
+// radio (gHome, shared with Get decks, which cannot be opened from this screen)
+// is on only while Joining; the other states are the stepper's status line.
 enum class DateSync : uint8_t { None, Joining, NoNetwork, NoTime };
 DateSync gDateSync = DateSync::None;
-int16_t gDateSyncTz = 0;  // the saved offset the sync will apply
 std::vector<String> gPacks;  // paths of the *.tgc files in /packs
 int gMenuSel = 0;            // highlighted row on the settings home
 int gDeckSel = 0;            // highlighted row on the deck list
@@ -486,7 +526,7 @@ enum class NetTestStep : uint8_t { NoNetwork, Joining, Checking, Done, Failed };
 NetTestStep gTestStep = NetTestStep::NoNetwork;
 String gTestIp;
 int gTestRssi = 0;
-int gTestTime = -1;            // network time: -1 not tried (no offset saved), 0 failed, 1 ok
+int gTestTime = -1;            // network time: -1 not tried (no time zone), 0 failed, 1 ok
 char gTestCatalog[64] = "";
 uint16_t gTestCatalogColor = 0;
 char gTestFail[48] = "";
@@ -701,6 +741,7 @@ void netSyncClock();
 void openDecks();
 void openGetDecks(bool fromBoot);
 void openPortal(PortalMode mode);
+void openDateMenu(bool fresh);
 tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e);
 
 // The card of the question on screen. False when there is none to draw or
@@ -1137,8 +1178,9 @@ void formatDate(uint16_t day, char* out, size_t n) {
 // Date screen (docs/srs.md section 5, power-cut rule): the last-used date and a
 // proposed "today" that starts at the current day. A tap adds a day, a side
 // hold takes one back (never below the current day: the index does not
-// rewind), a hold confirms. Asked on a power-on boot (the side tap skips it) and
-// opened from the settings home for manual corrections.
+// rewind), a hold confirms, a side tap cancels. Asked on a power-on boot (where
+// the network time comes first when it can, see dateSyncBegin()) and opened
+// from Settings > Date for manual corrections.
 uint16_t dateTarget() {
     const uint32_t t = static_cast<uint32_t>(gSrs.today()) + gDateSteps;
     return t > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(t);
@@ -1155,6 +1197,42 @@ void openDate(Screen after) {
     drawScreen();
 }
 
+// The stepper's button hints packed greedily into lines that fit `w` (two
+// spaces between hints): two lines in English landscape, three or four in the
+// 135 px portrait. Returns the line count.
+int dateHintLines(char (*out)[64], int maxLines, int w) {
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    int n = 0;
+    out[0][0] = 0;
+    for (const char* h : ui().dateHints) {
+        char joined[64];
+        snprintf(joined, sizeof joined, "%s  %s", out[n], h);
+        if (out[n][0] && gRender.textWidth(joined, kSmall) <= w) {
+            snprintf(out[n], sizeof out[n], "%s", joined);
+        } else {
+            if (out[n][0] && n + 1 < maxLines) ++n;
+            snprintf(out[n], sizeof out[n], "%s", h);
+        }
+    }
+    return n + 1;
+}
+
+// The boot-time question's network attempt (gDateSync == Joining): what it is
+// doing, over which network, and that a tap gives up and shows the stepper.
+void drawDateNet() {
+    auto& d = *gCanvas;
+    constexpr uint8_t kBig = tgc::Renderer::kTextBuiltin;
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    const int w = W - 4;
+    char line[64];
+    const int top = H / 2 - (H > W ? 52 : 40);
+    gRender.drawCentred(d, ui().dateNetTitle, 2, top, w, 40, 2, kYellow, kBlack, kBig);
+    snprintf(line, sizeof line, ui().dateNetViaFmt, gHome.ssid());
+    gRender.drawCentred(d, line, 2, top + 44, w, 20, 2, kWhite, kBlack, kSmall);
+    gRender.drawCentred(d, ui().dateNetHint, 2, H - 12, w, 10, 1, kWhite, kBlack, kSmall);
+    present();
+}
+
 // Labels share a line with their value when it fits (landscape), else sit above
 // it; the proposed date is one 2x line when it fits, else weekday over date.
 // All text uses the built-in font so accented Spanish renders.
@@ -1163,6 +1241,10 @@ void drawDate() {
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, ui().dateTitle, 3, 3, kWhite, kGrey);
+    if (gDateSync == DateSync::Joining) {
+        drawDateNet();
+        return;
+    }
 
     constexpr uint8_t kBig = tgc::Renderer::kTextBuiltin;
     constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
@@ -1212,25 +1294,206 @@ void drawDate() {
     gRender.drawCentred(d, line, 2, y, w, 18, 1, kYellow, kBlack,
                         gRender.textWidth(line, kBig) <= w ? kBig : kSmall);
 
-    // The network-time sync of the boot-time question, right above the hints
-    // (one line in landscape, where the space above is taken).
-    if (gDateSync != DateSync::None) {
-        const char* status = line;
-        uint16_t color = kGreen;
-        if (gDateSync == DateSync::Joining) {
-            snprintf(line, sizeof line, ui().dateSyncingFmt, gHome.ssid());
-        } else {
-            status = gDateSync == DateSync::NoNetwork ? ui().dateNoNetwork : ui().dateNoTime;
-            color = kYellow;
-        }
+    // Button hints along the bottom, both directions spelled out.
+    char hints[4][64];
+    const int hintLines = dateHintLines(hints, 4, w);
+    const int hintTop = H - 11 * hintLines;
+    for (int i = 0; i < hintLines; ++i)
+        gRender.drawCentred(d, hints[i], 2, hintTop + 11 * i, w, 10, 1, kWhite, kBlack, kSmall);
+
+    // Why the boot-time question is asked by hand after all (the network time
+    // failed), right above the hints: two lines in portrait, one in landscape,
+    // where the space above is taken.
+    if (gDateSync == DateSync::NoNetwork || gDateSync == DateSync::NoTime) {
+        const char* status = gDateSync == DateSync::NoNetwork ? ui().dateNoNetwork : ui().dateNoTime;
         const int lines = H > W ? 2 : 1;
-        gRender.drawCentred(d, status, 2, H - 24 - lines * 10, w, lines * 10, lines, color, kBlack,
-                            kSmall);
+        gRender.drawCentred(d, status, 2, hintTop - 2 - lines * 10, w, lines * 10, lines, kYellow,
+                            kBlack, kSmall);
+    }
+    present();
+}
+
+// --- Settings > Date ---------------------------------------------------------
+
+// "+1", "-3", "+5:30", "0": one offset for the zone list's right column.
+void formatOffsetShort(int offsetMin, char* out, size_t n) {
+    if (offsetMin == 0) {
+        snprintf(out, n, "0");
+        return;
+    }
+    const int a = offsetMin < 0 ? -offsetMin : offsetMin;
+    if (a % 60)
+        snprintf(out, n, "%c%d:%02d", offsetMin < 0 ? '-' : '+', a / 60, a % 60);
+    else
+        snprintf(out, n, "%c%d", offsetMin < 0 ? '-' : '+', a / 60);
+}
+
+// A zone's offsets: "+1/+2" (short) or "UTC+1, summer UTC+2" (footer); one
+// offset alone without daylight time.
+void tzOffsets(const tgc::TzRule& r, bool longForm, char* out, size_t n) {
+    char a[16], b[16];
+    if (longForm) {
+        tgc::formatUtcOffset(r.stdOffsetSec / 60, a, sizeof a);
+        tgc::formatUtcOffset(r.dstOffsetSec / 60, b, sizeof b);
+    } else {
+        formatOffsetShort(r.stdOffsetSec / 60, a, sizeof a);
+        formatOffsetShort(r.dstOffsetSec / 60, b, sizeof b);
+    }
+    if (!r.hasDst)
+        snprintf(out, n, "%s", a);
+    else if (longForm)
+        snprintf(out, n, ui().tzSummerFmt, a, b);
+    else
+        snprintf(out, n, "%s/%s", a, b);
+}
+
+// The zone in use for the Date submenu: its city, else its offset (an old page
+// left only that), else "none".
+void currentZoneLabel(char* out, size_t n) {
+    if (!gTzKnown)
+        snprintf(out, n, "%s", ui().tzNone);
+    else if (gTzName[0])
+        tgc::tzZoneCity(gTzName, out, n);
+    else
+        tgc::formatUtcOffset(gTz.stdOffsetSec / 60, out, n);
+}
+
+// Settings > Date: the date (the stepper) and the time zone (the list), in the
+// Wi-Fi submenu's look. The side button goes back to the settings home.
+constexpr int kDateMenuRows = 2;
+int gDateMenuSel = 0;
+char gDateMenuNote[48] = "";
+uint16_t gDateMenuNoteColor = 0;
+
+void drawDateMenu() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, ui().dateTitle, 3, 3, kWhite, kGrey);
+
+    const int top = 20;
+    const int noteH = 12;
+    int step = 36;
+    if (top + step * kDateMenuRows > H - noteH) step = (H - noteH - top - 2) / kDateMenuRows;
+    const int rowH = step - 4 < 32 ? step - 4 : 32;
+    char date[16], zone[48], rows[kDateMenuRows][64];
+    formatDate(gSrs.today(), date, sizeof date);
+    currentZoneLabel(zone, sizeof zone);
+    snprintf(rows[0], sizeof rows[0], ui().dateMenuRows[0], date);
+    snprintf(rows[1], sizeof rows[1], ui().dateMenuRows[1], zone);
+    for (int i = 0; i < kDateMenuRows; ++i)
+        drawRow(d, rows[i], top + i * step, rowH, i == gDateMenuSel);
+    if (gDateMenuNote[0])
+        gRender.drawCentred(d, gDateMenuNote, 2, H - noteH + 1, W - 4, 10, 1, gDateMenuNoteColor,
+                            kBlack, tgc::Renderer::kTextBuiltinSmall);
+    present();
+}
+
+// Settings > Date > Time zone: "From phone" (the zone the portal page last
+// sent), then tgc::kTzZones. Row 0 is "From phone", row i is kTzZones[i - 1].
+int gTzSel = 0;
+int tzListRows() { return 1 + static_cast<int>(tgc::kTzZoneCount); }
+
+// The row of the zone in use: the list entry chosen by hand, else "From phone".
+int tzCurrentRow() {
+    if (gTzManual)
+        for (size_t i = 0; i < tgc::kTzZoneCount; ++i)
+            if (std::strcmp(tgc::kTzZones[i].name, gTzName) == 0) return static_cast<int>(i) + 1;
+    return 0;
+}
+
+// One 1x row: `left` and a right-aligned `right`, the zone in use in green.
+// "From phone" keeps its label and cuts the city; a zone keeps its offsets and
+// cuts the city.
+void drawTzRow(lgfx::LovyanGFX& d, int y, int rowH, bool sel, bool current, const char* left,
+               const char* right, bool cutRight) {
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    const uint16_t bg = sel ? kHighlight : kBlack;
+    d.fillRoundRect(1, y, W - 4, rowH - 2, 4, bg);
+    if (sel) d.drawRoundRect(1, y, W - 4, rowH - 2, 4, kWhite);
+    const uint16_t fg = current ? kGreen : kWhite;
+    const int ty = y + (rowH - 2 - 8) / 2;
+    const int room = (W - 7) - 4 - 6;  // from x = 4 to W - 7, a 6 px gap between the columns
+    String l = left, r = right;
+    auto cut = [](String& s, int maxW) {
+        if (gRender.textWidth(s.c_str(), kSmall) <= maxW) return;
+        while (s.length() > 1 && gRender.textWidth((s + "..").c_str(), kSmall) > maxW)
+            s.remove(s.length() - 1);
+        s += "..";
+    };
+    if (cutRight)
+        cut(r, room - gRender.textWidth(l.c_str(), kSmall));
+    else
+        cut(l, room - gRender.textWidth(r.c_str(), kSmall));
+    // The renderer's built-in font, so "Del móvil" keeps its accent.
+    gRender.drawText(d, l.c_str(), 4, ty, fg, bg, kSmall);
+    gRender.drawText(d, r.c_str(), W - 7 - gRender.textWidth(r.c_str(), kSmall), ty, fg, bg, kSmall);
+}
+
+void drawTzList() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, ui().tzTitle, 3, 3, kWhite, kGrey);
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+
+    const int footY = H - 22;
+    const int top = 18;
+    const int rowH = H >= 200 ? 18 : 15;
+    const int n = tzListRows();
+    int visible = (footY - 2 - top) / rowH;
+    if (visible < 1) visible = 1;
+    if (visible > n) visible = n;
+    const int first = gTzSel >= visible ? gTzSel - visible + 1 : 0;
+    const int current = tzCurrentRow();
+    char right[48];
+    for (int i = first; i < first + visible; ++i) {
+        const int y = top + (i - first) * rowH;
+        if (i == 0) {
+            if (gPhoneTzName[0])
+                tgc::tzZoneCity(gPhoneTzName, right, sizeof right);
+            else if (gPhoneTzKnown)
+                tgc::formatUtcOffset(gPhoneTz.stdOffsetSec / 60, right, sizeof right);
+            else
+                snprintf(right, sizeof right, "-");
+            drawTzRow(d, y, rowH, i == gTzSel, i == current, ui().tzFromPhone, right, true);
+            continue;
+        }
+        const tgc::TzZone& z = tgc::kTzZones[i - 1];
+        tgc::TzRule r;
+        right[0] = 0;
+        if (tgc::parseTzRule(z.rule, &r)) tzOffsets(r, false, right, sizeof right);
+        char city[40];
+        tgc::tzZoneCity(z.name, city, sizeof city);
+        drawTzRow(d, y, rowH, i == gTzSel, i == current, city, right, false);
+    }
+    // A scroll bar in the right margin, as on the settings home.
+    if (visible < n) {
+        const int trackH = visible * rowH - 2;
+        int thumbH = trackH * visible / n;
+        if (thumbH < 6) thumbH = 6;
+        const int thumbY = top + (trackH - thumbH) * first / (n - visible);
+        d.fillRect(W - 2, top, 2, trackH, kGrey);
+        d.fillRect(W - 2, thumbY, 2, thumbH, kWhite);
     }
 
-    // Button hints along the bottom.
-    gRender.drawCentred(d, ui().dateHintTap, 2, H - 22, w, 10, 1, kWhite, kBlack, kSmall);
-    gRender.drawCentred(d, ui().dateHintSide, 2, H - 11, w, 10, 1, kWhite, kBlack, kSmall);
+    // Footer: the selection's offsets (or how to get the phone's zone), then
+    // what a hold does.
+    char line[64];
+    uint16_t color = kWhite;
+    tgc::TzRule r;
+    if (gTzSel == 0 && gPhoneTzKnown) {
+        tzOffsets(gPhoneTz, true, line, sizeof line);
+    } else if (gTzSel == 0) {
+        snprintf(line, sizeof line, "%s", ui().tzPhoneNone);
+        color = kYellow;
+    } else if (tgc::parseTzRule(tgc::kTzZones[gTzSel - 1].rule, &r)) {
+        tzOffsets(r, true, line, sizeof line);
+    } else {
+        line[0] = 0;
+    }
+    gRender.drawCentred(d, line, 2, footY + 1, W - 4, 10, 1, color, kBlack, kSmall);
+    gRender.drawCentred(d, ui().tzHoldHint, 2, footY + 11, W - 4, 10, 1, kWhite, kBlack, kSmall);
     present();
 }
 
@@ -1941,12 +2204,14 @@ void showDetail() {
     drawDetail();
 }
 
-// The boot-time question has its answer (from the user or from the network
-// time): a join still in progress stops, radio off, and the status line goes.
+// The boot-time question's network attempt ends without an answer from it:
+// a join still in progress stops, radio off, and the status line goes. Called
+// when the question is answered (by hand or by the network time) and when a
+// press on the "Getting the date" screen skips to the stepper.
 void dateSyncCancel() {
     if (gDateSync == DateSync::Joining) {
         netRadioOff();
-        Serial.printf("clock: network time cancelled, answered by hand\n");
+        Serial.printf("clock: network time skipped, set by hand\n");
     }
     gDateSync = DateSync::None;
 }
@@ -1966,17 +2231,16 @@ void leaveDate() {
 
 // Applies the stepped days (advanceDaysManual also restarts the day carry, see
 // docs/srs.md section 5), persists them, rebuilds the queue (cards may now be
-// due) and goes back to where the date screen was opened from: the settings
-// home, or the quiz on a power-off boot.
+// due) and goes back to where the date screen was opened from: Settings > Date,
+// or the quiz on a power-off boot.
 void applyDate() {
     dateSyncCancel();
     gSrs.advanceDaysManual(gDateSteps);
     gSrs.save(gSrsIo);
     gDirty = 0;
     gQueue.rebuild(*gPack, gSrs, gRng);
-    if (gAfterDate == Screen::Menu) {
-        gScreen = Screen::Menu;
-        drawScreen();
+    if (gAfterDate != Screen::Quiz) {
+        openDateMenu(false);
         return;
     }
     if (!newQuestion()) {
@@ -1998,24 +2262,64 @@ const char* clockSyncName(tgc::ClockSync k) {
     return "?";
 }
 
+// Reads the time zone from NVS (see kPrefTz): a zone chosen by hand, else the
+// one the portal page last sent (its rule, else its bare offset), else none.
+// Hands it to the SRS store, whose day lengths follow it, and logs it.
+void loadTimeZone() {
+    gTzKnown = gTzManual = gPhoneTzKnown = false;
+    gTzName[0] = gTzRuleText[0] = gPhoneTzName[0] = 0;
+    char phoneRule[tgc::kTzRuleMaxLen + 1] = "";
+    if (gPrefs.isKey(kPrefTzRule) &&
+        gPrefs.getString(kPrefTzRule, phoneRule, sizeof phoneRule) > 0 &&
+        tgc::parseTzRule(phoneRule, &gPhoneTz)) {
+        gPhoneTzKnown = true;
+    } else if (gPrefs.isKey(kPrefTz)) {
+        const int off = gPrefs.getShort(kPrefTz, 0);
+        gPhoneTz = tgc::fixedTzRule(off);
+        tgc::formatFixedTzRule(off, phoneRule, sizeof phoneRule);
+        gPhoneTzKnown = tgc::tzRuleOffsetsPlausible(gPhoneTz);
+    }
+    if (gPhoneTzKnown && gPrefs.isKey(kPrefTzName))
+        gPrefs.getString(kPrefTzName, gPhoneTzName, sizeof gPhoneTzName);
+
+    char manual[48] = "";
+    if (gPrefs.isKey(kPrefTzManual)) gPrefs.getString(kPrefTzManual, manual, sizeof manual);
+    const tgc::TzZone* z = tgc::findTzZone(manual);
+    if (z && tgc::parseTzRule(z->rule, &gTz)) {
+        gTzKnown = gTzManual = true;
+        snprintf(gTzName, sizeof gTzName, "%s", z->name);
+        snprintf(gTzRuleText, sizeof gTzRuleText, "%s", z->rule);
+    } else if (gPhoneTzKnown) {
+        gTz = gPhoneTz;
+        gTzKnown = true;
+        snprintf(gTzName, sizeof gTzName, "%s", gPhoneTzName);
+        snprintf(gTzRuleText, sizeof gTzRuleText, "%s", phoneRule);
+    }
+    gSrs.setTimeZone(gTzKnown ? gTz : tgc::fixedTzRule(0));
+    if (gTzKnown)
+        Serial.printf("clock: zone %s %s (%s)\n", gTzName[0] ? gTzName : "-", gTzRuleText,
+                      gTzManual ? "chosen by hand" : "from the phone");
+    else
+        Serial.printf("clock: no time zone yet\n");
+}
+
 // Applies a real wall-clock time to the SRS day clock (docs/srs.md section 5.1):
 // the phone's browser through the portal's POST /time, or NTP over the home
-// Wi-Fi (Get decks, the boot-time date question). Anchors or advances the day,
-// aligns the 04:00 rollover, remembers the UTC offset and brings the screen up
-// to date: a pending power-cut date question is answered, and a new day
-// rebuilds the queue. `tzOffsetMin` is local time minus UTC in minutes. False
-// when the time was rejected as implausible; nothing changes then.
-bool applyWallClock(int64_t utcMs, int tzOffsetMin) {
+// Wi-Fi (Get decks, the boot-time date question, the network test). Anchors or
+// advances the day, aligns the 04:00 rollover for `zone` and brings the screen
+// up to date: a pending power-cut date question is answered, and a new day
+// rebuilds the queue. False when the time was rejected as implausible; nothing
+// changes then.
+bool applyWallClock(int64_t utcMs, const tgc::TzRule& zone) {
     const uint16_t before = gSrs.today();
-    const tgc::ClockSyncResult r = gSrs.syncWallClock(utcMs, tzOffsetMin);
+    const int offsetMin = tgc::tzOffsetMinAt(zone, utcMs);
+    const tgc::ClockSyncResult r = gSrs.syncWallClock(utcMs, zone);
     if (r.kind == tgc::ClockSync::Rejected) {
         Serial.printf("clock: rejected (%ld s, utc%+d min)\n", static_cast<long>(utcMs / 1000),
-                      tzOffsetMin);
+                      offsetMin);
         return false;
     }
     gWallClockSynced = true;
-    if (!gPrefs.isKey(kPrefTz) || gPrefs.getShort(kPrefTz, 0) != tzOffsetMin)
-        gPrefs.putShort(kPrefTz, static_cast<int16_t>(tzOffsetMin));
     // Persist a new anchor or day. A same-day sync (every page reload) only
     // moved the carry, which the idle save persists, so it does not write the
     // flash. As in goIdle(), a store that failed to load and has no answers is
@@ -2027,7 +2331,7 @@ bool applyWallClock(int64_t utcMs, int tzOffsetMin) {
     char date[16];
     formatDate(gSrs.today(), date, sizeof date);
     Serial.printf("clock: %s, day %u -> %u (%s), utc%+d min\n", clockSyncName(r.kind),
-                  (unsigned)before, (unsigned)gSrs.today(), date, tzOffsetMin);
+                  (unsigned)before, (unsigned)gSrs.today(), date, offsetMin);
 
     // The boot-time "how many days?" question: the real time answers it.
     if (gScreen == Screen::Date && gAfterDate == Screen::Quiz) {
@@ -2056,22 +2360,26 @@ bool applyWallClock(int64_t utcMs, int tzOffsetMin) {
     return true;
 }
 
-// The UTC offset of the last real-time sync (NVS `tz`); false before the first
-// one. NTP only yields UTC: without the offset the study day is unknown, and
-// guessing UTC could put it off by one, so the NTP paths skip the sync instead.
-bool savedTzOffset(int16_t* out) {
-    if (!gPrefs.isKey(kPrefTz)) return false;
-    *out = gPrefs.getShort(kPrefTz, 0);
-    return true;
+// NTP over the home Wi-Fi, connected: the UTC time through the zone in use.
+// Without a zone the study day is unknown, and guessing UTC could put it off by
+// one, so the sync is skipped (logged). False when there was no usable time.
+bool netTimeSync() {
+    if (!gTzKnown) {
+        Serial.printf("clock: no NTP sync, no time zone yet (open the portal page once, or "
+                      "Settings > Date > Time zone)\n");
+        return false;
+    }
+    int64_t utcMs = 0;
+    return gHome.fetchUtcMs(&utcMs, kNtpTimeoutMs) && applyWallClock(utcMs, gTz);
 }
 
-// Boot-time date question (setup()): with a home Wi-Fi and an offset saved,
-// start joining in the background; dateSyncPoll() takes it from there.
+// Boot-time date question (setup()): with a home Wi-Fi and a time zone known,
+// start joining; the date screen shows "Getting the date via <network>" (a tap
+// skips it) and dateSyncPoll() takes it from there. Otherwise the stepper.
 void dateSyncBegin() {
-    int16_t tz = 0;
-    if (!tgc::HomeWifi::hasCredentials() || !savedTzOffset(&tz)) {
-        Serial.printf("clock: no network time at boot (no %s saved)\n",
-                      tgc::HomeWifi::hasCredentials() ? "UTC offset" : "home Wi-Fi");
+    if (!tgc::HomeWifi::hasCredentials() || !gTzKnown) {
+        Serial.printf("clock: no network time at boot (no %s)\n",
+                      tgc::HomeWifi::hasCredentials() ? "time zone" : "home Wi-Fi saved");
         return;
     }
     setCpuFrequencyMhz(kCpuWifiMhz);
@@ -2081,15 +2389,16 @@ void dateSyncBegin() {
         Serial.printf("clock: no network time at boot (radio did not start)\n");
         return;
     }
-    gDateSyncTz = tz;
     gDateSync = DateSync::Joining;
     gNetActivityAt = millis();  // the join keeps the idle timers away (powerTick)
+    Serial.printf("clock: getting the date via \"%s\"\n", gHome.ssid());
 }
 
-// loop() on the date screen. Once the join succeeds: NTP (blocking, at most
-// kNtpTimeoutMs), radio off, then applyWallClock(), which answers the question
-// and leaves for the quiz -- true when that happened. On any failure the radio
-// is off too and the status line says to set the date by hand.
+// loop() on the date screen while Joining. Once the join succeeds: NTP
+// (blocking, at most kNtpTimeoutMs), radio off, then applyWallClock(), which
+// answers the question and leaves for the quiz -- true when that happened. On
+// any failure the radio is off too and the stepper comes up with a status line
+// that says to set the date by hand.
 bool dateSyncPoll() {
     if (gDateSync != DateSync::Joining) return false;
     const tgc::HomeWifi::State st = gHome.poll();
@@ -2100,7 +2409,7 @@ bool dateSyncPoll() {
     netRadioOff();
     if (joined) gSwallowInput = true;  // presses made while blocked must not act now
     gDateSync = DateSync::None;
-    if (got && applyWallClock(utcMs, gDateSyncTz)) return true;
+    if (got && applyWallClock(utcMs, gTz)) return true;
     gDateSync = joined ? DateSync::NoTime : DateSync::NoNetwork;
     // The status is news: the join's time does not count against the reader.
     gNetActivityAt = millis();
@@ -2110,12 +2419,83 @@ bool dateSyncPoll() {
     return false;
 }
 
+// --- Settings > Date: loop ---------------------------------------------------
+
+void dateMenuNote(const char* text, uint16_t color) {
+    snprintf(gDateMenuNote, sizeof gDateMenuNote, "%s", text ? text : "");
+    gDateMenuNoteColor = color;
+}
+
+// Opens the Date submenu: `fresh` from the settings home (first row, no note),
+// else back from the stepper or the zone list (selection and note kept).
+void openDateMenu(bool fresh) {
+    if (fresh) {
+        gDateMenuSel = 0;
+        gDateMenuNote[0] = 0;
+    }
+    gScreen = Screen::DateMenu;
+    drawScreen();
+}
+
+void openTzList() {
+    gTzSel = tzCurrentRow();
+    gScreen = Screen::TzList;
+    drawScreen();
+}
+
+void dateMenuLoop(int a, int b) {
+    if (a == 1) {
+        gDateMenuSel = (gDateMenuSel + 1) % kDateMenuRows;
+        gDateMenuNote[0] = 0;
+        drawScreen();
+    } else if (a == 2) {
+        if (gDateMenuSel == 0)
+            openDate(Screen::DateMenu);
+        else
+            openTzList();
+    }
+    if (b && gScreen == Screen::DateMenu) {  // side button returns to the settings home
+        gScreen = Screen::Menu;
+        drawScreen();
+    }
+}
+
+// A hold on the zone list: the zone chosen by hand (NVS `tzm`), or "From
+// phone", which drops that choice. It takes effect for the day lengths now and
+// for the next real time (NTP or the page); the day and the rollover stay
+// where they are until then.
+void applyTzChoice() {
+    if (gTzSel == 0) {
+        if (gPrefs.isKey(kPrefTzManual)) gPrefs.remove(kPrefTzManual);
+    } else {
+        gPrefs.putString(kPrefTzManual, tgc::kTzZones[gTzSel - 1].name);
+    }
+    loadTimeZone();
+    if (gTzKnown)
+        dateMenuNote(ui().tzSaved, kGreen);
+    else
+        dateMenuNote(ui().tzPhoneNone, kYellow);
+    openDateMenu(false);
+}
+
+void tzListLoop(int a, int b) {
+    if (a == 1) {
+        gTzSel = (gTzSel + 1) % tzListRows();
+        drawScreen();
+    } else if (a == 2) {
+        applyTzChoice();
+    }
+    if (b && gScreen == Screen::TzList) openDateMenu(false);  // back, nothing changed
+}
+
 void drawScreen() {
     if (gScreen == Screen::Menu) drawMenu();
     else if (gScreen == Screen::Decks) drawDecks();
     else if (gScreen == Screen::Choice) drawChoice();
     else if (gScreen == Screen::Done) drawDone();
     else if (gScreen == Screen::Date) drawDate();
+    else if (gScreen == Screen::DateMenu) drawDateMenu();
+    else if (gScreen == Screen::TzList) drawTzList();
     else if (gScreen == Screen::Stats) drawStats();
     else if (gScreen == Screen::Detail) drawDetail();
     else if (gScreen == Screen::Wifi) drawWifi();
@@ -2289,9 +2669,50 @@ bool portalPacksChanged() {
     return gPack->isOpen();
 }
 
-// Called by the portal with the browser's clock (POST /time on every page load).
-bool portalTime(int64_t utcMs, int16_t tzOffsetMin) {
-    return applyWallClock(utcMs, tzOffsetMin);
+// Writes an NVS string only when it changed: the page posts on every load.
+void putPrefString(const char* key, const char* value) {
+    char old[64] = "";
+    if (gPrefs.isKey(key)) gPrefs.getString(key, old, sizeof old);
+    if (!gPrefs.isKey(key) || std::strcmp(old, value) != 0) gPrefs.putString(key, value);
+}
+
+// Called by the portal with the browser's clock (POST /time on every page load):
+// the time, the offset of the moment, and the zone as a POSIX rule and an IANA
+// name (docs/srs.md section 5.1). The rule is used when it parses and gives
+// that offset now; it becomes the phone's zone (NVS `tzr`, `tzn`, and the
+// offset in `tz`), which replaces a zone chosen by hand. Without a usable rule
+// (a page from before it): a zone in use that gives the same offset now is
+// kept, choice by hand included; else the bare offset becomes the zone, as
+// before the rule existed (a DST change then shifts the rollover until the
+// next visit).
+bool portalTime(int64_t utcMs, int16_t tzOffsetMin, const char* rule, const char* zone) {
+    tgc::TzRule r;
+    char ruleText[tgc::kTzRuleMaxLen + 1] = "";
+    const bool haveRule = rule && *rule && tgc::parseTzRule(rule, &r) &&
+                          tgc::tzOffsetMinAt(r, utcMs) == tzOffsetMin;
+    if (rule && *rule && !haveRule)
+        Serial.printf("clock: page rule \"%s\" ignored (does not parse or gives another offset "
+                      "than %+d min)\n",
+                      rule, (int)tzOffsetMin);
+    if (haveRule) {
+        snprintf(ruleText, sizeof ruleText, "%s", rule);
+    } else {
+        if (gTzKnown && tgc::tzOffsetMinAt(gTz, utcMs) == tzOffsetMin)
+            return applyWallClock(utcMs, gTz);
+        r = tgc::fixedTzRule(tzOffsetMin);
+        tgc::formatFixedTzRule(tzOffsetMin, ruleText, sizeof ruleText);
+    }
+    // A broken clock or offset changes nothing, the zone included.
+    if (!tgc::wallClockPlausible(utcMs, r)) return applyWallClock(utcMs, r);
+    putPrefString(kPrefTzRule, ruleText);
+    putPrefString(kPrefTzName, zone ? zone : "");
+    if (!gPrefs.isKey(kPrefTz) || gPrefs.getShort(kPrefTz, 0) != tzOffsetMin)
+        gPrefs.putShort(kPrefTz, tzOffsetMin);
+    if (gPrefs.isKey(kPrefTzManual)) gPrefs.remove(kPrefTzManual);
+    const bool changed = !gTzKnown || gTzManual || std::strcmp(gTzRuleText, ruleText) != 0 ||
+                         std::strcmp(gTzName, zone ? zone : "") != 0;
+    if (changed) loadTimeZone();  // logs the zone
+    return applyWallClock(utcMs, gTz);
 }
 
 // The page's language: the screens' own ("en"/"es"), or none under Auto while
@@ -2693,8 +3114,8 @@ void activateSetting() {
         case 1:  // Mazos
             openDecks();
             break;
-        case 2:  // Fecha
-            openDate(Screen::Menu);
+        case 2:  // Fecha >: the date and the time zone
+            openDateMenu(true);
             break;
         case 3:  // Nuevas/dia
             openChoice(Choice::NewPerDay);
@@ -2838,17 +3259,9 @@ void closeGetDecks() {
 
 // Connected: the network is up anyway, so take the real date from NTP first
 // (blocking, at most kNtpTimeoutMs; netLoadCatalog() right after resets the
-// idle timers and drops the presses made meanwhile). Only with the saved UTC
-// offset (see savedTzOffset()); a failure is logged and Get decks carries on.
-void netSyncClock() {
-    int16_t tz = 0;
-    if (!savedTzOffset(&tz)) {
-        Serial.printf("clock: no NTP sync, no UTC offset saved yet (open the portal page once)\n");
-        return;
-    }
-    int64_t utcMs = 0;
-    if (gHome.fetchUtcMs(&utcMs, kNtpTimeoutMs)) applyWallClock(utcMs, tz);
-}
+// idle timers and drops the presses made meanwhile). Only with a time zone
+// (see netTimeSync()); a failure is logged and Get decks carries on.
+void netSyncClock() { netTimeSync(); }
 
 // Why a catalog read failed, as a title and a detail line (the error screen's
 // two parts; the network test shows the title). False when it did not fail.
@@ -3210,11 +3623,10 @@ void netTestCheck() {
     gTestRssi = gHome.rssi();
     gTestStep = NetTestStep::Checking;
     drawScreen();
-    int16_t tz = 0;
-    if (savedTzOffset(&tz)) {
+    if (gTzKnown) {
         int64_t utcMs = 0;
         gTestTime = gHome.fetchUtcMs(&utcMs, kNtpTimeoutMs) ? 1 : 0;
-        if (gTestTime) applyWallClock(utcMs, tz);
+        if (gTestTime) applyWallClock(utcMs, gTz);
     }
     const String url = tgc::HomeWifi::catalogUrl();
     const tgc::CatalogFetch c = tgc::fetchCatalog(url);
@@ -3629,6 +4041,9 @@ void setup() {
     for (const char* tmp : {tgc::kFetchTmp, tgc::WifiPortal::kUploadTmp})
         if (LittleFS.remove(tmp)) Serial.printf("fs: removed stale %s\n", tmp);
     listPacks(gPacks);
+    // The time zone first: the slept time (applySleepTime() below) is counted
+    // in its study days, 23 or 25 h long across a daylight-saving change.
+    loadTimeZone();
 
     // No packs yet: do not halt. Start the Wi-Fi portal so a pack can be
     // uploaded from a phone (or downloaded from a URL); loop() moves on to the
@@ -3834,11 +4249,20 @@ void loop() {
             }
         }
     } else if (gScreen == Screen::Date) {
-        // Tap: one more day. Hold: confirm. Side hold: one day back, never below
-        // the current day (undoes an overshoot). Side tap: cancel. Confirming or
-        // cancelling also stops the network-time attempt (see leaveDate()).
-        if (dateSyncPoll()) {
-            // The network time answered the boot-time question: on the quiz now.
+        // Network first (boot-time question): "Getting the date via ..." until
+        // the network time answers (on the quiz then) or fails (the stepper with
+        // the reason); any press gives up on it, radio off, and shows the
+        // stepper. Presses are handled before the poll, which may block for the
+        // NTP request.
+        // The stepper: tap one more day, hold confirm, side hold one day back
+        // (never below the current day: undoes an overshoot), side tap cancel.
+        if (gDateSync == DateSync::Joining) {
+            if (a || b) {
+                dateSyncCancel();
+                drawScreen();
+            } else {
+                dateSyncPoll();
+            }
         } else if (a == 1) {
             if (dateTarget() < 0xFFFF) ++gDateSteps;
             drawScreen();
@@ -3849,14 +4273,16 @@ void loop() {
                 --gDateSteps;
                 drawScreen();
             }
-        } else if (b == 1) {  // cancel: back to the menu, or straight into the quiz
-            if (gAfterDate == Screen::Menu) {
-                gScreen = Screen::Menu;
-                drawScreen();
-            } else {
+        } else if (b == 1) {  // cancel: back to Settings > Date, or straight into the quiz
+            if (gAfterDate != Screen::Quiz)
+                openDateMenu(false);
+            else
                 leaveDate();
-            }
         }
+    } else if (gScreen == Screen::DateMenu) {
+        dateMenuLoop(a, b);
+    } else if (gScreen == Screen::TzList) {
+        tzListLoop(a, b);
     } else if (gScreen == Screen::Stats) {
         if (b) {  // side button returns to the settings home
             gScreen = Screen::Menu;
