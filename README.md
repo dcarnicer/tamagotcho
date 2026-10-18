@@ -94,13 +94,13 @@ Notes and limits:
   shown again; the page only shows the saved network name and a "forget"
   button. While the portal runs, anyone in range could replace (not read) it.
 - The default catalog is
-  `https://github.com/dcarnicer/tangocho/releases/latest/download/catalog.txt`,
-  which only works once the newest release of a **public** repository carries
-  prebuilt packs and `catalog.txt` (a maintainer decision, see "Before
-  publishing" in the roadmap); until then the device says no catalog is
-  published. The portal page can point it at another catalog (any `http(s)://`
-  URL, e.g. a release pinned to a tag or your own server). **Not verified on
-  hardware yet.**
+  `https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt`,
+  the dedicated **decks release** for the pack format this firmware reads (see
+  [Prebuilt decks](#prebuilt-decks-and-their-licence) below). It works once that
+  release has been published (a maintainer decision, see "Before publishing" in
+  the roadmap); until then the device says no catalog is published. The portal
+  page can point it at another catalog (any `http(s)://` URL, e.g. your own
+  server). **Not verified on hardware yet.**
 
 ## M5Launcher and app-only `.bin`s
 
@@ -153,9 +153,8 @@ A newer push on the same ref cancels the superseded run.
 [`.github/workflows/release.yml`](.github/workflows/release.yml) runs on tags
 `v*` and on manual dispatch. It builds, per board, an **app-only** image and a
 **merged, single-file** image, writes an **ESP Web Tools** `manifest.json`, and
-publishes a GitHub release with those artifacts. Prebuilt packs and a catalog are
-**opt-in** (a dispatch input), because they redistribute CC BY-SA data; when they
-are attached, the attribution is added to the release notes automatically.
+publishes a GitHub release with those artifacts. Firmware releases carry **no
+packs**; their notes link to the decks release below.
 
 ### Flash over USB
 
@@ -204,15 +203,32 @@ into the Wi-Fi upload screen, where a pack can be dropped in over the air.
 > `pio run -t upload`, but the browser path is unconfirmed until someone tries
 > it.
 
-### Prebuilt packs and their licence
+### Prebuilt decks and their licence
 
-When the maintainer asks for them (a release-workflow input), a release can
-attach `*.tgc` packs built with `--strokes` (for example JLPT N5 in English and
-Spanish) together with a line-oriented `catalog.txt` — the small catalog the
-device reads for **Get decks** (format: `tools/pack-builder/README.md`). A pack
-contains **KANJIDIC2** data (CC BY-SA 4.0) and, with `--strokes`, **KanjiVG**
-data (CC BY-SA 3.0), so prebuilt packs are licensed **CC BY-SA**. The combined attribution is in the release notes and
-in [docs/data-sources.md](docs/data-sources.md).
+Prebuilt decks live in their own GitHub release with a fixed tag,
+**`decks-v<pack format version>`** (`decks-v2`), published by
+[`.github/workflows/decks.yml`](.github/workflows/decks.yml) when the maintainer
+runs it (manual dispatch only). That release is **never marked "latest"**, so a
+firmware release never hides it, and a rebuild replaces its files in place. It
+holds `*.tgc` packs built with `--strokes` — by default JLPT N5 to N1 and the
+full **Jōyō** deck (2,136 kanji, in school order), each in Spanish and English
+(`n5-es.tgc` ... `n1-en.tgc`, `joyo-es.tgc`, `joyo-en.tgc`) — and the
+line-oriented `catalog.txt` the device reads for **Get decks** (format:
+`tools/pack-builder/README.md`), plus a `catalog.json` for people. Firmware
+reads the release of its own pack format, so a future format gets a new
+`decks-v<N>` release and older firmware keeps the decks it can open.
+
+The workflow's inputs are the JLPT levels (`5 4 3 2 1`), the meaning languages
+(`es en`), whether to build the Jōyō deck, and whether to publish (off: build,
+check and keep the packs as a workflow artifact). It derives the tag from the
+packs' format version and fails if the packs disagree on it or if any pack is
+over the device's 5 MiB per-pack limit.
+
+To install a deck by hand, download a `.tgc` from that release and upload it
+from the Wi-Fi portal page. A pack contains **KANJIDIC2** data (CC BY-SA 4.0)
+and, with `--strokes`, **KanjiVG** data (CC BY-SA 3.0), so prebuilt packs are
+licensed **CC BY-SA**. The combined attribution is in the decks release notes
+and in [docs/data-sources.md](docs/data-sources.md).
 
 ## Repository layout
 
@@ -221,7 +237,7 @@ in [docs/data-sources.md](docs/data-sources.md).
 | `firmware/`           | PlatformIO firmware (StickS3, T-Display-S3) |
 | `tools/pack-builder/` | Python CLI that builds `.tgc` packs     |
 | `tools/release/`      | release helper: merge a build into one flashable image |
-| `.github/workflows/`  | CI and release automation               |
+| `.github/workflows/`  | CI, firmware release and decks release automation |
 | `docs/`               | architecture, pack format, decisions, roadmap |
 
 ## Licence

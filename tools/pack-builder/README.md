@@ -11,6 +11,7 @@ uv run tangocho-pack build --jlpt 5 --lang es -o out/n5-es.tgc
 uv run tangocho-pack build --jlpt 5 --lang es --strokes -o out/n5-es-strokes.tgc
 uv run tangocho-pack fetch --klee-one # optional: Klee One (textbook style) -> cache/fonts/
 uv run tangocho-pack build --jlpt 5 --font cache/fonts/KleeOne-SemiBold.ttf -o out/n5-en-klee.tgc
+uv run tangocho-pack build --joyo --lang es --strokes -o out/joyo-es.tgc
 uv run tangocho-pack build --wanikani-token "$WANIKANI_TOKEN" -o out/wanikani.tgc
 uv run tangocho-pack build --wanikani-level 1 --wanikani-level 2 -o out/wanikani-l1-2.tgc
 uv run tangocho-pack inspect out/n5-es.tgc
@@ -28,15 +29,24 @@ uv run pytest
   and the pinned KanjiVG release zip. `--klee-one` also gets Klee One (the
   textbook-style font that was the default before 2026-10-18) into
   `cache/fonts/`, for `build --font cache/fonts/KleeOne-SemiBold.ttf`.
-- `build --jlpt N [--jlpt M ...] [--grade G ...] --lang en|es|fr|pt
+- `build --jlpt N [--jlpt M ...] [--grade G ... | --joyo] [--order jlpt|grade]
+  --lang en|es|fr|pt
   [--font PATH] [--large-px 96] [--small-px 40] [--text-px 18] [--option-px 20]
   [--strokes] [--strokes-px N] [--name NAME] -o FILE`. `--font` takes any
   TTF/OTF (default `cache/noto/NotoSansJP-Regular.otf`); a card whose kanji the
   font lacks is dropped with a warning, and a missing text glyph is an error.
-  `--jlpt` and `--grade` filters are AND-ed when both are given. Cards are
-  ordered easiest first (N5 before N1, lower grade, frequency). `--strokes`
-  adds the optional KanjiVG stroke-order section (off by default; a pack
-  without it is byte-identical to a KANJIDIC2-only v1 pack). `--strokes-px`
+  `--jlpt` and `--grade` filters are AND-ed when both are given. `--joyo`
+  selects the 2,136 **Jōyō** kanji (KANJIDIC2 grades 1-6, the elementary-school
+  kyōiku kanji, and 8, the rest of the list) and names the deck `Joyo kanji`.
+  The card order is the pack's `level` hint, i.e. the order the device
+  introduces new cards in (docs/srs.md): `--order jlpt`, the default, is
+  easiest first (N5 before N1, then lower grade, then frequency); `--order
+  grade`, the default with `--joyo`, is school order (grade 1..6, then 8; within
+  a grade by newspaper frequency, kanji with no frequency rank last, fewer
+  strokes first). Deck names should be ASCII (`Joyo`, not `Jōyō`): the device
+  draws the name in its built-in ASCII font, and the builder warns otherwise.
+  `--strokes` adds the optional KanjiVG stroke-order section (off by default; a
+  pack without it is byte-identical to a KANJIDIC2-only v1 pack). `--strokes-px`
   sets the em square for the masks and defaults to `--large-px`.
 - `build --wanikani-token TOKEN [--wanikani-level N ...]` builds from **your own
   WaniKani account** instead of KANJIDIC2 (so no `--jlpt`/`--grade`, and

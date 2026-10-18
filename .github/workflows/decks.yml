@@ -1,0 +1,305 @@
+name: Decks
+
+# Builds the prebuilt decks and publishes them to the dedicated GitHub release
+# `decks-v<pack format version>` (e.g. `decks-v2`), which is what Get decks reads
+# by default (docs/decisions.md, 2026-10-18 "Decks release"). That release is
+# never marked "latest", so a firmware release can never hide it, and a rebuild
+# replaces its files in place. A pack format bump publishes to a new
+# `decks-v<N>` release while older firmware keeps reading its own.
+#
+# Manual only: the packs redistribute CC BY-SA data (KANJIDIC2, KanjiVG), so
+# publishing them is a maintainer action. A run publishes the complete set it
+# built: `catalog.txt` lists exactly these packs, and `.tgc` files left in the
+# release by an earlier run that this run did not build are removed.
+on:
+  workflow_dispatch:
+    inputs:
+      jlpt:
+        description: "JLPT levels, one deck each (space- or comma-separated; 5 = N5)"
+        type: string
+        default: "5 4 3 2 1"
+      joyo:
+        description: "Also build the full Jōyō deck (2,136 kanji, school order)"
+        type: boolean
+        default: true
+      langs:
+        description: "Meaning languages, one deck per level and language (en, es, fr, pt)"
+        type: string
+        default: "es en"
+      publish:
+        description: "Publish to the decks release (off: build, check and keep the packs as a workflow artifact only)"
+        type: boolean
+        default: true
+
+# One decks run at a time; a publish is never cancelled half-way.
+concurrency:
+  group: decks
+  cancel-in-progress: false
+
+# Least privilege by default; only the publish job asks for contents: write.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build decks + catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      version: ${{ steps.check.outputs.version }}
+    defaults:
+      run:
+        working-directory: tools/pack-builder
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Inputs reach the scripts only through the environment, and only values
+      # from these fixed lists get through.
+      - name: Check the inputs
+        id: inputs
+        env:
+          IN_JLPT: ${{ inputs.jlpt }}
+          IN_LANGS: ${{ inputs.langs }}
+          JOYO: ${{ inputs.joyo }}
+        run: |
+          set -euo pipefail
+          set -f  # no globbing of the input words
+          levels=""
+          for n in $(printf '%s' "$IN_JLPT" | tr ',' ' '); do
+            case "$n" in
+              [1-5]) ;;
+              *) echo "error: a JLPT level is 1..5 (got '$n')" >&2; exit 1 ;;
+            esac
+            case " $levels " in *" $n "*) ;; *) levels="$levels $n" ;; esac
+          done
+          langs=""
+          for l in $(printf '%s' "$IN_LANGS" | tr ',' ' '); do
+            case "$l" in
+              en|es|fr|pt) ;;
+              *) echo "error: a language is en, es, fr or pt (got '$l')" >&2; exit 1 ;;
+            esac
+            case " $langs " in *" $l "*) ;; *) langs="$langs $l" ;; esac
+          done
+          if [ -z "$langs" ]; then echo "error: no meaning language given" >&2; exit 1; fi
+          if [ -z "$levels" ] && [ "$JOYO" != "true" ]; then
+            echo "error: nothing to build (no JLPT level and no Jōyō deck)" >&2; exit 1
+          fi
+          echo "levels=${levels# }" >> "$GITHUB_OUTPUT"
+          echo "langs=${langs# }" >> "$GITHUB_OUTPUT"
+          echo "JLPT levels: ${levels# }; languages: ${langs# }; Jōyō: $JOYO"
+
+      # The release notes credit the glyph font; refuse to publish packs
+      # rendered from another one without updating the notes below.
+      - name: Check the glyph font credited in the notes
+        run: |
+          set -euo pipefail
+          font="$(uv run python -c 'from tangocho_pack import paths; print(paths.DEFAULT_FONT.name)')"
+          case "$font" in
+            NotoSansJP-*) echo "default font: $font" ;;
+            *) echo "error: the release notes credit Noto Sans JP, but the builder's default font is $font; update decks.yml" >&2; exit 1 ;;
+          esac
+
+      - name: Fetch data sources (KANJIDIC2, JLPT levels, font, KanjiVG)
+        run: uv run tangocho-pack fetch
+
+      - name: Build packs
+        env:
+          LEVELS: ${{ steps.inputs.outputs.levels }}
+          LANGS: ${{ steps.inputs.outputs.langs }}
+          JOYO: ${{ inputs.joyo }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for lang in $LANGS; do
+            for n in $LEVELS; do
+              uv run tangocho-pack build --jlpt "$n" --lang "$lang" --strokes -o "out/n${n}-${lang}.tgc"
+            done
+            if [ "$JOYO" = "true" ]; then
+              uv run tangocho-pack build --joyo --lang "$lang" --strokes -o "out/joyo-${lang}.tgc"
+            fi
+          done
+
+      # The release tag comes from the packs themselves: every pack must be a
+      # valid pack of one and the same format version N, published to
+      # `decks-vN`. A pack over the device's per-pack cap would be skipped by
+      # Get decks (kCatalogMaxPackBytes in firmware/src/catalog/Catalog.h, read
+      # from there so the two cannot drift apart).
+      - name: Check packs (format version, device size cap)
+        id: check
+        run: |
+          set -euo pipefail
+          expr="$(sed -nE 's/^constexpr uint32_t kCatalogMaxPackBytes = ([0-9u *]+);.*/\1/p' \
+            ../../firmware/src/catalog/Catalog.h)"
+          if [ -z "$expr" ]; then
+            echo "error: kCatalogMaxPackBytes not found in firmware/src/catalog/Catalog.h" >&2; exit 1
+          fi
+          max=$(( ${expr//u/} ))
+          echo "device per-pack cap: $max bytes"
+          version=""
+          bad=0
+          for f in out/*.tgc; do
+            if ! info="$(uv run tangocho-pack inspect "$f")"; then
+              echo "$info"; echo "error: $f is not a valid pack" >&2; exit 1
+            fi
+            v="$(printf '%s\n' "$info" | awk '$1 == "version" { print $2; exit }')"
+            bytes="$(wc -c < "$f" | tr -d ' ')"
+            echo "$f: format v$v, $bytes bytes"
+            case "$v" in
+              ''|*[!0-9]*) echo "error: no format version for $f" >&2; exit 1 ;;
+            esac
+            if [ -z "$version" ]; then
+              version="$v"
+            elif [ "$v" != "$version" ]; then
+              echo "error: $f is format v$v, other packs are v$version" >&2; bad=1
+            fi
+            if [ "$bytes" -gt "$max" ]; then
+              echo "error: $f is $bytes bytes, over the device's $max-byte cap" >&2; bad=1
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then exit 1; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=decks-v$version" >> "$GITHUB_OUTPUT"
+          echo "pack format v$version -> release decks-v$version"
+
+      - name: Write the device catalog
+        env:
+          BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ steps.check.outputs.tag }}
+        run: |
+          set -euo pipefail
+          uv run tangocho-pack catalog out --base-url "$BASE_URL" --json out/catalog.json -o out/catalog.txt
+          cat out/catalog.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: decks
+          path: |
+            tools/pack-builder/out/*.tgc
+            tools/pack-builder/out/catalog.txt
+            tools/pack-builder/out/catalog.json
+          if-no-files-found: error
+
+  publish:
+    name: Publish to the decks release
+    needs: build
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: decks
+          path: dist
+
+      - name: Write release notes
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          url="https://github.com/${REPO}/releases/download/${TAG}/catalog.txt"
+          {
+          cat <<MD
+          # Tangochō decks (pack format v${VERSION})
+
+          Prebuilt kanji decks for Tangochō, with stroke order. Firmware that reads
+          pack format v${VERSION} downloads them with **Decks > + Get decks** (over
+          the home Wi-Fi) from this release's catalog, its default:
+
+              ${url}
+
+          This release is never marked "latest", and its files are replaced in place
+          when the decks are rebuilt. A new pack format gets its own
+          \`decks-v<N>\` release, so older firmware keeps reading the decks it can open.
+
+          ## Decks
+
+          | file | deck | language | cards | size |
+          |---|---|---|---:|---:|
+          MD
+          # One row per catalog record (name, lang, cards, bytes, sha256, url),
+          # N5 first and the Jōyō deck last; LC_ALL=C keeps the decimal point.
+          LC_ALL=C awk -F '\t' '
+            /^#/ || NF != 6 { next }
+            {
+              deck = $1; key = 9
+              if ($1 ~ /^n[1-5]-/) { deck = "JLPT N" substr($1, 2, 1); key = 6 - substr($1, 2, 1) }
+              else if ($1 ~ /^joyo-/) { deck = "Jōyō (2,136 kanji), school order"; key = 6 }
+              printf "%d\t%s\t| `%s.tgc` | %s | %s | %s | %.1f MB |\n", key, $2, $1, deck, $2, $3, $4 / 1048576
+            }' dist/catalog.txt | LC_ALL=C sort -t "$(printf '\t')" -k1,1n -k2,2 | cut -f 3-
+          cat <<MD
+
+          JLPT decks introduce new kanji by school grade, then frequency; the Jōyō
+          deck goes grade by grade (1-6, then the secondary-school kanji), each by
+          newspaper frequency.
+
+          ## Install
+
+          - **Get decks:** on the device, Settings > Decks > **+ Get decks**, once a
+            home Wi-Fi is saved on the portal page. Each download is checked against
+            the size and SHA-256 in \`catalog.txt\`.
+          - **By hand:** download a \`.tgc\` and upload it from the device's Wi-Fi
+            portal page (Settings > Wi-Fi, \`http://192.168.4.1\`).
+
+          \`catalog.txt\` is the line-oriented catalog the device reads;
+          \`catalog.json\` is the same list for people. Built from ${SHA}.
+          MD
+          cat <<'MD'
+
+          ## Licence (CC BY-SA)
+
+          These packs are built from KANJIDIC2 and, because they include stroke
+          order, from KanjiVG, and are therefore licensed **CC BY-SA 4.0**.
+
+          > Kanji data from KANJIDIC2 (c) EDRDG, CC BY-SA 4.0,
+          > https://www.edrdg.org/edrdg/licence.html. JLPT levels from Jonathan
+          > Waller's JLPT Resources (tanos.co.uk) via davidluzgouveia/kanji-data
+          > (MIT). Glyphs rendered from Noto Sans JP (c) 2014-2021 Adobe,
+          > SIL OFL 1.1. Stroke order data from KanjiVG (c) Ulrich Apel,
+          > CC BY-SA 3.0, https://kanjivg.tagaini.net. These packs are licensed
+          > CC BY-SA.
+          MD
+          } > notes.md
+          cat notes.md
+
+      # Packs first and the catalog last, so a device that reads the new
+      # catalog finds the new packs. Then drop the packs an earlier run left
+      # behind that this run did not build (the new catalog no longer lists them).
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.build.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          title="Tangochō decks (pack format v${VERSION})"
+          cd dist
+          ls -l
+          packs=(*.tgc)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${packs[@]}" --clobber
+            gh release upload "$TAG" catalog.txt catalog.json --clobber
+            gh release edit "$TAG" --title "$title" --notes-file ../notes.md --latest=false
+            gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r name; do
+              case "$name" in
+                *.tgc)
+                  if [ ! -f "$name" ]; then
+                    echo "removing $name (not in this build)"
+                    gh release delete-asset "$TAG" "$name" --yes
+                  fi
+                  ;;
+              esac
+            done
+          else
+            gh release create "$TAG" --title "$title" --notes-file ../notes.md \
+              --latest=false --target "$GITHUB_SHA" \
+              "${packs[@]}" catalog.txt catalog.json
+          fi

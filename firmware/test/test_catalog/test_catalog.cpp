@@ -13,7 +13,7 @@ using namespace tgc;
 namespace {
 
 const char* kDefaultUrl =
-    "https://github.com/dcarnicer/tangocho/releases/latest/download/catalog.txt";
+    "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt";
 
 const char* kBuilderBare =
     "#tangocho-catalog\t1\n"
@@ -69,10 +69,10 @@ void test_builder_output_bare_urls() {
     TEST_ASSERT_EQUAL_HEX8(0xbe, a.sha256[31]);
     // A bare file name is resolved next to the catalog itself.
     TEST_ASSERT_EQUAL_STRING(
-        "https://github.com/dcarnicer/tangocho/releases/latest/download/n5-en.tgc", a.url.c_str());
+        "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/n5-en.tgc", a.url.c_str());
     TEST_ASSERT_EQUAL_STRING("n5-es-strokes", r.entries[1].name.c_str());
     TEST_ASSERT_EQUAL_STRING(
-        "https://github.com/dcarnicer/tangocho/releases/latest/download/n5-es-strokes.tgc",
+        "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/n5-es-strokes.tgc",
         r.entries[1].url.c_str());
 }
 
@@ -94,7 +94,7 @@ void test_comments_blank_lines_crlf_and_bom() {
     TEST_ASSERT_EQUAL_STRING("a", r.entries[0].name.c_str());
     TEST_ASSERT_EQUAL_STRING("b", r.entries[1].name.c_str());
     TEST_ASSERT_EQUAL_STRING(
-        "https://github.com/dcarnicer/tangocho/releases/latest/download/x.tgc",
+        "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/x.tgc",
         r.entries[1].url.c_str());
 }
 

@@ -29,7 +29,8 @@ CC BY-SA terms and attribution as a pack.
   the property of the Electronic Dictionary Research and Development Group,
   and are used in conformance with the Group's licence."
 - Used for: codepoint, meanings (en/es/fr/pt), on'yomi, kun'yomi, stroke
-  count, school grade, newspaper frequency, the legacy 4-level JLPT field
+  count, school grade (also the Jōyō selection: grades 1-6 and 8, `--joyo`),
+  newspaper frequency, the legacy 4-level JLPT field
   (fallback only, see below), and the classical KangXi radical numbers
   (`rad_value rad_type="classical"`, 1..214) used to rank meaning distractors.
   Radicals are a builder-side selection signal only: they are **not** stored in
@@ -193,9 +194,10 @@ root store as packaged by certifi (MPL-2.0 for the bundle); CA certificates are
 published by their issuers for exactly this use. Not data in any pack. The list,
 expiry dates and the update procedure are in docs/decisions.md.
 
-Packs the device downloads through Get decks are the release's prebuilt packs
-(CC BY-SA, attribution in the release notes and below); nothing is bundled with
-the firmware.
+Packs the device downloads through Get decks are the prebuilt packs of the
+dedicated decks release (`decks-v<pack format>`, published by
+`.github/workflows/decks.yml`; CC BY-SA, attribution in that release's notes and
+below); nothing is bundled with the firmware.
 
 ## Combined attribution for a pack
 

@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from . import paths
+from .kanjidic import ORDERS
 
 
 def cmd_fetch(a) -> int:
@@ -46,11 +47,16 @@ def cmd_build(a) -> int:
             return 1
         name = a.name or default_wanikani_name(levels)
     else:
-        from .kanjidic import load_new_jlpt, make_cards, parse_kanjidic
+        from .kanjidic import JOYO_GRADES, load_new_jlpt, make_cards, parse_kanjidic
 
         jlpt, grades = set(a.jlpt or []), set(a.grade or [])
+        if a.joyo and grades:
+            print("error: --joyo already selects grades 1-6 and 8; drop --grade", file=sys.stderr)
+            return 2
+        if a.joyo:
+            grades = set(JOYO_GRADES)
         if not jlpt and not grades:
-            print("error: give at least one --jlpt or --grade, or a --wanikani-token",
+            print("error: give at least one --jlpt, --grade or --joyo, or a --wanikani-token",
                   file=sys.stderr)
             return 2
         if not paths.KANJIDIC_GZ.exists():
@@ -61,11 +67,18 @@ def cmd_build(a) -> int:
             new = load_new_jlpt(paths.KANJI_JSON)
         else:
             print("warning: kanji.json missing, mapping old 4-level JLPT (lossy)", file=sys.stderr)
-        cards = make_cards(parse_kanjidic(paths.KANJIDIC_GZ), a.lang, jlpt, grades, new)
+        # The order becomes the new-card order on the device: school order for
+        # the Jōyō deck, N5-first for everything else unless --order says so.
+        order = a.order or ("grade" if a.joyo else "jlpt")
+        cards = make_cards(parse_kanjidic(paths.KANJIDIC_GZ), a.lang, jlpt, grades, new,
+                           order=order)
         if not cards:
             print("error: no cards selected", file=sys.stderr)
             return 1
-        name = a.name or default_deck_name(jlpt, grades)
+        name = a.name or default_deck_name(jlpt, grades, joyo=a.joyo)
+    if not name.isascii():
+        print(f"warning: deck name {name!r} is not ASCII; the device draws the deck name "
+              "in its built-in ASCII font, so it will not show correctly", file=sys.stderr)
     try:
         raw = build_pack(cards, a.font, a.lang, name, a.large_px, a.small_px, a.text_px, a.option_px,
                          strokes=a.strokes, strokes_px=a.strokes_px)
@@ -206,6 +219,13 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("build", help="build a .tgc pack (KANJIDIC2 or your own WaniKani account)")
     s.add_argument("--jlpt", type=int, action="append", choices=range(1, 6), metavar="N")
     s.add_argument("--grade", type=int, action="append", choices=range(1, 11), metavar="N")
+    s.add_argument("--joyo", action="store_true",
+                   help="the 2,136 Jōyō kanji (KANJIDIC2 grades 1-6 and 8), in school order "
+                        "(grade, then frequency); default name 'Joyo kanji'. AND-ed with --jlpt")
+    s.add_argument("--order", choices=ORDERS,
+                   help="order new cards are introduced in: jlpt (N5 first, then grade and "
+                        "frequency) or grade (school grade, then frequency). Default: grade "
+                        "with --joyo, otherwise jlpt")
     s.add_argument("--wanikani-token", metavar="TOKEN",
                    help="build from the kanji unlocked on your own WaniKani account; the token "
                         "is never logged or cached (the WANIKANI_TOKEN environment variable is "

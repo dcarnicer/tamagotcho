@@ -509,7 +509,8 @@ Short log of non-obvious choices. Newest last.
   one has flashed a merged image from a browser (ESP Web Tools) or with
   `esptool write_flash` on a real StickS3. Stated as such in README and in the
   release notes.
-- **Prebuilt packs are opt-in.** A dispatch input `build_packs` (with
+- **Prebuilt packs are opt-in.** (Superseded 2026-10-18: packs come only from
+  `decks.yml`, see "Decks release" below.) A dispatch input `build_packs` (with
   `packs_jlpt`/`packs_langs`) builds N5 (and, on request, deeper levels) for en
   and es with `--strokes`, writes the catalog, and attaches them. Off by default
   because redistributing CC BY-SA data is a maintainer decision ("Before
@@ -1040,7 +1041,8 @@ Short log of non-obvious choices. Newest last.
   hold) once a home Wi-Fi is saved: the portal stops, Get decks runs, and the
   side button returns to the upload screen -- or into the quiz if a deck is now
   loaded.
-- **Default catalog URL**
+- **Default catalog URL** (superseded the same day by `decks-v2`, see "Decks
+  release" below)
   `https://github.com/dcarnicer/tangocho/releases/latest/download/catalog.txt`.
   It works only once the newest (non-pre-)release of a **public** repo carries
   `catalog.txt` and the packs, which the release workflow attaches only on
@@ -1240,3 +1242,70 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   rendered with Klee One and are left as they are: they show layout, not the
   final typeface, and `render.py` still reads `cache/fonts/KleeOne-SemiBold.ttf`
   (fetch it with `--klee-one`).
+
+## 2026-10-18 – Decks release: `decks-v<format>` instead of `latest`
+
+- **Why.** The default catalog, `releases/latest/download/catalog.txt`, needed
+  the newest release to carry the packs, but `release.yml` attached them only on
+  an opt-in dispatch: any tag-push firmware release (never with packs) would
+  become "latest" and break Get decks. There was no release yet, so it 404'd.
+- **The decks get their own release with a fixed tag, `decks-v<pack format
+  version>`** (`decks-v2` for format v2), created with `--latest=false` so it is
+  never "latest" and no firmware release can hide it. `.github/workflows/decks.yml`
+  (manual dispatch only) builds, checks and publishes it; a rebuild replaces the
+  assets in place (`gh release upload --clobber`, packs first and the catalog
+  last, so a device reading the new catalog finds the new packs) and refreshes
+  the title and notes. A run publishes its whole set: `catalog.txt` lists exactly
+  the packs it built, and `.tgc` assets left by an earlier run that it did not
+  build are deleted, so the release and its catalog always agree. A format bump
+  publishes a new `decks-v<N+1>` release and old firmware keeps reading
+  `decks-v<N>`, so it never downloads a pack it cannot open.
+- **Firmware default** (supersedes the "Default catalog URL" bullet of "Get
+  decks: the catalog, the download and where it lives"):
+  `HomeWifi::kDefaultCatalogUrl =
+  https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt`,
+  to change together with the pack reader's version. The portal's override field
+  stays. Until `decks-v2` exists the URL answers 404, which the device reports as
+  "No catalog published at this URL yet" -- still accurate, and also right for a
+  future firmware whose `decks-v<N>` is not out yet.
+- **Redirects and roots still hold.** `releases/download/<tag>/<asset>` is one
+  hop shorter than `latest`: `github.com` answers 302 straight to
+  `release-assets.githubusercontent.com` (signed URL), which answers 200 with a
+  `Content-Length` to an HTTP/1.0 request (`curl -sIL --http1.0` on KanjiVG's
+  r20260714 asset, 2026-10-18). Same hosts, so the embedded roots ("HTTPS for Get
+  decks") are unchanged.
+- **The tag is derived, not typed.** The workflow reads every pack's format
+  version from `tangocho-pack inspect`, fails if they disagree, and publishes to
+  `decks-v<that>`. It reads the per-pack cap `kCatalogMaxPackBytes` (5 MiB) from
+  `firmware/src/catalog/Catalog.h` and fails if a pack is over it (Get decks
+  would skip that record). It also fails unless the builder's default font is
+  Noto Sans JP, the font the notes credit, so the attribution cannot go stale.
+- **Default set**: JLPT N5..N1 and the full Jōyō deck, each in es and en, all
+  with `--strokes` (12 packs: `n5-es.tgc` .. `n1-en.tgc`, `joyo-es.tgc`,
+  `joyo-en.tgc`). Levels, languages and the Jōyō deck are dispatch inputs
+  (validated against fixed lists and passed through the environment), plus
+  `publish` (off: build, check and keep a workflow artifact only).
+- **The Jōyō deck** (`tangocho-pack build --joyo`) is KANJIDIC2 grades 1-6 and 8
+  = 2,136 kanji, named `Joyo kanji`: deck names stay ASCII because the device
+  draws them in its built-in font, which has no "ō" (the builder now warns about
+  a non-ASCII name). Its cards are in **school order** -- grade 1..6, then 8, each
+  by newspaper frequency, kanji with no frequency rank last (fewer strokes first)
+  -- because a pack's card order is its `level` hint, the order the device
+  introduces new cards in (docs/srs.md). A JLPT order would only replay the N5..N1
+  decks back to back; school order is the curriculum Japanese learners follow and
+  starts with the simplest, most frequent kanji (日一人年大十二本中出...).
+  `--order jlpt|grade` overrides either default.
+- **Sizes in pack format v1** (Klee One, `--strokes`, built 2026-10-18): N5 0.42
+  MB, N4 0.91, N3 2.03, N2 2.02, N1 6.80, Jōyō 11.62 (es; en within 0.1 %). N1
+  and Jōyō are over the 5 MiB cap and the StickS3's 5.9 MB filesystem, so the
+  default set only passes the workflow's check with pack format v2's compression;
+  until then a run with those decks fails before publishing anything.
+- **`release.yml` no longer builds packs** (supersedes the "Prebuilt packs are
+  opt-in" bullet of "Release artifacts"): the `build_packs`/`packs_jlpt`/
+  `packs_langs` inputs and the packs job are gone, the rest is unchanged. The
+  firmware notes link to the decks release named in that firmware's own
+  `kDefaultCatalogUrl` (read from `HomeWifi.h` when the release is made), for
+  Get decks and for manual download.
+- **Still open:** running the decks workflow is a maintainer decision, blocked
+  on the licence of the tanos.co.uk JLPT lists ("Before publishing" in the
+  roadmap).

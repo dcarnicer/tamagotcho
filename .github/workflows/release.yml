@@ -1,9 +1,9 @@
 name: Release
 
 # Tags publish automatically. A manual run is for a dry run or for rebuilding a
-# release without moving the tag; prebuilt packs are opt-in because they pull
-# KANJIDIC2/KanjiVG and produce multi-MB CC BY-SA artifacts that the maintainer
-# may not want to distribute yet (see "Before publishing" in docs/roadmap.md).
+# release without moving the tag. Firmware releases carry no packs: the decks
+# live in their own `decks-v<pack format version>` release, published by
+# decks.yml and never marked "latest" (docs/decisions.md, 2026-10-18).
 on:
   push:
     tags: ["v*"]
@@ -13,18 +13,6 @@ on:
         description: "Release tag, must start with 'v' (e.g. v0.2.0)"
         required: true
         type: string
-      build_packs:
-        description: "Also build prebuilt packs (with --strokes) and a catalog"
-        type: boolean
-        default: false
-      packs_jlpt:
-        description: "JLPT levels for prebuilt packs (space- or comma-separated)"
-        type: string
-        default: "5"
-      packs_langs:
-        description: "Meaning languages for prebuilt packs"
-        type: string
-        default: "en es"
 
 # Releases are not cancelled by a newer run of the same ref.
 concurrency:
@@ -41,7 +29,25 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
+      decks_catalog: ${{ steps.decks.outputs.catalog }}
     steps:
+      # Get decks reads the decks release named in the firmware's default
+      # catalog URL (HomeWifi::kDefaultCatalogUrl); the notes link to that one.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: firmware/src/platform/HomeWifi.h
+          sparse-checkout-cone-mode: false
+
+      - id: decks
+        run: |
+          url="$(grep -oE 'https://github\.com/[^"]+/releases/download/decks-v[0-9]+/catalog\.txt' \
+            firmware/src/platform/HomeWifi.h | head -n 1 || true)"
+          if [ -z "$url" ]; then
+            echo "::warning::no decks-v<N> catalog URL in firmware/src/platform/HomeWifi.h"
+          fi
+          echo "catalog=$url" >> "$GITHUB_OUTPUT"
+          echo "decks catalog: ${url:-none}"
+
       - id: tag
         env:
           EVENT: ${{ github.event_name }}
@@ -153,59 +159,9 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  packs:
-    name: Prebuilt packs + catalog
-    needs: resolve
-    if: github.event_name == 'workflow_dispatch' && inputs.build_packs
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: tools/pack-builder
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Fetch data sources (KANJIDIC2, JLPT levels, Klee One, KanjiVG)
-        run: uv run tangocho-pack fetch
-
-      - name: Build packs
-        env:
-          JLPT: ${{ inputs.packs_jlpt }}
-          LANGS: ${{ inputs.packs_langs }}
-        run: |
-          set -euo pipefail
-          mkdir -p out
-          for n in $(echo "$JLPT" | tr ',' ' '); do
-            for lang in $(echo "$LANGS" | tr ',' ' '); do
-              uv run tangocho-pack build --jlpt "$n" --lang "$lang" --strokes \
-                -o "out/n${n}-${lang}-strokes.tgc"
-            done
-          done
-
-      - name: Write the device catalog
-        run: |
-          uv run tangocho-pack catalog out \
-            --base-url "https://github.com/${{ github.repository }}/releases/download/${{ needs.resolve.outputs.tag }}" \
-            --json out/catalog.json \
-            -o out/catalog.txt
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: packs
-          path: |
-            tools/pack-builder/out/*.tgc
-            tools/pack-builder/out/catalog.txt
-            tools/pack-builder/out/catalog.json
-          if-no-files-found: error
-
   release:
     name: Publish GitHub release
-    needs: [resolve, firmware, packs]
-    # Publish even when the optional packs job was skipped; require the firmware.
-    if: always() && needs.firmware.result == 'success'
+    needs: [resolve, firmware]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -216,9 +172,12 @@ jobs:
           merge-multiple: true
 
       - name: Write release notes
+        env:
+          DECKS_CATALOG: ${{ needs.resolve.outputs.decks_catalog }}
         run: |
           tag="${{ needs.resolve.outputs.tag }}"
-          cat > notes.md <<MD
+          {
+          cat <<MD
           # Tangochō ${tag}
 
           Firmware for the **M5Stack StickS3** and the **LilyGO T-Display-S3**.
@@ -239,31 +198,37 @@ jobs:
             <https://esphome.github.io/esp-web-tools/>) pointing at this release's
             \`tangocho-sticks3-manifest.json\` URL.
           - **M5Launcher:** install the app-only \`tangocho-sticks3.bin\`, then put a
-            pack on the device over Wi-Fi (the merged image flashes an empty
-            filesystem, so a fresh device boots into the Wi-Fi upload screen).
+            deck on the device over Wi-Fi (a device with no deck boots into the
+            Wi-Fi upload screen).
 
           The merged image and manifest are **not verified on hardware yet**; see
           docs/decisions.md.
+
+          ## Decks
+
+          Kanji decks are not attached to firmware releases.
           MD
-          if ls dist/*.tgc >/dev/null 2>&1; then
-            cat >> notes.md <<'MD'
-
-          ## Prebuilt packs (CC BY-SA 4.0)
-
-          The attached `*.tgc` packs are built from KANJIDIC2 and, because they
-          include stroke order, from KanjiVG, and are therefore licensed
-          **CC BY-SA 4.0**. The line-oriented `catalog.txt` (with `sha256` per
-          file) lists them for the device; `catalog.json` is the human-readable
-          companion.
-
-          > Kanji data from KANJIDIC2 (c) EDRDG, CC BY-SA 4.0,
-          > https://www.edrdg.org/edrdg/licence.html. JLPT levels from Jonathan
-          > Waller's JLPT Resources (tanos.co.uk) via davidluzgouveia/kanji-data
-          > (MIT). Glyphs rendered from Klee One (c) Fontworks Inc., SIL OFL 1.1.
-          > Stroke order data from KanjiVG (c) Ulrich Apel, CC BY-SA 3.0,
-          > https://kanjivg.tagaini.net. These packs are licensed CC BY-SA.
+          if [ -n "$DECKS_CATALOG" ]; then
+            decks_tag="${DECKS_CATALOG%/catalog.txt}"
+            decks_tag="${decks_tag##*/}"
+            decks_page="${DECKS_CATALOG%/download/*}/tag/${decks_tag}"
+            cat <<MD
+          They live in the
+          [\`${decks_tag}\`](${decks_page}) release, whose catalog this firmware's
+          **Get decks** reads (Settings > Decks > + Get decks, over the home Wi-Fi):
+          \`${DECKS_CATALOG}\`. To install one by hand, download a \`.tgc\`
+          from that release and upload it from the device's Wi-Fi portal page
+          (\`http://192.168.4.1\`). The decks are CC BY-SA; their attribution is in
+          that release's notes.
+          MD
+          else
+            cat <<'MD'
+          They live in this repository's `decks-v<pack format>` release (see its
+          Releases page), whose catalog Get decks reads. The decks are CC BY-SA;
+          their attribution is in that release's notes.
           MD
           fi
+          } > notes.md
 
       - name: Publish
         env:

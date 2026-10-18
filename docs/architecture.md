@@ -9,7 +9,7 @@
  CSV/Anki* ─┘             font (Noto Sans JP) ─► glyphs ─┘      └─ config         Quiz engine ─► UI
                                                                                   Board HAL (StickS3 / T-Display-S3)
         phone/laptop ──(open AP 192.168.4.1)──► Wi-Fi portal (HTTP) ──► /packs
-        release catalog.txt + packs ──(home Wi-Fi, HTTPS, on demand)──► Get decks ──► /packs
+        decks-v<format> release: catalog.txt + packs ──(home Wi-Fi, HTTPS, on demand)──► Get decks ──► /packs
  * later phases
 ```
 

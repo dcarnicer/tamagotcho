@@ -12,11 +12,15 @@ from .kanjivg import KanjiVGDir, KanjiVGZip, default_source, masks_for
 from .pack import card_strings, write_pack
 
 
-def default_deck_name(jlpt: set[int], grades: set[int]) -> str:
+def default_deck_name(jlpt: set[int], grades: set[int], joyo: bool = False) -> str:
+    """The deck name for the pack header. Always ASCII: the device draws the
+    header in its built-in GLCD font, which has no "ō" (so "Joyo", not "Jōyō")."""
     parts = []
     if jlpt:
         parts.append("JLPT " + "+".join(f"N{n}" for n in sorted(jlpt, reverse=True)))
-    if grades:
+    if joyo:
+        parts.append("Joyo" if jlpt else "Joyo kanji")
+    elif grades:
         parts.append("Grade " + "+".join(str(g) for g in sorted(grades)))
     return " ".join(parts) or "Kanji"
 
