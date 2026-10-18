@@ -9,8 +9,9 @@ with **multiple-choice reviews** and spaced repetition, fully offline.
 ## How it works
 
 1. `tools/pack-builder` builds a **pack** (`.tgc`) from open data
-   (KANJIDIC2), choosing a level (e.g. JLPT N5), meaning language and font.
-   All glyphs are pre-rendered, so the device needs no Japanese font.
+   (KANJIDIC2), choosing a level (e.g. JLPT N5), meaning language and font
+   (default: Noto Sans JP, a gothic like the one in printed texts). All glyphs
+   are pre-rendered, so the device needs no Japanese font.
 2. Upload the pack to the device.
 3. Review: a kanji appears, pick the right meaning or reading from four
    options. Distractors are chosen to be genuinely confusable. A wrong answer
@@ -226,5 +227,5 @@ in [docs/data-sources.md](docs/data-sources.md).
 ## Licence
 
 Code: MIT. Generated packs contain data from KANJIDIC2 (© EDRDG, CC BY-SA 4.0)
-and glyphs from the selected font (default Klee One, SIL OFL 1.1). See
-[docs/data-sources.md](docs/data-sources.md).
+and glyphs from the selected font (default Noto Sans JP, © Adobe, SIL OFL
+1.1). See [docs/data-sources.md](docs/data-sources.md).

@@ -1207,3 +1207,36 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   that woke the chip was released, then restarts. `LittleFS.begin(true)`
   (format on any failure) was rejected because it would wipe decks and progress
   on a transient or partial corruption without asking.
+
+## 2026-10-18 – Default font: Noto Sans JP
+
+- **Noto Sans JP Regular replaces Klee One SemiBold as the builder's default
+  font** (decided with the maintainer; supersedes the "Default font: Klee One"
+  bullet of the 2026-10-16 entry). The app is about *recognising* kanji in
+  print, so the glyphs should look like the gothic learners meet in real texts
+  (and in WaniKani) rather than Klee One's textbook (教科書体) style. Stroke
+  shapes for writing are still shown by the KanjiVG stroke animation, which
+  does not depend on the font. Klee One stays available: `fetch --klee-one`,
+  then `build --font cache/fonts/KleeOne-SemiBold.ttf`.
+- **Regular, not Medium**, after comparing previews: Medium clogs dense kanji
+  at the 40 px option size, and light ink on the dark panel already looks
+  heavier on the real screen than in a preview.
+- **M5GFX's built-in `lgfxJapanGothic_*` fonts were rejected**: they stop at
+  40 px (the prompt is 96 px), are 1bpp with no antialiasing, and cost ~534 KB
+  of app flash per size. Packs keep their pre-rendered glyphs.
+- **Pinned download.** `fetch` gets the Japanese subset OTF and the OFL
+  `LICENSE` from the noto-cjk `Sans2.004` release tag (the latest Sans release,
+  byte-identical to `main` today) into `cache/noto/`.
+- **No format or layout change.** Both fonts have the same vertical metrics
+  (1160/-288 per 1000), so text line heights and ascents in the header are
+  unchanged. N5 builds for en/es/fr/pt and N4-N1 for es keep every card and
+  every text glyph (œ, ç, ã, õ included). Packs grow ~4-7 % because gothic ink
+  fills more of the em square (N5 es 375,356 -> 401,816 bytes; N3 es 1,738,280
+  -> 1,829,012; N1 es 5,765,932 -> 6,026,068, which still fits the StickS3's
+  6,225,920-byte LittleFS partition, but with little room to spare). Meaning
+  distractors are ranked from the font's own bitmaps, so they shift too (N5 es:
+  the first distractor changes on 28 of 79 cards).
+- The UX mockups (`tools/ux-mockups/`, `docs/ux/`, `docs/ux-refresh.md`) were
+  rendered with Klee One and are left as they are: they show layout, not the
+  final typeface, and `render.py` still reads `cache/fonts/KleeOne-SemiBold.ttf`
+  (fetch it with `--klee-one`).

@@ -6,9 +6,11 @@ a font. Python 3.12+, managed with [uv](https://docs.astral.sh/uv/).
 ```sh
 cd tools/pack-builder
 uv sync
-uv run tangocho-pack fetch            # KANJIDIC2, JLPT N5-N1 table, Klee One, KanjiVG -> cache/
+uv run tangocho-pack fetch            # KANJIDIC2, JLPT N5-N1 table, Noto Sans JP, KanjiVG -> cache/
 uv run tangocho-pack build --jlpt 5 --lang es -o out/n5-es.tgc
 uv run tangocho-pack build --jlpt 5 --lang es --strokes -o out/n5-es-strokes.tgc
+uv run tangocho-pack fetch --klee-one # optional: Klee One (textbook style) -> cache/fonts/
+uv run tangocho-pack build --jlpt 5 --font cache/fonts/KleeOne-SemiBold.ttf -o out/n5-en-klee.tgc
 uv run tangocho-pack build --wanikani-token "$WANIKANI_TOKEN" -o out/wanikani.tgc
 uv run tangocho-pack build --wanikani-level 1 --wanikani-level 2 -o out/wanikani-l1-2.tgc
 uv run tangocho-pack inspect out/n5-es.tgc
@@ -20,19 +22,26 @@ uv run pytest
 
 ## Commands
 
-- `fetch [--force]` downloads into `cache/` (git-ignored): KANJIDIC2, the
-  JLPT table, Klee One and the pinned KanjiVG release zip.
+- `fetch [--force] [--klee-one]` downloads into `cache/` (git-ignored):
+  KANJIDIC2, the JLPT table, Noto Sans JP Regular (the default font, pinned to
+  the noto-cjk `Sans2.004` release, with its OFL `LICENSE`, in `cache/noto/`)
+  and the pinned KanjiVG release zip. `--klee-one` also gets Klee One (the
+  textbook-style font that was the default before 2026-10-18) into
+  `cache/fonts/`, for `build --font cache/fonts/KleeOne-SemiBold.ttf`.
 - `build --jlpt N [--jlpt M ...] [--grade G ...] --lang en|es|fr|pt
   [--font PATH] [--large-px 96] [--small-px 40] [--text-px 18] [--option-px 20]
-  [--strokes] [--strokes-px N] [--name NAME] -o FILE`. `--jlpt` and `--grade`
-  filters are AND-ed when both are given. Cards are ordered easiest first (N5
-  before N1, lower grade, frequency). `--strokes` adds the optional KanjiVG
-  stroke-order section (off by default; a pack without it is byte-identical to a
-  KANJIDIC2-only v1 pack). `--strokes-px` sets the em square for the masks and
-  defaults to `--large-px`.
+  [--strokes] [--strokes-px N] [--name NAME] -o FILE`. `--font` takes any
+  TTF/OTF (default `cache/noto/NotoSansJP-Regular.otf`); a card whose kanji the
+  font lacks is dropped with a warning, and a missing text glyph is an error.
+  `--jlpt` and `--grade` filters are AND-ed when both are given. Cards are
+  ordered easiest first (N5 before N1, lower grade, frequency). `--strokes`
+  adds the optional KanjiVG stroke-order section (off by default; a pack
+  without it is byte-identical to a KANJIDIC2-only v1 pack). `--strokes-px`
+  sets the em square for the masks and defaults to `--large-px`.
 - `build --wanikani-token TOKEN [--wanikani-level N ...]` builds from **your own
-  WaniKani account** instead of KANJIDIC2 (so no `--jlpt`/`--grade` and no
-  `fetch` needed). It imports only the kanji you have **unlocked** (WaniKani API
+  WaniKani account** instead of KANJIDIC2 (so no `--jlpt`/`--grade`, and
+  `fetch` is only needed for the font). It imports only the kanji you have
+  **unlocked** (WaniKani API
   v2, `/assignments` joined to `/subjects`), reads the token from the flag or
   the `WANIKANI_TOKEN` environment variable, and never logs, prints or caches
   it. `--wanikani-level` (repeatable) limits the import to those WaniKani levels;
