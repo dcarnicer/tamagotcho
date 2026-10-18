@@ -1,8 +1,9 @@
 # UX refresh: audit, design system and plan
 
 > **Status: approved with changes (2026-10-18).** Phase 1 (foundations, with
-> the UI font of Phase 4) is implemented on `feature/ui-foundation`, see §4;
-> the later phases are not. Section 6 records the maintainer's answers; where
+> the UI font of Phase 4) is implemented on `feature/ui-foundation` and Phase 2
+> (quiz, feedback, detail card) on `feature/ux-quiz`, see §4; the later phases
+> are not. Section 6 records the maintainer's answers; where
 > they differ from §2–§4 (flat corners, the UI font, the side tap, the date's
 > group), §6 wins.
 
@@ -558,6 +559,53 @@ docs/decisions.md, "UX refresh phase 1: UI font, widgets, scrolling menus".
   `keyA.downAt`, so it is unchanged.
 - `drawDetail`: picked option, ghost kanji + stroke counter, `ON`/`KUN` pills,
   and an animation redraw limited to the kanji box.
+
+*Status (2026-10-18, `feature/ux-quiz`; not yet verified on hardware).*
+Delivered:
+- Quiz header: the mode pill (`MEANING`/`SIGNIFICADO` in `accent-hi`, `ON` or
+  `KUN` in `mode-reading`, `KANJI` in `mode-kanji`), the cards left
+  (`Queue::remaining()`, plus the open question), the battery icon and the
+  2 px session bar (answered / (answered + left); `Queue::answeredCount()`
+  counts since the last rebuild). The deck name and the in-body mode label
+  are gone. Meaning → kanji gets a `text-dim` caption ("which kanji means" /
+  "qué kanji significa") over the prompt.
+- Tiles (`drawTile`, new `drawKanjiTile`): meanings one per row in the UI
+  font (two lines where a tile is tall enough, T-Display portrait); readings
+  in a 2x2 grid of set-3 kana when every option fits a cell (the grid keeps
+  2 px to the panel edges, so a portrait cell holds three kana), else rows;
+  kanji options in a 2x2 grid of set-1 glyphs. Nothing uses Font0 for an
+  option any more.
+- Reveal: correct `ok` + ✓, the wrong pick `err-bg` + 2 px `err` + ✗, the rest
+  dimmed; grid cells put the mark in the top-right corner. The header pill
+  becomes `✓ GOOD · 4d` / `✓ HARD · 2d` (`warn`) / `✗ AGAIN`, in the longest of
+  "WORD · Nd", "WORD·Nd", "WORD" that fits next to the cards left
+  (`ui/QuizUi.h`, every word × interval × panel tested in `test_quizui`).
+- Hint bar policy (`QuizHints`): on while the lifetime answers are under 50;
+  afterwards it appears after 8 s without input on an unanswered question and
+  stays for the rest of that question (its answer and detail card too);
+  without it the tiles grow (24 → 27 px portrait, 24 → 26 px landscape).
+- Input: front tap = next option, side tap = previous (both wrap), front
+  hold = answer, side hold = settings; revealed, detail and done screens as
+  before. A focus move redraws and pushes only the two tiles.
+- Hold progress on the focused quiz tile and on the focused row of every
+  `drawList()` screen: from 120 ms the target fills with `accent-press`, full
+  at `holdMsFor()`; a frame every 40 ms pushes only the tile/row, and the
+  hint bar's ▬ lights. Under `TGC_QUIZ_LOG` each frame logs `H hold ...`.
+- Auto-advance after a correct answer (`advanceMsFor()`): a 2 px bar along
+  the bottom edge drains, then the next card; any press skips it, and the
+  wait never ends while a button is down (one advance per answer).
+- Detail card: `✗` and what was picked (for meaning → kanji the picked
+  kanji's meaning) with "correct 3/5" (or "3/5"), the meanings in the UI font
+  (up to three lines), the readings behind `ON`/`KUN` pills, strokes written
+  so far in `text`, the current one in `warn`, the remaining ones in `ghost`
+  (KanjiVG strokes, so they line up), `stroke 4/6` in the header (the bare
+  `4/13` when the worded counter of the last stroke does not fit), and the
+  animation pushes only the header and the em square; it pauses while the
+  panel is dim. Hint "• next".
+
+Not done in phase 2: the settings rows that change the auto-advance and hold
+time (`feature/ux-settings`), the kanji fade-in (Phase 5). Decisions:
+docs/decisions.md, "UX refresh phase 2: quiz, feedback, detail card, input".
 
 **Phase 3 – Settings and secondary screens (M, ~2–3 d, medium risk: merge
 conflicts).**

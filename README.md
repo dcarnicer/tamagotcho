@@ -17,6 +17,10 @@ with **multiple-choice reviews** and spaced repetition, fully offline.
    options. Distractors are chosen to be genuinely confusable. A wrong answer
    opens a detail card that shows all meanings and readings — and animates the
    kanji's stroke order from KanjiVG, if the pack was built with `--strokes`.
+   Controls: a tap of the front button moves the highlight down, a tap of the
+   side button moves it up, and **holding the front button answers** (the
+   option fills up while you hold); holding the side button opens the
+   settings. After a correct answer the next card follows by itself.
 
 ## Getting decks onto the device (Wi-Fi portal)
 

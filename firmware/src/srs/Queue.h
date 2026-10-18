@@ -40,6 +40,9 @@ public:
 
     // Items left, including pending relearn pushes.
     size_t remaining() const { return pos_ < items_.size() ? items_.size() - pos_ : 0; }
+    // Answers reported since the last rebuild (the quiz header's session
+    // progress: answered / (answered + left)).
+    size_t answeredCount() const { return answered_; }
 
     // Reports the grade for `cardIndex`. Again re-inserts the card
     // kRelearnGap items ahead of the cursor, up to kMaxRelearnPushes times.
@@ -60,6 +63,7 @@ private:
 
     std::vector<Item> items_;
     size_t pos_ = 0;
+    size_t answered_ = 0;             // answered() calls since rebuild()
     std::vector<uint8_t> seen_;      // per card index: already scheduled
     std::vector<uint8_t> relearned_;  // per card index: relearn pushes so far
     int prevMode_ = -1;               // mode of the last served item

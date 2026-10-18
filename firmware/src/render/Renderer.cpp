@@ -335,6 +335,12 @@ int Renderer::drawWrapped(lgfx::LovyanGFX& dst, const char* s, int x, int y, int
     return n;
 }
 
+int Renderer::lineCount(const char* s, int maxW, int maxLines, uint8_t set) const {
+    if (!s) return 0;
+    Line lines[kMaxWrapLines];
+    return wrap(s, maxW, maxLines, set, lines, kMaxWrapLines);
+}
+
 int Renderer::drawCentred(lgfx::LovyanGFX& dst, const char* s, int x, int y, int w, int h,
                           int maxLines, uint16_t fg, uint16_t bg, uint8_t set) {
     Line lines[kMaxWrapLines];
