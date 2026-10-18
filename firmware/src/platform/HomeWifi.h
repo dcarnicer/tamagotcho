@@ -1,9 +1,9 @@
 #pragma once
-// The user's home Wi-Fi (station mode), joined on demand for "Get decks" (and,
-// later, NTP time). Never left on: the app calls begin() when a network feature
-// starts and end() as soon as it is done, so the battery policy holds (the CPU
-// runs at 240 MHz only while the radio is up). Arduino/ESP32 only; not part of
-// the native build.
+// The user's home Wi-Fi (station mode), joined on demand for "Get decks" and
+// for the network time after a power cut. Never left on: the app calls begin()
+// when a network feature starts and end() as soon as it is done, so the battery
+// policy holds (the CPU runs at 240 MHz only while the radio is up).
+// Arduino/ESP32 only; not part of the native build.
 //
 // Settings live in NVS namespace "net": `ssid`, `pass` and the optional catalog
 // URL override `cat`. They are written from the Wi-Fi portal page and read
@@ -66,10 +66,10 @@ public:
     Failure failure() const { return failure_; }
     const char* ssid() const { return ssid_; }  // the network being joined
 
-    // NTP helper (roadmap phase 2, "real date from NTP"). Blocking: needs
-    // Connected, runs SNTP for at most `timeoutMs` and stops it again. On success
-    // stores the UTC time in milliseconds since 1970 and returns true. Not wired
-    // into the SRS yet; the wall-clock integration is a separate change.
+    // NTP (roadmap phase 2, "real date from NTP"). Blocking: needs Connected,
+    // runs SNTP for at most `timeoutMs` and stops it again. On success stores the
+    // UTC time in milliseconds since 1970 and returns true. The app turns it into
+    // a study day with the saved UTC offset (applyWallClock in main.cpp).
     bool fetchUtcMs(int64_t* outUtcMs, uint32_t timeoutMs);
 
 private:
