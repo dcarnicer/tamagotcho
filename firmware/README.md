@@ -101,13 +101,14 @@ next option, a **hold** (~600 ms) confirms the highlighted one. Once the answer
 is revealed, a tap advances: for a correct answer straight to the next card, for
 a wrong answer it first opens the mistake **detail card** (meanings, readings,
 stroke order), and the next tap starts the following question. The side button is
-a tap shortcut; **holding it opens the settings home** (Continue / Decks / Date /
+a tap shortcut; **holding it opens the settings home** (Continue / Decks / Date » /
 New per day / Speed / Statistics / Wi-Fi » / Orientation / Language / Brightness
 / Sleep / About), where a tap moves the selection, a hold activates the row, and
 the side button goes back (in landscape the list scrolls with the selection).
 The screen headers no longer say so: going back is always the side button.
 **Wi-Fi »** opens its own list (Web portal / Home network / Setup mode / Forget
-network) that works the same way. **About** shows the
+network) that works the same way, and so does **Date »** (Date / Time zone, see
+[Date](#date)). **About** shows the
 firmware version and licence, the decks' licence, the repository, and the loaded
 deck's name with its data credits; a tap turns the page when it needs two, the
 side button goes back. The deck list's last row, **+ Get decks**, downloads decks
@@ -180,23 +181,38 @@ notice again and goes back to sleep. Plug in USB to use it.
 
 There is no RTC chip: the SRS day advances with uptime and deep sleep. Opening
 the Wi-Fi portal page from a phone (**Settings → Wi-Fi » → Web portal**, then
-the address on the screen) sets the real date from the phone's clock and time zone;
-from then on the day rolls over at 04:00 local and the statistics show the real
-date (docs/srs.md §5.1). After a real power-off the device asks on the **date
-screen**: it shows the last-used date and a proposed "today" with its weekday. A
-tap adds a day, a hold confirms, a side-button hold takes a day back (never
-before the current day) and a side tap skips the question. The same screen is
-**Settings → Date** for manual corrections.
+the address on the screen) sets the real date from the phone's clock and time
+zone; from then on the day rolls over at 04:00 local and the statistics show the
+real date (docs/srs.md §5.1). The page sends the zone as a rule with its
+daylight-saving changes, so the rollover stays at 04:00 across them without
+another visit.
+
+After a real power-off the device has to find out the date again:
+
+- **With a home Wi-Fi and a time zone**, it first tries the network: "Getting
+  the date via <network>..." (up to 15 s to join, 3 s for NTP), then straight
+  on to the quiz. If that fails, or you **tap** to skip it, the date screen
+  comes up (with the reason when it failed).
+- **Otherwise**, or then, the **date screen**: the last-used date and a
+  proposed "today" with its weekday. **Tap: +1 day, hold: OK, side hold: -1
+  day** (never before the current day), **side tap: cancel** (keep the day as
+  it is); the bottom lines say so.
+
+**Settings → Date »** has the same date screen for manual corrections and
+**Time zone**: **From phone** (the zone the portal page last sent, shown with
+its city) or one of 22 zones (UTC, London, Lisbon, Madrid, Athens, New York,
+Chicago, Denver, Los Angeles, Mexico City, Bogota, Lima, Caracas, Santiago,
+Buenos Aires, Sao Paulo, Kolkata, Shanghai, Seoul, Tokyo, Sydney, Auckland),
+each with its offsets ("+1/+2": winter/summer); the zone in use is green. Use
+it when no phone has set one, or the phone's is wrong. The next portal page
+visit replaces a zone chosen here with the phone's. A new zone counts from the
+next network time or page visit; it does not move the date by itself.
 
 **Network time.** With a home Wi-Fi saved, the date also comes from NTP: the
 portal in home mode, Get decks and the network test sync it once connected (at
-most 3 s, a failure is only logged), and the
-power-off date question joins the home Wi-Fi in the background ("Syncing via
-<network>..."), takes the time and moves on to the quiz by itself. If that
-fails the line says to set the date by hand (radio off); answering by hand at
-any time cancels the join. NTP gives UTC only, so both use the UTC offset the
-portal page last sent and skip the sync until it has been opened once (the
-offset is not refreshed by NTP: after a DST change, open the page again).
+most 3 s, a failure is only logged), and the power-off date question tries it
+first as above. NTP gives UTC only, so all of these need the time zone and skip
+the sync without one.
 
 ## Layout
 

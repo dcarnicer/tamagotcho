@@ -51,11 +51,22 @@ Scope for now: **kanji only** (no vocabulary decks).
         via <ssid>..." / "No network: set it by hand"); the stepper stays usable
         and is the fallback, and any manual answer turns the radio off. Uses the
         UTC offset stored by the last phone sync and is skipped without it.
+        (Since then: a visible network-first screen and a zone rule, below.)
         **Not verified on hardware yet.**
       - [x] Better manual fallback (2026-10-18): the date screen shows the
         last-used date and a proposed "today" with its weekday (tap +1 day, hold
         confirms, side hold -1 day, side tap cancels) instead of the 0/1/2-7/14+
         buckets. A sync from the phone answers it instead.
+      - [x] Time zone rules, manual zone, network first (2026-10-18, v0.1.0
+        hardware feedback): the page sends the browser's zone as a POSIX TZ
+        rule, so the 04:00 rollover follows DST changes (23/25 h study days)
+        without another visit; Settings › Date » › Time zone offers "From
+        phone" and 22 zones for a device no phone has set; after a power cut
+        with a home Wi-Fi and a zone, "Getting the date via <network>" comes
+        before the stepper (a tap skips it); the stepper's hints spell out
+        both directions. Native-tested (`test_tz`), the page's rule checked
+        against tzdata for 597 zones (`scripts/check_tz_rules.py`).
+        **Not verified on hardware yet.**
 - [~] **Phase 3 – Better cards.** Distractors done for visual similarity,
       shared classical radicals and confusable readings; meaning→kanji questions
       done; the mistake detail card is done (a tap after a wrong answer opens a
