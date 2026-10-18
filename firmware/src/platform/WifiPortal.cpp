@@ -24,6 +24,11 @@ constexpr size_t kFsReserveBytes = kPackFsReserveBytes;
 constexpr uint32_t kFetchIdleMs = 5000;      // no data for this long -> abort
 constexpr uint32_t kFetchTotalMs = 60000;    // whole download budget
 
+// "Get decks now": the access point stays up this long after the request, so
+// the response page (handed to lwIP by send(), whose connection the server
+// closes right away) reaches the phone before the AP goes down.
+constexpr uint32_t kGetDecksGraceMs = 1000;
+
 // Nearby networks offered as SSID suggestions on the page.
 constexpr size_t kMaxNearby = 12;
 
@@ -195,7 +200,7 @@ String pageHeader(const char* title) {
     h += "input[type=url]{width:100%;max-width:26rem;padding:.3rem}";
     h += "input[type=text],input[type=password]{width:100%;max-width:16rem;padding:.3rem;margin:.15rem 0}";
     h += "code{background:#eee;padding:0 .2rem}h1{font-size:1.25rem}h2{font-size:1rem;margin:1rem 0 .3rem}";
-    h += ".muted{color:#666}.err{color:#b00}";
+    h += ".muted{color:#666}.err{color:#b00}.ok{color:#070}";
     h += "</style></head><body><h1>Tangocho</h1>";
     return h;
 }
@@ -252,6 +257,7 @@ void WifiPortal::registerRoutes() {
     server_->on("/wifi", HTTP_POST, [this]() { touch(); handleHomeWifi(); });
     server_->on("/wifi/forget", HTTP_POST, [this]() { touch(); handleForgetWifi(); });
     server_->on("/catalog", HTTP_POST, [this]() { touch(); handleCatalogUrl(); });
+    server_->on("/getdecks", HTTP_POST, [this]() { touch(); handleGetDecks(); });
     server_->on("/upload", HTTP_POST, [this]() { touch(); handleUploadDone(); },
                 [this]() { touch(); handleUploadChunk(); });
     server_->on("/time", HTTP_POST, [this]() { touch(); handleTime(); });
@@ -275,6 +281,14 @@ void WifiPortal::poll() {
         doFetch(url);
         touch();  // the download may have taken a while
     }
+    // "Get decks now": leave once the response page had its moment to go out.
+    // The hook normally ends this portal, so nothing may run after it.
+    if (getDecksPending_ && millis() - getDecksAt_ >= kGetDecksGraceMs) {
+        getDecksPending_ = false;
+        Serial.printf("[wifi] page asked for Get decks: leaving the portal\n");
+        if (hooks_.onGetDecks) hooks_.onGetDecks();
+        return;
+    }
 }
 
 void WifiPortal::end() {
@@ -295,6 +309,7 @@ void WifiPortal::end() {
     uploadName_ = "";
     fetchPending_ = "";
     fetchUrl_ = "";
+    getDecksPending_ = false;
     ssid_[0] = 0;
     Serial.printf("[wifi] portal stopped\n");
 }
@@ -361,12 +376,22 @@ void WifiPortal::handleRoot() {
     // Home Wi-Fi for "Get decks". The password is write-only: only the saved
     // network name is ever shown.
     const String homeSsid = HomeWifi::savedSsid();
-    h += "<h2>Home Wi-Fi (for Get decks)</h2>";
+    h += "<h2 id=\"home\">Home Wi-Fi (for Get decks)</h2>";
     if (homeSsid.length()) {
         h += "<div>Saved network: <b>";
         h += htmlEscape(homeSsid);
         h += "</b> <form method=\"post\" action=\"/wifi/forget\" style=\"display:inline\">";
         h += "<button type=\"submit\">forget</button></form></div>";
+        // Straight to Get decks: the device leaves this access point for the
+        // home network (handleGetDecks). `?wifi=saved` is the save's redirect.
+        if (hooks_.onGetDecks) {
+            if (server_->arg("wifi") == "saved")
+                h += "<p class=\"ok\">Saved. Press <b>Get decks now</b> to download decks over it.</p>";
+            h += "<form method=\"post\" action=\"/getdecks\"><button type=\"submit\">Get decks now</button> ";
+            h += "<span class=\"muted\">the device leaves this Wi-Fi and joins <b>";
+            h += htmlEscape(homeSsid);
+            h += "</b></span></form>";
+        }
     } else {
         h += "<p class=\"muted\">No home network saved yet.</p>";
     }
@@ -384,10 +409,10 @@ void WifiPortal::handleRoot() {
         }
         h += "</datalist>";
     }
-    h += "</form><p class=\"muted\">Leave the password empty for an open network. On the device, ";
-    h += "open <b>Decks</b> and pick <b>+ Get decks</b>: it joins this network only for the ";
-    h += "download. The password stays on the device (stored unencrypted) and is never shown ";
-    h += "again.</p>";
+    h += "</form><p class=\"muted\">Leave the password empty for an open network. Then press ";
+    h += "<b>Get decks now</b>, or on the device open <b>Decks</b> and pick <b>+ Get decks</b>: it ";
+    h += "joins this network only for the download. The password stays on the device (stored ";
+    h += "unencrypted) and is never shown again.</p>";
 
     h += "<h2>Deck catalog</h2><form method=\"post\" action=\"/catalog\">";
     h += "<input type=\"url\" name=\"url\" maxlength=\"256\" value=\"";
@@ -561,7 +586,9 @@ void WifiPortal::handleHomeWifi() {
         return;
     }
     setMsg("home Wi-Fi saved");
-    server_->sendHeader("Location", "/", true);
+    // Back to the page's Home Wi-Fi section, which now confirms the save and
+    // offers "Get decks now".
+    server_->sendHeader("Location", "/?wifi=saved#home", true);
     server_->send(303, "text/plain", "");
 }
 
@@ -584,6 +611,43 @@ void WifiPortal::handleCatalogUrl() {
     setMsg("catalog URL saved");
     server_->sendHeader("Location", "/", true);
     server_->send(303, "text/plain", "");
+}
+
+// POST /getdecks, the page's "Get decks now": the device leaves this access
+// point and opens Get decks over the saved home Wi-Fi (Hooks::onGetDecks). Only
+// recorded here; poll() leaves a moment later, so this page is sent while the
+// AP is still up.
+void WifiPortal::handleGetDecks() {
+    const String home = HomeWifi::savedSsid();
+    if (!hooks_.onGetDecks || home.isEmpty()) {
+        server_->send(400, "text/html",
+                      pageHeader("Get decks") +
+                          "<p class=\"err\">No home Wi-Fi saved yet: save your network on the "
+                          "page first.</p><p><a href=\"/\">Back</a></p></body></html>");
+        return;
+    }
+    getDecksPending_ = true;
+    getDecksAt_ = millis();
+    setMsg("starting Get decks...");
+    const String homeEsc = htmlEscape(home);
+    String h = pageHeader("Get decks");
+    h += "<h2>Getting decks over your home Wi-Fi</h2><p>The device is leaving this Wi-Fi (<b>";
+    h += ssid_;
+    h += "</b>) to download decks over <b>";
+    h += homeEsc;
+    h += "</b>, so this page stops answering now.</p>";
+    h += "<p>You can disconnect the phone from <b>";
+    h += ssid_;
+    h += "</b>: it goes back to its own network (or pick that one again in its Wi-Fi ";
+    h += "settings).</p>";
+    h += "<p><b>Follow the device screen.</b> It joins <b>";
+    h += homeEsc;
+    h += "</b> and lists the decks: a tap moves, a hold downloads, the side button goes back.</p>";
+    h += "<p class=\"muted\">To use this page again, open <b>Settings &gt; Wi-Fi</b> on the device ";
+    h += "(a device without decks comes back to that screen when you leave Get decks) and join <b>";
+    h += ssid_;
+    h += "</b> again.</p></body></html>";
+    server_->send(200, "text/html", h);
 }
 
 void WifiPortal::scanNearby() {

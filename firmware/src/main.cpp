@@ -595,6 +595,7 @@ void formatDate(uint16_t days, char* out, size_t n);
 [[noreturn]] void sleepNow(bool critical);
 void netRadioOff();
 void openDecks();
+void openGetDecks(bool fromBoot);
 
 // The card of the question on screen. False when there is none to draw or
 // grade: no pack open, no question built yet, or an index the open pack does
@@ -1769,7 +1770,26 @@ bool portalTime(int64_t utcMs, int16_t tzOffsetMin) {
     return applyWallClock(utcMs, tzOffsetMin);
 }
 
-const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged, portalTime};
+// Stops the portal and opens Get decks in its place: the boot-time upload
+// screen's hold, and the portal page's "Get decks now" (the portal's onGetDecks
+// hook, called from poll() once its response is out) from the boot-time portal
+// or the settings one. Get decks then leaves as it always does: back to the
+// boot-time screen (or into the quiz once a deck is loaded), else the deck list.
+void wifiToGetDecks() {
+    gPortal.end();
+    setCpuFrequencyMhz(kCpuMhz);  // openGetDecks() raises it again while the radio is on
+    QLOG("W wifi: stopped for Get decks\n");
+    // The page sends the user to the device screen: undo an idle dim (the time
+    // spent typing on the phone is not button input).
+    if (gDimmed) {
+        tgc::board::setBrightness(gBrightness);
+        gDimmed = false;
+    }
+    openGetDecks(gWifiBootUpload);
+}
+
+const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged, portalTime,
+                                             wifiToGetDecks};
 
 // Opens the Wi-Fi screen and starts the portal (from the settings home, or at
 // boot when there is no pack yet). The boot-time upload mode is decided by the
@@ -2949,18 +2969,17 @@ void loop() {
             }
         }
     } else if (gScreen == Screen::Wifi) {
-        gPortal.poll();
+        gPortal.poll();  // the page's "Get decks now" may leave this screen (wifiToGetDecks)
         if (gPortal.consumeDirty()) drawScreen();
         // On the boot-time upload screen, continue booting as soon as a pack has
         // been uploaded; otherwise the side button leaves for the settings home
         // (closeWifi itself ignores the button in the boot-time state).
-        if (!wifiUploadReadyToQuiz()) {
+        if (gScreen == Screen::Wifi && !wifiUploadReadyToQuiz()) {
             if (b) {
                 closeWifi();
             } else if (a == 2 && gWifiBootUpload && tgc::HomeWifi::hasCredentials()) {
                 // Boot-time screen with a saved home Wi-Fi: fetch a deck instead.
-                gPortal.end();
-                openGetDecks(true);
+                wifiToGetDecks();
             }
         }
     } else if (gScreen == Screen::GetDecks) {

@@ -14,8 +14,9 @@
 // running on an untrusted network.
 //
 // The class is deliberately decoupled from main.cpp: the app hands over a small
-// Hooks struct (statistics, a "packs changed" callback and a sink for the
-// browser's clock) and the portal never reaches into the app's globals.
+// Hooks struct (statistics, a "packs changed" callback, a sink for the
+// browser's clock and the page's "Get decks now") and the portal never reaches
+// into the app's globals.
 #include <Arduino.h>
 #include <FS.h>
 #include <WebServer.h>
@@ -55,6 +56,12 @@ public:
         // time is plausible and applies it; the portal never touches the SRS.
         // Returns true when the time was accepted.
         bool (*onTime)(int64_t utcMs, int16_t tzOffsetMin) = nullptr;
+        // The page's "Get decks now" (POST /getdecks, offered only while a home
+        // Wi-Fi is saved): the device should leave this access point and open
+        // Get decks over the home Wi-Fi. Called from poll(), once the response
+        // page has had time to reach the phone; the app normally calls end()
+        // from it, so poll() touches nothing afterwards. Null hides the button.
+        void (*onGetDecks)() = nullptr;
     };
 
     WifiPortal() = default;
@@ -66,7 +73,8 @@ public:
     // lastMessage() then says why. A no-op while already active.
     bool begin(const Hooks& hooks);
     // Serves pending requests and drives a URL download. Call every loop()
-    // iteration while on the Wi-Fi screen; a download may block briefly.
+    // iteration while on the Wi-Fi screen; a download may block briefly. May
+    // call Hooks::onGetDecks, which usually stops the portal.
     void poll();
     // Stops the server and the AP and frees the state. Safe to call when idle.
     void end();
@@ -111,6 +119,7 @@ private:
     void handleHomeWifi();
     void handleForgetWifi();
     void handleCatalogUrl();
+    void handleGetDecks();
     // Remembers the nearby network names (strongest first) for the page's SSID
     // suggestions. Runs once in begin(), before the AP starts.
     void scanNearby();
@@ -147,6 +156,12 @@ private:
     // on-device screen can paint "downloading..." before the loop blocks.
     String fetchPending_;
     String fetchUrl_;
+
+    // "Get decks now", staged like a fetch: POST /getdecks only records it and
+    // poll() calls Hooks::onGetDecks a moment later, after the response page
+    // went out while the access point was still up.
+    bool getDecksPending_ = false;
+    uint32_t getDecksAt_ = 0;  // millis() of the request
 
     std::vector<String> nearby_;  // SSIDs seen by scanNearby()
 };
