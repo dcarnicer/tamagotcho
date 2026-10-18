@@ -262,6 +262,64 @@ void test_helpers() {
     TEST_ASSERT_EQUAL_STRING("not a catalog", catalogErrorString(CatalogError::NotACatalog));
 }
 
+void test_lang_matches() {
+    TEST_ASSERT_TRUE(catalogLangMatches("es", "es"));
+    TEST_ASSERT_TRUE(catalogLangMatches("ES", "es"));
+    TEST_ASSERT_TRUE(catalogLangMatches("es-MX", "es"));
+    TEST_ASSERT_TRUE(catalogLangMatches("es_419", "es"));
+    TEST_ASSERT_TRUE(catalogLangMatches("en", "en-GB"));
+    TEST_ASSERT_FALSE(catalogLangMatches("en", "es"));
+    TEST_ASSERT_FALSE(catalogLangMatches("est", "es"));  // a prefix is not a match
+    TEST_ASSERT_FALSE(catalogLangMatches("e", "es"));
+    TEST_ASSERT_FALSE(catalogLangMatches("", "es"));
+    TEST_ASSERT_FALSE(catalogLangMatches("-es", "es"));
+    TEST_ASSERT_FALSE(catalogLangMatches("es", ""));
+    TEST_ASSERT_FALSE(catalogLangMatches("es", nullptr));
+}
+
+// Names of the entries, in order, joined with ','.
+static std::string names(const std::vector<CatalogEntry>& v) {
+    std::string out;
+    for (const CatalogEntry& e : v) out += (out.empty() ? "" : ",") + e.name;
+    return out;
+}
+
+void test_order_for_lang() {
+    const std::string text = "#tangocho-catalog\t1\n" + record("n5-en", "en") + "\n" +
+                             record("n5-es", "es") + "\n" + record("n4-en", "en") + "\n" +
+                             record("n5-fr", "fr") + "\n" + record("n4-es", "ES") + "\n" +
+                             record("misc", "") + "\n" + record("n3-es", "es-MX") + "\n";
+    const CatalogParse r = parse(text);
+    TEST_ASSERT_EQUAL(7u, r.entries.size());
+
+    // The UI language first, everything else after it; both in catalog order.
+    std::vector<CatalogEntry> v = r.entries;
+    orderCatalogForLang(v, "es");
+    TEST_ASSERT_EQUAL_STRING("n5-es,n4-es,n3-es,n5-en,n4-en,n5-fr,misc", names(v).c_str());
+    v = r.entries;
+    orderCatalogForLang(v, "en");
+    TEST_ASSERT_EQUAL_STRING("n5-en,n4-en,n5-es,n5-fr,n4-es,misc,n3-es", names(v).c_str());
+    // A record keeps its fields when it moves.
+    TEST_ASSERT_EQUAL_STRING("n4-en", v[1].name.c_str());
+    TEST_ASSERT_EQUAL_STRING("en", v[1].lang.c_str());
+    TEST_ASSERT_EQUAL_STRING("https://github.com/dcarnicer/tangocho/releases/latest/download/x.tgc",
+                             v[1].url.c_str());
+
+    // No deck in the UI language, or no language at all: the catalog order.
+    v = r.entries;
+    orderCatalogForLang(v, "pt");
+    TEST_ASSERT_EQUAL_STRING("n5-en,n5-es,n4-en,n5-fr,n4-es,misc,n3-es", names(v).c_str());
+    orderCatalogForLang(v, nullptr);
+    TEST_ASSERT_EQUAL_STRING("n5-en,n5-es,n4-en,n5-fr,n4-es,misc,n3-es", names(v).c_str());
+    // Ordering twice changes nothing; an empty list is fine.
+    orderCatalogForLang(v, "es");
+    orderCatalogForLang(v, "es");
+    TEST_ASSERT_EQUAL_STRING("n5-es,n4-es,n3-es,n5-en,n4-en,n5-fr,misc", names(v).c_str());
+    std::vector<CatalogEntry> none;
+    orderCatalogForLang(none, "es");
+    TEST_ASSERT_EQUAL(0u, none.size());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_builder_output_bare_urls);
@@ -277,5 +335,7 @@ int main() {
     RUN_TEST(test_caps_the_entry_count);
     RUN_TEST(test_resolve_urls);
     RUN_TEST(test_helpers);
+    RUN_TEST(test_lang_matches);
+    RUN_TEST(test_order_for_lang);
     return UNITY_END();
 }

@@ -84,4 +84,14 @@ bool resolveCatalogUrl(const std::string& base, const std::string& ref, std::str
 
 const char* catalogErrorString(CatalogError e);
 
+// True when a catalog `lang` is the UI language `uiLang` ("en", "es"): the
+// primary subtags ("es" of "es-MX" or "es_419") compared without regard to
+// ASCII case. An empty `lang` or `uiLang` never matches.
+bool catalogLangMatches(const std::string& lang, const char* uiLang);
+
+// Moves the decks in `uiLang` (catalogLangMatches) to the front and keeps the
+// catalog order otherwise (stable): the Get decks list shows the user's own
+// language first and still lists every other one.
+void orderCatalogForLang(std::vector<CatalogEntry>& entries, const char* uiLang);
+
 }  // namespace tgc

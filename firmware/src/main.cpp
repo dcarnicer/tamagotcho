@@ -281,6 +281,10 @@ void setUiForLang(const char* lang) {
     gUi = (std::strcmp(tgc::uiLangCodeFor(gUiLangPref, lang), "es") == 0) ? &kUiEs : &kUiEn;
 }
 
+// The language the screens are in now ("en", "es"): the Language setting, or
+// the pack's language under Auto, as setUiForLang() last resolved it.
+const char* uiLangCode() { return gUi == &kUiEs ? "es" : "en"; }
+
 lgfx::LGFX_Sprite* gCanvas = nullptr;  // full-screen back buffer in PSRAM
 std::unique_ptr<tgc::PackReader> gPack = std::make_unique<tgc::PackReader>();
 std::unique_ptr<tgc::FsPackSource> gSource;
@@ -2160,6 +2164,10 @@ void netLoadCatalog() {
         return;
     }
     gCatalog = std::move(parsed.entries);
+    // The decks in the screen's language first, the catalog order otherwise
+    // (every other language is still listed after them).
+    tgc::orderCatalogForLang(gCatalog, uiLangCode());
+    Serial.printf("[net] catalog: \"%s\" decks first\n", uiLangCode());
     netRefreshStates();
     // Start on the first deck that is not here yet.
     gNetSel = 0;
