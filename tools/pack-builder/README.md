@@ -45,9 +45,13 @@ uv run pytest
   a grade by newspaper frequency, kanji with no frequency rank last, fewer
   strokes first). Deck names should be ASCII (`Joyo`, not `Jōyō`): the device
   draws the name in its built-in ASCII font, and the builder warns otherwise.
-  `--strokes` adds the optional KanjiVG stroke-order section (off by default; a
-  pack without it is byte-identical to a KANJIDIC2-only v1 pack). `--strokes-px`
-  sets the em square for the masks and defaults to `--large-px`.
+  `--strokes` adds the optional KanjiVG stroke-order section (off by default).
+  `--strokes-px` sets the em square for the masks and defaults to `--large-px`.
+  Packs are written in format **v2**: each glyph bitmap and stroke mask is
+  stored compressed when that is smaller (`docs/pack-format.md`), which makes a
+  pack about a third to a quarter of its v1 size. Firmware older than v2
+  support refuses these packs ("unsupported pack version"); it keeps reading its
+  v1 packs.
 - `build --wanikani-token TOKEN [--wanikani-level N ...]` builds from **your own
   WaniKani account** instead of KANJIDIC2 (so no `--jlpt`/`--grade`, and
   `fetch` is only needed for the font). It imports only the kanji you have
@@ -63,8 +67,10 @@ uv run pytest
   redistributed (docs/data-sources.md).
 - `inspect FILE` validates (magic, version, offsets, alignment, glyph table
   order, set 0/1 glyph per card, every string character present in set 2, every
-  reading character in set 3) and prints sizes and the file's `sha256`; exit
-  code 1 when invalid.
+  reading character in set 3, and every compressed glyph and stroke mask decodes
+  within its size) and prints sizes, raw vs stored bytes per glyph set and for
+  the stroke masks, and the file's `sha256`; exit code 1 when invalid. It reads
+  v1 and v2 packs.
 - `preview FILE --card 日 --mode meaning|reading|kanji|strokes [--kind on|kun]
   -o out.png [--width 135 --height 240 --scale 3 --seed 1 --reveal]
   [--stroke N]` draws a mock quiz screen that mirrors the device: reading answers
@@ -75,8 +81,11 @@ uv run pytest
   highlighting the last, mirroring the device animation).
 - `fixture` regenerates `fixtures/mini.tgc` and `fixtures/mini.json` (3 cards,
   large 32 / small 16 / text 12 / option 18, build_time 0) for the firmware's
-  native tests. `mini.json` lists the expected decoded fields; all offsets in it
-  are absolute file offsets.
+  native tests, plus `fixtures/rle_vectors.bin`, the decoder test vectors the
+  firmware cross-checks against this encoder (format in `fixture.py`).
+  `mini.json` lists the expected decoded fields; all offsets in it are absolute
+  file offsets. `fixtures/mini_v1.tgc` is the last v1 fixture, kept frozen (not
+  regenerated) to test that v1 packs stay readable.
 - `catalog DIRECTORY [-o FILE| -] [--base-url URL] [--json PATH]` scans a
   directory of `*.tgc` and writes the line-oriented **catalog** the device is
   meant to read (see below). It refuses an empty directory or a file that is not

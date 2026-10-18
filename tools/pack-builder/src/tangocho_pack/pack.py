@@ -1,4 +1,4 @@
-"""Pack v1 writer and reader. See docs/pack-format.md."""
+"""Pack writer (v2) and reader (v1 and v2). See docs/pack-format.md."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from . import rle
 from .glyphs import Glyph, unpack_4bpp
 from .kanjidic import Card
 
@@ -14,13 +15,16 @@ if TYPE_CHECKING:  # avoid a runtime import cycle (kanjivg imports paths only)
     from .kanjivg import StrokeMask
 
 MAGIC = b"TNGC"
-VERSION = 1
+VERSION = 2  # what the writer emits
+READ_VERSIONS = (1, 2)  # what the reader accepts (devices keep their v1 packs)
 HEADER_SIZE = 64
 CARD_SIZE = 32
 GLYPH_SIZE = 16
 HEADER_FMT = "<4sHHIIIIIIIII4sBBBBBBBBII"
 CARD_FMT = "<IIIIIBBBBHHI"
 GLYPH_FMT = "<IBBBBbbBBI"
+STROKE_ENTRY_FMT = "<bbBBBBH"  # v2: x_off, y_off, w, h, encoding, reserved, size
+STROKE_ENTRY_V1_FMT = "<bbBBI"  # v1: x_off, y_off, w, h, data_off
 assert struct.calcsize(HEADER_FMT) == HEADER_SIZE
 assert struct.calcsize(CARD_FMT) == CARD_SIZE
 assert struct.calcsize(GLYPH_FMT) == GLYPH_SIZE
@@ -116,12 +120,16 @@ def write_pack(
     data = bytearray()
     gtable = bytearray()
     for g in glyphs:
+        if g.encoding != rle.GLYPH_RAW or len(g.data) != rle.raw4_size(g.width, g.height):
+            raise ValueError(f"glyph U+{g.codepoint:04X} set {g.set}: expected a raw 4bpp bitmap")
+        # Per glyph, whichever is smaller: RLE (encoding 1) or raw (encoding 0).
+        enc, blob = rle.best_glyph(g.data, g.width, g.height)
         off = glyph_data_off + len(data)
         gtable += struct.pack(
-            GLYPH_FMT, g.codepoint, g.set, g.encoding, g.width, g.height,
+            GLYPH_FMT, g.codepoint, g.set, enc, g.width, g.height,
             g.x_off, g.y_off, g.advance, 0, off,
         )
-        data += g.data
+        data += blob
     data += b"\0" * (align4(len(data)) - len(data))
 
     ctable = bytearray()
@@ -132,8 +140,7 @@ def write_pack(
             c.freq, c.level, dr,
         )
 
-    # Optional stroke section, appended after the glyph data (so packs built
-    # without strokes stay byte-identical to v1 output).
+    # Optional stroke section, appended after the glyph data.
     stroke_off = 0
     stroke_sec = b""
     if strokes is not None:
@@ -162,7 +169,8 @@ def write_pack(
 
 
 def _stroke_section(card_strokes: list[list["StrokeMask"]], px: int, base_off: int) -> bytes:
-    """Serialise the stroke section: index, blocks and 1bpp masks (4-byte aligned)."""
+    """Serialise the v2 stroke section: index, blocks, then each card's masks back
+    to back (each in the smallest of mask encodings 0, 1, 2)."""
     n = len(card_strokes)
     blocks_start = align4(base_off + 4 * n)
     block_off: list[int] = []
@@ -173,14 +181,13 @@ def _stroke_section(card_strokes: list[list["StrokeMask"]], px: int, base_off: i
             continue
         block_off.append(cursor)
         cursor += 8 + 8 * len(s)
-    mask_off: list[list[int]] = []
-    for s in card_strokes:
-        offs = []
-        for m in s:
-            cursor = align4(cursor)
-            offs.append(cursor)
-            cursor += len(m.data)
-        mask_off.append(offs)
+    masks_start = align4(cursor)
+    encoded = [[rle.best_mask(m.data, m.w, m.h) for m in s] for s in card_strokes]
+    first_off: list[int] = []
+    cursor = masks_start
+    for e in encoded:
+        first_off.append(cursor)
+        cursor += sum(len(d) for _, d in e)
 
     sec = bytearray(struct.pack(f"<{n}I", *block_off))
     sec += b"\0" * (blocks_start - (base_off + len(sec)))
@@ -188,13 +195,14 @@ def _stroke_section(card_strokes: list[list["StrokeMask"]], px: int, base_off: i
         if not s:
             continue
         assert base_off + len(sec) == block_off[ci]
-        sec += struct.pack("<HHI", len(s), px, 0)
-        for off, m in zip(mask_off[ci], s):
-            sec += struct.pack("<bbBBI", m.x_off, m.y_off, m.w, m.h, off)
-    for ci, s in enumerate(card_strokes):
-        for off, m in zip(mask_off[ci], s):
-            sec += b"\0" * (off - (base_off + len(sec)))
-            sec += m.data
+        sec += struct.pack("<HHI", len(s), px, first_off[ci])
+        for m, (enc, d) in zip(s, encoded[ci]):
+            sec += struct.pack(STROKE_ENTRY_FMT, m.x_off, m.y_off, m.w, m.h, enc, 0, len(d))
+    sec += b"\0" * (masks_start - (base_off + len(sec)))
+    for e in encoded:
+        for _, d in e:
+            sec += d
+    sec += b"\0" * (align4(len(sec)) - len(sec))
     return bytes(sec)
 
 
@@ -230,6 +238,8 @@ class PGlyph:
     y_off: int
     advance: int
     data_off: int
+    size: int = 0  # bytes of stored (possibly encoded) data
+    bits: bytes = field(default=b"", repr=False)  # decoded raw 4bpp bitmap
 
 
 @dataclass
@@ -239,7 +249,9 @@ class PStroke:
     w: int
     h: int
     data_off: int
-    data: bytes = b""
+    data: bytes = b""  # decoded raw 1bpp mask
+    encoding: int = 0
+    size: int = 0  # bytes of stored (possibly encoded) data
 
 
 @dataclass
@@ -276,9 +288,12 @@ class Pack:
             return self.glyphs[lo]
         return None
 
+    def raw_bitmap(self, g: PGlyph) -> bytes:
+        """Decoded bitmap in the encoding 0 layout (empty if it could not be read)."""
+        return g.bits
+
     def bitmap(self, g: PGlyph) -> list[int]:
-        n = ((g.width + 1) // 2) * g.height
-        return unpack_4bpp(self.raw[g.data_off : g.data_off + n], g.width, g.height)
+        return unpack_4bpp(g.bits, g.width, g.height) if g.bits else [0] * (g.width * g.height)
 
 
 def _cstr(raw: bytes, off: int) -> str:
@@ -301,8 +316,9 @@ def read_pack(raw: bytes) -> Pack:
     h["lang"] = h["lang"].rstrip(b"\0").decode("ascii", "replace")
     if h["magic"] != MAGIC:
         raise ValueError(f"bad magic {h['magic']!r}")
-    if h["version"] != VERSION:
+    if h["version"] not in READ_VERSIONS:
         raise ValueError(f"unsupported version {h['version']}")
+    v2 = h["version"] >= 2
     if h["header_size"] != HEADER_SIZE:
         errs.append(f"header_size {h['header_size']} != 64")
     size = len(raw)
@@ -376,12 +392,28 @@ def read_pack(raw: bytes) -> Pack:
         prev = (gs, cp)
         if gs > 3:
             errs.append(f"glyph {i}: bad set {gs}")
-        if enc != 0:
-            errs.append(f"glyph {i}: unsupported encoding {enc}")
-        elif w and ht:
-            n = ((w + 1) // 2) * ht
-            if doff < h["glyph_data_off"] or doff + n > size:
-                errs.append(f"glyph {i} (U+{cp:04X} set {gs}): bitmap out of range")
+        n = rle.raw4_size(w, ht)
+        where = f"glyph {i} (U+{cp:04X} set {gs})"
+        if enc == rle.GLYPH_RAW:
+            g.size = n
+            if n and (doff < h["glyph_data_off"] or doff + n > size):
+                errs.append(f"{where}: bitmap out of range")
+            else:
+                g.bits = raw[doff:doff + n]
+        elif enc == rle.GLYPH_RLE and v2:
+            if not n:
+                errs.append(f"{where}: RLE glyph without pixels")
+            elif doff < h["glyph_data_off"] or doff >= size:
+                errs.append(f"{where}: bitmap out of range")
+            else:
+                # The stream may not be longer than the raw bitmap, so a reader
+                # can fetch at most that many bytes (clamped to the file end).
+                try:
+                    g.bits, g.size = rle.decode_glyph(raw[doff:min(doff + n, size)], w, ht)
+                except ValueError as e:
+                    errs.append(f"{where}: bad RLE stream: {e}")
+        else:
+            errs.append(f"{where}: unsupported encoding {enc} in a v{h['version']} pack")
         pack.glyphs.append(g)
 
     # Stroke section (optional): validate the index, blocks and masks.
@@ -399,23 +431,42 @@ def read_pack(raw: bytes) -> Pack:
                 if blk % 4 or blk + 8 > size:
                     errs.append(f"card {i}: stroke block offset {blk} out of range")
                     continue
-                cnt, px, _res = struct.unpack_from("<HHI", raw, blk)
+                cnt, px, first = struct.unpack_from("<HHI", raw, blk)
                 if px == 0 or px != h["large_px"]:
                     errs.append(f"card {i}: stroke block px {px} != large_px {h['large_px']}")
                 if blk + 8 + 8 * cnt > size:
                     errs.append(f"card {i}: {cnt} stroke entries out of range")
                     continue
+                cursor = first  # v2: masks back to back from the block's data_off
                 for k in range(cnt):
-                    xo, yo, w, ht, doff = struct.unpack_from("<bbBBI", raw, blk + 8 + 8 * k)
+                    where = f"card {i} stroke {k}"
+                    if v2:
+                        xo, yo, w, ht, enc, _r, n = struct.unpack_from(
+                            STROKE_ENTRY_FMT, raw, blk + 8 + 8 * k)
+                        doff, cursor = cursor, cursor + n
+                    else:
+                        xo, yo, w, ht, doff = struct.unpack_from(
+                            STROKE_ENTRY_V1_FMT, raw, blk + 8 + 8 * k)
+                        enc, n = rle.MASK_RAW, rle.raw1_size(w, ht)
                     if w == 0 or ht == 0:
-                        errs.append(f"card {i} stroke {k}: empty mask")
+                        errs.append(f"{where}: empty mask")
                         continue
-                    nbytes = ((w + 7) // 8) * ht
-                    if doff + nbytes > size:
-                        errs.append(f"card {i} stroke {k}: mask out of range")
+                    nraw = rle.raw1_size(w, ht)
+                    if doff + n > size:
+                        errs.append(f"{where}: mask out of range")
                         continue
-                    pack.strokes[i].append(
-                        PStroke(xo, yo, w, ht, doff, raw[doff:doff + nbytes]))
+                    if enc == rle.MASK_RAW and n != nraw:
+                        errs.append(f"{where}: raw mask size {n} != {nraw}")
+                        continue
+                    if n > nraw:
+                        errs.append(f"{where}: encoded mask ({n} B) larger than raw ({nraw} B)")
+                        continue
+                    try:
+                        bits = rle.decode_mask_any(enc, raw[doff:doff + n], w, ht)
+                    except ValueError as e:
+                        errs.append(f"{where}: bad mask data (encoding {enc}): {e}")
+                        continue
+                    pack.strokes[i].append(PStroke(xo, yo, w, ht, doff, bits, enc, n))
 
     present = {(g.set, g.codepoint) for g in pack.glyphs}
     for i, c in enumerate(pack.cards):

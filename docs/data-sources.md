@@ -133,8 +133,8 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
   caps) rather than filling it as a polygon. A path that uses an unsupported
   command (arcs, `A`) is skipped with a warning; coordinates outside the viewBox
   are clamped.
-- `--strokes` is off by default: a pack without it is byte-identical to a
-  KANJIDIC2-only v1 pack (no KanjiVG is redistributed unless asked for).
+- `--strokes` is off by default: a pack without it has no stroke section and
+  carries no KanjiVG data (none is redistributed unless asked for).
 - Fixture provenance: `tools/pack-builder/tests/data/kanjivg/065e5.svg`,
   `06708.svg` and `0706b.svg` are verbatim excerpts from the r20260714 release
   (the three mini kanji 日/月/火). They are committed, with this attribution, so

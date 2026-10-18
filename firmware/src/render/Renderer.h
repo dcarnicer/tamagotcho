@@ -1,6 +1,8 @@
 #pragma once
 // Draws pack glyphs (4bpp) and UTF-8 text onto any LovyanGFX target
-// (display, LGFX_Sprite). Arduino/ESP32 only.
+// (display, LGFX_Sprite). Bitmaps come decoded from PackReader (v2 packs store
+// them compressed): sets 1..3 are cached per glyph, set 0 and stroke masks use
+// one scratch buffer. Arduino/ESP32 only.
 #include <cstdint>
 
 #include "board/Board.h"
@@ -35,6 +37,10 @@ public:
     // pack's `large_px` em square. False when the pack/stroke cannot be read.
     bool drawStroke(lgfx::LovyanGFX& dst, uint32_t cardIdx, uint16_t i, int emX, int emY,
                     uint16_t ink);
+
+    // Microseconds the last bitmap fetch took (file read plus decode; 0 when it
+    // came from a cache). For the TGC_QUIZ_LOG draw-time trace.
+    uint32_t lastFetchUs() const { return lastFetchUs_; }
 
     // Built-in GFX font as a text style: pass kTextBuiltin (2x) or
     // kTextBuiltinSmall (1x). It carries ASCII plus the Latin-1 accents Font0
@@ -88,6 +94,12 @@ private:
     uint8_t** cache_ = nullptr;  // lazily filled, sets 1..3
     uint8_t* scratch_ = nullptr;
     size_t scratchCap_ = 0;
+    // Glyph index whose decoded set-0 bitmap is in scratch_ (redraws of the
+    // same question skip the read and decode); kNoGlyph when it holds a mask.
+    static constexpr uint32_t kNoGlyph = 0xFFFFFFFFu;
+    uint32_t scratchGlyph_ = kNoGlyph;
+    uint32_t lastFetchUs_ = 0;
+    uint8_t* scratchFor(size_t n);
     int lineH_ = 14;
     int ascent_ = 11;
     int textPx_ = 12;

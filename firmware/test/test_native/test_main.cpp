@@ -38,16 +38,37 @@ struct GlyphSpec {
     uint8_t set;
     uint32_t cp;
     uint8_t w, h;
+    uint8_t enc = 0;              // glyph table encoding
+    std::vector<uint8_t> data{};  // stored bytes; empty -> raw test pattern
 };
 struct StrokeSpec {  // one mask: position in the em square + size
     uint8_t x, y, w, h;
+    uint8_t enc = 0;              // v2 mask encoding
+    std::vector<uint8_t> data{};  // stored bytes; empty -> raw test pattern
 };
 
-// Builds a valid v1 pack in memory. Glyph bitmaps are filled with a
-// deterministic pattern: byte i = (cp + i) & 0xFF. `strokes` (optional, aligned
-// with `cards`) appends a stroke section, mask bytes = (0xA0 + i) & 0xFF.
+// Raw test pattern of a glyph: byte i = (cp + i) & 0xFF; of a mask: 0xA0 + i.
+std::vector<uint8_t> glyphBytes(const GlyphSpec& g) {
+    if (!g.data.empty()) return g.data;
+    std::vector<uint8_t> v(((g.w + 1) / 2) * g.h);
+    for (size_t i = 0; i < v.size(); ++i) v[i] = (g.cp + i) & 0xFF;
+    return v;
+}
+std::vector<uint8_t> maskBytes(const StrokeSpec& s) {
+    if (!s.data.empty()) return s.data;
+    std::vector<uint8_t> v(((s.w + 7) / 8) * s.h);
+    for (size_t i = 0; i < v.size(); ++i) v[i] = (0xA0 + i) & 0xFF;
+    return v;
+}
+
+// Builds a valid pack in memory, format `version` 1 or 2 (docs/pack-format.md).
+// Glyph and mask data are the specs' stored bytes, or the raw test patterns
+// above. `strokes` (optional, aligned with `cards`) appends a stroke section:
+// v1 layout (one absolute offset per 4-byte aligned raw mask) or v2 (encoding
+// and size per entry, masks back to back from the block's data_off).
 std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<GlyphSpec> glyphs,
-                              const std::vector<std::vector<StrokeSpec>>& strokes = {}) {
+                              const std::vector<std::vector<StrokeSpec>>& strokes = {},
+                              uint16_t version = 1) {
     std::sort(glyphs.begin(), glyphs.end(), [](const GlyphSpec& a, const GlyphSpec& b) {
         return a.set != b.set ? a.set < b.set : a.cp < b.cp;
     });
@@ -90,7 +111,7 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
 
     B b;
     b.u8('T'); b.u8('N'); b.u8('G'); b.u8('C');
-    b.u16(1); b.u16(64);
+    b.u16(version); b.u16(64);
     b.u32(cards.size()); b.u32(glyphs.size());
     b.u32(cardsOff); b.u32(glyphsOff); b.u32(distOff); b.u32(strOff);
     b.u32(pool.size()); b.u32(gdOff); b.u32(deckOff);
@@ -105,10 +126,10 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
     }
     uint32_t dataOff = gdOff;
     for (auto& g : glyphs) {
-        b.u32(g.cp); b.u8(g.set); b.u8(0); b.u8(g.w); b.u8(g.h);
+        b.u32(g.cp); b.u8(g.set); b.u8(g.enc); b.u8(g.w); b.u8(g.h);
         b.u8(static_cast<uint8_t>(-3)); b.u8(static_cast<uint8_t>(-g.h)); b.u8(g.w + 1); b.u8(0);
         b.u32(dataOff);
-        dataOff += ((g.w + 1) / 2) * g.h;
+        dataOff += glyphBytes(g).size();
     }
     for (auto& c : cards) {
         b.u16(c.dis.size());
@@ -122,7 +143,7 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
     b.pad4();
     for (char ch : pool) b.u8(ch);
     for (auto& g : glyphs)
-        for (int i = 0; i < ((g.w + 1) / 2) * g.h; ++i) b.u8((g.cp + i) & 0xFF);
+        for (uint8_t x : glyphBytes(g)) b.u8(x);
 
     if (!strokes.empty()) {
         b.pad4();
@@ -138,9 +159,9 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
         std::vector<std::vector<uint32_t>> maskOff(n);
         for (uint32_t i = 0; i < n; ++i)
             for (auto& s : strokes[i]) {
-                cursor = (cursor + 3) & ~3u;
+                if (version < 2) cursor = (cursor + 3) & ~3u;  // v1 aligned each mask
                 maskOff[i].push_back(cursor);
-                cursor += ((s.w + 7) / 8) * s.h;
+                cursor += maskBytes(s).size();
             }
         for (uint32_t i = 0; i < n; ++i) b.u32(blockOff[i]);
         while (b.v.size() < ((strokeOff + 4 * n + 3) & ~3u)) b.u8(0);
@@ -148,18 +169,21 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
             if (strokes[i].empty()) continue;
             b.u16(static_cast<uint16_t>(strokes[i].size()));
             b.u16(32);  // px == header large_px
-            b.u32(0);
+            b.u32(version < 2 ? 0 : maskOff[i][0]);
             for (size_t k = 0; k < strokes[i].size(); ++k) {
                 const StrokeSpec& s = strokes[i][k];
                 b.u8(s.x); b.u8(s.y); b.u8(s.w); b.u8(s.h);
-                b.u32(maskOff[i][k]);
+                if (version < 2) {
+                    b.u32(maskOff[i][k]);
+                } else {
+                    b.u8(s.enc); b.u8(0); b.u16(static_cast<uint16_t>(maskBytes(s).size()));
+                }
             }
         }
         for (uint32_t i = 0; i < n; ++i)
             for (size_t k = 0; k < strokes[i].size(); ++k) {
-                const StrokeSpec& s = strokes[i][k];
                 while (b.v.size() < maskOff[i][k]) b.u8(0);
-                for (int j = 0; j < ((s.w + 7) / 8) * s.h; ++j) b.u8((0xA0 + j) & 0xFF);
+                for (uint8_t x : maskBytes(strokes[i][k])) b.u8(x);
             }
         b.v[60] = strokeOff & 0xFF;
         b.v[61] = (strokeOff >> 8) & 0xFF;
@@ -332,7 +356,12 @@ void test_rejects_bad_packs() {
         TEST_ASSERT_EQUAL(PackError::BadMagic, r.open(s));
     }
     {
-        auto b = good; b[4] = 2;
+        auto b = good; b[4] = 3;  // newer than this reader
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(PackError::BadVersion, r.open(s));
+    }
+    {
+        auto b = good; b[4] = 0;
         MemorySource s(b);
         TEST_ASSERT_EQUAL(PackError::BadVersion, r.open(s));
     }
@@ -356,14 +385,136 @@ void test_rejects_bad_packs() {
 }
 
 void test_rejects_unsupported_glyph_encoding() {
-    // Only encoding 0 (raw 4bpp) is defined. A pack declaring a future encoding
+    // v1 defines only encoding 0 (raw 4bpp); v2 adds 1 (RLE). Anything else
     // must be refused at open time, not later at draw time.
-    auto buf = makePack(sixCards(), someGlyphs());
     const uint32_t glyphsOff = 64 + 6 * 32;  // header + card table
-    buf[glyphsOff + 5] = 1;                   // first glyph entry's encoding byte
+    PackReader r;
+    {
+        auto buf = makePack(sixCards(), someGlyphs());
+        buf[glyphsOff + 5] = 1;  // first glyph entry's encoding byte: RLE in a v1 pack
+        MemorySource src(buf);
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(src));
+    }
+    {
+        auto buf = makePack(sixCards(), someGlyphs(), {}, 2);
+        MemorySource ok(buf);
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(ok));  // v2 with raw glyphs only
+        r.close();
+        buf[glyphsOff + 5] = 2;  // unknown in v2 too
+        MemorySource src(buf);
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(src));
+    }
+    TEST_ASSERT_FALSE(r.isOpen());
+}
+
+// A v2 pack mixing raw and RLE glyphs and raw/runs/row-XOR masks (the streams
+// are the docs/pack-format.md examples): everything reads back decoded.
+void test_v2_pack_decodes_glyphs_and_masks() {
+    std::vector<GlyphSpec> g = someGlyphs();
+    // 5x3 spec example: 00 7F F0 00 7F F0 FF FF 30 as RLE 02 7F 20 05 F4 30.
+    g.push_back({3, 0x30CB, 5, 3, 1, {0x02, 0x7F, 0x20, 0x05, 0xF4, 0x30}});
+    std::vector<std::vector<StrokeSpec>> st(sixCards().size());
+    st[0] = {{5, 4, 8, 3},                    // raw test pattern
+             {1, 1, 16, 2, 1, {0x3A, 0x7A}},  // runs
+             {2, 3, 4, 6, 2, {0x12}}};        // runs of the row XOR
+    auto buf = makePack(sixCards(), g, st, 2);
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::BadTable, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL_UINT16(2, r.header().version);
+
+    const Glyph* rle = r.findGlyph(3, 0x30CB);
+    TEST_ASSERT_NOT_NULL(rle);
+    TEST_ASSERT_EQUAL_UINT8(kGlyphEncRle, rle->encoding);
+    uint8_t bm[64];
+    TEST_ASSERT_TRUE(r.readGlyphBitmap(*rle, bm, PackReader::bitmapSize(*rle)));
+    const uint8_t want[] = {0x00, 0x7F, 0xF0, 0x00, 0x7F, 0xF0, 0xFF, 0xFF, 0x30};
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(want, bm, sizeof want);
+    TEST_ASSERT_FALSE(r.readGlyphBitmap(*rle, bm, 8));  // cap below the decoded size
+    const Glyph* raw = r.findGlyph(2, 'A');  // raw glyphs read as before
+    TEST_ASSERT_TRUE(r.readGlyphBitmap(*raw, bm, sizeof bm));
+    for (size_t i = 0; i < PackReader::bitmapSize(*raw); ++i)
+        TEST_ASSERT_EQUAL_UINT8(('A' + i) & 0xFF, bm[i]);
+
+    Stroke s;
+    TEST_ASSERT_EQUAL_UINT16(3, r.strokeCount(0));
+    TEST_ASSERT_TRUE(r.strokeAt(0, 0, &s));
+    TEST_ASSERT_EQUAL_UINT8(kMaskEncRaw, s.encoding);
+    TEST_ASSERT_EQUAL_UINT16(3, s.size);
+    TEST_ASSERT_TRUE(r.readStrokeBitmap(s, bm, sizeof bm));
+    for (size_t i = 0; i < 3; ++i) TEST_ASSERT_EQUAL_UINT8((0xA0 + i) & 0xFF, bm[i]);
+    const uint32_t first = s.dataOff;
+    TEST_ASSERT_TRUE(r.strokeAt(0, 1, &s));
+    TEST_ASSERT_EQUAL_UINT8(kMaskEncRuns, s.encoding);
+    TEST_ASSERT_EQUAL_UINT32(first + 3, s.dataOff);  // back to back
+    TEST_ASSERT_EQUAL_UINT32(4, PackReader::strokeBitmapSize(s));
+    TEST_ASSERT_TRUE(r.readStrokeBitmap(s, bm, sizeof bm));
+    const uint8_t m1[] = {0x1F, 0xF8, 0x0F, 0xFC};
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(m1, bm, 4);
+    TEST_ASSERT_FALSE(r.readStrokeBitmap(s, bm, 3));  // cap below the decoded size
+    TEST_ASSERT_TRUE(r.strokeAt(0, 2, &s));
+    TEST_ASSERT_EQUAL_UINT8(kMaskEncXorRuns, s.encoding);
+    TEST_ASSERT_EQUAL_UINT32(first + 5, s.dataOff);
+    TEST_ASSERT_TRUE(r.readStrokeBitmap(s, bm, sizeof bm));
+    for (int y = 0; y < 6; ++y) TEST_ASSERT_EQUAL_HEX8(0x60, bm[y]);
+    TEST_ASSERT_FALSE(r.strokeAt(0, 3, &s));
+    TEST_ASSERT_EQUAL_UINT16(0, r.strokeCount(1));
+}
+
+void test_v2_rejects_bad_masks_and_glyphs() {
+    std::vector<std::vector<StrokeSpec>> st(sixCards().size());
+    st[0] = {{5, 4, 8, 3}, {1, 1, 16, 2, 1, {0x3A, 0x7A}}};
+    const auto good = makePack(sixCards(), someGlyphs(), st, 2);
+    const uint32_t blk = rd32le(good, rd32le(good, 60));
+    PackReader r;
+    {
+        MemorySource s(good);
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(s));
+        r.close();
+    }
+    {  // unknown mask encoding
+        auto b = good;
+        b[blk + 8 + 8 + 4] = 3;
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+    }
+    {  // raw mask whose size is not ceil(w/8)*h
+        auto b = good;
+        b[blk + 8 + 6] = 2;
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+    }
+    {  // encoded mask larger than its raw size
+        auto b = good;
+        b[blk + 8 + 8 + 6] = 5;
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+    }
+    {  // first mask offset past the end of the file
+        auto b = good;
+        b[blk + 4] = 0xF0; b[blk + 5] = 0xFF; b[blk + 6] = 0xFF; b[blk + 7] = 0x7F;
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+    }
+    {  // a corrupt RLE stream opens (streams are checked when read) but fails to decode
+        std::vector<GlyphSpec> g = someGlyphs();
+        g.push_back({3, 0x30CB, 5, 3, 1, {0xF0, 0x00, 0x00}});  // reserved "F 0"
+        auto b = makePack(sixCards(), g, {}, 2);
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(s));
+        uint8_t bm[16];
+        TEST_ASSERT_FALSE(r.readGlyphBitmap(*r.findGlyph(3, 0x30CB), bm, sizeof bm));
+        r.close();
+    }
+    {  // an RLE glyph whose stream starts before the glyph data is refused
+        std::vector<GlyphSpec> g = someGlyphs();
+        g.push_back({3, 0x30CB, 5, 3, 1, {0x02, 0x7F, 0x20, 0x05, 0xF4, 0x30}});
+        auto b = makePack(sixCards(), g, {}, 2);
+        const uint32_t e = 64 + 6 * 32 + (static_cast<uint32_t>(g.size()) - 1) * 16;  // set 3: last
+        b[e + 12] = 0; b[e + 13] = 0; b[e + 14] = 0; b[e + 15] = 0;  // data_off 0
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+    }
     TEST_ASSERT_FALSE(r.isOpen());
 }
 
@@ -676,13 +827,16 @@ void test_blend() {
     TEST_ASSERT_EQUAL_HEX16(0xF800, blend565(0xF800, 0xF800, 7));
 }
 
-// ------------------------------------------------- real fixture (mini.tgc)
-static const char* kMini = "../tools/pack-builder/fixtures/mini.tgc";
+// ------------------------------------------ real v1 fixture (mini_v1.tgc)
+// The last mini.tgc written by the v1 builder, kept frozen so this reader keeps
+// opening the v1 packs already on devices. The v2 mini.tgc is checked against
+// the builder's decoded bitmaps in test/test_rle.
+static const char* kMiniV1 = "../tools/pack-builder/fixtures/mini_v1.tgc";
 
-void test_mini_fixture() {
-    StdioSource src(kMini);
-    if (!src.ok()) TEST_IGNORE_MESSAGE("mini.tgc not found");
-    TEST_ASSERT_EQUAL_UINT32(9244, src.size());
+void test_mini_v1_fixture() {
+    StdioSource src(kMiniV1);
+    if (!src.ok()) TEST_IGNORE_MESSAGE("mini_v1.tgc not found");
+    TEST_ASSERT_EQUAL_UINT32(8288, src.size());
     PackReader r;
     TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
     const PackHeader& h = r.header();
@@ -715,9 +869,9 @@ void test_mini_fixture() {
         uint16_t freq, level;
     };
     const E exp[3] = {
-        {26085, "day; sun; Japan", "ニチ、ジツ", "ひ、び、か", {1, 2}, {1, 0}, 1, 1, 0},
-        {26376, "month; moon", "ゲツ、ガツ", "つき", {0, 2}, {0, 2}, 2, 23, 1},
-        {28779, "fire", "カ", "ひ、び、ほ", {0, 1}, {1, 0}, 1, 574, 2},
+        {26085, "day; sun; Japan", "ニチ、ジツ", "ひ、び、か", {2, 1}, {1, 0}, 1, 1, 0},
+        {26376, "month; moon", "ゲツ、ガツ", "つき", {2, 0}, {0, 2}, 2, 23, 1},
+        {28779, "fire", "カ", "ひ、び、ほ", {1, 0}, {1, 0}, 1, 574, 2},
     };
     const uint32_t distOffs[3] = {2224, 2230, 2236};
     const uint32_t readOffs[3] = {2242, 2246, 2252};
@@ -746,44 +900,44 @@ void test_mini_fixture() {
     }
     const Glyph* g = r.findGlyph(0, 26085);
     TEST_ASSERT_NOT_NULL(g);
-    TEST_ASSERT_EQUAL_UINT8(22, g->width);
-    TEST_ASSERT_EQUAL_UINT8(28, g->height);
-    TEST_ASSERT_EQUAL_INT8(5, g->xOff);
-    TEST_ASSERT_EQUAL_INT8(-30, g->yOff);
+    TEST_ASSERT_EQUAL_UINT8(19, g->width);
+    TEST_ASSERT_EQUAL_UINT8(26, g->height);
+    TEST_ASSERT_EQUAL_INT8(6, g->xOff);
+    TEST_ASSERT_EQUAL_INT8(-29, g->yOff);
     TEST_ASSERT_EQUAL_UINT8(32, g->advance);
     TEST_ASSERT_EQUAL_UINT32(2372, g->dataOff);
     g = r.findGlyph(0, 28779);
-    TEST_ASSERT_EQUAL_UINT8(30, g->width);
-    TEST_ASSERT_EQUAL_UINT32(3057, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT8(29, g->width);
+    TEST_ASSERT_EQUAL_UINT32(2968, g->dataOff);
     g = r.findGlyph(1, 26085);
     TEST_ASSERT_NOT_NULL(g);
-    TEST_ASSERT_EQUAL_UINT8(12, g->width);
-    TEST_ASSERT_EQUAL_UINT8(15, g->height);
-    TEST_ASSERT_EQUAL_INT8(-16, g->yOff);
-    TEST_ASSERT_EQUAL_UINT32(3492, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT8(11, g->width);
+    TEST_ASSERT_EQUAL_UINT8(13, g->height);
+    TEST_ASSERT_EQUAL_INT8(-15, g->yOff);
+    TEST_ASSERT_EQUAL_UINT32(3403, g->dataOff);
     g = r.findGlyph(2, 'A');
     TEST_ASSERT_NOT_NULL(g);
-    TEST_ASSERT_EQUAL_UINT8(8, g->width);
-    TEST_ASSERT_EQUAL_UINT8(7, g->advance);
+    TEST_ASSERT_EQUAL_UINT8(9, g->width);
+    TEST_ASSERT_EQUAL_UINT8(8, g->advance);
     uint8_t bm[64];
     TEST_ASSERT_TRUE(r.readGlyphBitmap(*g, bm, sizeof bm));
-    const uint8_t want[] = {0x00, 0x2f, 0x60, 0x00};  // first row of 'A' per mini.json
-    TEST_ASSERT_EQUAL_UINT8_ARRAY(want, bm, 4);
+    const uint8_t want[] = {0x00, 0x03, 0xb0, 0x00, 0x00};  // first row of 'A' per mini.json
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(want, bm, 5);
     g = r.findGlyph(2, ' ');
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(0, g->width);
-    TEST_ASSERT_EQUAL_UINT8(3, g->advance);
+    TEST_ASSERT_EQUAL_UINT8(4, g->advance);
     g = r.findGlyph(2, 12491);
     TEST_ASSERT_NOT_NULL(g);
-    TEST_ASSERT_EQUAL_UINT8(8, g->height);
-    TEST_ASSERT_EQUAL_UINT32(7166, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT8(6, g->height);
+    TEST_ASSERT_EQUAL_UINT32(6563, g->dataOff);
     // Set 3: the same ニ rendered larger for reading answers.
     g = r.findGlyph(3, 12491);
     TEST_ASSERT_NOT_NULL(g);
-    TEST_ASSERT_EQUAL_UINT8(15, g->width);
-    TEST_ASSERT_EQUAL_UINT8(13, g->height);
+    TEST_ASSERT_EQUAL_UINT8(14, g->width);
+    TEST_ASSERT_EQUAL_UINT8(9, g->height);
     TEST_ASSERT_EQUAL_UINT8(18, g->advance);
-    TEST_ASSERT_EQUAL_UINT32(8743, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(7829, g->dataOff);
     int cnt[4] = {0, 0, 0, 0};
     for (uint32_t i = 0; i < r.glyphCount(); ++i) ++cnt[r.glyphAt(i)->set];
     TEST_ASSERT_EQUAL(3, cnt[0]);
@@ -792,7 +946,7 @@ void test_mini_fixture() {
     TEST_ASSERT_EQUAL(14, cnt[3]);
 
     // Stroke order section (KanjiVG excerpts for the three mini kanji).
-    TEST_ASSERT_EQUAL_UINT32(8848, h.strokeOff);
+    TEST_ASSERT_EQUAL_UINT32(7892, h.strokeOff);
     TEST_ASSERT_TRUE(r.hasStrokeOrder());
     uint16_t sc = 0, spx = 0;
     TEST_ASSERT_TRUE(r.strokeInfo(0, &sc, &spx));
@@ -805,7 +959,9 @@ void test_mini_fixture() {
     TEST_ASSERT_EQUAL_INT8(6, st.yOff);
     TEST_ASSERT_EQUAL_UINT8(3, st.w);
     TEST_ASSERT_EQUAL_UINT8(21, st.h);
-    TEST_ASSERT_EQUAL_UINT32(8980, st.dataOff);
+    TEST_ASSERT_EQUAL_UINT32(8024, st.dataOff);
+    TEST_ASSERT_EQUAL_UINT8(kMaskEncRaw, st.encoding);  // v1 masks are always raw
+    TEST_ASSERT_EQUAL_UINT16(21, st.size);
     TEST_ASSERT_EQUAL_UINT32(21, PackReader::strokeBitmapSize(st));  // ceil(3/8)*21
     uint8_t sb[64];
     TEST_ASSERT_TRUE(r.readStrokeBitmap(st, sb, sizeof sb));
@@ -939,6 +1095,8 @@ int main() {
     RUN_TEST(test_glyph_lookup_and_bitmap);
     RUN_TEST(test_rejects_bad_packs);
     RUN_TEST(test_rejects_unsupported_glyph_encoding);
+    RUN_TEST(test_v2_pack_decodes_glyphs_and_masks);
+    RUN_TEST(test_v2_rejects_bad_masks_and_glyphs);
     RUN_TEST(test_stroke_section_read);
     RUN_TEST(test_rejects_bad_stroke_section);
     RUN_TEST(test_quiz_text_helpers);
@@ -952,7 +1110,7 @@ int main() {
     RUN_TEST(test_quiz_meaning_to_kanji_excludes_cards_with_the_prompt);
     RUN_TEST(test_glcd_cp437_map);
     RUN_TEST(test_blend);
-    RUN_TEST(test_mini_fixture);
+    RUN_TEST(test_mini_v1_fixture);
     RUN_TEST(test_real_pack_if_present);
     RUN_TEST(test_ui_lang_code);
     RUN_TEST(test_battery_guard);

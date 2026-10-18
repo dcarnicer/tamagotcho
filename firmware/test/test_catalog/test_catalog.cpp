@@ -1,6 +1,7 @@
 // Native tests for the deck catalog parser (src/catalog). The first two
 // fixtures are verbatim `tangocho-pack catalog` output for two copies of the
-// builder's committed mini.tgc, without and with --base-url.
+// builder's v1 mini.tgc (now kept as fixtures/mini_v1.tgc), without and with
+// --base-url.
 #include <unity.h>
 
 #include <cstring>
@@ -18,19 +19,19 @@ const char* kDefaultUrl =
 const char* kBuilderBare =
     "#tangocho-catalog\t1\n"
     "# name\tlang\tcards\tbytes\tsha256\turl\n"
-    "n5-en\ten\t3\t9244\t13385cc18a10ba05adc77a578653c8312dcd11ccc76f600cec2110ea6ae0c6be\tn5-en.tgc\n"
-    "n5-es-strokes\ten\t3\t9244\t13385cc18a10ba05adc77a578653c8312dcd11ccc76f600cec2110ea6ae0c6be"
+    "n5-en\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75\tn5-en.tgc\n"
+    "n5-es-strokes\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75"
     "\tn5-es-strokes.tgc\n";
 
 const char* kBuilderAbsolute =
     "#tangocho-catalog\t1\n"
     "# name\tlang\tcards\tbytes\tsha256\turl\n"
-    "n5-en\ten\t3\t9244\t13385cc18a10ba05adc77a578653c8312dcd11ccc76f600cec2110ea6ae0c6be"
+    "n5-en\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75"
     "\thttps://github.com/dcarnicer/tangocho/releases/download/v0.3.0/n5-en.tgc\n"
-    "n5-es-strokes\ten\t3\t9244\t13385cc18a10ba05adc77a578653c8312dcd11ccc76f600cec2110ea6ae0c6be"
+    "n5-es-strokes\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75"
     "\thttps://github.com/dcarnicer/tangocho/releases/download/v0.3.0/n5-es-strokes.tgc\n";
 
-const char* kSha = "13385cc18a10ba05adc77a578653c8312dcd11ccc76f600cec2110ea6ae0c6be";
+const char* kSha = "dc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75";
 
 CatalogParse parse(const std::string& text, const char* url = kDefaultUrl) {
     return parseCatalog(text.data(), text.size(), url);
@@ -63,10 +64,10 @@ void test_builder_output_bare_urls() {
     TEST_ASSERT_EQUAL_STRING("n5-en", a.name.c_str());
     TEST_ASSERT_EQUAL_STRING("en", a.lang.c_str());
     TEST_ASSERT_EQUAL_UINT32(3, a.cards);
-    TEST_ASSERT_EQUAL_UINT32(9244, a.bytes);
-    TEST_ASSERT_EQUAL_HEX8(0x13, a.sha256[0]);
-    TEST_ASSERT_EQUAL_HEX8(0x38, a.sha256[1]);
-    TEST_ASSERT_EQUAL_HEX8(0xbe, a.sha256[31]);
+    TEST_ASSERT_EQUAL_UINT32(6732, a.bytes);
+    TEST_ASSERT_EQUAL_HEX8(0xdc, a.sha256[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x4b, a.sha256[1]);
+    TEST_ASSERT_EQUAL_HEX8(0x75, a.sha256[31]);
     // A bare file name is resolved next to the catalog itself.
     TEST_ASSERT_EQUAL_STRING(
         "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/n5-en.tgc", a.url.c_str());
@@ -194,7 +195,7 @@ void test_one_bad_record_does_not_hide_the_rest() {
 }
 
 void test_accepts_edge_values() {
-    const std::string upper = "13385CC18A10BA05ADC77A578653C8312DCD11CCC76F600CEC2110EA6AE0C6BE";
+    const std::string upper = "DC4B83C07F8CDCA6CCCBE77306936D340A4404DD6DFF57AD38FEBFADF83EEE75";
     const CatalogParse r = parse(withRecord(record(std::string(43, 'n'), "", "65535", "5242880", upper,
                                                    "http://192.168.1.10:8000/packs/n.tgc")));
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::Ok), static_cast<int>(r.error));
@@ -202,7 +203,7 @@ void test_accepts_edge_values() {
     TEST_ASSERT_EQUAL_STRING("", r.entries[0].lang.c_str());
     TEST_ASSERT_EQUAL_UINT32(65535, r.entries[0].cards);
     TEST_ASSERT_EQUAL_UINT32(5242880, r.entries[0].bytes);
-    TEST_ASSERT_EQUAL_HEX8(0x13, r.entries[0].sha256[0]);
+    TEST_ASSERT_EQUAL_HEX8(0xdc, r.entries[0].sha256[0]);
     TEST_ASSERT_EQUAL_STRING("http://192.168.1.10:8000/packs/n.tgc", r.entries[0].url.c_str());
 }
 
@@ -252,7 +253,7 @@ void test_helpers() {
     TEST_ASSERT_TRUE(catalogNameIsSafe("x.v2", 4));
     uint8_t d[32];
     TEST_ASSERT_TRUE(parseSha256Hex(kSha, 64, d));
-    TEST_ASSERT_EQUAL_HEX8(0xec, d[24]);
+    TEST_ASSERT_EQUAL_HEX8(0x38, d[24]);
     TEST_ASSERT_FALSE(parseSha256Hex(kSha, 63, d));
     TEST_ASSERT_TRUE(isHttpUrl("http://a"));
     TEST_ASSERT_TRUE(isHttpUrl("https://a:1/b?c#d"));
