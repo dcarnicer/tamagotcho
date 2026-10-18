@@ -202,7 +202,8 @@ def cmd_catalog(a) -> int:
         print(f"error: {directory} is not a directory", file=sys.stderr)
         return 1
     try:
-        records = scan(directory, a.base_url)
+        order = a.order.replace(",", " ").split() if a.order else None
+        records = scan(directory, a.base_url, order)
     except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -303,6 +304,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="prefix for the url column; may contain {file}, otherwise joined with '/'")
     s.add_argument("--json", metavar="PATH",
                    help="also write a human-readable JSON catalog (not read by the device)")
+    s.add_argument("--order", metavar="NAMES",
+                   help="pack names (without .tgc, comma or space separated) to list first, in "
+                        "this order; the rest follow by file name")
     s.add_argument("-o", "--output", required=True,
                    help="catalog file to write, or - for stdout")
     s.set_defaults(fn=cmd_catalog)

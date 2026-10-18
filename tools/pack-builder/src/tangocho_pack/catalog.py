@@ -22,7 +22,8 @@ fields, `#` comments and blank lines to be skipped.
   "relative to the URL this catalog was fetched from".
 
 Records are sorted by file name, so the output is deterministic for a given
-directory. The `catalog` command refuses to write a catalog for an empty
+directory; `--order` lists names to put first, in that order (the device lists
+decks in catalog order, so a release puts N5 before N1). The `catalog` command refuses to write a catalog for an empty
 directory or a file that is not a valid pack, so a broken build cannot silently
 enter a release.
 """
@@ -77,14 +78,25 @@ def _url(base_url: str | None, filename: str) -> str:
     return f"{base_url.rstrip('/')}/{filename}"
 
 
-def scan(directory: Path, base_url: str | None = None) -> list[Record]:
+def scan(directory: Path, base_url: str | None = None,
+         order: list[str] | None = None) -> list[Record]:
     """Read every ``*.tgc`` in *directory* (sorted) into catalog records.
 
+    *order* names packs (file names without ``.tgc``) that come first, in that
+    order; the rest follow sorted by file name. A name with no pack is an error.
     Raises ValueError for a ``.tgc`` that is not a valid pack, so a malformed
     artifact is reported instead of silently entering a release.
     """
+    paths = sorted(directory.glob("*.tgc"))
+    if order:
+        by_name = {p.stem: p for p in paths}
+        missing = [n for n in order if n not in by_name]
+        if missing:
+            raise ValueError(f"--order names packs that are not in {directory}: {', '.join(missing)}")
+        first = list(dict.fromkeys(order))
+        paths = [by_name[n] for n in first] + [p for p in paths if p.stem not in first]
     records: list[Record] = []
-    for path in sorted(directory.glob("*.tgc")):
+    for path in paths:
         raw = path.read_bytes()
         try:
             pack = read_pack(raw)

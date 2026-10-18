@@ -166,12 +166,23 @@ jobs:
           echo "tag=decks-v$version" >> "$GITHUB_OUTPUT"
           echo "pack format v$version -> release decks-v$version"
 
+      # The device lists decks in catalog order (its own language first), so the
+      # catalog follows the build order: per language N5 .. N1, then Joyo.
       - name: Write the device catalog
         env:
           BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ steps.check.outputs.tag }}
+          LEVELS: ${{ steps.inputs.outputs.levels }}
+          LANGS: ${{ steps.inputs.outputs.langs }}
+          JOYO: ${{ inputs.joyo }}
         run: |
           set -euo pipefail
-          uv run tangocho-pack catalog out --base-url "$BASE_URL" --json out/catalog.json -o out/catalog.txt
+          order=""
+          for lang in $LANGS; do
+            for n in $LEVELS; do order="$order n${n}-${lang}"; done
+            if [ "$JOYO" = "true" ]; then order="$order joyo-${lang}"; fi
+          done
+          uv run tangocho-pack catalog out --base-url "$BASE_URL" --order "$order" \
+            --json out/catalog.json -o out/catalog.txt
           cat out/catalog.txt
 
       - uses: actions/upload-artifact@v4

@@ -86,11 +86,14 @@ uv run pytest
   `mini.json` lists the expected decoded fields; all offsets in it are absolute
   file offsets. `fixtures/mini_v1.tgc` is the last v1 fixture, kept frozen (not
   regenerated) to test that v1 packs stay readable.
-- `catalog DIRECTORY [-o FILE| -] [--base-url URL] [--json PATH]` scans a
-  directory of `*.tgc` and writes the line-oriented **catalog** the device is
-  meant to read (see below). It refuses an empty directory or a file that is not
-  a valid pack, so a broken build cannot silently enter a release. `--json` also
-  writes a human-readable `catalog.json` (never read on device).
+- `catalog DIRECTORY [-o FILE| -] [--base-url URL] [--json PATH] [--order NAMES]`
+  scans a directory of `*.tgc` and writes the line-oriented **catalog** the
+  device is meant to read (see below). It refuses an empty directory or a file
+  that is not a valid pack, so a broken build cannot silently enter a release.
+  `--json` also writes a human-readable `catalog.json` (never read on device).
+  Records are sorted by file name unless `--order` (pack names without `.tgc`,
+  comma or space separated) lists some first: Get decks shows decks in catalog
+  order, so the decks release puts N5 first.
 
 ## Catalog format
 

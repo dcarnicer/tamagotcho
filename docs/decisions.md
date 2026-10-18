@@ -1309,6 +1309,12 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
 - **Still open:** running the decks workflow is a maintainer decision, blocked
   on the licence of the tanos.co.uk JLPT lists ("Before publishing" in the
   roadmap).
+- **Catalog order = learning order** (added at integration). Get decks lists
+  decks in catalog order (own language first), and `catalog` sorted by file
+  name put `joyo-*` first and N5 last. `tangocho-pack catalog --order NAMES`
+  lists named packs first; `decks.yml` passes its build order, so the catalog
+  reads N5, N4, N3, N2, N1, Joyo per language and a new device's selection
+  starts on N5.
 
 ## 2026-10-18 – Get decks from the portal page; own language first
 
