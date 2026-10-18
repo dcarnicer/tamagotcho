@@ -206,15 +206,18 @@ jobs:
           |---|---|
           | \`tangocho-sticks3.bin\` | app-only image (M5Launcher, \`pio run -t upload\`) |
           | \`tangocho-tdisplay-s3.bin\` | app-only image (T-Display-S3) |
-          | \`tangocho-sticks3-merged.bin\`, \`tangocho-tdisplay-s3-merged.bin\` | single flashable images (ESP Web Tools) |
-          | \`tangocho-*-manifest.json\` | ESP Web Tools manifests |
+          | \`tangocho-sticks3-merged.bin\`, \`tangocho-tdisplay-s3-merged.bin\` | single images for a first install (offset 0x0) |
+          | \`tangocho-*-manifest.json\` | ESP Web Tools manifests (for an install page) |
 
           ## Flash it
 
-          - **USB:** see the *Releases* section of README.md (\`esptool\` or \`pio run -t upload\`).
-          - **Browser:** open an ESP Web Tools page (e.g.
-            <https://esphome.github.io/esp-web-tools/>) pointing at this release's
-            \`tangocho-sticks3-manifest.json\` URL.
+          - **First install, USB:** \`esptool --chip esp32s3 write_flash 0x0 tangocho-sticks3-merged.bin\`
+          - **First install, browser** (Chrome or Edge): open
+            <https://espressif.github.io/esptool-js/>, **Connect**, add
+            \`tangocho-sticks3-merged.bin\` at address \`0x0\`, **Program**.
+          - **Update:** \`esptool --chip esp32s3 write_flash 0x10000 tangocho-sticks3.bin\`.
+            The merged image also erases the settings (home Wi-Fi, preferences);
+            the app-only image keeps them. Decks and study progress survive both.
           - **M5Launcher:** install the app-only \`tangocho-sticks3.bin\`, then put a
             deck on the device over Wi-Fi (a device with no deck boots into the
             Wi-Fi upload screen).

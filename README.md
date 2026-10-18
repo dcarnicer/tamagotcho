@@ -205,13 +205,24 @@ flashed at offset 0, so it needs no offset list:
 esptool --chip esp32s3 write_flash 0x0 tangocho-sticks3-merged.bin
 ```
 
+**What it overwrites:** everything from `0x0` to the end of the app, including
+the **settings** (the NVS partition: home Wi-Fi, preferences, time zone), which
+the merge pads with `0xFF`. The filesystem with the decks and the study
+progress starts after the 2 MB app slot and is not touched. To **update** a
+device and keep its settings, flash the app-only image at the app offset
+instead:
+
+```sh
+esptool --chip esp32s3 write_flash 0x10000 tangocho-sticks3.bin
+```
+
 It is produced from the PlatformIO build by
 [`tools/release/merge_image.py`](tools/release/merge_image.py), which runs the
 equivalent of (StickS3):
 
 ```sh
 esptool --chip esp32s3 merge_bin -o tangocho-sticks3-merged.bin \
-  --flash_mode qio --flash_freq 80m --flash_size 8MB \
+  --flash_mode dio --flash_freq 80m --flash_size 8MB \
   0x0     .pio/build/sticks3/bootloader.bin \
   0x8000  .pio/build/sticks3/partitions.bin \
   0x10000 .pio/build/sticks3/firmware.bin
@@ -219,12 +230,19 @@ esptool --chip esp32s3 merge_bin -o tangocho-sticks3-merged.bin \
 
 The offsets are the ESP32-S3 bootloader (`0x0`), the partition table (`0x8000`)
 and the `app0` offset from `firmware/partitions/sticks3_8MB.csv`. Our partition
-tables have **no OTA data partition**, so no `boot_app0.bin` is added — exactly
-what PlatformIO flashes for the same table (see `docs/decisions.md`).
+tables have **no OTA data partition**, so no `boot_app0.bin` is added.
+PlatformIO's USB upload does write `boot_app0.bin` at `0xe000`, over the unused
+`phy_init` partition; leaving it out is right for a table without OTA. The
+bootloader header is written in DIO, as PlatformIO's upload does; the app
+switches the flash to QIO itself (see `docs/decisions.md`).
 
-For a **browser flash**, open an ESP Web Tools page (e.g.
-<https://esphome.github.io/esp-web-tools/>) and point it at the release's
-`tangocho-sticks3-manifest.json`. A merged image carries **no filesystem**:
+For a **browser flash** (Chrome or Edge on a desktop), open Espressif's web
+flasher <https://espressif.github.io/esptool-js/>, press **Connect** and pick
+the StickS3's port, add `tangocho-sticks3-merged.bin` at address `0x0` and
+press **Program**. The release also carries ESP Web Tools manifests
+(`tangocho-*-manifest.json`) for a future install page; ESP Web Tools needs a
+page that serves the image and the manifest together, so it cannot be pointed
+at a release on its own. A merged image carries **no filesystem**:
 on the first boot the firmware finds no LittleFS on the data partition (erased,
 or left by another firmware), formats it ("Preparing storage...") and boots
 into the Wi-Fi portal's setup mode, where decks can be fetched or uploaded over
