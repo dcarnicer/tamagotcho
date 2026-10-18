@@ -30,6 +30,7 @@
 #include "srs/WallClock.h"
 #include "ui/Icons.h"
 #include "ui/InputPrefs.h"
+#include "ui/QuizUi.h"
 #include "ui/ListView.h"
 #include "ui/TextLayout.h"
 #include "ui/Theme.h"
@@ -276,6 +277,27 @@ struct UiStrings {
     const char* hintBack;
     const char* getDecksCaption;  // the Get decks row's second line
     const char* aboutUiFont;      // Settings > About: + the firmware's UI font
+    // The quiz and the detail card (docs/ux-refresh.md §6.4). Header pills are
+    // Font0 captions in uppercase ASCII (Font0 has no capital I with an
+    // accent). The result pill is "<word> · <days><unit>" or the longest
+    // shorter form that fits next to the cards left (ui/QuizUi.h
+    // resultPillText()); the mode pills reuse quizMeaning, detailOn/detailKun
+    // and quizKanji. Budgets are tested in test_quizui, which copies these.
+    const char* pillGood;
+    const char* pillHard;
+    const char* pillAgain;
+    const char* pillDaysUnit;    // after the interval: "4d"
+    const char* quizK2mCaption;  // over a meaning -> kanji prompt (Font0, two lines in landscape)
+    // The quiz's hint bar (the front tap of a question is hintMove): the
+    // hold that answers, then the tap after a correct answer (and on the
+    // detail card) and after a wrong one. "• mover ▬ responder" leaves 8 px
+    // to the settings icon in the 135 px portrait; "siguiente" would not.
+    const char* hintAnswer;
+    const char* hintNext;
+    const char* hintDetails;
+    // The detail card's header counter while the strokes animate (stroke,
+    // count); the bare "4/13" when the worded one does not fit.
+    const char* detailStrokeFmt;
 };
 
 const UiStrings kUiEn = {
@@ -333,6 +355,9 @@ const UiStrings kUiEn = {
     "JLPT levels:", "Glyphs:", "tap: more",
     "move", "open", "choose", "back", "home Wi-Fi",
     "UI font:",
+    "GOOD", "HARD", "AGAIN", "d", "which kanji means",
+    "answer", "next", "details",
+    "stroke %u/%u",
 };
 
 const UiStrings kUiEs = {
@@ -392,6 +417,9 @@ const UiStrings kUiEs = {
     "Niveles JLPT:", "Glifos:", "toque: más",
     "mover", "abrir", "elegir", "atrás", "Wi-Fi de casa",
     "Fuente:",
+    "BIEN", "DIFICIL", "OTRA VEZ", "d", "qué kanji significa",
+    "responder", "siguiente", "detalles",
+    "trazo %u/%u",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -422,6 +450,15 @@ int gSel = 0;
 bool gRevealed = false;
 bool gLastCorrect = false;  // outcome of the last answer (drives the detail card)
 bool gNextReadingIsKun = false;
+// The last answer's grade and the days to the card's next review (record
+// dueDay - today), for the result pill.
+tgc::Grade gLastGrade = tgc::Grade::Good;
+int gLastInterval = 0;
+// The quiz's hint bar policy and the auto-advance after a correct answer
+// (ui/QuizUi.h; docs/ux-refresh.md §6.3, §6.5).
+tgc::QuizHints gQuizHints;
+tgc::AutoAdvance gAdvance;
+uint32_t gAdvanceFrameAt = 0;  // millis() of the last countdown frame
 
 // Stroke-order animation on the mistake detail card. Only active while the
 // shown card's pack carries stroke data (docs/pack-format.md); otherwise the
@@ -639,8 +676,33 @@ void dropPartialPush();
 uint32_t gPushUs = 0;
 int gPushRows = 0;
 
+// Every push notes what the hold progress (holdTick()) needs about the frame
+// now on the panel: the focused list row drawList() drew for it (if any), a
+// frame count and whether the push was partial.
+uint32_t gFrames = 0;
+bool gLastPushPartial = false;
+tgc::widgets::Rect gFrameFocus{};
+bool gFrameFocusValid = false;
+// One-shot: the next present() pushes only gPushRect (a list's hold-progress
+// frame redraws its screen clipped to the focused row).
+bool gPushOnly = false;
+tgc::widgets::Rect gPushRect{};
+
+void noteFrame(bool partial) {
+    gFrameFocusValid = tgc::widgets::takeFocusRow(&gFrameFocus);
+    ++gFrames;
+    gLastPushPartial = partial;
+}
+void presentRegion(int x, int y, int w, int h);
+
 void present() {
     dropPartialPush();
+    if (gPushOnly) {
+        gPushOnly = false;
+        presentRegion(gPushRect.x, gPushRect.y, gPushRect.w, gPushRect.h);
+        return;
+    }
+    noteFrame(false);
     const uint32_t t0 = micros();
     gCanvas->pushSprite(&tgc::board::display(), 0, 0);
     gPushUs = micros() - t0;
@@ -649,6 +711,7 @@ void present() {
 
 // Pushes only (x, y, w, h) of the back buffer: a partial update.
 void presentRegion(int x, int y, int w, int h) {
+    noteFrame(true);
     const uint32_t t0 = micros();
     tgc::widgets::presentRegion(*gCanvas, tgc::board::display(), x, y, w, h);
     gPushUs = micros() - t0;
@@ -759,6 +822,8 @@ bool newQuestion() {
             gRevealed = false;
             gShownAt = millis();
             gNavTaps = 0;
+            gQuizHints.question(gShownAt);
+            gAdvance.cancel();
             tgc::Card c;
             gPack->card(gQ.cardIndex, &c);
             const char* mk = gQ.mode == tgc::QuizMode::Reading
@@ -820,6 +885,242 @@ void drawPromptKanji(lgfx::LovyanGFX& d, uint32_t cp, int x, int y, int w, int h
 #endif
 }
 
+// --- Quiz screen (docs/ux-refresh.md §2.4, §6) ------------------------------
+// Header: the mode pill (the result pill once answered), the cards left, the
+// battery and the 2 px session bar. Prompt: the kanji, or for meaning -> kanji
+// a caption and the meaning. Options: flat tiles (render/Widgets). The hint bar
+// follows ui/QuizUi.h's policy (QuizHints); without it the tiles take its space.
+
+namespace wg = tgc::widgets;
+using tgc::theme::kGutter;
+using tgc::theme::kHeaderH;
+using tgc::theme::kHintH;
+
+// Where the quiz puts its parts (drawQuiz(), the focus moves and hold frames,
+// the detail card's kanji box). Meanings are rows in the UI font. Readings are
+// a 2x2 grid when every option fits a cell -- in the option kana (set 3), else
+// the small kana (set 2) -- otherwise rows, in set 3 when every option fits a
+// row. Kanji options are a 2x2 grid of set-1 glyphs.
+struct QuizGeom {
+    int px = 0, py = 0, pw = 0, ph = 0;  // prompt box
+    int tx[tgc::kMaxOptions] = {}, ty[tgc::kMaxOptions] = {};
+    int tw = 0, th = 0;  // every tile's size
+    uint8_t set = tgc::Renderer::kTextUi;
+    bool grid = false;
+    bool hints = false;  // the hint bar is shown
+};
+QuizGeom gQuizG;  // as the quiz or the detail card was last drawn
+
+QuizGeom quizGeom(bool hints) {
+    using namespace tgc::theme;
+    const Layout l = layoutFor(W, H);
+    QuizGeom g;
+    g.hints = hints;
+    g.px = l.promptX;
+    g.py = l.promptY;
+    g.pw = l.promptW;
+    g.ph = l.promptH;
+    int ax = l.answersX, ay = l.answersY, aw = l.answersW, ah = l.answersH;
+    const int extra = hints ? 0 : kHintH;
+    if (!l.landscape) {
+        // A larger em (--large-px) gets a taller kanji box, up to 45 % of H.
+        const int largePx = gPack->header().largePx ? gPack->header().largePx : 64;
+        const int want = std::min(largePx + 6, H * 45 / 100);
+        if (want > g.ph) {
+            ay += want - g.ph;
+            ah -= want - g.ph;
+            g.ph = want;
+        }
+        ah += extra;
+    } else {
+        g.ph += extra;
+        ah += extra ? extra - 3 : 0;  // 4 px from the bottom edge, as on the right
+    }
+    const int n = gQ.count > 0 ? std::min(gQ.count, tgc::kMaxOptions) : 1;
+    // The grid keeps 2 px to the panel edges (rows keep the 4 px gutter): a
+    // portrait cell then holds three option kana.
+    const int gx = ax - 2, gw = aw + 4;
+    const int rows = (n + 1) / 2;
+    const int cw = (gw - kGap) / 2;
+    const int ch = (ah - (rows - 1) * kGap) / rows;
+    auto allFit = [&](uint8_t set, int w) {
+        for (int i = 0; i < n; ++i)
+            if (gRender.textWidth(gQ.options[i].c_str(), set) > w) return false;
+        return true;
+    };
+    if (gQ.mode == tgc::QuizMode::MeaningToKanji) {
+        g.grid = true;
+        g.set = tgc::kGlyphSetSmall;
+    } else if (gQ.mode == tgc::QuizMode::Reading) {
+        g.set = tgc::kGlyphSetOption;
+        g.grid = allFit(g.set, cw - 4);
+        if (!g.grid && allFit(tgc::kGlyphSetText, cw - 4)) {
+            g.set = tgc::kGlyphSetText;
+            g.grid = true;
+        }
+        if (!g.grid && !allFit(g.set, aw - kTilePadX - 6)) g.set = tgc::kGlyphSetText;
+    }
+    if (g.grid) {
+        g.tw = cw;
+        g.th = ch;
+        for (int i = 0; i < n; ++i) {
+            g.tx[i] = gx + (i % 2) * (cw + kGap);
+            g.ty[i] = ay + (i / 2) * (ch + kGap);
+        }
+    } else {
+        g.tw = aw;
+        g.th = (ah - (n - 1) * kGap) / n;
+        for (int i = 0; i < n; ++i) {
+            g.tx[i] = ax;
+            g.ty[i] = ay + i * (g.th + kGap);
+        }
+    }
+    return g;
+}
+
+bool quizHintsShown() { return gQuizHints.shown(gSrs.answeredTotal(), !gRevealed); }
+
+// Hold progress on the quiz (see holdTick()): a fill frame is on screen, and
+// its share, so a full redraw during the hold keeps it.
+bool gHoldOn = false;
+float gHoldShare = 0.0f;
+uint32_t gHoldFrameAt = 0;  // millis() of the last fill frame
+
+wg::TileState quizTileState(int i) {
+    if (gRevealed) {
+        if (i == gQ.correct) return wg::TileState::Correct;
+        return i == gSel ? wg::TileState::Wrong : wg::TileState::Dimmed;
+    }
+    return i == gSel ? wg::TileState::Focus : wg::TileState::Idle;
+}
+
+// Option tile `i` where gQuizG puts it; `fill` >= 0 draws the focused tile
+// holding (hold progress).
+void drawQuizTile(lgfx::LovyanGFX& d, int i, float fill) {
+    const QuizGeom& g = gQuizG;
+    wg::TileState st = quizTileState(i);
+    if (fill >= 0.0f && st == wg::TileState::Focus) st = wg::TileState::Holding;
+    if (gQ.mode == tgc::QuizMode::MeaningToKanji) {
+        tgc::Card oc;
+        const uint32_t cp = gPack->card(gQ.optionCard[i], &oc) ? oc.codepoint : '?';
+        wg::drawKanjiTile(d, gRender, g.tx[i], g.ty[i], g.tw, g.th, st, cp, g.set, fill);
+        return;
+    }
+    wg::drawTile(d, gRender, g.tx[i], g.ty[i], g.tw, g.th, st, gQ.options[i].c_str(), fill, g.set,
+                 g.grid ? tgc::Align::Centre : tgc::Align::Left);
+}
+
+// The header: before the answer the mode pill in its colour -- MEANING, the
+// reading asked for (ON / KUN) or KANJI -- and after it the result: a check
+// and "GOOD · 4d" / "HARD · 2d", or a cross and "AGAIN", in the longest form
+// that fits next to the cards left (ui/QuizUi.h). Right: the cards left and
+// the battery; bottom: answered / (answered + left).
+void drawQuizHeader(lgfx::LovyanGFX& d) {
+    using namespace tgc::theme;
+    const tgc::SessionProgress p =
+        tgc::sessionProgress(static_cast<uint32_t>(gQueue.answeredCount()),
+                             static_cast<uint32_t>(gQueue.remaining()), !gRevealed);
+    char left[12];
+    snprintf(left, sizeof left, "%u", (unsigned)p.left);
+    const int bat = tgc::board::batteryPercent();
+    gShownBattery = bat;
+    wg::Header h;
+    h.right = left;
+    h.battery = bat;
+    h.progressNum = static_cast<int>(p.done);
+    h.progressDen = static_cast<int>(p.total);
+    h.pillBg = kSurfaceHi;
+    char pill[40];
+    if (!gRevealed) {
+        if (gQ.mode == tgc::QuizMode::Reading) {
+            h.pill = gQ.readingKind == tgc::ReadingKind::Kun  ? ui().detailKun
+                     : gQ.readingKind == tgc::ReadingKind::On ? ui().detailOn
+                                                              : ui().quizReading;
+            h.pillFg = kModeReading;
+        } else if (gQ.mode == tgc::QuizMode::MeaningToKanji) {
+            h.pill = ui().quizKanji;
+            h.pillFg = kModeKanji;
+        } else {
+            h.pill = ui().quizMeaning;
+            h.pillFg = kAccentHi;
+        }
+    } else {
+        const char* word = ui().pillGood;
+        const tgc::Icon* icon = &tgc::kIconCheck;
+        int days = gLastInterval > 0 ? gLastInterval : 0;
+        if (gLastGrade == tgc::Grade::Again) {
+            word = ui().pillAgain;
+            icon = &tgc::kIconCross;
+            days = -1;
+            h.pillFg = kErrHi;
+            h.pillBg = kErrBg;
+        } else if (gLastGrade == tgc::Grade::Hard) {
+            word = ui().pillHard;
+            h.pillFg = kWarn;
+        } else {
+            h.pillFg = kOkHi;
+            h.pillBg = kOkBg;
+        }
+        tgc::resultPillText(pill, sizeof pill, word, days, ui().pillDaysUnit, icon->w,
+                            tgc::headerPillRoom(W, tgc::captionChars(left), bat >= 0));
+        h.pill = pill;
+        h.pillIcon = icon;
+    }
+    wg::drawHeader(d, gRender, W, h);
+}
+
+// The prompt: the kanji, or (meaning -> kanji) a caption saying what is asked
+// and the meaning under it (UI font, up to three lines), centred as a block.
+void drawQuizPrompt(lgfx::LovyanGFX& d, const tgc::Card& card) {
+    const QuizGeom& g = gQuizG;
+    if (gQ.mode != tgc::QuizMode::MeaningToKanji) {
+        drawPromptKanji(d, card.codepoint, g.px, g.py, g.pw, g.ph);
+        return;
+    }
+    constexpr uint8_t kCap = tgc::Renderer::kTextBuiltinSmall;
+    constexpr uint8_t kLabel = tgc::Renderer::kTextUi;
+    const char* cap = ui().quizK2mCaption;
+    const char* prompt = gQ.options[gQ.correct].c_str();
+    const int bx = g.px + kGutter;
+    const int bw = g.pw - 2 * kGutter;
+    const int lh = gRender.lineHeight(kLabel);
+    const int capLines = std::max(1, gRender.lineCount(cap, bw, 2, kCap));
+    const int capH = capLines * gRender.lineHeight(kCap);
+    constexpr int kGapY = 6;
+    const int maxLines = std::max(1, std::min(3, (g.ph - capH - kGapY - 4) / lh));
+    const int lines = std::max(1, gRender.lineCount(prompt, bw, maxLines, kLabel));
+    const int top = g.py + (g.ph - (capH + kGapY + lines * lh)) / 2;
+    gRender.drawCentred(d, cap, bx, top, bw, capH, capLines, tgc::theme::kTextDim, kBlack, kCap);
+    gRender.drawCentred(d, prompt, bx, top + capH + kGapY, bw, lines * lh, lines, kWhite, kBlack,
+                        kLabel);
+}
+
+// The quiz's hint bar: "• move ▬ answer" on a question, "• next" after a
+// correct answer, "• details" after a wrong one; the side button's icon is
+// the settings one (side hold). `holding` lights the hold item.
+void drawQuizHints(lgfx::LovyanGFX& d, bool holding) {
+    wg::Hints h;
+    if (!gRevealed) {
+        h.tap = ui().hintMove;
+        h.hold = ui().hintAnswer;
+        h.holding = holding;
+    } else {
+        h.tap = gLastCorrect ? ui().hintNext : ui().hintDetails;
+    }
+    h.side = &tgc::kIconMenu;
+    wg::drawHintBar(d, gRender, W, H, h);
+}
+
+// The auto-advance countdown: a 2 px bar along the bottom edge that drains
+// (below the tiles, or in the hint bar's empty bottom rows).
+constexpr int kAdvanceBarH = 2;
+void drawAdvanceBar(lgfx::LovyanGFX& d, uint32_t now) {
+    const int y = H - kAdvanceBarH;
+    d.fillRect(0, y, W, kAdvanceBarH, kBlack);
+    const int w = static_cast<int>(std::lround(W * gAdvance.left(now)));
+    if (w > 0) d.fillRect(0, y, w, kAdvanceBarH, tgc::theme::kOkHi);
+}
+
 void drawQuiz() {
     tgc::Card card;
     if (!questionCard(&card)) {
@@ -828,150 +1129,41 @@ void drawQuiz() {
     }
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-
-    // Header: deck name left, battery right (both built-in font, size 1).
-    const int headerH = 14;
-    d.fillRect(0, 0, W, headerH, kGrey);
-    smallText(d, gPack->deckName(), 3, 3, kWhite, kGrey);
-    int bat = tgc::board::batteryPercent();
-    gShownBattery = bat;
-    if (bat >= 0) {
-        char b[8];
-        snprintf(b, sizeof b, "%d%%", bat);
-        smallText(d, b, W - 3, 3, bat < 15 ? kYellow : kWhite, kGrey, lgfx::top_right);
-    }
-
-    // Prompt: the kanji, or (meaning -> kanji) the meaning text.
-    const bool reading = gQ.mode == tgc::QuizMode::Reading;
-    const bool k2m = gQ.mode == tgc::QuizMode::MeaningToKanji;
-    const int largePx = gPack->header().largePx ? gPack->header().largePx : 64;
-    // Landscape: prompt in the left column, options bounded to the right one.
-    const bool landscape = W > H;
-    const int leftW = std::max(largePx, W * 2 / 5);
-    const int colX = landscape ? leftW : 0;
-    const int colW = landscape ? W - leftW : W;
-
-    int kanjiH = largePx + 6;
-    if (kanjiH > H * 45 / 100) kanjiH = H * 45 / 100;
-    if (k2m) {
-        const char* prompt = gQ.options[gQ.correct].c_str();
-        // Landscape puts the meaning prompt in the left column (the kanji
-        // options are in the right one); portrait keeps the full width.
-        const int pX = 0;
-        const int pW = landscape ? leftW : colW;
-        uint8_t set = tgc::Renderer::kTextBuiltin;
-        if (!tgc::Renderer::builtinCanDraw(prompt)) set = tgc::kGlyphSetText;
-        else if (gRender.textWidth(prompt, set) > pW - 8) set = tgc::Renderer::kTextBuiltinSmall;
-        // The box must be at least one line tall; the prompt is centred in it.
-        const int boxY = landscape ? headerH : headerH + 2;
-        const int boxH = landscape ? H - headerH : kanjiH;
-        int ml = (boxH - 4) / gRender.lineHeight(set);
-        if (ml < 1) ml = 1;
-        if (ml > 4) ml = 4;
-        gRender.drawCentred(d, prompt, pX + 3, boxY, pW - 6, boxH - (landscape ? 2 : 0), ml,
-                            kWhite, kBlack, set);
-    } else if (landscape) {
-        drawPromptKanji(d, card.codepoint, 0, headerH, leftW, H - headerH);
-    } else {
-        drawPromptKanji(d, card.codepoint, 0, headerH + 2, W, kanjiH);
-    }
-    if (landscape)
-        smallText(d, k2m ? ui().quizKanji : (reading ? ui().quizReading : ui().quizMeaning),
-                  leftW / 2, H - 11, kYellow, kBlack, lgfx::top_center);
-    else
-        smallText(d, k2m ? ui().quizKanji : (reading ? ui().quizReading : ui().quizMeaning), W / 2,
-                  headerH + 2 + kanjiH, kYellow, kBlack, lgfx::top_center);
-
-    // Readings: 2x2 grid with large kana (set 3). Meanings: one per row, full
-    // width, in the built-in font at 2x (falling back to the pack glyphs).
-    const int top = landscape ? headerH + 2 : headerH + kanjiH + 14;
-    const int area = H - top - 2;
-    const int margin = 1, gap = 3;
-
-    auto optionBg = [&](int i) -> uint16_t {
-        if (gRevealed) return i == gQ.correct ? kGreen : (i == gSel ? kRed : kBlack);
-        return i == gSel ? kHighlight : kBlack;
-    };
-    auto optionBox = [&](int i, int x, int y, int w, int h, uint8_t set, int maxLines) {
-        uint16_t bg = optionBg(i);
-        d.fillRoundRect(x, y, w, h, 4, bg);
-        if (!gRevealed && i == gSel) d.drawRoundRect(x, y, w, h, 4, kWhite);
-        gRender.drawCentred(d, gQ.options[i].c_str(), x + 2, y + 1, w - 4, h - 2, maxLines, kWhite, bg,
-                            set);
-    };
-
-    if (k2m) {
-        // Meaning prompt: the options are kanji (set 1) in the same 2x2 grid.
-        const int cols = 2;
-        const int rows = (gQ.count + cols - 1) / cols;
-        const int cellW = (colW - 2 * margin - (cols - 1) * gap) / cols;
-        const int cellH = (area - (rows - 1) * gap) / rows;
-        for (int i = 0; i < gQ.count; ++i) {
-            const int cx = colX + margin + (i % cols) * (cellW + gap);
-            const int cy = top + (i / cols) * (cellH + gap);
-            const uint16_t bg = optionBg(i);
-            d.fillRoundRect(cx, cy, cellW, cellH, 4, bg);
-            if (!gRevealed && i == gSel) d.drawRoundRect(cx, cy, cellW, cellH, 4, kWhite);
-            tgc::Card oc;
-            if (gPack->card(gQ.optionCard[i], &oc))
-                gRender.drawKanji(d, tgc::kGlyphSetSmall, oc.codepoint, cx, cy, cellW, cellH, kWhite, bg);
-        }
-    } else if (reading) {
-        const int cols = 2;
-        const int rows = (gQ.count + cols - 1) / cols;
-        const int cellW = (colW - 2 * margin - (cols - 1) * gap) / cols;
-        const int cellH = (area - (rows - 1) * gap) / rows;
-        auto allFit = [&](uint8_t set, int w) {
-            for (int i = 0; i < gQ.count; ++i)
-                if (gRender.textWidth(gQ.options[i].c_str(), set) > w - 4) return false;
-            return true;
-        };
-        // The 2x2 grid when every option fits a cell (large kana, else the small
-        // text). A cell holds 3 kana, so longer kun readings (ちいさい, うけたまわる)
-        // get one full-width row each instead, which holds 6 large kana.
-        uint8_t set = tgc::kGlyphSetOption;
-        bool grid = allFit(set, cellW);
-        if (!grid && allFit(tgc::kGlyphSetText, cellW)) {
-            set = tgc::kGlyphSetText;
-            grid = true;
-        }
-        if (grid) {
-            for (int i = 0; i < gQ.count; ++i)
-                optionBox(i, colX + margin + (i % cols) * (cellW + gap),
-                          top + (i / cols) * (cellH + gap), cellW, cellH, set, 1);
-        } else {
-            const int w = colW - 2 * margin;
-            if (!allFit(set, w)) set = tgc::kGlyphSetText;
-            const int rowH = area / gQ.count;
-            for (int i = 0; i < gQ.count; ++i)
-                optionBox(i, colX + margin, top + i * rowH, w, rowH - gap, set, 1);
-        }
-    } else {
-        // The built-in font has no glyph for some characters; then use the pack.
-        uint8_t set = tgc::Renderer::kTextBuiltin;
-        for (int i = 0; i < gQ.count; ++i)
-            if (!tgc::Renderer::builtinCanDraw(gQ.options[i].c_str())) {
-                set = tgc::kGlyphSetText;
-                break;
-            }
-        const int w = colW - 2 * margin;
-        // Shrink to 1x if any option would otherwise be truncated.
-        if (set == tgc::Renderer::kTextBuiltin) {
-            for (int i = 0; i < gQ.count; ++i)
-                if (gRender.textWidth(gQ.options[i].c_str(), set) > w - 4) {
-                    set = tgc::Renderer::kTextBuiltinSmall;
-                    break;
-                }
-        }
-        const int rowH = area / gQ.count;
-        const int boxH = rowH - gap;
-        int maxLines = (boxH - 2) / gRender.lineHeight(set);
-        if (maxLines < 1) maxLines = 1;
-        if (maxLines > 2) maxLines = 2;
-        for (int i = 0; i < gQ.count; ++i)
-            optionBox(i, colX + margin, top + i * rowH, w, boxH, set, maxLines);
-    }
+    gQuizG = quizGeom(quizHintsShown());
+    drawQuizHeader(d);
+    drawQuizPrompt(d, card);
+    const bool holding = gHoldOn && !gRevealed;
+    for (int i = 0; i < gQ.count; ++i)
+        drawQuizTile(d, i, holding && i == gSel ? gHoldShare : -1.0f);
+    if (gQuizG.hints) drawQuizHints(d, holding);
+    if (gRevealed && gAdvance.active()) drawAdvanceBar(d, millis());
     present();
+}
+
+// A focus move (front tap: down, side tap: up, wrapping): only the two tiles
+// change, so only they are redrawn and pushed. The hint bar is redrawn into
+// the buffer too (unlit): loop() pushes it when a hold fill ended with this tap.
+void moveQuizFocus(bool down) {
+    tgc::Card card;
+    if (!questionCard(&card)) return;  // also keeps gQ.count from being 0 below
+#if defined(TGC_QUIZ_LOG)
+    const uint32_t t0 = micros();
+#endif
+    const int old = gSel;
+    gSel = down ? tgc::nextOption(gSel, gQ.count) : tgc::prevOption(gSel, gQ.count);
+    ++gNavTaps;
+    auto& d = *gCanvas;
+    drawQuizTile(d, old, -1.0f);
+    drawQuizTile(d, gSel, -1.0f);
+    if (gQuizG.hints) drawQuizHints(d, false);
+    const QuizGeom& g = gQuizG;
+    const int x0 = std::min(g.tx[old], g.tx[gSel]);
+    const int y0 = std::min(g.ty[old], g.ty[gSel]);
+    const int x1 = std::max(g.tx[old], g.tx[gSel]) + g.tw;
+    const int y1 = std::max(g.ty[old], g.ty[gSel]) + g.th;
+    presentRegion(x0, y0, x1 - x0, y1 - y0);
+    QLOG("F quiz focus %d -> %d: %u us, push %u us (%d rows)\n", old, gSel,
+         (unsigned)(micros() - t0), (unsigned)gPushUs, gPushRows);
 }
 
 // Pick the built-in font size for a menu/list label: the 2x font when the box
@@ -2101,151 +2293,151 @@ std::string joinReadings(const char* list) {
     return out;
 }
 
-// The detail card's kanji: the static set-0 glyph, or -- when the pack carries
-// stroke data for the card and the animation is running -- the strokes of the
-// current frame: completed ones in white, the current one in yellow, the
-// undrawn ones absent. The masks live in the same em square drawKanji uses.
-void drawDetailKanji(int boxX, int boxY, int boxW, int boxH, uint32_t cp) {
-    auto& d = *gCanvas;
-    const int px = gPack->header().largePx ? gPack->header().largePx : 64;
+// The detail card's kanji box (gQuizG's prompt box, where the quiz showed the
+// kanji): the static set-0 glyph, or -- while the pack's stroke data animates
+// -- every stroke: those written so far in `text`, the current one in `warn`,
+// the rest as a `ghost`, so the final shape shows throughout. The masks live
+// in the em square drawKanji() uses.
+void drawDetailKanji(lgfx::LovyanGFX& d, uint32_t cp) {
+    const QuizGeom& g = gQuizG;
+    d.fillRect(g.px, g.py, g.pw, g.ph, kBlack);
     if (!gAnimOn) {
-        gRender.drawKanji(d, tgc::kGlyphSetLarge, cp, boxX, boxY, boxW, boxH, kWhite, kBlack);
+        gRender.drawKanji(d, tgc::kGlyphSetLarge, cp, g.px, g.py, g.pw, g.ph, kWhite, kBlack);
         return;
     }
-    const int emX = boxX + (boxW - px) / 2;
-    const int emY = boxY + (boxH - px) / 2;
+    const int px = gPack->header().largePx ? gPack->header().largePx : 64;
+    const int emX = g.px + (g.pw - px) / 2;
+    const int emY = g.py + (g.ph - px) / 2;
 #if defined(TGC_QUIZ_LOG)
     const uint32_t t0 = micros();
 #endif
+    const int n = static_cast<int>(gAnimStrokes);
+    for (int i = gAnimFrame + 1; i < n; ++i)
+        gRender.drawStroke(d, gQ.cardIndex, static_cast<uint16_t>(i), emX, emY, tgc::theme::kGhost);
     for (int i = 0; i <= gAnimFrame; ++i)
         gRender.drawStroke(d, gQ.cardIndex, static_cast<uint16_t>(i), emX, emY,
-                           i == gAnimFrame ? kYellow : kWhite);
+                           i == gAnimFrame ? tgc::theme::kWarn : tgc::theme::kText);
 #if defined(TGC_QUIZ_LOG)
-    // One line per animation loop: the last frame draws every stroke (worst case).
-    if (gAnimFrame == static_cast<int>(gAnimStrokes) - 1)
-        QLOG("R U+%04X strokes %d draw %u us\n", (unsigned)cp, gAnimFrame + 1,
-             (unsigned)(micros() - t0));
+    // One line per animation loop (every frame draws every stroke now).
+    if (gAnimFrame == n - 1)
+        QLOG("R U+%04X strokes %d draw %u us\n", (unsigned)cp, n, (unsigned)(micros() - t0));
 #endif
 }
 
-// Detail card (roadmap phase 3): a tap after a wrong reveal opens this read-only
-// card with the kanji, all meanings, all on/kun readings (okurigana dots
-// removed), the stroke count and this card's own accuracy from the SRS record.
-// Portrait centres the kanji in the upper ~45% with the details below; landscape
-// mirrors the quiz (kanji left, details right). Japanese readings use the pack's
-// kana (set 2, falling back to set 3 by width as the quiz does); Latin values use
-// the built-in font when it can draw them (2x, shrunk to 1x), else pack glyphs.
-// When the pack carries stroke data for the card, the kanji animates instead
-// (see drawDetailKanji and the Screen::Detail branch of loop()).
+// The detail card's header: "DETAIL", then the stroke counter while the
+// strokes animate ("stroke 4/6", or "4/13" when the worded counter of the last
+// stroke would not fit; decided per card, ui/QuizUi.h) or the stroke count.
+void drawDetailHeader(lgfx::LovyanGFX& d, const tgc::Card& card) {
+    wg::Header h;
+    h.title = ui().detailTitle;
+    h.battery = tgc::board::batteryPercent();
+    char counter[32] = "";
+    if (gAnimOn) {
+        const int room = tgc::headerPillRoom(W, 0, h.battery >= 0) -
+                         wg::captionWidth(h.title) - 6;
+        const bool worded = tgc::strokeCounterWorded(ui().detailStrokeFmt, gAnimStrokes, room);
+        snprintf(counter, sizeof counter, worded ? ui().detailStrokeFmt : "%u/%u",
+                 (unsigned)(gAnimFrame + 1), (unsigned)gAnimStrokes);
+    } else if (card.strokes) {
+        snprintf(counter, sizeof counter, ui().detailStrokesFmt, (unsigned)card.strokes);
+    }
+    if (counter[0]) h.right = counter;
+    wg::drawHeader(d, gRender, W, h);
+}
+
+// Detail card (roadmap phase 3, restyled in docs/ux-refresh.md §4 phase 2): a
+// tap after a wrong reveal opens it. Under the kanji: what was picked (a cross
+// and the option; for meaning -> kanji the picked kanji's meaning) and the
+// card's own accuracy, the meanings (UI font, what room is left, at most three
+// lines), and the readings, one line each behind an ON / KUN pill (the UI
+// font draws kana from the pack's text set). Landscape mirrors the quiz:
+// kanji left, details right. When the pack carries stroke data for the card,
+// the kanji animates (drawDetailFrame(), the Screen::Detail branch of loop()).
 void drawDetail() {
     tgc::Card card;
     if (!questionCard(&card)) {
         drawNoQuestion();
         return;
     }
+    using namespace tgc::theme;
     auto& d = *gCanvas;
-    d.fillScreen(kBlack);
-    const int headerH = 14;
-    d.fillRect(0, 0, W, headerH, kGrey);
-    smallText(d, gPack->deckName(), 3, 3, kWhite, kGrey);
-    smallText(d, ui().detailTitle, W - 3, 3, kWhite, kGrey, lgfx::top_right);
+    d.fillScreen(kBg);
+    gQuizG = quizGeom(gQuizHints.shown(gSrs.answeredTotal(), false));
+    const QuizGeom& g = gQuizG;
+    drawDetailHeader(d, card);
+    drawDetailKanji(d, card.codepoint);
 
-    const int largePx = gPack->header().largePx ? gPack->header().largePx : 64;
+    constexpr uint8_t kLabel = tgc::Renderer::kTextUi;
+    const int lh = gRender.lineHeight(kLabel);
     const bool landscape = W > H;
+    const int x = landscape ? g.pw + kGutter : kGutter;
+    const int w = W - x - kGutter;
+    int y = landscape ? kHeaderH + 3 : g.py + g.ph + 2;
+    const int bottom = (g.hints ? H - kHintH : H) - 2;
 
-    int x, w, top, bottom, kx, ky, kw, kh;
-    if (landscape) {
-        const int leftW = std::max(largePx, W * 2 / 5);
-        kx = 0;
-        ky = headerH;
-        kw = leftW;
-        kh = H - headerH;
-        x = leftW + 3;
-        w = W - leftW - 6;
-        top = headerH + 2;
-        bottom = H - 2;
-    } else {
-        int kanjiH = largePx + 6;
-        if (kanjiH > H * 45 / 100) kanjiH = H * 45 / 100;
-        kx = 0;
-        ky = headerH + 2;
-        kw = W;
-        kh = kanjiH;
-        x = 3;
-        w = W - 6;
-        top = headerH + 2 + kanjiH;
-        bottom = H - 2;
+    // What was picked, and "correct 3/5" (the bare "3/5" when the pick
+    // needs the room).
+    const tgc::Record* rec = gSrs.find(card.codepoint);
+    char accFull[32] = "", accBare[16] = "";
+    if (rec && rec->reps > 0) {
+        const unsigned total = rec->reps;
+        const unsigned correct = rec->reps > rec->lapses ? rec->reps - rec->lapses : 0;
+        snprintf(accFull, sizeof accFull, ui().detailAccuracyFmt, correct, total);
+        snprintf(accBare, sizeof accBare, "%u/%u", correct, total);
     }
-    drawDetailKanji(kx, ky, kw, kh, card.codepoint);
+    const char* picked = gSel >= 0 && gSel < gQ.count ? gQ.options[gSel].c_str() : "";
+    const int markW = tgc::kIconCross.w + 4;
+    const int pickedW = gRender.textWidth(picked, kLabel);
+    const char* acc = nullptr;
+    if (accFull[0])
+        acc = markW + pickedW + 6 + wg::captionWidth(accFull) <= w ? accFull : accBare;
+    const int accW = acc ? wg::captionWidth(acc) : 0;
+    wg::drawIcon(d, tgc::kIconCross, x, y + (lh - tgc::kIconCross.h + 1) / 2, kErrHi);
+    gRender.drawLabel(d, picked, x + markW, y, w - markW - (acc ? accW + 6 : 0), lh, kErrHi, kBg,
+                      kLabel);
+    if (acc) wg::drawCaption(d, gRender, acc, x + w - accW, y + (lh - 7 + 1) / 2, kTextDim, kBg);
+    y += lh + 2;
 
-    const int lh = gRender.lineHeight(tgc::kGlyphSetText);
     const std::string on = joinReadings(card.onyomi);
     const std::string kun = joinReadings(card.kunyomi);
-    const tgc::Record* rec = gSrs.find(card.codepoint);
-    const bool hasAcc = rec && rec->reps > 0;
+    const int readingRows = (on.empty() ? 0 : 1) + (kun.empty() ? 0 : 1);
+    const int lines = std::max(1, std::min(3, (bottom - y - readingRows * (lh + 2)) / lh));
+    y += gRender.drawWrapped(d, card.meanings, x, y, w, lines, kText, kBg, kLabel) * lh + 2;
 
-    // Kana: set 2, falling back to set 3 only when set 2 overflows and set 3 fits
-    // (mirrors the quiz's width test; in practice readings are short).
-    auto kanaSet = [&](const std::string& s) -> uint8_t {
-        if (gRender.textWidth(s.c_str(), tgc::kGlyphSetText) > w &&
-            gRender.textWidth(s.c_str(), tgc::kGlyphSetOption) <= w)
-            return tgc::kGlyphSetOption;
-        return tgc::kGlyphSetText;
+    // Both readings start at the same x, after the wider tag.
+    const int tagW = std::max(wg::pillWidth(ui().detailOn), wg::pillWidth(ui().detailKun));
+    auto reading = [&](const char* tag, const std::string& s) {
+        if (s.empty() || y + lh > bottom + 2) return;
+        wg::drawPill(d, gRender, x, y + (lh - kPillH + 1) / 2, tag, kModeReading, kSurfaceHi);
+        gRender.drawLabel(d, s.c_str(), x + tagW + 5, y, w - tagW - 5, lh, kText, kBg, kLabel);
+        y += lh + 2;
     };
-    // Latin: the built-in font when it covers the text (2x, shrunk to 1x), else
-    // the pack glyphs (same fallback rules as the quiz meaning options).
-    auto latinSet = [&](const char* s) -> uint8_t {
-        if (!tgc::Renderer::builtinCanDraw(s)) return tgc::kGlyphSetText;
-        return gRender.textWidth(s, tgc::Renderer::kTextBuiltin) <= w
-                   ? static_cast<uint8_t>(tgc::Renderer::kTextBuiltin)
-                   : static_cast<uint8_t>(tgc::Renderer::kTextBuiltinSmall);
-    };
+    reading(ui().detailOn, on);
+    reading(ui().detailKun, kun);
 
-    // Reserve a label + one line for each optional reading and one short line
-    // each for strokes and accuracy, so the meanings block only takes what is
-    // left (it ellipsises rather than clipping, as elsewhere in this file).
-    int reserve = 11;                                       // strokes line
-    if (!on.empty()) reserve += 8 + lh;                     // ON label + value
-    if (!kun.empty()) reserve += 8 + lh;                    // KUN label + value
-    if (hasAcc) reserve += 11;                              // accuracy line
-    int meaningLines = (bottom - top - reserve - 8) / lh;
-    if (meaningLines < 1) meaningLines = 1;
-    if (meaningLines > 3) meaningLines = 3;
-
-    int y = top;
-    const uint8_t mset = latinSet(card.meanings);
-    smallText(d, ui().quizMeaning, x, y, kYellow, kBlack);
-    y += 8;
-    y += gRender.drawWrapped(d, card.meanings, x, y, w, meaningLines, kWhite, kBlack, mset) *
-         gRender.lineHeight(mset);
-    y += 3;
-
-    auto drawReading = [&](const char* label, const std::string& s) {
-        if (s.empty() || y + 8 + lh > bottom) return;
-        const uint8_t set = kanaSet(s);
-        smallText(d, label, x, y, kYellow, kBlack);
-        y += 8;
-        y += gRender.drawWrapped(d, s.c_str(), x, y, w, 1, kWhite, kBlack, set) *
-             gRender.lineHeight(set);
-        y += 3;
-    };
-    drawReading(ui().detailOn, on);
-    drawReading(ui().detailKun, kun);
-
-    if (y + 11 <= bottom) {
-        char s[32];
-        snprintf(s, sizeof s, ui().detailStrokesFmt, (unsigned)card.strokes);
-        smallText(d, s, x, y, kWhite, kBlack);
-        y += 11;
-    }
-    if (hasAcc && y + 11 <= bottom) {
-        char s[32];
-        const uint32_t total = rec->reps;
-        const uint32_t correct = rec->reps > rec->lapses ? rec->reps - rec->lapses : 0;
-        snprintf(s, sizeof s, ui().detailAccuracyFmt, (unsigned)correct, (unsigned)total);
-        smallText(d, s, x, y, kGreen, kBlack);
+    if (g.hints) {
+        wg::Hints hints;
+        hints.tap = ui().hintNext;
+        hints.side = &tgc::kIconMenu;
+        wg::drawHintBar(d, gRender, W, H, hints);
     }
     present();
+}
+
+// One stroke-animation step: only the header (its counter) and the kanji's
+// em square are redrawn and pushed.
+void drawDetailFrame() {
+    tgc::Card card;
+    if (!questionCard(&card)) return;
+    auto& d = *gCanvas;
+    drawDetailHeader(d, card);
+    drawDetailKanji(d, card.codepoint);
+    const QuizGeom& g = gQuizG;
+    const int px = gPack->header().largePx ? gPack->header().largePx : 64;
+    const int ex = std::max(g.px, g.px + (g.pw - px) / 2 - 1);
+    const int ey = std::max(g.py, g.py + (g.ph - px) / 2 - 1);
+    presentRegion(0, 0, W, kHeaderH);
+    presentRegion(ex, ey, std::min(px + 2, g.pw), std::min(px + 2, g.ph));
 }
 
 void showDetail() {
@@ -2552,6 +2744,8 @@ void tzListLoop(int a, int b) {
     if (b && gScreen == Screen::TzList) openDateMenu(false);  // back, nothing changed
 }
 
+bool gQuietFrame = false;  // drawScreen() without its frame-time line
+
 void drawScreen() {
 #if defined(TGC_QUIZ_LOG)
     const uint32_t t0 = micros();
@@ -2573,9 +2767,11 @@ void drawScreen() {
     else if (gScreen == Screen::FirstLang) drawFirstLang();
     else drawQuiz();
     // Frame cost (docs/ux-refresh.md §4, phase 1): the whole redraw and, in
-    // it, the push to the panel (rows: H, or fewer for a partial push).
-    QLOG("F screen %d: %u us, push %u us (%d rows)\n", static_cast<int>(gScreen),
-         (unsigned)(micros() - t0), (unsigned)gPushUs, gPushRows);
+    // it, the push to the panel (rows: H, or fewer for a partial push). A hold
+    // frame logs its own line (drawHoldFrame()).
+    if (!gQuietFrame)
+        QLOG("F screen %d: %u us, push %u us (%d rows)\n", static_cast<int>(gScreen),
+             (unsigned)(micros() - t0), (unsigned)gPushUs, gPushRows);
 }
 
 // Rotate the panel (0-3, see board::setRotation), pick up the new width/height,
@@ -3021,6 +3217,7 @@ void wifiLoop(int a, int b) {
 }
 
 void openMenu() {
+    gAdvance.cancel();  // back on a revealed answer, a press goes on
     if (gDirty) {  // entering the menu is a flush point (docs/srs.md section 4)
         gSrs.save(gSrsIo);
         gDirty = 0;
@@ -3044,6 +3241,7 @@ void closeMenu() {
     if (gScreen == Screen::Quiz && !gRevealed) {
         gShownAt = millis();
         gNavTaps = 0;
+        gQuizHints.input(gShownAt);
     }
     drawScreen();
 }
@@ -4199,14 +4397,17 @@ void setup() {
     }
 }
 
-// One button drives everything: a tap cycles the highlight (or, once revealed,
-// moves to the next card); a 600 ms hold confirms the highlighted option. The
-// tap action runs on release, and a hold suppresses it, so a long press is never
-// also a tap.
+// The quiz's input (docs/ux-refresh.md §6.7). On a question: front tap = the
+// next option (down), side tap = the previous one (up), both wrapping; front
+// hold = answer; side hold = settings. A tap acts on release and a hold fires
+// at holdMsFor(gHoldPref), so a long press is never also a tap. Revealed: any
+// press but the side hold goes on (after a wrong answer to the detail card
+// first); after a correct one the auto-advance countdown may do it instead.
 
 // The input after the answer has been revealed: a correct answer advances as
 // before; a wrong one opens the detail card first, and the next input advances.
 void afterReveal() {
+    gAdvance.cancel();
     if (!gLastCorrect) {
         showDetail();
         return;
@@ -4217,18 +4418,6 @@ void afterReveal() {
     } else {
         showDone();
     }
-}
-
-void tapAction() {
-    if (gRevealed) {
-        afterReveal();
-        return;
-    }
-    tgc::Card card;
-    if (!questionCard(&card)) return;  // also keeps gQ.count from being 0 below
-    gSel = (gSel + 1) % gQ.count;
-    ++gNavTaps;
-    drawScreen();
 }
 
 void holdAction(uint32_t pressedAt) {
@@ -4267,10 +4456,137 @@ void holdAction(uint32_t pressedAt) {
 
     const tgc::Record* r = gSrs.find(card.codepoint);
     const int interval = r ? static_cast<int>(r->dueDay) - static_cast<int>(gSrs.today()) : 0;
+    gLastGrade = grade;
+    gLastInterval = interval;
     QLOG("A sel=%d correct=%d %s grade=%s rt=%ums S=%.2f D=%.1f I=%d\n", gSel, gQ.correct,
          correct ? "OK" : "MISS", gradeName(grade), (unsigned)rt_ms,
          r ? r->stabilityCds / 100.0f : 0.0f, r ? r->difficulty10 / 10.0f : 0.0f, interval);
+    // A correct answer moves on by itself after the auto-advance time; a
+    // wrong one never does (the detail card follows a press).
+    if (correct)
+        gAdvance.start(gLastAnswerAt, tgc::advanceMsFor(gAdvancePref));
+    else
+        gAdvance.cancel();
+    gAdvanceFrameAt = gLastAnswerAt;
     drawScreen();
+}
+
+// loop() on the quiz screen (see above). `down`: a button is down now.
+void quizLoop(int a, int b, uint32_t pressedAt, uint32_t now, bool down) {
+    if (!gRevealed) {
+        if (down || a || b) gQuizHints.input(now);
+        if (a == 1)
+            moveQuizFocus(true);
+        else if (a == 2)
+            holdAction(pressedAt);
+        else if (b == 1)
+            moveQuizFocus(false);
+        else if (b == 2)
+            openMenu();
+        else if (!gScreenOff && gQuizHints.tick(now, gSrs.answeredTotal(), true))
+            drawScreen();  // the idle hint bar appears: the tiles make room
+        return;
+    }
+    if (a || b == 1) {
+        afterReveal();
+    } else if (b == 2) {
+        openMenu();
+    } else if (gAdvance.active()) {
+        if (gAdvance.due(now, down)) {
+            afterReveal();
+        } else if (!gScreenOff && now - gAdvanceFrameAt >= tgc::kHoldFrameMs) {
+            gAdvanceFrameAt = now;
+            drawAdvanceBar(*gCanvas, now);
+            presentRegion(0, H - kAdvanceBarH, W, kAdvanceBarH);
+        }
+    }
+}
+
+// --- Hold progress (docs/ux-refresh.md §2.5) --------------------------------
+// kHoldShowMs after the front button went down on the quiz's focused tile or
+// on the focused row of a list screen, the target fills with accent-press from
+// the left; it is full when the hold fires (holdMsFor(gHoldPref)), and
+// releasing earlier is a tap and the fill goes. Every kHoldFrameMs only the
+// target is redrawn and pushed: the quiz draws its tile directly; a list
+// screen is redrawn by its own draw function under a clip rect on the row,
+// with the widgets' press fill set, so every drawList() screen gets it with no
+// code of its own. The first frame also lights the hint bar's hold item (the
+// quiz pushes the bar, a list pushes that one frame whole). Grading still uses
+// the press time.
+struct HoldTarget {
+    bool quiz;
+    wg::Rect r;
+};
+
+bool holdTarget(HoldTarget* out) {
+    if (gScreen == Screen::Quiz) {
+        tgc::Card c;
+        if (gRevealed || !questionCard(&c) || gSel < 0 || gSel >= gQ.count) return false;
+        out->quiz = true;
+        out->r = wg::Rect{static_cast<int16_t>(gQuizG.tx[gSel]), static_cast<int16_t>(gQuizG.ty[gSel]),
+                          static_cast<int16_t>(gQuizG.tw), static_cast<int16_t>(gQuizG.th)};
+        return true;
+    }
+    if (!gFrameFocusValid) return false;
+    out->quiz = false;
+    out->r = gFrameFocus;
+    return true;
+}
+
+void drawHoldFrame(const HoldTarget& tg, float fill, bool first) {
+#if defined(TGC_QUIZ_LOG)
+    const uint32_t t0 = micros();
+#endif
+    auto& d = *gCanvas;
+    if (tg.quiz) {
+        gHoldShare = fill;
+        drawQuizTile(d, gSel, fill);
+        presentRegion(tg.r.x, tg.r.y, tg.r.w, tg.r.h);
+        if (first && gQuizG.hints) {
+            drawQuizHints(d, true);
+            presentRegion(0, H - kHintH, W, kHintH);
+        }
+    } else {
+        wg::setPressFill(fill);
+        gQuietFrame = true;
+        if (first) {
+            drawScreen();
+        } else {
+            gPushOnly = true;
+            gPushRect = tg.r;
+            d.setClipRect(tg.r.x, tg.r.y, tg.r.w, tg.r.h);
+            drawScreen();
+            d.clearClipRect();
+            gPushOnly = false;  // in case the screen pushed nothing
+        }
+        gQuietFrame = false;
+    }
+    QLOG("H hold %s %d%%%s: %u us, push %u us (%d rows)\n", tg.quiz ? "tile" : "row",
+         static_cast<int>(fill * 100.0f + 0.5f), first ? " (first)" : "",
+         (unsigned)(micros() - t0), (unsigned)gPushUs, gPushRows);
+}
+
+// Called by loop() with the front button's key and event before the input is
+// handled. True when a fill was on screen and its press just ended (a tap, a
+// hold, or a press that was dropped): loop() then makes sure a frame without
+// the fill follows.
+bool holdTick(uint32_t now, bool down, bool longFired, uint32_t downAt, int event,
+              uint32_t holdMs) {
+    const bool pressing = down && !longFired && event == 0 && !gSwallowInput && !gScreenOff;
+    const float fill = pressing ? tgc::holdFill(now - downAt, holdMs) : -1.0f;
+    HoldTarget tg{};
+    if (fill < 0.0f || !holdTarget(&tg)) {
+        if (!gHoldOn) return false;
+        gHoldOn = false;
+        wg::setPressFill(-1.0f);
+        return true;
+    }
+    if (gHoldOn && now - gHoldFrameAt < tgc::kHoldFrameMs) return false;
+    const bool first = !gHoldOn;
+    gHoldOn = true;
+    gHoldFrameAt = now;
+    drawHoldFrame(tg, fill, first);
+    return false;
 }
 
 void loop() {
@@ -4301,6 +4617,12 @@ void loop() {
         if (!gScreenOff) sleepNow(false);
         wakeScreen();
     }
+    // Hold progress first, so the fill never outlives its press; then the
+    // input. A fill that ended needs a frame without it: the handler's own
+    // (plus the hint bar, whose hold item was lit, after a partial push), or
+    // a redraw when the press did nothing.
+    const bool fillEnded = holdTick(t, keyA.down, keyA.longFired, keyA.downAt, a, holdMs);
+    const uint32_t framesBefore = gFrames;
     if (gScreen == Screen::Menu) {
         if (a == 1) {
             moveListFocus(gMenuList);
@@ -4390,12 +4712,13 @@ void loop() {
         }
     } else if (gScreen == Screen::Detail) {
         // Animate the stroke order while idle: one stroke every ~550 ms, a
-        // ~1.2 s hold on the last one, then loop. Redraw only on a new frame.
-        if (gAnimOn && static_cast<int32_t>(t - gAnimNext) >= 0) {
+        // ~1.2 s hold on the last one, then loop; it stops while the panel is
+        // dim or dark (§2.6). Only the counter and the kanji are redrawn.
+        if (gAnimOn && !gDimmed && !gScreenOff && static_cast<int32_t>(t - gAnimNext) >= 0) {
             const int count = static_cast<int>(gAnimStrokes);
             gAnimFrame = (gAnimFrame + 1) % count;
             gAnimNext = t + (gAnimFrame == count - 1 ? kStrokePauseMs : kStrokeMs);
-            drawDetail();
+            drawDetailFrame();
         }
         // Any input (tap, hold or side tap) starts the next question; a side hold
         // opens the menu, as on the quiz.
@@ -4438,10 +4761,13 @@ void loop() {
     } else if (gScreen == Screen::FirstLang) {
         firstLangLoop(a);
     } else {
-        if (a == 1) tapAction();
-        else if (a == 2) holdAction(keyA.downAt);
-        if (b == 1) tapAction();  // side button shortcut
-        else if (b == 2) openMenu();
+        quizLoop(a, b, keyA.downAt, t, downA || downB);
+    }
+    if (fillEnded) {
+        if (gFrames == framesBefore)
+            drawScreen();
+        else if (gLastPushPartial)
+            presentRegion(0, H - kHintH, W, kHintH);
     }
     if (gDirty >= 8 || (gDirty > 0 && t - gLastAnswerAt > 120000)) {
         gSrs.save(gSrsIo);
