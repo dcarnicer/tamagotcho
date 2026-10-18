@@ -1033,6 +1033,35 @@ void test_ui_lang_code() {
     TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(-1, "fr"));
 }
 
+// The first-boot language picker: only with no stored preference and no deck;
+// its rows map to explicit preferences (English first and preselected), never
+// Auto, so the choice survives a deck in the other language. Pure (ui/UiLang.h).
+void test_first_boot_lang_picker() {
+    using tgc::firstBootLangPicker;
+    using tgc::firstBootLangPref;
+    using tgc::uiLangCodeFor;
+
+    TEST_ASSERT_TRUE(firstBootLangPicker(false, false));   // brand-new or erased device
+    TEST_ASSERT_FALSE(firstBootLangPicker(false, true));   // NVS erased, decks kept: Auto
+    TEST_ASSERT_FALSE(firstBootLangPicker(true, false));   // chosen before (Auto too), decks gone
+    TEST_ASSERT_FALSE(firstBootLangPicker(true, true));    // an ordinary boot
+
+    TEST_ASSERT_EQUAL(2, tgc::kFirstBootLangRows);
+    TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(tgc::kFirstBootLangDefaultRow));
+    TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(0));
+    TEST_ASSERT_EQUAL(tgc::kUiLangSpanish, firstBootLangPref(1));
+    TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(-1));
+    TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(2));
+    for (int row = 0; row < tgc::kFirstBootLangRows; ++row)
+        TEST_ASSERT_NOT_EQUAL(tgc::kUiLangAuto, firstBootLangPref(row));
+
+    // Before any deck, and after a deck in the other language.
+    TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(firstBootLangPref(1), nullptr));
+    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(firstBootLangPref(0), nullptr));
+    TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(firstBootLangPref(1), "en"));
+    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(firstBootLangPref(0), "es"));
+}
+
 // Critical battery: three low readings trigger the sleep, only a clearly fine
 // reading or external power resets the count, and a wake after a critical sleep
 // needs a margin above the trigger. Pure (power/BatteryGuard.h).
@@ -1208,6 +1237,7 @@ int main() {
     RUN_TEST(test_mini_v1_fixture);
     RUN_TEST(test_real_pack_if_present);
     RUN_TEST(test_ui_lang_code);
+    RUN_TEST(test_first_boot_lang_picker);
     RUN_TEST(test_battery_guard);
     RUN_TEST(test_text_wrap);
     RUN_TEST(test_text_pages);
