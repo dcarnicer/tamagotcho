@@ -1361,7 +1361,8 @@ void backToMenu() {
 tgc::ListView gDeckList;
 
 // The header of each pack in gPacks (peekPackInfo(): two small reads a file),
-// read when the deck list opens and again whenever /packs changed under it.
+// read when the deck list opens (an update keeps the file name but may change
+// the header) and again whenever the list of files changed under it.
 std::vector<tgc::PackInfo> gPackInfo;
 std::vector<String> gPackInfoFor;  // the gPacks the infos were read for
 
@@ -3517,6 +3518,7 @@ void openDecks() {
         if (gPacks[i] == gCurrentPack) sel = static_cast<int>(i);
     gDeckList.setCount(static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
     gDeckList.reset(sel);
+    gPackInfoFor.clear();  // read the headers again (drawDecks())
     gScreen = Screen::Decks;
     drawScreen();
 }

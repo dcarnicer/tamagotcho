@@ -2070,8 +2070,8 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   global. The streak reads 0 once a study day was skipped (`liveStreak()`):
   the stored value only resets on the next answer.
 - **Deck list.** Names, language and card count from each pack header
-  (`peekPackInfo()`, two small reads a file, redone when `/packs` changed);
-  the file name when a header does not read. Get decks' "Saved ..." note and
+  (`peekPackInfo()`, two small reads a file, redone each time the list opens:
+  an update keeps the file name); the file name when a header does not read. Get decks' "Saved ..." note and
   the portal screen's download line use the catalog title, which is what the
   list shows now.
 - **Errors.** One line of what happened and one action, no developer
