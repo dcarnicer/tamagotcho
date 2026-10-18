@@ -23,12 +23,6 @@ def cmd_build(a) -> int:
     from .kanjivg import KanjiVGError
     from .pack import read_pack
 
-    # A cache filled before Noto Sans JP became the default has only Klee One.
-    if not Path(a.font).is_file():
-        print(f"error: font {a.font} not found (run `tangocho-pack fetch`, or pass --font)",
-              file=sys.stderr)
-        return 2
-
     # The WaniKani path is opt-in: it needs the user's own token (flag or env)
     # instead of the cached KANJIDIC2 file. The token is never printed, logged
     # or written to cache/.
@@ -84,6 +78,14 @@ def cmd_build(a) -> int:
                          strokes=a.strokes, strokes_px=a.strokes_px)
     except (KanjiVGError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
+        return 2
+    except FileNotFoundError:
+        # A cache filled before Noto Sans JP became the default has only Klee One.
+        # Reported here, after the selection, so argument and token errors come first.
+        if Path(a.font).is_file():
+            raise
+        print(f"error: font {a.font} not found (run `tangocho-pack fetch`, or pass --font)",
+              file=sys.stderr)
         return 2
     out = Path(a.output)
     out.parent.mkdir(parents=True, exist_ok=True)

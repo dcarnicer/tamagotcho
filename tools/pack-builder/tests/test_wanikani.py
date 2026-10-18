@@ -211,6 +211,19 @@ def test_cli_levels_passed_through(monkeypatch):
     assert seen["lang"] == "en"
 
 
+def test_cli_missing_font_is_a_clear_error(monkeypatch, capsys, tmp_path):
+    # Checked once cards are selected, so the CLI tests above need no font.
+    monkeypatch.setenv("WANIKANI_TOKEN", "env-secret")
+    # Any non-empty selection: build_pack opens the font before it reads a card.
+    monkeypatch.setattr(wanikani, "wanikani_cards", lambda token, **kw: [object()])
+    missing = tmp_path / "NoSuchFont.otf"
+    rc = cli.main(["build", "--font", str(missing), "-o", str(tmp_path / "out.tgc")])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "NoSuchFont.otf not found" in err and "tangocho-pack fetch" in err
+    assert "env-secret" not in err
+
+
 def test_default_deck_name():
     assert wanikani.default_wanikani_name(None) == "WaniKani"
     assert wanikani.default_wanikani_name({2}) == "WaniKani L2"
