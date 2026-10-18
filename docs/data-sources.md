@@ -219,6 +219,16 @@ below); nothing is bundled with the firmware.
 
 A pack built with another `--font` credits that font instead of Noto Sans JP.
 
+The firmware shows a short form of this attribution on the device
+(**Settings › About**: the loaded deck's name, then KANJIDIC2, KanjiVG when the
+deck has stroke order, the JLPT levels and the glyph font, each with its
+licence; "Firmware: MIT", "Decks: CC BY-SA" and the repository) and in the
+footer of the Wi-Fi portal page. Both read the strings in
+`firmware/src/Credits.h`: change them together with this file. Packs carry no
+list of their sources, so the device shows these credits for any deck,
+including one built with another font or from WaniKani (docs/decisions.md,
+2026-10-18 "About screen and firmware version").
+
 A pack built with `--wanikani-token` is different: it contains WaniKani-derived
 content (© Tofugu LLC) and must not be redistributed; the CC BY-SA licence above
 does not apply to it. WaniKani is a trademark of Tofugu LLC.

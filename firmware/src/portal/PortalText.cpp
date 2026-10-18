@@ -18,7 +18,7 @@ PortalText makeSpanish() {
     t.freeFmt = "%s libres";
     t.viaFmt = "vía <b>%s</b>";
     t.ownNetFmt = "en la red propia del dispositivo <b>%s</b>";
-    t.clockHint = "Abrir esta página pone la fecha del dispositivo con el reloj de este navegador.";
+    t.clockHint = "Abrir esta página pone la fecha y la zona horaria del dispositivo con las de este navegador.";
     t.clockOk = "Fecha del dispositivo tomada de este navegador: ";
     t.clockBad = "El dispositivo no aceptó el reloj de este navegador.";
     t.clockErr = "No se pudo enviar el reloj al dispositivo.";
@@ -195,6 +195,10 @@ PortalText makeSpanish() {
     t.reconnectFmt =
         "El dispositivo deja la red y se une a <b>%s</b>, así que esta página deja de responder "
         "un momento. Luego abre la dirección que muestra el dispositivo (puede cambiar).";
+
+    t.footVersionFmt = "Tangochō %s &middot; firmware con licencia MIT";
+    t.footDecksFmt =
+        "Mazos: CC BY-SA. Datos de kanji: %s; orden de trazos: %s; niveles JLPT: %s; glifos: %s.";
     return t;
 }
 

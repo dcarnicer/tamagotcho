@@ -1606,3 +1606,296 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   portrait; the 20 px kana ink fits it although its 30 px line box does not.
   `tangocho-pack preview` mirrors the rule.
 
+## 2026-10-18 – About screen and firmware version
+
+- **Why.** Before the first firmware release (v0.1.0): the packs are CC BY-SA
+  and redistribute KANJIDIC2, KanjiVG, the tanos.co.uk JLPT lists and glyphs
+  rendered from Noto Sans JP, but the device itself showed no attribution (the
+  last open item of "Attribution for redistributed data" in the roadmap); and
+  nothing told which build a device or a portal page runs.
+- **The version string.** `firmware/scripts/version.py`, a PlatformIO `pre:`
+  script on every board env: `$TGC_VERSION` if set, else `git describe --tags
+  --always --dirty --match "v[0-9]*"`, else `"dev"`; characters outside
+  `[0-9A-Za-z._+~-]` become `_`, 40 at most. The `--match` matters: the nearest
+  tag in this repo is the decks release `decks-v2`, which would otherwise name
+  firmware builds `decks-v2-9-g5be0ac9`.
+  - **One file sees it.** A global `-D` changes every compile command, so each
+    commit would rebuild the Arduino core and every library. The define goes to
+    `src/Version.cpp` only (`env.AddBuildMiddleware()`), and the rest of the
+    firmware calls `tgc::firmwareVersion()`; a new version recompiles that file
+    and relinks (checked). `Version.cpp` falls back to `"dev"` without the
+    define, and the native env never compiles it, so the pure modules and their
+    tests do not depend on it.
+  - **Per context.** Local: `git describe` (`v0.1.0-3-gabc1234-dirty`, or the
+    commit id while no `v*` tag exists). CI (`ci.yml`): the shallow checkout has
+    no tags, so the commit id. Release (`release.yml`): the firmware job exports
+    `TGC_VERSION` = the resolved tag as job env (never interpolated into a
+    script), and a new step fails the job when `strings firmware.bin` does not
+    contain it (a tag with characters the script replaces). Permissions are
+    unchanged. A manual dispatch builds the dispatched ref and labels it with
+    the input tag, as its release name already did.
+  - **Where it shows:** the first boot log line `Tangocho <version>`,
+    `"version"` first in `/api/stats` and `/api/status`, Settings › About and
+    the portal footer.
+- **Settings › About.** A 12th settings row, "About" / "Acerca de", after
+  Sleep (the group refactor of docs/ux-refresh.md moves it under `Device ›`).
+  Built-in Font0 only, so it works with no deck. Two groups:
+  - *Firmware:* "Tangochō" in the 2x font (Font0 has no "ō": a 6x2 px macron
+    is drawn over the "o", whose rows 0-1 are blank), the version, "Firmware:
+    MIT", "Decks: CC BY-SA", `github.com/dcarnicer/tangocho`.
+  - *Deck:* "Deck: <name>" ("none" with no deck) and its credits:
+    KANJIDIC2 (c) EDRDG, CC BY-SA 4.0; KanjiVG (c) Ulrich Apel, CC BY-SA 3.0,
+    only when the loaded pack has a stroke section (or no deck is loaded);
+    Jonathan Waller (tanos.co.uk), CC BY; Noto Sans JP, SIL OFL 1.1. "(c)"
+    because Font0 has no copyright sign. The strings live in `src/Credits.h`,
+    shared with the portal; labels are in the `ui()` tables (yellow, the value
+    follows on the same line).
+  - *Layout:* `ui/TextLayout.h`, pure and native-tested: wraps by code points
+    (Font0 is 6 px monospace) at spaces; U+00A0 in Credits.h keeps "CC BY-SA
+    4.0", "Ulrich Apel" or "Noto Sans JP" on one line (Font0 draws it blank);
+    a word longer than a line breaks after '/' or '-' (the URL, a long `git
+    describe`). Paging keeps a group together when it fits an empty page, and
+    everything goes on one page when it fits. Checked with a host build of the
+    same calls rendered with the vendored Font0: StickS3 portrait 1 page in
+    English (content to y = 233 of 240), 2 in Spanish; landscape 2 in both;
+    T-Display 1 in both orientations. When paged, the footer says "1/2  tap:
+    more".
+  - *Input:* as Statistics: the side button returns to the settings home; a
+    front tap turns the page (after the last, back to the first). Presses count
+    for the dim and sleep timers as on every screen.
+  - *Spanish header:* "ACERCA DE" and "lateral: atrás" (54 + 84 px) do not fit
+    135 px, so on that screen the hint moves to the footer. Other Spanish
+    headers (VELOCIDAD, ESTADISTICAS...) already overlap the hint in portrait;
+    left to the UX refresh's hint bar.
+- **The settings home scrolls in landscape.** 12 rows at the 10 px floor below
+  the 20 px top need 140 px of 135. Squeezing the top margin would fit exactly
+  once and never again, so the list shows 11 rows and follows the highlight as
+  the Get decks list does, with a 2 px scroll bar in the right margin. Portrait
+  (18 px steps) and the T-Display (12 px in landscape) still show all 12.
+- **Portal footer.** The main page ends with one small `<footer>`:
+  "Tangochō <version> · MIT-licensed firmware · Decks: CC BY-SA. Kanji data: …;
+  stroke order: …; JLPT levels: …; glyphs: …" and the repository link, from
+  the same Credits.h strings ("(c)" becomes ©). Two new PortalText strings in
+  English and Spanish; a native test checks both templates take exactly the
+  arguments passed.
+- **Accepted gap:** a pack records no list of its sources, so the device shows
+  these credits for any deck, including one built with another `--font` or
+  from WaniKani. A pack-format field (e.g. an attribution string) would fix
+  that; the published decks need none.
+- **Flash:** StickS3 1,386,965 → 1,395,241 bytes (+8.1 KB: version 0.4 KB,
+  About and TextLayout 5.9 KB, portal footer 1.8 KB), static RAM 54,148 →
+  54,156 bytes. **Not verified on hardware.**
+
+## 2026-10-18 – v0.1.0: how the release images are flashed
+
+- **The merged image is flashed in DIO.** `pio run -t upload -v` writes these
+  boards with `--flash_mode dio` (the app switches the flash to QIO itself);
+  `merge_image.py` used QIO, so its default is now DIO to mirror the USB upload.
+- **Correction:** the 2026-10-17 "Release artifacts" entry says PlatformIO
+  omits `boot_app0.bin` for our table. It does not: its upload writes
+  `boot_app0.bin` at `0xe000`, over the unused `phy_init` partition. The merged
+  image leaves it out, which is what a table without OTA needs.
+- **A merged image erases the settings.** `merge_bin` pads the gaps with
+  `0xFF`, so writing it at `0x0` clears NVS (home Wi-Fi, preferences, time
+  zone) up to the end of the app; LittleFS starts after the 2 MB app slot and
+  keeps the decks and the study progress. Updates should therefore use the
+  app-only image at `0x10000`; README and the release notes say so.
+- **Browser path:** ESP Web Tools needs a page that serves the image and the
+  manifest together, so "point a page at the release's manifest" (as the docs
+  said) does not work. The documented browser path is Espressif's esptool-js
+  flasher with the merged image at `0x0`; the manifests stay in the release for
+  a future install page.
+- **Verified on hardware** (v0.1.0-rc1, StickS3): the esptool path — the merged
+  image booted, kept 30 SRS records and the decks, came up with no settings,
+  opened setup mode with its QR and served the portal. The browser path was
+  then verified with rc2 and rc3 (esptool-js; with Erase Flash first, rc3 came
+  up as a new device: language picker, setup mode, portal). Without Erase
+  Flash the decks stay, so there is no picker and a power-cut date question
+  follows (the settings, hence the Wi-Fi and zone for NTP, are gone). Not
+  verified: the T-Display-S3 merged image.
+
+## 2026-10-18 – First-boot language picker
+
+- **Why.** The Language setting defaults to Auto (follow the loaded deck), so
+  a brand-new device, which has no deck, showed its first screens (the setup
+  screen's "Scan to join" and the rest) in English, and Settings cannot be
+  reached before a deck is loaded. Agreed for v0.1.0.
+- **When.** Once, at boot, when NVS `tangocho`/`ui` is **absent**
+  (`Preferences::isKey()`: "never chosen" is not a stored Auto) **and**
+  `/packs` holds no deck: a new device, or one whose flash was erased. Not
+  after a merged-image reflash of a device that still has decks (the merge
+  pads the NVS, the decks stay): Auto follows the deck there, as before. Not
+  on any later boot, since the choice is stored. The rule is
+  `firstBootLangPicker(prefStored, hasDecks)` in `ui/UiLang.h`, native-tested.
+  Accepted side effect: a device that never stored the preference (Auto was the
+  silent default) and whose decks were all deleted asks once on its next boot.
+- **What.** `Screen::FirstLang`, in the choice-screen look (`drawRow()`, top
+  40, 40 px step, shrunk above the hints in landscape): "English", preselected
+  as the default that needs no browser to guess it, and "Español"; a neutral
+  header "LANGUAGE / IDIOMA" made of both tables' `langTitle`; the button hints
+  of both tables, each in its own language ("tap: other  hold: OK", "toque:
+  otro  larga: OK"), one line each in landscape and on the T-Display, two each
+  in the StickS3 portrait, where the Spanish line is 1 px too wide. Tap moves,
+  hold chooses, the side button does nothing (nothing to go back to, as on the
+  boot screen that follows). It runs in `loop()` like every screen, so presses
+  count for the dim and sleep timers and Auto orientation turns it.
+- **Then.** The row becomes an **explicit** preference
+  (`firstBootLangPref()`: English or Spanish, never Auto), stored in `ui` and
+  applied with `setUiForLang()`; the boot goes on with `openBootUploadScreen()`
+  (the code that was inline in `setup()`): home mode with a saved network,
+  else setup mode, now in that language. Explicit rather than Auto so that a
+  Spanish speaker who downloads an English deck to learn the English meanings
+  keeps Spanish screens. Settings › Language still offers Auto / English /
+  Español. The portal page follows the setting as before: `portalUiLang()`
+  returns it, it wins over `?lang=` and Accept-Language, and the page's
+  English / Español links (shown only while the device has no language of its
+  own) no longer appear; the page's catalog and Get decks list that language's
+  decks first.
+- **Order and sleep.** With no deck there is no date question, so the picker
+  is the first screen that needs reading. The "Preparing storage..." notice of
+  an erased data partition (a few seconds, no input) still comes first, in
+  English: the device only knows it has no deck once the filesystem is mounted.
+  The SRS session starts before the picker, as it did before the setup screen.
+  A power-button sleep, the idle sleep on battery or a critical-battery sleep
+  while the picker is open leaves `ui` unset, so the wake shows the picker
+  again (no RTC flag needed); on USB the idle timeout darkens the panel and
+  the next press redraws it.
+- **Flash:** StickS3 1,395,225 → 1,396,205 bytes (+1.0 KB), static RAM 54,156
+  → 54,164 bytes (both built with `TGC_VERSION=dev`). **Not verified on
+  hardware.**
+
+
+## 2026-10-18 – No back hint in the headers; first-boot hints follow the highlight
+
+- **Why.** Hardware test of the v0.1.0 candidate: in Spanish the right-aligned
+  "lateral: atrás" overlapped header titles in the 135 px portrait (DESCARGAR,
+  VELOCIDAD, ESTADISTICAS; About had already moved it to its footer). The side
+  button is "back" on every settings screen, a global convention the README
+  states, so the hint goes instead of being squeezed.
+- **What.** `drawBackHint()` and the `backHint` strings are gone from every
+  header (settings home, decks, pickers, statistics, About, Wi-Fi screens, Get
+  decks, network test, date). About no longer keeps a footer copy: its footer
+  is only the page number ("1/2  tap: more") when it needs two pages, and the
+  freed line goes to the content. Screens where the side button does something
+  else keep saying so in their own hints (the Wi-Fi screen's "side: start
+  studying", and its "side: cancel" during a download from the page).
+- **First-boot language picker: one language of hints.** The picker showed
+  its button hints in both languages (two or four lines). It now shows only
+  the hints of the **highlighted** row's language ("tap: other  hold: OK"
+  under English, "toque: otro  larga: OK" under Español), redrawn as the
+  highlight moves; the header stays "LANGUAGE / IDIOMA". The hint area is sized
+  for the longer language (two lines in the StickS3 portrait, where the
+  Spanish line is 1 px too wide), so the rows do not jump.
+
+## 2026-10-18 – Time zone rule, manual zone, network-first date
+
+- **Why.** Hardware test of the v0.1.0 candidate after a merged-image flash
+  (which erases NVS: no home Wi-Fi, no `tz`): the boot asked for the date by
+  hand. The maintainer expected the device to try the internet first, asked
+  how the time zone is set, and read the stepper as "the date only goes up".
+  The background NTP sync already existed but needed a Wi-Fi and an offset,
+  was invisible next to the stepper, and the offset was a snapshot that a DST
+  change shifted by an hour until the page was opened again. Agreed for
+  v0.1.0: a DST-correct zone from the browser, a manual zone on the device,
+  the network first and visibly, clearer stepper hints; the SRS day rules
+  unchanged.
+- **The zone is a POSIX TZ rule** (`<+01>-1<+02>,M3.5.0,M10.5.0/3`), the form
+  tzdata itself puts at the end of every zone file and the smallest that holds
+  "which offset when". Browsers do not expose rules, so the page derives one
+  (`tzr()`, `kTzRuleJs` in `WifiPortal.cpp`, ~1.6 KB): probe
+  `getTimezoneOffset()` daily over the current year, binary-search each change
+  to the minute, take the lower offset as standard time, and write each change
+  as `Mm.w.d/time` in the local time before it. One instant has several
+  readings -- the nth weekday or "the last" one (week 5) when it falls in the
+  month's last seven days; the day itself, the day before at 24:00+ or the day
+  after at a negative time (tzdata writes Chile as `M9.1.6/24` and Greenland
+  as `M3.5.0/-1`) -- and the one that also gives the next five years' changes
+  wins. Zero changes, or anything but one each way, gives the fixed rule of
+  the current offset. Names are numeric (`<+0530>`); abbreviations are not
+  needed and `Intl` does not give them reliably. It posts as `tzr` next to
+  `tz` and `zone`; an exception sends none and the offset alone works.
+- **Checked against tzdata.** `firmware/scripts/check_tz_rules.py` (developer
+  check, needs Node and a host compiler; not in CI) runs the page's own
+  `tzr()` under Node for all 597 zones and evaluates the rules with the
+  device's parser: identical to the browser's offsets in the year of
+  derivation for all of them (tried with derivation dates in 2026, 2027, 2028
+  and 2030), and over the next three years for all but Casablanca/El Aaiun,
+  whose Ramadan changes no POSIX rule describes (tzdata's own footer is wrong
+  there too); the next page visit refreshes it. It also lists where Node's
+  tzdata (2026a) and the system's (2026e) disagree: Canada's 2026 changes and
+  Morocco, data releases rather than bugs.
+- **Parsed and evaluated in pure code, not newlib's `TZ`.** `srs/TimeZone`
+  parses the subset real zones use (quoted or alphabetic names, offsets
+  -12..+14 h, `Mm.w.d` / `Jn` / `n`, times up to ±167 h, both dates required:
+  no implementation default) and gives the offset at an instant; `WallClock`
+  gets `studyDayOf(utc, rule)`, `studyDayStartUtcMs()` (04:00 local; the first
+  one when it happens twice, the jump when the clock skips it) and
+  `studyDayLengthMs()`. `setenv("TZ")`/`localtime_r` would have worked on the
+  device, but the SRS day must stay native-testable and needs the day length,
+  which libc does not give.
+- **The real fix is the day length.** A rule used only at sync time would
+  still let the uptime/sleep carry roll over at 03:00 or 05:00 after a change
+  until the next sync. The store now takes the zone (`setTimeZone()`, not in
+  the file, set at boot before the slept time is added) and, when the zone has
+  DST and the store has an anchor, counts its carry down with the real length
+  of each study day (23/25 h on a change day). Without DST or without an
+  anchor nothing changes (24 h). `test_tz` checks that any sequence of
+  elapsed steps over two years leaves the same day and carry as a fresh sync
+  at that instant, for seven zones on both hemispheres. `applyWallClock()`
+  semantics, the never-rewinding index and the 04:00 rollover are unchanged;
+  a sync just uses the offset in effect at its instant.
+- **Storage and precedence (NVS `tangocho`).** `tzr` + `tzn` (the page's rule
+  and IANA name), `tz` (the page's offset; all an old page left, read then as a
+  fixed rule; still written for a downgrade), `tzm` (a zone chosen by hand,
+  wins while set). A page visit that sends a usable rule (it parses and gives
+  the posted `tz` now) replaces the phone's zone and removes `tzm`, as agreed.
+  A page that sends only an offset keeps the zone in use when it gives that
+  offset now (a manual choice survives an old page), else the offset becomes
+  a fixed zone, as before the rule existed. NVS is written only on a change
+  (the page posts on every load). Logs: `[wifi] date from browser: ... (tz
+  +120 min, zone Europe/Madrid, rule <+01>-1<+02>,...)` and `clock: zone
+  Europe/Madrid <rule> (from the phone | chosen by hand)` at boot and on change.
+- **Manual zone: a Date submenu.** The settings home keeps 12 rows: "Date"
+  becomes **"Date »"** (like "Wi-Fi »"), a two-row list: **Date: 2026-10-18**
+  (the stepper, which now returns here) and **Zone: Madrid**. The zone list
+  ("TIME ZONE"/"ZONA HORARIA", 1x rows as in Get decks, a scroll bar) has
+  **From phone** (with the page's city, or "-") and 22 zones west to east with
+  their offsets ("+1/+2"); the footer gives the selection's offsets in words
+  ("UTC+1, summer UTC+2") or "open the web portal" when no page sent a zone;
+  the zone in use is green and preselected. Labels are the IANA cities (ASCII,
+  the same in both languages). The 22: the 18 asked for plus Caracas, Athens,
+  Kolkata (a half-hour zone) and Auckland; each rule is tzdata 2026e's footer,
+  checked in `test_tz` against tzdata's changes 2026-2030. Choosing one sets
+  the zone for the day lengths at once and for the next real time; it moves
+  neither the day nor the rollover by itself: between syncs the device knows
+  no UTC time, only the carry, which may have been restarted by a manual date.
+- **Network first, visibly.** When the boot shows the date question (power cut,
+  or a wake that re-asks it) with a home Wi-Fi and a zone, the date screen is
+  first **"Getting the date via <network>..."** with "tap: set it by hand": the
+  15 s join, then NTP (≤ 3 s, blocking), then straight to the quiz. A failure
+  shows the stepper with the reason ("No network: set it by hand"); any press
+  skips to the stepper (radio off, no reason line). This reverses the earlier
+  choice of a background join next to the stepper ("NTP over the home Wi-Fi"):
+  the 15 s are now paid only when a network and a zone are known, the tap
+  makes them optional, and the maintainer's expectation was exactly this
+  order. Without a Wi-Fi or a zone: the stepper at once, as before. Kept: the
+  join counts as activity for the dim/sleep timers, radio off and 80 MHz on
+  every exit, a sleep while it runs re-asks (and retries) on the wake, NTP
+  before 2026-01-01 refused. Presses are read before the poll, which may block
+  for NTP, so a press during the screen always means "by hand".
+- **Stepper hints.** Four hints, packed greedily into lines that fit (two
+  spaces apart): "tap: +1 day", "hold: OK", "side hold: -1 day", "side:
+  cancel" / "toque: +1 día", "larga: OK", "lateral larga: -1 día", "lateral:
+  cancelar". The side tap cancels: from the settings it goes back, at boot it
+  keeps the day and starts the quiz. StickS3 portrait: 3 lines in English, 4
+  in Spanish (room below "+N days"); landscape: 2 and 3 (the status line
+  still clears the "+N days" line by 2 px); T-Display: 3 in portrait, 2 in
+  landscape. The header's "side: back" went the same day (entry above).
+- **Flash:** StickS3 1,395,805 → 1,407,853 bytes (+12.0 KB: the page's rule
+  script 1.6 KB, the parser and day arithmetic, the zone list, two screens and
+  their strings), static RAM 54,164 → 54,508 bytes. **Not verified on
+  hardware.**
+- **Open:** a browser that hides its real zone (privacy modes that report
+  UTC) posts UTC as the phone's zone, which replaces a zone chosen by hand at
+  every visit. A page option to keep the device's zone would fix it; left out
+  until it is seen in practice.

@@ -124,6 +124,31 @@ void test_page_text_complete() {
     TEST_ASSERT_EQUAL_STRING("Guardar", es.save);
 }
 
+static int countConversions(const char* f) {
+    int n = 0;
+    for (const char* p = std::strchr(f, '%'); p; p = std::strchr(p + 2, '%')) {
+        if (p[1] == '%') continue;
+        ++n;
+        if (p[1] == '\0') break;
+    }
+    return n;
+}
+
+// The footer's templates take exactly the arguments pageFooter() passes (the
+// version; the four credits), in every language: a missing or extra "%s"
+// would read garbage.
+void test_page_footer_formats() {
+    for (const char* lang : {"en", "es"}) {
+        const PortalText& t = portalText(lang);
+        TEST_ASSERT_EQUAL(1, countConversions(t.footVersionFmt));
+        TEST_ASSERT_NOT_NULL(std::strstr(t.footVersionFmt, "%s"));
+        TEST_ASSERT_EQUAL(4, countConversions(t.footDecksFmt));
+        int s = 0;
+        for (const char* p = std::strstr(t.footDecksFmt, "%s"); p; p = std::strstr(p + 2, "%s")) ++s;
+        TEST_ASSERT_EQUAL(4, s);
+    }
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_wifi_qr_escape);
@@ -134,5 +159,6 @@ int main() {
     RUN_TEST(test_catalog_order_lang);
     RUN_TEST(test_rssi_quality);
     RUN_TEST(test_page_text_complete);
+    RUN_TEST(test_page_footer_formats);
     return UNITY_END();
 }

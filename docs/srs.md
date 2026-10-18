@@ -333,7 +333,10 @@ use a **persisted, day-granular clock**:
   `millis()` into `ms_carry`; every 86 400 000 ms, `now_day += 1`, carry the
   remainder. `ms_carry` is persisted, so short sessions add up. After a sync,
   `ms_carry` is the time since the last 04:00 local, so this rollover falls at
-  04:00 local (§5.1) instead of 24 h after an arbitrary origin.
+  04:00 local (§5.1) instead of 24 h after an arbitrary origin. With a time
+  zone that has daylight saving time and a synced anchor, "a day" is the real
+  length of that study day instead: 23 or 25 h on the day of a change, so the
+  rollover stays at 04:00 local across it (§5.1).
 - **Sleep rule** (`addElapsedMs(ms)` at boot): the app deep-sleeps when idle
   (docs/decisions.md, 2026-10-18). The ESP32's RTC timer keeps counting through
   deep sleep, so on a wake-up the app adds the slept time (RTC now minus the
@@ -345,18 +348,20 @@ use a **persisted, day-granular clock**:
   (`RTC_NOINIT` magic) and **asks the user** on the date screen: it shows the
   last-used date (the persisted `now_day` at boot) and a proposed "today" that
   starts there; a tap adds a day, a side-button hold takes one back (never below
-  the current day), a hold confirms and a side tap skips the question. The
+  the current day), a hold confirms and a side tap skips the question (the
+  hints say so: "tap: +1 day  hold: OK", "side hold: -1 day  side: cancel"). The
   confirmed difference `n` goes through `advanceDaysManual(n)`, which is
   `advanceDays(n)` plus, for `n > 0`, `ms_carry = 0`: the time of day is unknown
   after a power cut, so the next rollover comes a full day after the answer.
   That is late rather than early on purpose: an early rollover would hand out a
   day that cannot be taken back (the index never rewinds), a late one is fixed
-  by the next answer or sync. The same screen is in the settings for manual
-  corrections. A real-time sync (§5.1) answers the question instead, so it is
-  not asked when the time is already known and it is dismissed if a sync
-  arrives while it is shown. With a home Wi-Fi and a UTC offset saved, the
-  screen tries one itself: it asks NTP over the home Wi-Fi in the background
-  while the stepper stays usable (§5.1).
+  by the next answer or sync. The same screen is in the settings (Settings ›
+  Date › Date) for manual corrections. A real-time sync (§5.1) answers the
+  question instead, so it is not asked when the time is already known and it
+  is dismissed if a sync arrives while it is shown. With a home Wi-Fi and a
+  time zone known, the network comes first: the screen says "Getting the date
+  via <network>" while it joins and asks NTP, and the stepper only appears when
+  that fails or a press skips it (§5.1).
   On the StickS3 a click of the power
   button used to be such a cut: the M5PM1's "reset" cycles the chip's power. The
   click now saves and deep-sleeps instead, and so does a critical battery
@@ -378,34 +383,72 @@ magnitude.
 
 Testability: the pure module never calls `millis()` or the RTC; `beginSession()`,
 `tick(now_ms)`, `addElapsedMs(ms)`, `advanceDays(n)`, `advanceDaysManual(n)`,
-`syncWallClock(utc_ms, tz_offset_min)` and a test-only `setToday()` are all the
-clock needs, so the native tests drive time explicitly.
+`syncWallClock(utc_ms, zone)` (or a bare `tz_offset_min`), `setTimeZone(zone)`
+and a test-only `setToday()` are all the clock needs, so the native tests
+drive time explicitly. Time zone rules and the study-day arithmetic live in
+`srs/TimeZone` and `srs/WallClock` (pure, `test_tz`); the device does not use
+libc's `TZ`/`localtime`.
 
 ### 5.1 Real time from the phone and from NTP
 
 Opening the Wi-Fi portal page (`http://192.168.4.1` in setup mode, the address
 the device shows in home mode) makes the browser post its clock: `POST /time` with `ms` = `Date.now()` (UTC milliseconds), `tz` = minutes
-**east** of UTC (`-new Date().getTimezoneOffset()`, so +120 for CEST) and an
-optional IANA `zone` name used only in the portal's message. The portal checks
-the syntax and hands the two numbers to the app (`WifiPortal::Hooks::onTime`);
-the app's `applyWallClock(utc_ms, tz_offset_min)` calls the pure
-`SrsStore::syncWallClock()` and is the single entry point for both sources (NTP
-below calls it too). The offset is stored in NVS (`tangocho`/`tz`, int16, minutes
-east of UTC; absent until the first sync) so NTP, which only yields UTC, can
-reuse it. It is not part of the SRS file.
+**east** of UTC (`-new Date().getTimezoneOffset()`, so +120 for CEST), the
+IANA `zone` name (`Intl...timeZone`, for messages, logs and the device's
+"From phone" row) and `tzr`, the browser's zone as a **POSIX TZ rule**
+(`<+01>-1<+02>,M3.5.0,M10.5.0/3`; see "Time zone" below). The portal checks
+the syntax and hands them to the app (`WifiPortal::Hooks::onTime`); the app's
+`applyWallClock(utc_ms, zone)` calls the pure `SrsStore::syncWallClock()` and
+is the single entry point for every source (NTP below calls it too). It is
+not part of the SRS file.
+
+**Time zone.** NTP only yields UTC, so the device keeps a zone in NVS
+(`tangocho`): `tzr` (the rule the page last sent) and `tzn` (its IANA name);
+`tz` (int16, minutes east, the offset the page last sent), which is all a page
+from before the rule left and is then read as a fixed rule; and `tzm`, the
+IANA name of a zone chosen by hand in **Settings › Date › Time zone** from a
+short list (`srs/TimeZone`, `kTzZones`: tzdata's own POSIX rules). The zone in
+use is `tzm` while it is set, else the page's. A page visit that sends a zone
+removes `tzm` (the phone is the usual source); a page that sends only an
+offset keeps the zone in use if it gives that offset at that instant, else the
+offset becomes a fixed zone. No zone at all: the NTP paths skip the sync.
+
+The page derives the rule in JavaScript (`tzr()` in `WifiPortal.cpp`): it
+probes `getTimezoneOffset()` a day apart over the current year, finds the
+changes to the minute, and writes each as `Mm.w.d/time` in the local time
+before it, choosing among the readings of that instant (the nth weekday or
+"the last" one; the day before at 24:00+ or the day after at a negative time,
+as tzdata writes Chile's) the one that also fits the next five years. No
+change, or anything but one change each way, gives the fixed rule of the
+current offset. `scripts/check_tz_rules.py` runs it under Node for every
+zone and checks the rules with the device's parser: exact in their own year
+for all 597 zones, and for the next years everywhere but Morocco (Ramadan
+dates, which no POSIX rule can describe; the next page visit fixes it). The
+device accepts a rule only when it parses (`parseTzRule()`: names, offsets
+within -12 h..+14 h, `Mm.w.d` / `Jn` / `n` dates, times up to ±167 h) and
+gives the posted `tz` at that instant.
 
 **Plausibility.** A time before 2026-01-01T00:00Z or from 2100 on, or an offset
 outside -12 h..+14 h, is a broken browser clock (or a forged request) and is
-rejected; nothing changes.
+rejected; nothing changes, the zone included.
 
 **Study day.** The day rolls over at a fixed **local 04:00**, as in Anki, so a
 late-night session still counts for the evening's day:
 
 ```
-local     = utc_ms + tz_offset_min * 60 000
+offset    = the zone's offset at utc_ms (daylight saving time included)
+local     = utc_ms + offset * 60 000
 real_day  = floor((local - 4 h) / 86 400 000)      # days since 1970-01-01
-into_day  = (local - 4 h) mod 86 400 000           # ms since the last 04:00
+into_day  = utc_ms - start(real_day)               # real ms since that day's 04:00
+start(D)  = the UTC instant of 04:00 local on day D
 ```
+
+With a fixed offset `into_day` is `(local - 4 h) mod 86 400 000`, as before.
+When a change makes 04:00 happen twice the first one counts; when the clock
+jumps over 04:00 the day starts at the jump. `studyDayLengthMs(D)` =
+`start(D + 1) - start(D)` is 24 h, or 23 / 25 h (23.5 / 24.5 h for a
+half-hour change) on the day of a change; the store counts its carry down
+with these lengths (§5, uptime and sleep rules).
 
 **Applying it** (`now_day` before the sync, `anchor` = `epoch_anchor`):
 
@@ -432,10 +475,14 @@ roll the day over at the next 04:00 local.
   untouched.
 - **Idempotent.** Posting the same instant twice gives the same state; a later
   instant on the same day only moves the carry. The page posts on every load.
-- **Time zones and DST.** The offset is a snapshot. After a DST change (or
-  travel) the rollover is off by the difference until the next phone sync (NTP
-  reuses the stored offset); the day index itself is unaffected unless the gap
-  crosses 04:00.
+- **Time zones and DST.** With a rule, every sync uses the offset in effect at
+  its instant and the uptime/sleep rules count 23 or 25 h on a change day, so
+  a DST change needs no sync. A zone without a rule (a bare offset from an old
+  page) is a snapshot as before: after a DST change the rollover is off by the
+  difference until the next page visit. Travel is a different zone: the
+  rollover follows the new one from the next page visit, or from the next NTP
+  sync after choosing it by hand (choosing one moves neither the day nor the
+  rollover by itself: the device knows no UTC time between syncs).
 - **First sync after a power cut.** A never-synced store cannot measure a
   power-off gap: the first sync anchors the current index as today. This can
   only lose a gap once in a device's life.
@@ -446,26 +493,31 @@ roll the day over at the next 04:00 local.
 **NTP over the home Wi-Fi.** `HomeWifi::fetchUtcMs()` runs SNTP (pool.ntp.org,
 time.google.com, time.cloudflare.com) for at most **3 s** once the home Wi-Fi
 is connected. NTP yields UTC only, so the result goes through `applyWallClock()`
-with the **stored** offset, and only when the `tz` key exists. Without it the
-sync is skipped (and logged): guessing UTC could put the study day off by one,
-and the offset is normally known, because the portal page that saves the home
-Wi-Fi also posts the browser's clock. The radio is never on just for the clock;
-NTP runs at two moments:
+with the **zone** (above), and only when one is known. Without it the sync is
+skipped (and logged): guessing UTC could put the study day off by one, and the
+zone is normally known, because the portal page that saves the home Wi-Fi also
+posts the browser's clock and zone (or it was chosen by hand). The radio is
+never on just for the clock; NTP runs when the home Wi-Fi is up anyway (Get
+decks, before the catalog is read; the portal in home mode; the network test
+in Settings › Wi-Fi) -- a failure is logged and the screen carries on -- and
+for the boot-time date question:
 
-- **Get decks**, once connected and before the catalog is read. A failed NTP
-  is logged and Get decks carries on. The screen stays as it is (a new day
-  rebuilds the queue, and "Continue" then shows a fresh question).
-- **The boot-time date question** (after a power cut, or a wake that re-asks
-  it), once per boot. With a home Wi-Fi and the offset saved, the date screen
-  joins in the background (15 s join timeout, CPU at 240 MHz only while the
-  radio is on) and says "Syncing via <ssid>..."; the stepper works meanwhile.
-  Connected -> NTP (the loop blocks for at most 3 s) -> radio off ->
-  `applyWallClock()`, which answers the question and starts the quiz. A failed
-  join or NTP turns the radio off and the status line says to set the date by
-  hand. Confirming or skipping the question by hand stops the attempt, radio
-  off. The join and its outcome count as activity for the idle timers, so the
-  30 s dim and the 2 min sleep cannot cut it short; an idle timeout or an
-  explicit sleep turns the radio off like any other.
+- **Network first.** After a power cut (or on a wake that re-asks the
+  question), with a home Wi-Fi and a zone known, the date screen first shows
+  "Getting the date via <network>..." with "tap: set it by hand" under it,
+  once per boot: 15 s join timeout, CPU at 240 MHz only while the radio is on,
+  then NTP (the loop blocks for at most 3 s) -> radio off ->
+  `applyWallClock()`, which answers the question and starts the quiz. A
+  failed join or NTP turns the radio off and shows the stepper with the reason
+  ("No network: set it by hand", "No network time: set it by hand"). Any press
+  on that screen skips it: radio off, the stepper without a reason line. No
+  home Wi-Fi or no zone: the stepper straight away, as before.
+- **Kept from the background sync it replaced:** the join and its outcome
+  count as activity for the idle timers, so the 30 s dim and the 2 min sleep
+  cannot cut it short; an idle timeout or an explicit sleep turns the radio
+  off like any other, and a sleep while it runs leaves the question pending
+  (`gDatePending`), so the wake asks again -- network first again. NTP times
+  before 2026-01-01 are refused (`HomeWifi::fetchUtcMs()`).
 
 ## 6. Queue building
 
@@ -520,7 +572,7 @@ New globals: `tgc::SrsStore gSrs;`, `tgc::Queue gQueue;`, `uint32_t gShownAt;`.
 | `tapAction()` | count the navigation tap (`gNavTaps`); the response time later subtracts a fixed allowance per tap. Unchanged otherwise. |
 | `holdAction()` | compute `correct`, `rt_ms` and `grade` (`rt >= slow_ms` → Hard), call `gSrs.grade(card.codepoint, grade, now_day)`, `gQueue.answered(cardIndex, grade)`, mark dirty, then the existing reveal. QLOG grows one line: grade, `S -> S'`, `D`, interval. |
 | `loop()` | add `gSrs.tick(millis())` and `gSrs.maybeFlush(millis(), dirtyCount)`. Keep the existing 10 ms delay. |
-| `applyWallClock()` | real time from the portal's `POST /time` or from NTP over the home Wi-Fi (Get decks, the boot-time date question): `gSrs.syncWallClock()`, NVS `tz`, save, rebuild the queue when the day moved, and dismiss the boot-time date question (§5.1). |
+| `applyWallClock()` | real time from the portal's `POST /time` (through `portalTime()`, which first stores the page's zone in NVS `tzr`/`tzn`/`tz`) or from NTP over the home Wi-Fi (Get decks, the portal in home mode, the network test, the boot-time date question): `gSrs.syncWallClock(utc, zone)`, save, rebuild the queue when the day moved, and dismiss the boot-time date question (§5.1). `loadTimeZone()` reads the zone at boot (before the slept time is added) and after a change, and hands it to `gSrs.setTimeZone()`. |
 | `selectPack()` / `loadPack()` | flush state before opening the new pack; after loading, `gQueue.rebuild(...)`. State is global, so progress carries across decks. |
 | `openMenu()`/`drawMenu()` | optional: append `due/new` counts per pack (a `gSrs.countDue(gPack, now_day)` helper) and a small progress line in the quiz header. |
 | `showError()` | a corrupt state file is *not* an error screen; log and start empty. |

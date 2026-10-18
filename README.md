@@ -39,18 +39,23 @@ The portal has two modes:
 
 ### First setup
 
-1. A device with no decks starts the portal by itself (later: hold the side
+1. A brand-new device first asks for its **language**: **English** or
+   **Español** (tap moves, hold chooses). The device screens and the portal
+   page then stay in that language, whatever the language of the decks you
+   download; **Settings → Language** changes it later (Auto follows the loaded
+   deck).
+2. A device with no decks starts the portal by itself (later: hold the side
    button for **Settings → Wi-Fi » → Setup mode**). Scan the QR code on the
    screen with the phone camera to join `Tangocho-XXXX`, then open
    `http://192.168.4.1` (or tap the device's front button and scan the second
    QR code).
-2. The page's first step is **Connect the device to your Wi-Fi**: pick the
+3. The page's first step is **Connect the device to your Wi-Fi**: pick the
    network (nearby ones are suggested), type its password (empty for an open
    network) and press **Save**.
-3. Press **Switch to my Wi-Fi**. The device leaves its own network and joins
+4. Press **Switch to my Wi-Fi**. The device leaves its own network and joins
    yours. Put the phone back on your Wi-Fi and scan the new QR code on the
    device screen (or type the address it shows).
-4. The page now lists the decks of the catalog, **your language first**: press
+5. The page now lists the decks of the catalog, **your language first**: press
    **Download** (or **Update** for a deck that is on the device in another
    build). The page and the device screen show the progress; the device's side
    button cancels. When you are done, the device's side button starts studying.
@@ -77,12 +82,15 @@ setup mode and a tap tries again.
 - **Settings → Wi-Fi » → Home: <network>** tests the saved network: it joins,
   shows the IP address, the signal, whether the deck catalog answers and
   whether the network time works, then turns the radio off again.
-- Opening the page sets the device's **date** from the phone's clock and time
-  zone, so the review day rolls over at 04:00 local. With a home Wi-Fi saved
-  the device also takes the time from NTP whenever it joins, and after a
-  power-off the date question tries the same in the background ("Syncing via
-  <network>..."); you can still answer it by hand meanwhile. Both use the time
-  zone the page last sent and skip the sync until the page has been opened once.
+- Opening the page sets the device's **date** from the phone's clock and **time
+  zone**, so the review day rolls over at 04:00 local -- daylight-saving changes
+  included: the page sends the zone's rules, not just today's offset. With a
+  home Wi-Fi saved the device also takes the time from NTP whenever it joins,
+  and after a power-off it **tries the network first** ("Getting the date via
+  <network>...", about 15 s at most; a tap skips it) before asking for the
+  date by hand. NTP needs the time zone: the one the page last sent, or one
+  chosen in **Settings → Date » → Time zone** (a short list of zones, for when
+  no phone has set one; the next page visit replaces it with the phone's).
 
 ### Changing networks
 
@@ -111,9 +119,10 @@ setup mode and a tap tries again.
 - An uploaded file streams straight to the filesystem (a multi-MB pack never has
   to fit in RAM) and is kept only if it is a valid pack, with room to spare.
   The URL download is **plain `http://` only** (e.g. a server on your computer).
-- The page is in the device's language (the Language setting, or the loaded
-  deck's under Auto); a device with no deck yet follows the browser's language,
-  and the page offers English / Español links.
+- The page is in the device's language (the Language setting, chosen on the
+  first boot, or the loaded deck's under Auto); a device set to Auto with no
+  deck yet follows the browser's language, and the page offers English /
+  Español links.
 - The default catalog is
   `https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt`,
   the dedicated **decks release** for the pack format this firmware reads (see
@@ -178,6 +187,16 @@ A newer push on the same ref cancels the superseded run.
 publishes a GitHub release with those artifacts. Firmware releases carry **no
 packs**; their notes link to the decks release below.
 
+**Version.** Every firmware build carries a version string, shown under
+**Settings › About**, in the portal page's footer, as `"version"` in
+`/api/stats` and `/api/status`, and as the first boot log line
+(`Tangocho v0.1.0`). [`firmware/scripts/version.py`](firmware/scripts/version.py)
+sets it: the `TGC_VERSION` environment variable if present (the release
+workflow passes the tag), else `git describe --tags --always --dirty --match
+"v[0-9]*"` (e.g. `v0.1.0-3-gabc1234-dirty`, or just the commit id when no `v*`
+tag is reachable, as in CI's shallow checkout), else `dev`. To label a local
+build by hand: `TGC_VERSION=v0.1.0-rc1 pio run -e sticks3`.
+
 ### Flash over USB
 
 ```sh
@@ -195,13 +214,24 @@ flashed at offset 0, so it needs no offset list:
 esptool --chip esp32s3 write_flash 0x0 tangocho-sticks3-merged.bin
 ```
 
+**What it overwrites:** everything from `0x0` to the end of the app, including
+the **settings** (the NVS partition: home Wi-Fi, preferences, time zone), which
+the merge pads with `0xFF`. The filesystem with the decks and the study
+progress starts after the 2 MB app slot and is not touched. To **update** a
+device and keep its settings, flash the app-only image at the app offset
+instead:
+
+```sh
+esptool --chip esp32s3 write_flash 0x10000 tangocho-sticks3.bin
+```
+
 It is produced from the PlatformIO build by
 [`tools/release/merge_image.py`](tools/release/merge_image.py), which runs the
 equivalent of (StickS3):
 
 ```sh
 esptool --chip esp32s3 merge_bin -o tangocho-sticks3-merged.bin \
-  --flash_mode qio --flash_freq 80m --flash_size 8MB \
+  --flash_mode dio --flash_freq 80m --flash_size 8MB \
   0x0     .pio/build/sticks3/bootloader.bin \
   0x8000  .pio/build/sticks3/partitions.bin \
   0x10000 .pio/build/sticks3/firmware.bin
@@ -209,22 +239,36 @@ esptool --chip esp32s3 merge_bin -o tangocho-sticks3-merged.bin \
 
 The offsets are the ESP32-S3 bootloader (`0x0`), the partition table (`0x8000`)
 and the `app0` offset from `firmware/partitions/sticks3_8MB.csv`. Our partition
-tables have **no OTA data partition**, so no `boot_app0.bin` is added — exactly
-what PlatformIO flashes for the same table (see `docs/decisions.md`).
+tables have **no OTA data partition**, so no `boot_app0.bin` is added.
+PlatformIO's USB upload does write `boot_app0.bin` at `0xe000`, over the unused
+`phy_init` partition; leaving it out is right for a table without OTA. The
+bootloader header is written in DIO, as PlatformIO's upload does; the app
+switches the flash to QIO itself (see `docs/decisions.md`).
 
-For a **browser flash**, open an ESP Web Tools page (e.g.
-<https://esphome.github.io/esp-web-tools/>) and point it at the release's
-`tangocho-sticks3-manifest.json`. A merged image carries **no filesystem**:
+For a **browser flash** (Chrome or Edge on a desktop), open Espressif's web
+flasher <https://espressif.github.io/esptool-js/>, press **Connect** and pick
+the StickS3's port, add `tangocho-sticks3-merged.bin` at address `0x0` and
+press **Program**. The release also carries ESP Web Tools manifests
+(`tangocho-*-manifest.json`) for a future install page; ESP Web Tools needs a
+page that serves the image and the manifest together, so it cannot be pointed
+at a release on its own. A merged image carries **no filesystem**:
 on the first boot the firmware finds no LittleFS on the data partition (erased,
-or left by another firmware), formats it ("Preparing storage...") and boots
-into the Wi-Fi portal's setup mode, where decks can be fetched or uploaded over
-the air.
+or left by another firmware), formats it ("Preparing storage..."), asks for the
+language (English / Español) and boots into the Wi-Fi portal's setup mode,
+where decks can be fetched or uploaded over the air. A device that still has
+its decks after a merged-image flash does not ask: its settings are gone, so
+the language follows the loaded deck (Auto) until you change it. The flash
+counts as a power cut, so it does ask for the **date**, by hand: with the home
+Wi-Fi and the time zone erased it cannot get it from the network first. Set it
+with the stepper (or skip), then open the portal page once to save the Wi-Fi
+and the zone again.
 
-> Honest status — **not verified on hardware.** We have not flashed a merged
-> image through ESP Web Tools or `esptool write_flash` on a real StickS3. The
-> offsets come from the partition table and the build output and mirror
-> `pio run -t upload`, but the browser path is unconfirmed until someone tries
-> it.
+> Status: verified on a real StickS3 (2026-10-18) both ways. With **esptool**,
+> a v0.1.0 candidate's merged image written at `0x0` booted, kept its decks and
+> progress, and started with the settings erased. From the **browser**
+> (esptool-js), Erase Flash and then the merged image at `0x0` gave a new
+> device: language picker, setup mode, portal. The T-Display-S3 images are
+> built but not verified on hardware.
 
 ### Prebuilt decks and their licence
 
@@ -251,7 +295,9 @@ To install a deck by hand, download a `.tgc` from that release and upload it
 from the Wi-Fi portal page (Advanced). A pack contains **KANJIDIC2** data (CC
 BY-SA 4.0) and, with `--strokes`, **KanjiVG** data (CC BY-SA 3.0), so prebuilt
 packs are licensed **CC BY-SA**. The combined attribution is in the decks release notes
-and in [docs/data-sources.md](docs/data-sources.md).
+and in [docs/data-sources.md](docs/data-sources.md); the device shows it under
+**Settings › About** (with the loaded deck's name) and the portal page in its
+footer.
 
 ## Repository layout
 
@@ -267,4 +313,7 @@ and in [docs/data-sources.md](docs/data-sources.md).
 
 Code: MIT. Generated packs contain data from KANJIDIC2 (© EDRDG, CC BY-SA 4.0)
 and glyphs from the selected font (default Noto Sans JP, © Adobe, SIL OFL
-1.1). See [docs/data-sources.md](docs/data-sources.md).
+1.1). See [docs/data-sources.md](docs/data-sources.md). On the device,
+**Settings › About** shows the firmware version and licence, the decks' licence
+and the data credits (KANJIDIC2, KanjiVG, the JLPT level lists, Noto Sans JP),
+and the Wi-Fi portal page repeats them in its footer.

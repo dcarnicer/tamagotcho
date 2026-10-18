@@ -14,8 +14,9 @@ Offsets come from the partition CSV (authoritative), not from constants:
 - the application goes to the offset of the table's ``app`` partition.
 - an Arduino/ESP-IDF build with an **OTA data partition** also needs the
   ``boot_app0.bin`` image (the "which OTA slot to boot" record) at that
-  partition's offset. Our tables have no OTA partition, so this part is omitted
-  — exactly what PlatformIO does for the same table (see docs/decisions.md).
+  partition's offset. Our tables have no OTA partition, so this part is omitted.
+  (PlatformIO's USB upload still writes ``boot_app0.bin`` at ``0xe000``, over
+  the unused ``phy_init`` partition; see docs/decisions.md.)
 
 Usage (see README.md "Releases"):
 
@@ -99,7 +100,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--partitions", required=True, help="firmware/partitions/*.csv")
     ap.add_argument("--out", required=True, help="merged image to write")
     ap.add_argument("--chip", default="esp32s3")
-    ap.add_argument("--flash-mode", default="qio")
+    # DIO, as `pio run -t upload` writes it (`-v` shows `--flash_mode dio` for
+    # these qio boards): the bootloader header stays at the safe mode and the
+    # app's own flash config switches to QIO.
+    ap.add_argument("--flash-mode", default="dio")
     ap.add_argument("--flash-freq", default="80m")
     ap.add_argument("--flash-size", default="8MB")
     ap.add_argument("--boot-app0", help="only used when the table has an OTA data partition")

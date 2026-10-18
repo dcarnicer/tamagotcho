@@ -72,10 +72,13 @@ public:
         bool (*onPacksChanged)() = nullptr;
         // Called with the browser's clock, which the page posts on every load
         // (POST /time): `utcMs` is Date.now(), `tzOffsetMin` the offset in
-        // minutes east of UTC (-getTimezoneOffset()). The app checks that the
-        // time is plausible and applies it; the portal never touches the SRS.
-        // Returns true when the time was accepted.
-        bool (*onTime)(int64_t utcMs, int16_t tzOffsetMin) = nullptr;
+        // minutes east of UTC (-getTimezoneOffset()), `tzRule` the browser's
+        // zone as a POSIX TZ rule and `zone` its IANA name (each "" when the
+        // page sent none or it failed the character check). The app checks that
+        // the time and the rule are plausible and applies them; the portal
+        // never touches the SRS. Returns true when the time was accepted.
+        bool (*onTime)(int64_t utcMs, int16_t tzOffsetMin, const char* tzRule,
+                       const char* zone) = nullptr;
         // The page's "Get decks on the device screen" (POST /getdecks, offered
         // in setup mode once a home Wi-Fi is saved): the device should stop the
         // portal and open Get decks over the home Wi-Fi. Called from poll(),

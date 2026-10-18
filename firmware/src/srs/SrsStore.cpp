@@ -161,10 +161,14 @@ void SrsStore::advanceDaysManual(uint16_t n) {
 }
 
 ClockSyncResult SrsStore::syncWallClock(int64_t utcMs, int tzOffsetMin) {
+    return syncWallClock(utcMs, fixedTzRule(tzOffsetMin));
+}
+
+ClockSyncResult SrsStore::syncWallClock(int64_t utcMs, const TzRule& zone) {
     ClockSyncResult res;
     int32_t real = 0;
     uint32_t intoDay = 0;
-    if (!studyDayOf(utcMs, tzOffsetMin, &real, &intoDay)) return res;
+    if (!studyDayOf(utcMs, zone, &real, &intoDay)) return res;
 
     // The index after the sync: forward to the real study day when it is ahead
     // (saturating like advanceDays), never back.
@@ -218,12 +222,37 @@ void SrsStore::tick(uint32_t nowMs) {
 }
 
 void SrsStore::addElapsedMs(uint64_t ms) {
-    const uint64_t carry = static_cast<uint64_t>(msCarry_) + ms;
-    const uint64_t days = carry / kSrsMsPerDay;
-    const uint32_t day = static_cast<uint32_t>(nowDay_) + (days > 0xFFFFu ? 0xFFFFu : days);
-    nowDay_ = day > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(day);
-    msCarry_ = static_cast<uint32_t>(carry % kSrsMsPerDay);
+    uint64_t carry = static_cast<uint64_t>(msCarry_) + ms;
+    if (!tz_.hasDst || epochAnchor_ == 0) {
+        const uint64_t days = carry / kSrsMsPerDay;
+        const uint32_t day = static_cast<uint32_t>(nowDay_) + (days > 0xFFFFu ? 0xFFFFu : days);
+        nowDay_ = day > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(day);
+        msCarry_ = static_cast<uint32_t>(carry % kSrsMsPerDay);
+    } else {
+        // Day by day, each as long as the zone makes it (23/24/25 h). A long
+        // deep sleep is a few hundred iterations, each one cached lookup.
+        for (uint32_t len = dayLengthMs(); carry >= len && nowDay_ < 0xFFFF; len = dayLengthMs()) {
+            carry -= len;
+            ++nowDay_;
+        }
+        msCarry_ = static_cast<uint32_t>(nowDay_ == 0xFFFF ? carry % kSrsMsPerDay : carry);
+    }
     resetNewIfNewDay();
+}
+
+void SrsStore::setTimeZone(const TzRule& zone) {
+    tz_ = zone;
+    lenCacheDay_ = -1;
+}
+
+uint32_t SrsStore::dayLengthMs() const {
+    if (!tz_.hasDst || epochAnchor_ == 0) return kSrsMsPerDay;
+    const int32_t day = static_cast<int32_t>(epochAnchor_) + nowDay_;
+    if (day != lenCacheDay_) {
+        lenCacheMs_ = studyDayLengthMs(tz_, day);
+        lenCacheDay_ = day;
+    }
+    return lenCacheMs_;
 }
 
 void SrsStore::setToday(uint16_t day) {

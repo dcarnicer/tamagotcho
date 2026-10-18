@@ -51,11 +51,22 @@ Scope for now: **kanji only** (no vocabulary decks).
         via <ssid>..." / "No network: set it by hand"); the stepper stays usable
         and is the fallback, and any manual answer turns the radio off. Uses the
         UTC offset stored by the last phone sync and is skipped without it.
+        (Since then: a visible network-first screen and a zone rule, below.)
         **Not verified on hardware yet.**
       - [x] Better manual fallback (2026-10-18): the date screen shows the
         last-used date and a proposed "today" with its weekday (tap +1 day, hold
         confirms, side hold -1 day, side tap cancels) instead of the 0/1/2-7/14+
         buckets. A sync from the phone answers it instead.
+      - [x] Time zone rules, manual zone, network first (2026-10-18, v0.1.0
+        hardware feedback): the page sends the browser's zone as a POSIX TZ
+        rule, so the 04:00 rollover follows DST changes (23/25 h study days)
+        without another visit; Settings › Date » › Time zone offers "From
+        phone" and 22 zones for a device no phone has set; after a power cut
+        with a home Wi-Fi and a zone, "Getting the date via <network>" comes
+        before the stepper (a tap skips it); the stepper's hints spell out
+        both directions. Native-tested (`test_tz`), the page's rule checked
+        against tzdata for 597 zones (`scripts/check_tz_rules.py`).
+        **Not verified on hardware yet.**
 - [~] **Phase 3 – Better cards.** Distractors done for visual similarity,
       shared classical radicals and confusable readings; meaning→kanji questions
       done; the mistake detail card is done (a tap after a wrong answer opens a
@@ -150,9 +161,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       carry packs (docs/decisions.md, 2026-10-18 "Decks release").
       The **first decks run** published `decks-v2` on 2026-10-18 (12 packs,
       105 KB to 3.0 MB in pack format v2; Get decks and the portal download them
-      on a real StickS3). Pending: **README photos**; hardware verification of
-      the merged-image/ESP Web Tools path (written, **not flashed on a real
-      device**); and the **first firmware release** (v0.1.0).
+      on a real StickS3). The **first firmware release, v0.1.0**, followed on
+      2026-10-18; its StickS3 merged image was verified with esptool and from
+      the browser (esptool-js). Pending: **README photos**, and the T-Display-S3
+      images on real hardware.
 
 ## Cross-cutting
 
@@ -168,7 +180,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       (`lang`: en/es today, anything else falls back to English). The on-device
       language picker is done: a "Language"/"Idioma" setting chooses Auto (follow
       the pack, the default), English or Español, persisted in NVS (`ui`) and
-      applied as a pure `uiLangCodeFor` helper. Pending: more languages (the
+      applied as a pure `uiLangCodeFor` helper. The first boot of a device
+      with no decks and no stored preference asks once (English / Español)
+      and stores an explicit choice. Pending: more languages (the
       meaning language is a property of the pack, so switching packs already
       switches the meanings).
 - [x] **Menu and settings redesign.** The settings home (Seguir / Mazos / Fecha /
@@ -222,8 +236,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       5 MiB cap in pack format v1) were resolved first.
 - [x] Attribution for redistributed data: README's "Releases" section,
       `docs/data-sources.md` and the release notes all carry the combined
-      KANJIDIC2 / KanjiVG / Noto Sans JP credit. (Still open: an attribution line on
-      the device itself.)
-- [ ] Flash a **merged** image on a real StickS3 — ESP Web Tools in a browser and
-      `esptool write_flash 0x0 …` — to confirm the documented offsets. The image
-      and manifest are written and locally checked, **not verified on hardware**.
+      KANJIDIC2 / KanjiVG / Noto Sans JP credit. (On the device too since
+      2026-10-18: Settings › About, and the portal page's footer.)
+- [x] Flash a **merged** image on a real StickS3 — in a browser and with
+      `esptool write_flash 0x0 …` — to confirm the documented offsets. Done
+      2026-10-18 for v0.1.0 (esptool, and esptool-js after Erase Flash); an
+      ESP Web Tools install page is not set up (it needs a page serving the image
+      and the manifest together).

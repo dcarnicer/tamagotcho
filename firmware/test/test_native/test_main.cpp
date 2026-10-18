@@ -13,6 +13,7 @@
 #include "render/Blend565.h"
 #include "power/BatteryGuard.h"
 #include "render/GlcdCp437.h"
+#include "ui/TextLayout.h"
 #include "ui/UiLang.h"
 
 using namespace tgc;
@@ -1032,6 +1033,35 @@ void test_ui_lang_code() {
     TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(-1, "fr"));
 }
 
+// The first-boot language picker: only with no stored preference and no deck;
+// its rows map to explicit preferences (English first and preselected), never
+// Auto, so the choice survives a deck in the other language. Pure (ui/UiLang.h).
+void test_first_boot_lang_picker() {
+    using tgc::firstBootLangPicker;
+    using tgc::firstBootLangPref;
+    using tgc::uiLangCodeFor;
+
+    TEST_ASSERT_TRUE(firstBootLangPicker(false, false));   // brand-new or erased device
+    TEST_ASSERT_FALSE(firstBootLangPicker(false, true));   // NVS erased, decks kept: Auto
+    TEST_ASSERT_FALSE(firstBootLangPicker(true, false));   // chosen before (Auto too), decks gone
+    TEST_ASSERT_FALSE(firstBootLangPicker(true, true));    // an ordinary boot
+
+    TEST_ASSERT_EQUAL(2, tgc::kFirstBootLangRows);
+    TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(tgc::kFirstBootLangDefaultRow));
+    TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(0));
+    TEST_ASSERT_EQUAL(tgc::kUiLangSpanish, firstBootLangPref(1));
+    TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(-1));
+    TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(2));
+    for (int row = 0; row < tgc::kFirstBootLangRows; ++row)
+        TEST_ASSERT_NOT_EQUAL(tgc::kUiLangAuto, firstBootLangPref(row));
+
+    // Before any deck, and after a deck in the other language.
+    TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(firstBootLangPref(1), nullptr));
+    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(firstBootLangPref(0), nullptr));
+    TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(firstBootLangPref(1), "en"));
+    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(firstBootLangPref(0), "es"));
+}
+
 // Critical battery: three low readings trigger the sleep, only a clearly fine
 // reading or external power resets the count, and a wake after a critical sleep
 // needs a margin above the trigger. Pure (power/BatteryGuard.h).
@@ -1087,6 +1117,100 @@ void test_battery_guard() {
     TEST_ASSERT_TRUE(BatteryGuard::canResume(-1, false));
 }
 
+// The lines wrapText() makes of `s`, as strings.
+static std::vector<std::string> wrapped(const char* s, int maxChars) {
+    std::vector<std::string> out;
+    for (const tgc::TextSpan& l : tgc::wrapText(s, maxChars)) out.emplace_back(s + l.begin, l.len);
+    return out;
+}
+
+static void assertLines(const std::vector<std::string>& want, const std::vector<std::string>& got) {
+    TEST_ASSERT_EQUAL_UINT(want.size(), got.size());
+    for (size_t i = 0; i < want.size(); ++i) TEST_ASSERT_EQUAL_STRING(want[i].c_str(), got[i].c_str());
+}
+
+// Wrapping for the built-in font's text screens (ui/TextLayout.h): spaces
+// break, no-break spaces do not, a long word breaks after '/' or '-', and the
+// width counts code points, not bytes.
+void test_text_wrap() {
+    TEST_ASSERT_EQUAL_UINT(0, tgc::wrapText("", 10).size());
+    TEST_ASSERT_EQUAL_UINT(0, tgc::wrapText("   ", 10).size());
+    TEST_ASSERT_EQUAL_UINT(0, tgc::wrapText(nullptr, 10).size());
+    TEST_ASSERT_EQUAL_UINT(0, tgc::wrapText("abc", 0).size());
+    assertLines({"abc"}, wrapped("abc", 10));
+    assertLines({"abc"}, wrapped("  abc  ", 3));
+    // A line of exactly maxChars; the space after it is the break.
+    assertLines({"Stroke order: KanjiVG", "(c) Ulrich Apel,"},
+                wrapped("Stroke order: KanjiVG (c) Ulrich Apel,", 21));
+    assertLines({"a b", "c"}, wrapped("a b c", 4));
+    assertLines({"one", "two"}, wrapped("one    two", 5));
+    // U+00A0 keeps "CC BY-SA 4.0" together.
+    assertLines({"(c) EDRDG,", "CC\xC2\xA0" "BY-SA\xC2\xA0" "4.0"},
+                wrapped("(c) EDRDG, CC\xC2\xA0" "BY-SA\xC2\xA0" "4.0", 21));
+    // ... unless it is longer than a line: then after its '-'.
+    assertLines({"CC\xC2\xA0" "BY-", "SA\xC2\xA0" "4.0"}, wrapped("CC\xC2\xA0" "BY-SA\xC2\xA0" "4.0", 8));
+    // A URL breaks after its last '/' that fits.
+    assertLines({"github.com/dcarnicer/", "tangocho"}, wrapped("github.com/dcarnicer/tangocho", 21));
+    assertLines({"github.com/", "dcarnicer/", "tangocho"}, wrapped("github.com/dcarnicer/tangocho", 12));
+    assertLines({"github.com/dcarnicer/tangocho"}, wrapped("github.com/dcarnicer/tangocho", 39));
+    // A version string breaks after a '-'.
+    assertLines({"v0.1.0-12-gabcdef0-", "dirty"}, wrapped("v0.1.0-12-gabcdef0-dirty", 21));
+    // Nothing to break at: cut at the limit.
+    assertLines({"abcd", "efgh", "ij"}, wrapped("abcdefghij", 4));
+    // Code points, not bytes: "más" is 3 wide.
+    assertLines({"más", "más"}, wrapped("más más", 3));
+    assertLines({"toque: más"}, wrapped("toque: más", 10));
+}
+
+// Paging (ui/TextLayout.h): groups stay together when they fit a page, gaps
+// only between blocks on one page, oversized groups and blocks still land.
+void test_text_pages() {
+    using tgc::PageBlock;
+    using tgc::PageSlot;
+    using tgc::layoutPages;
+    using tgc::pageCount;
+
+    TEST_ASSERT_EQUAL(1, pageCount(layoutPages({}, 100, 3, 8)));
+
+    // Everything fits: one page, gap 3 inside a group, 8 between groups.
+    auto s = layoutPages({{28, true}, {10, false}, {10, true}, {20, false}}, 100, 3, 8);
+    TEST_ASSERT_EQUAL(1, pageCount(s));
+    TEST_ASSERT_EQUAL(0, s[0].y);
+    TEST_ASSERT_EQUAL(31, s[1].y);
+    TEST_ASSERT_EQUAL(49, s[2].y);
+    TEST_ASSERT_EQUAL(62, s[3].y);
+
+    // The second group (10 + 3 + 50 = 63) does not fit the rest of the page
+    // (41 + 8 + 63 > 100) but fits an empty one: it moves whole.
+    s = layoutPages({{28, true}, {10, false}, {10, true}, {50, false}}, 100, 3, 8);
+    TEST_ASSERT_EQUAL(2, pageCount(s));
+    TEST_ASSERT_EQUAL(0, s[1].page);
+    TEST_ASSERT_EQUAL(1, s[2].page);
+    TEST_ASSERT_EQUAL(0, s[2].y);
+    TEST_ASSERT_EQUAL(13, s[3].y);
+
+    // Exactly full is still a fit.
+    s = layoutPages({{50, true}, {42, true}}, 100, 3, 8);
+    TEST_ASSERT_EQUAL(1, pageCount(s));
+    TEST_ASSERT_EQUAL(58, s[1].y);
+
+    // A group taller than a page fills the current page block by block.
+    s = layoutPages({{30, true}, {40, true}, {40, false}, {40, false}}, 100, 3, 8);
+    TEST_ASSERT_EQUAL(0, s[1].page);
+    TEST_ASSERT_EQUAL(38, s[1].y);
+    TEST_ASSERT_EQUAL(1, s[2].page);
+    TEST_ASSERT_EQUAL(0, s[2].y);
+    TEST_ASSERT_EQUAL(1, s[3].page);
+    TEST_ASSERT_EQUAL(43, s[3].y);
+
+    // A block taller than a page gets one of its own; the next one follows.
+    s = layoutPages({{10, true}, {150, true}, {10, true}}, 100, 3, 8);
+    TEST_ASSERT_EQUAL(3, pageCount(s));
+    TEST_ASSERT_EQUAL(1, s[1].page);
+    TEST_ASSERT_EQUAL(0, s[1].y);
+    TEST_ASSERT_EQUAL(2, s[2].page);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_open_and_header);
@@ -1113,6 +1237,9 @@ int main() {
     RUN_TEST(test_mini_v1_fixture);
     RUN_TEST(test_real_pack_if_present);
     RUN_TEST(test_ui_lang_code);
+    RUN_TEST(test_first_boot_lang_picker);
     RUN_TEST(test_battery_guard);
+    RUN_TEST(test_text_wrap);
+    RUN_TEST(test_text_pages);
     return UNITY_END();
 }
