@@ -90,9 +90,11 @@ Scope for now: **kanji only** (no vocabulary decks).
         the shared temp-file + validate + rename path, checking the catalog's
         size and `sha256`, with a progress bar and cancel. A fresh device offers
         it on the boot-time upload screen once a home Wi-Fi is saved. The default
-        catalog (`releases/latest/download/catalog.txt`) only works once a public
-        release carries packs + `catalog.txt` (see "Before publishing"); the URL
-        can be changed on the portal page. **Not verified on hardware yet**: TLS
+        catalog is the dedicated decks release
+        (`releases/download/decks-v2/catalog.txt`, never marked "latest"), which
+        only answers once `decks.yml` has published it (see "Before
+        publishing"); the URL can be changed on the portal page. **Not verified
+        on hardware yet**: TLS
         heap use, download speed and the GitHub redirect chain on a real
         StickS3 are to be confirmed (`[net]` serial lines log the heap).
       - [x] **Auto-rotation from the IMU** (2026-10-18). Use the StickS3's BMI270
@@ -130,11 +132,18 @@ Scope for now: **kanji only** (no vocabulary decks).
       README with the licence/attribution and flashing instructions.
       The **device-side catalog fetch/parse** is done (`firmware/src/catalog/`,
       native-tested against the builder's output; used by Get decks).
-      Pending: **README photos**; and hardware verification of the
+      **Prebuilt decks** have their own workflow, `.github/workflows/decks.yml`
+      (manual dispatch): JLPT N5-N1 and the full Jōyō deck (school order), in
+      es and en, with stroke order, published with `catalog.txt` to the fixed
+      release `decks-v<pack format>` (never "latest", replaced in place), which
+      is the firmware's default Get decks catalog; firmware releases no longer
+      carry packs (docs/decisions.md, 2026-10-18 "Decks release").
+      Pending: **README photos**; hardware verification of the
       merged-image/ESP Web Tools path (written, **not flashed on a real
-      device**). Prebuilt packs can be attached to a release, but only on
-      request — redistributing CC BY-SA data is a maintainer decision (see
-      "Before publishing"); the default Get decks catalog depends on it.
+      device**); and the **first decks run**, which waits on pack format v2
+      (in v1 the N1 deck is 6.8 MB and the Jōyō deck 11.6 MB, over the device's
+      5 MiB per-pack cap) and on the maintainer's decision to publish (see
+      "Before publishing").
 
 ## Cross-cutting
 
@@ -189,14 +198,16 @@ Scope for now: **kanji only** (no vocabulary decks).
 - [ ] Verify licence of tanos.co.uk JLPT lists (used via kanji-data `jlpt_new`).
       Not verified; left open.
 - [~] Decide whether prebuilt packs are distributed (CC BY-SA 4.0 attribution in
-      README and on device). Progress: packs built with KANJIDIC2/KanjiVG are
-      licensed CC BY-SA and the release workflow adds the combined attribution to
-      the release notes automatically, but attaching them stays **opt-in** (a
-      dispatch input) until this is a standing decision. The device's default
-      Get decks catalog (`releases/latest/download/catalog.txt` on
-      `dcarnicer/tangocho`) depends on it: the repo must be public and every
-      release that becomes "latest" must carry the packs and `catalog.txt`
-      (a tag-push release without them makes the default URL answer 404).
+      README and on device). Progress: the mechanics are done. Packs built with
+      KANJIDIC2/KanjiVG are licensed CC BY-SA; `.github/workflows/decks.yml`
+      (manual dispatch only) builds the default set and publishes it, with the
+      combined attribution in the notes, to the release `decks-v<pack format>`
+      (`decks-v2`), which is never marked "latest" so firmware releases cannot
+      hide it. The device's default Get decks catalog
+      (`releases/download/decks-v2/catalog.txt` on `dcarnicer/tangocho`) answers
+      404 until that first run. **Running it is still blocked** on the licence
+      of the tanos.co.uk JLPT lists (above), which stays open, and on pack
+      format v2 (the N1 and Jōyō decks do not fit the 5 MiB cap in v1).
 - [x] Attribution for redistributed data: README's "Releases" section,
       `docs/data-sources.md` and the release notes all carry the combined
       KANJIDIC2 / KanjiVG / Klee One credit. (Still open: an attribution line on
