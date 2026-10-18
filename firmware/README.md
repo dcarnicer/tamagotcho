@@ -9,7 +9,7 @@ from persisted FSRS review state (`/state/srs.bin`).
 
 ```sh
 cd firmware
-pio test -e native            # unit tests for pack/, quiz/, srs/ and catalog/ (host, no Arduino)
+pio test -e native            # unit tests for pack/, quiz/, srs/, imu/, catalog/, portal/ (host, no Arduino)
 pio run -e sticks3            # build for StickS3
 pio run -e tdisplay-s3        # build for T-Display-S3
 ```
@@ -33,8 +33,8 @@ file `pio run` produces, e.g. for M5Launcher) and a **merged**
 `tangocho-<env>-merged.bin` that `esptool write_flash 0x0 …` or a browser (ESP
 Web Tools, via the release's `manifest.json`) can flash in one go. A merged image
 carries **no filesystem**: the first boot formats the data partition when it
-holds no LittleFS (erased or foreign), so a fresh device boots into the Wi-Fi upload
-screen and a pack can be sent over the air. Offsets and the exact
+holds no LittleFS (erased or foreign), so a fresh device boots into the Wi-Fi portal
+and a pack can be sent over the air. Offsets and the exact
 `esptool merge_bin` command are in the root README; the merged image is **not
 verified on hardware** yet (docs/decisions.md).
 
@@ -47,25 +47,35 @@ side button to switch decks. `uploadfs` replaces the whole filesystem, so keep
 every pack you want in `data/packs/`, and note that it also clears review
 progress (`/state/srs.bin`).
 
-Alternatively, copy packs over Wi-Fi with no `uploadfs`: open **Settings →
-Wi-Fi** (hold the side button, then hold the row) and join the device's open
-access point from a phone or laptop, then open `http://192.168.4.1` to upload or
-delete packs, download one from a URL and read the statistics. A device with no
-pack at all boots straight into this screen. The uploaded file is validated
-before it is kept, and the side button stops the portal. See the root README for
-the security trade-off (the AP is open).
+Alternatively, use the **Wi-Fi portal** with no `uploadfs` (root README, "Getting
+decks onto the device"). **Settings → Wi-Fi »** (hold the side button, then hold
+the row) has four rows: **Web portal** joins the saved home Wi-Fi and serves the
+page there (home mode; the screen shows the address and a QR code of it), or
+starts the device's own open access point when no network is saved; **Home:
+<network>** tests the saved network (IP, signal, catalog, network time, then
+radio off); **Setup mode** forces the access point (QR code to join it, a tap
+for the page's QR, `http://192.168.4.1`); **Forget network** asks first. A
+device with no pack boots straight into the portal: home mode with a saved
+network (setup mode if the join fails), else setup mode. In setup mode the page
+saves the home Wi-Fi and then offers **Switch to my Wi-Fi**; in home mode it
+lists the deck catalog and downloads a deck with a progress view, and in both it
+uploads or deletes packs, downloads one from an `http://` URL and shows the
+statistics. Uploads and downloads are validated before they are kept, and the
+side button stops the portal. See the root README for the security trade-off
+(no password: anyone in range, or on the home network, while the screen is
+open).
 
-Or let the device fetch decks itself over your **home Wi-Fi**: save the network
-once in the **Home Wi-Fi** form on that same page, then pick **Decks -> + Get
-decks** on the device. It joins the network only while that screen is open,
-reads the release catalog over HTTPS (verified, redirects followed), lists the
-decks (`+` new, `=` here, `~` other size) and downloads the one you hold, checked
-against the catalog's size and SHA-256. The side button cancels a download; a
-click of the power button or a critical battery cancels it and sleeps, and on
-battery below 6 % it does not start. A fresh device offers the same from its
-boot screen once a home network is saved. The default catalog only exists once
-a public release carries packs + `catalog.txt`; the page can set another URL.
-Serial `[net]` lines report each step and the free heap around TLS.
+Or fetch decks on the device itself: **Decks -> + Get decks** joins the home
+Wi-Fi only while that screen is open, reads the release catalog over HTTPS
+(verified, redirects followed), lists the decks (`+` new, `=` here, `~` other
+size) and downloads the one you hold, checked against the catalog's size and
+SHA-256. The page's downloads use the same code. The side button cancels a
+download; a click of the power button or a critical battery cancels it and
+sleeps, and on battery below 6 % it does not start. A fresh device offers the
+same from its boot screen once a home network is saved. The default catalog
+only exists once a public release carries packs + `catalog.txt`; the page can
+set another URL. Serial `[wifi]` and `[net]` lines report each step and the free
+heap around TLS and around a download from the page.
 
 ## Flash layout
 
@@ -85,9 +95,10 @@ is revealed, a tap advances: for a correct answer straight to the next card, for
 a wrong answer it first opens the mistake **detail card** (meanings, readings,
 stroke order), and the next tap starts the following question. The side button is
 a tap shortcut; **holding it opens the settings home** (Continue / Decks / Date /
-New per day / Speed / Statistics / Wi-Fi / Orientation / Language / Brightness /
-Sleep), where a tap moves the selection, a hold activates the row, and the side
-button goes back. The deck list's last row, **+ Get decks**, downloads decks
+New per day / Speed / Statistics / Wi-Fi » / Orientation / Language / Brightness
+/ Sleep), where a tap moves the selection, a hold activates the row, and the side
+button goes back. **Wi-Fi »** opens its own list (Web portal / Home network /
+Setup mode / Forget network) that works the same way. The deck list's last row, **+ Get decks**, downloads decks
 over the home Wi-Fi (tap moves, hold downloads or studies, side button
 cancels/back).
 
@@ -113,8 +124,9 @@ power-off. **On USB power** it only turns the panel off (the serial port stays u
 for flashing and logs); any press turns it back on, and unplugging lets it sleep.
 To flash a sleeping device on battery, wake it first. The CPU runs at 80 MHz
 (240 MHz while the Wi-Fi portal or the home Wi-Fi is up; the home Wi-Fi only
-while Get decks is open, or for a few seconds while the date question after a
-power-off fetches the network time; a download or a join counts as activity).
+while the portal in home mode, Get decks or the network test is open, or for a
+few seconds while the date question after a power-off fetches the network time;
+a download or a join counts as activity).
 
 **Sleep on demand.** On the StickS3 a **click of the power button** (the M5PM1's
 button, which used to restart the device) saves and deep-sleeps right away, after
@@ -147,8 +159,8 @@ notice again and goes back to sleep. Plug in USB to use it.
 ## Date
 
 There is no RTC chip: the SRS day advances with uptime and deep sleep. Opening
-the Wi-Fi portal page from a phone (**Settings → Wi-Fi**, then
-`http://192.168.4.1`) sets the real date from the phone's clock and time zone;
+the Wi-Fi portal page from a phone (**Settings → Wi-Fi » → Web portal**, then
+the address on the screen) sets the real date from the phone's clock and time zone;
 from then on the day rolls over at 04:00 local and the statistics show the real
 date (docs/srs.md §5.1). After a real power-off the device asks on the **date
 screen**: it shows the last-used date and a proposed "today" with its weekday. A
@@ -156,8 +168,9 @@ tap adds a day, a hold confirms, a side-button hold takes a day back (never
 before the current day) and a side tap skips the question. The same screen is
 **Settings → Date** for manual corrections.
 
-**Network time.** With a home Wi-Fi saved, the date also comes from NTP: Get
-decks syncs it once connected (at most 3 s, a failure is only logged), and the
+**Network time.** With a home Wi-Fi saved, the date also comes from NTP: the
+portal in home mode, Get decks and the network test sync it once connected (at
+most 3 s, a failure is only logged), and the
 power-off date question joins the home Wi-Fi in the background ("Syncing via
 <network>..."), takes the time and moves on to the quiz by itself. If that
 fails the line says to set the date by hand (radio off); answering by hand at
@@ -170,8 +183,11 @@ offset is not refreshed by NTP: after a DST change, open the page again).
 `src/board` HAL (one impl per board), `src/pack` pack reader (pure C++),
 `src/quiz` question builder (pure C++), `src/imu` orientation filter for the
 Auto rotation (pure C++), `src/power` critical-battery guard (pure C++),
-`src/catalog` deck-catalog parser (pure C++), `src/render` glyph/text drawing,
-`src/platform` LittleFS-backed pack source and SRS file, the on-device Wi-Fi
-portal (`WifiPortal`: open AP + HTTP upload/delete/download/stats/home Wi-Fi/
-phone clock), the home network (`HomeWifi`) and the shared HTTP(S) pack
-download (`NetFetch`, roots in `RootCerts.h`), `src/main.cpp` the app.
+`src/catalog` deck-catalog parser (pure C++), `src/portal` the portal's pure
+helpers (Wi-Fi QR text, QR size, page language) and its page strings in en/es,
+`src/render` glyph/text drawing, `src/platform` LittleFS-backed pack source and
+SRS file, the on-device Wi-Fi portal (`WifiPortal`: setup mode = open AP, home
+mode = the home network; one HTTP page for the catalog, upload/delete/download,
+stats, home Wi-Fi and the phone clock), the home network (`HomeWifi`) and the
+shared HTTP(S) pack and catalog download (`NetFetch`, roots in `RootCerts.h`),
+`src/main.cpp` the app.

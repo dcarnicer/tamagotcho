@@ -1442,3 +1442,134 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   and reads the v2 `mini.tgc` against it. `fixtures/mini_v1.tgc` is the last v1
   fixture, frozen, for the v1 reader test. The byte-identity baseline of the
   no-strokes writer is now `tests/data/mini_v2_baseline.tgc`.
+
+## 2026-10-18 – Portal over the home Wi-Fi; task-oriented page; Wi-Fi menu
+
+- **Why.** Tested on hardware the same day: everything worked, but (1) the
+  page was ordered packs → upload → URL download → home Wi-Fi → catalog →
+  statistics, which reads backwards for a first setup; (2) using the page put
+  the phone on the device's open access point, without internet; (3) Settings
+  had a single "Wi-Fi" row. Wi-Fi stays **off by default**: the radio runs only
+  while the Wi-Fi screen is open (5 min idle timeout, HTTP requests count),
+  during Get decks and the new network test, and for the one NTP sync after a
+  power cut.
+- **Two modes, one page** (`WifiPortal::Mode`). *Setup mode* is the open
+  access point of before (`begin()`). *Home mode* (`beginHome()`) serves the
+  same WebServer on the station IP after the app joined the saved network with
+  `HomeWifi` (its 15 s timeout and failure reasons) and ran NTP as Get decks
+  does. The portal never owns the station: `end()` leaves it up and the app
+  turns it off (`stopPortal()` → `netRadioOff()`), so the radio and CPU rules
+  stay in main.cpp (240 MHz only while the radio is on, 80 MHz on every exit).
+  "Web portal" opens home mode when a network is saved, else setup mode;
+  "Setup mode" forces the access point. A failed join shows why with "tap: try
+  again, hold: setup mode" (a hold during the join skips it). At boot with no
+  deck: no network → setup mode as before; a network → home mode, **falling
+  back to setup mode by itself** when the join fails, the reason on screen,
+  because that screen has nothing else to offer.
+- **Switching.** Once a network is saved, the setup-mode page offers **Switch
+  to my Wi-Fi** (`POST /home`), staged like "Get decks now" (the 1 s grace is
+  now a shared `Leave` stage): the response page tells the user to go back to
+  their Wi-Fi and open the address or QR code on the device, then
+  `Hooks::onSwitchToHome` → `openPortal(Home)`. In home mode the same POST is
+  **Reconnect** (after saving another network). **Get decks on the device
+  screen** (`POST /getdecks`) stays in setup mode, unchanged; home mode lists
+  the decks on the page instead.
+- **QR codes** with M5GFX/LovyanGFX's own `qrcode()`, no new library. The
+  version comes from `qrVersionForBytes()` (byte mode, ECC level L, which is
+  what `qrcode()` uses), and the code is drawn exactly `modules × px` wide
+  inside a white square with a **2-module quiet zone** (the spec's 4 would cut
+  the modules from 4 to 3 px on the 135 px screen; phone cameras read 2 fine
+  against the black surround -- to confirm on hardware). Setup mode:
+  `WIFI:T:nopass;S:<ssid>;;` with `\ ; , : "` escaped (`wifiQrOpenNetwork()`,
+  native-tested); a tap swaps it for `http://192.168.4.1/`. Home mode:
+  `http://<ip>/`. Portrait stacks the QR (116 px for version 2) over the text,
+  landscape puts it on the left; a URL too wide for the 1x line drops
+  `http://` and the slash.
+- **The catalog on the page.** Home mode reads it from `poll()` right after the
+  server starts (one iteration to paint "reading catalog...", then the blocking
+  `fetchCatalog()`, now shared with Get decks and the test; the page
+  meta-refreshes every 2 s meanwhile), with "Try again" on a failure and a new
+  read when the catalog URL changes. Rows are ordered by `orderCatalogForLang()`
+  with `catalogOrderLang()`: the device UI language, else the page's `?lang=`
+  choice, else the browser's top Accept-Language tag (any language, as Get
+  decks uses `navigator.language`). Each row's state (Download / Update / On
+  the device) is `catalogDeckState()`, the size rule the device list now shares.
+- **Downloads from the page.** `POST /deck` (by name; only a catalog deck that is
+  not already on the device) is staged: one poll paints the device screen, the
+  next runs `Hooks::onDeckDownload` → `downloadCatalogDeck()` in main.cpp, the
+  function Get decks now uses too: refused on battery below 6 %, the live deck
+  closed and reopened, `fetchPackFile()` with size, SHA-256, free space + the
+  96 KB reserve, magic + probe and the atomic rename, then
+  `portalPacksChanged()`. The side button cancels; the power button and a
+  critical battery cancel and sleep, as before. **One download at a time**:
+  while one is staged or running, another download, a delete, an upload, a URL
+  download and a switch are refused ("busy"). The progress callback
+  (`netProgress()`) redraws the Wi-Fi screen and calls
+  `WifiPortal::serviceDownload()`, which answers the page at most every 100 ms:
+  `GET /` is then a small progress view (meta-refresh 2 s, no script) and
+  `/api/status` gives the same as JSON. Accepted gap: an upload posted from
+  another tab during a download is read (and discarded) by the WebServer inside
+  that callback and can stall the TLS stream past its 15 s idle timeout; the
+  progress view itself has no forms.
+- **Memory.** In home mode a TLS download runs while the WebServer is up: still
+  one TLS connection at a time, plus at most one short plain-HTTP client served
+  between body chunks. New `[net] home portal up` and `[net] page download
+  start/end` heap lines join the existing `before/after TLS` ones. **Not
+  measured on hardware.**
+- **mDNS.** Home mode also answers as `http://tangocho.local/` (ESPmDNS, started
+  and stopped with the server). Cost **+25.9 KB of flash** (1,386,821 vs
+  1,360,889 bytes on the StickS3) and an mDNS task while home mode runs. Kept
+  because a bookmark survives a new DHCP address on iOS/macOS/Windows; Android
+  resolves `.local` unevenly, so the QR code and the IP stay primary.
+  `-DTGC_PORTAL_MDNS=0` drops it.
+- **The page**, one self-contained HTML, no external assets: a status line
+  (decks on the device, free space, "via <home network>" or "on the device's
+  own network <AP>"), the clock line, a one-shot notice, then the task: *first
+  setup* (no network saved): step 1 "Connect the device to your Wi-Fi" (SSID
+  with the scan's suggestions, password), step 2 what comes next; *setup mode
+  with a network*: Get decks = Switch to my Wi-Fi / Get decks on the device
+  screen; *home mode*: the catalog. Then **Your decks** (the loaded one marked,
+  delete), then **Advanced** as a closed `<details>` (upload, URL download,
+  catalog URL, home Wi-Fi change/forget/Reconnect, statistics, JSON links),
+  opened when the last action was one of these. POST handlers now redirect
+  (303) with a one-shot notice instead of separate result pages; the leave
+  pages and the upload result stay standalone (after a boot-time upload the
+  device moves into the quiz and stops the portal right after its response). Script stays minimal: the `POST /time` clock script
+  (its messages now come from data attributes), `confirm()` on delete/forget
+  and `navigator.language` for Get decks; every form works without it.
+- **Language.** `portalPageLang()`: the device UI language (the Language
+  setting, or the loaded deck's under Auto); when Auto has no deck, the page's
+  `?lang=` link (kept for the session), else the highest-q English or Spanish
+  Accept-Language entry, else English. The strings live in `portal/PortalText`
+  (English defaults, Spanish overriding each by name; a native test checks the
+  Spanish table is complete). The device screen's status line from the portal
+  (`lastMessage()`) stays English, as before.
+- **Settings › Wi-Fi.** Row 6 becomes **"Wi-Fi »"** (Font0 has `»`, CP437 0xAF,
+  not `›`), so the settings home keeps 11 rows; it opens a list in the
+  settings style: **Web portal**, **Home: <network>|none** (a test: join, IP,
+  RSSI with a word from `rssiQuality()`, the catalog -- deck count or the
+  error, which is the end-to-end check that the host is reachable, TLS
+  included -- and the network time when the offset is saved, applied like any
+  NTP sync; then radio off; a hold repeats), **Setup mode** and **Forget
+  network** (a Cancel/Forget picker with Cancel selected, so it takes a tap and
+  a hold; with nothing saved, a note). The side button goes back to the list,
+  and from there to the settings home.
+- **The boot-only upload flag is unchanged** (set only at boot; the side button
+  is inert while there is no deck). Setup mode still moves into the quiz as
+  soon as an upload brings a deck. Home mode does not: its page is where the
+  decks come from, and leaving under it would cut the page off mid-use; once a
+  deck is loaded the screen says "side: start studying" and the side button
+  stops the portal and starts the quiz.
+- **Security.** Home mode exposes the unauthenticated page to the whole home
+  network while the Wi-Fi screen is open -- the same trade-off as the open
+  access point (anyone in radio range), stated on the page, in README and in
+  `WifiPortal.h`. The password stays write-only: never in a page, the JSON or a
+  log.
+- **Kept:** the dim/sleep timers and their activity accounting, radio off and
+  80 MHz on every exit, the battery and power-button guards during downloads,
+  the boot-only upload flag, the already-here/update rule, NTP on connect.
+- **Flash:** StickS3 1,319,353 → 1,386,821 bytes (+67.5 KB, 66.1 % of the
+  2 MB slot): mDNS 25.9 KB, the rest the QR encoder, the page code and the two
+  string tables. Static RAM 51,164 → 54,148 bytes. Pure helpers in
+  `portal/PortalLogic` with native tests (`test_portal`). **Not verified on
+  hardware.**

@@ -97,6 +97,16 @@ Scope for now: **kanji only** (no vocabulary decks).
         on hardware yet**: TLS
         heap use, download speed and the GitHub redirect chain on a real
         StickS3 are to be confirmed (`[net]` serial lines log the heap).
+      - [x] **Portal over the home Wi-Fi** (2026-10-18). With a home network
+        saved, the portal joins it and serves the page on the station IP (QR
+        code on the device, `tangocho.local` over mDNS), so the phone keeps its
+        internet; the page lists the catalog and downloads decks itself, with a
+        progress view. The open access point stays as *setup mode* (QR code to
+        join), whose page saves the network and switches to home mode. The page
+        is reordered around the task (first setup / Get decks / Your decks /
+        Advanced) and follows the device or browser language (en/es). Settings
+        gains a **Wi-Fi »** submenu: Web portal, Home network (test), Setup
+        mode, Forget network. **Not verified on hardware yet.**
       - [x] **Auto-rotation from the IMU** (2026-10-18). Use the StickS3's BMI270
         accelerometer to switch portrait/landscape as the device is turned, with
         hysteresis and a short settle time so it does not flicker; the

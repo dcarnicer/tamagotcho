@@ -383,8 +383,8 @@ clock needs, so the native tests drive time explicitly.
 
 ### 5.1 Real time from the phone and from NTP
 
-Opening the Wi-Fi portal page (`http://192.168.4.1`) makes the browser post its
-clock: `POST /time` with `ms` = `Date.now()` (UTC milliseconds), `tz` = minutes
+Opening the Wi-Fi portal page (`http://192.168.4.1` in setup mode, the address
+the device shows in home mode) makes the browser post its clock: `POST /time` with `ms` = `Date.now()` (UTC milliseconds), `tz` = minutes
 **east** of UTC (`-new Date().getTimezoneOffset()`, so +120 for CEST) and an
 optional IANA `zone` name used only in the portal's message. The portal checks
 the syntax and hands the two numbers to the app (`WifiPortal::Hooks::onTime`);
