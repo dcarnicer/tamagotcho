@@ -76,6 +76,16 @@ New per day / Speed / Statistics / Wi-Fi / Orientation / Language / Brightness),
 where a tap moves the selection, a hold activates the row, and the side button
 goes back.
 
+## Orientation
+
+Settings → Orientation: **Portrait** (default), **Landscape**, or, on the
+StickS3, **Auto**, which follows the accelerometer: upright for portrait,
+turned either way for landscape (the text is upright in both directions).
+Upside down and lying flat keep the current layout. A turn takes effect after
+about half a second, never in the middle of a button press, and does not count
+as activity for dimming or sleep. Only the picture turns; the buttons keep their
+roles. The T-Display-S3 has no IMU and offers only the fixed choices.
+
 ## Power
 
 After 30 s without a button press the backlight dims (the next press brightens
@@ -98,7 +108,8 @@ To flash a sleeping device on battery, wake it first. The CPU runs at 80 MHz
 ## Layout
 
 `src/board` HAL (one impl per board), `src/pack` pack reader (pure C++),
-`src/quiz` question builder (pure C++), `src/render` glyph/text drawing,
+`src/quiz` question builder (pure C++), `src/imu` orientation filter for the
+Auto rotation (pure C++), `src/render` glyph/text drawing,
 `src/platform` LittleFS-backed pack source and SRS file plus the on-device Wi-Fi
 portal (`WifiPortal`: open AP + HTTP upload/delete/download/stats),
 `src/main.cpp` Phase 0 app.

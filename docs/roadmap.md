@@ -63,11 +63,13 @@ Scope for now: **kanji only** (no vocabulary decks).
         Needs **HTTPS**: GitHub release assets are `https://` with redirects,
         and the current fetch is plain `http://` only, so TLS (root CA bundle,
         redirect following, memory on the StickS3) has to be added and tested.
-      - [ ] **Auto-rotation from the IMU.** Use the StickS3's BMI270
+      - [x] **Auto-rotation from the IMU** (2026-10-18). Use the StickS3's BMI270
         accelerometer to switch portrait/landscape as the device is turned, with
         hysteresis and a short settle time so it does not flicker; the
         Orientation setting gains "Auto" next to the fixed choices. The
-        T-Display-S3 has no IMU and keeps the fixed setting.
+        T-Display-S3 has no IMU and keeps the fixed setting. Auto uses portrait
+        and both landscape directions (pure `imu/OrientationFilter`). Pending:
+        confirm the accelerometer axis mapping on hardware.
       - [ ] IMU input (tilt to choose).
       - [x] **WaniKani importer** (user's own token, unlocked kanji only). The
         builder can build a pack from the kanji a user has unlocked on their own

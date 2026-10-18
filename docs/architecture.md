@@ -30,15 +30,16 @@
 
 | module        | role                                                         |
 |---------------|--------------------------------------------------------------|
-| `board/`      | HAL: display handle, buttons, battery, sleep. One impl per board |
+| `board/`      | HAL: display handle and rotation, buttons, accelerometer, battery, sleep. One impl per board |
 | `pack/`       | `PackReader`: parse header/tables, glyph lookup, string access, stroke masks. Pure C++, unit tested natively |
 | `render/`     | Draw 4bpp glyphs, 1bpp stroke masks and UTF-8 text from pack glyphs onto a GFX canvas |
 | `quiz/`       | Build a question (prompt + 4 options) from a card and its distractors. Pure C++ |
 | `srs/`        | Scheduling (FSRS, phase 2) and persisted review state         |
+| `imu/`        | `OrientationFilter`: accelerometer samples to a stable display rotation for the Auto orientation (hysteresis, settle time, flat and motion rejection). Pure C++, unit tested natively |
 | `platform/`   | LittleFS-backed pack source and SRS state file, plus the on-device **Wi-Fi portal** (access point + HTTP server) for uploading, deleting and downloading packs and reading the statistics. Arduino only |
 | `ui/`         | Screens and input state machine                              |
 
-Pure-logic modules (`pack`, `quiz`, `srs`) must build in the `native`
+Pure-logic modules (`pack`, `quiz`, `srs`, `imu`) must build in the `native`
 PlatformIO env with no Arduino headers.
 
 ## Target hardware
@@ -48,4 +49,9 @@ PlatformIO env with no Arduino headers.
 - **LilyGO T-Display-S3** (dev stand-in): ESP32-S3R8, 16 MB flash, 170×320
   parallel panel, 2 buttons, no IMU. Via LovyanGFX.
 
-UI layout is computed from the panel size, portrait orientation.
+UI layout is computed from the panel size (`W` x `H`), so every screen has a
+portrait and a landscape form. The Orientation setting is Portrait (rotation
+0, default), Landscape (rotation 1) or, on boards with an accelerometer, Auto:
+`board::readAccel()` gives gravity in the panel frame, `imu/OrientationFilter`
+turns it into rotation 0, 1 or 3, and the app applies a settled change only
+while no button is down (docs/decisions.md, 2026-10-18).
