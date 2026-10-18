@@ -14,8 +14,9 @@ Offsets come from the partition CSV (authoritative), not from constants:
 - the application goes to the offset of the table's ``app`` partition.
 - an Arduino/ESP-IDF build with an **OTA data partition** also needs the
   ``boot_app0.bin`` image (the "which OTA slot to boot" record) at that
-  partition's offset. Our tables have no OTA partition, so this part is omitted
-  — exactly what PlatformIO does for the same table (see docs/decisions.md).
+  partition's offset. Our tables have no OTA partition, so this part is omitted.
+  (PlatformIO's USB upload still writes ``boot_app0.bin`` at ``0xe000``, over
+  the unused ``phy_init`` partition; see docs/decisions.md.)
 
 Usage (see README.md "Releases"):
 

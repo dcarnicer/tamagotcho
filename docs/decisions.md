@@ -1686,3 +1686,27 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   About and TextLayout 5.9 KB, portal footer 1.8 KB), static RAM 54,148 →
   54,156 bytes. **Not verified on hardware.**
 
+## 2026-10-18 – v0.1.0: how the release images are flashed
+
+- **The merged image is flashed in DIO.** `pio run -t upload -v` writes these
+  boards with `--flash_mode dio` (the app switches the flash to QIO itself);
+  `merge_image.py` used QIO, so its default is now DIO to mirror the USB upload.
+- **Correction:** the 2026-10-17 "Release artifacts" entry says PlatformIO
+  omits `boot_app0.bin` for our table. It does not: its upload writes
+  `boot_app0.bin` at `0xe000`, over the unused `phy_init` partition. The merged
+  image leaves it out, which is what a table without OTA needs.
+- **A merged image erases the settings.** `merge_bin` pads the gaps with
+  `0xFF`, so writing it at `0x0` clears NVS (home Wi-Fi, preferences, time
+  zone) up to the end of the app; LittleFS starts after the 2 MB app slot and
+  keeps the decks and the study progress. Updates should therefore use the
+  app-only image at `0x10000`; README and the release notes say so.
+- **Browser path:** ESP Web Tools needs a page that serves the image and the
+  manifest together, so "point a page at the release's manifest" (as the docs
+  said) does not work. The documented browser path is Espressif's esptool-js
+  flasher with the merged image at `0x0`; the manifests stay in the release for
+  a future install page.
+- **Verified on hardware** (v0.1.0-rc1, StickS3): the esptool path — the merged
+  image booted, kept 30 SRS records and the decks, came up with no settings,
+  opened setup mode with its QR and served the portal. Not yet tried: the
+  browser path and the T-Display-S3 merged image.
+

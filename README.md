@@ -248,11 +248,11 @@ or left by another firmware), formats it ("Preparing storage...") and boots
 into the Wi-Fi portal's setup mode, where decks can be fetched or uploaded over
 the air.
 
-> Honest status — **not verified on hardware.** We have not flashed a merged
-> image through ESP Web Tools or `esptool write_flash` on a real StickS3. The
-> offsets come from the partition table and the build output and mirror
-> `pio run -t upload`, but the browser path is unconfirmed until someone tries
-> it.
+> Status: the **esptool** path is verified — a v0.1.0 candidate's merged
+> image, written at `0x0` on a real StickS3, booted, kept its decks and
+> progress, and started with the settings erased (2026-10-18). The **browser**
+> path (esptool-js) writes the same file at the same offset but has not been
+> tried yet; nor has the T-Display-S3 image.
 
 ### Prebuilt decks and their licence
 

@@ -222,8 +222,9 @@ jobs:
             deck on the device over Wi-Fi (a device with no deck boots into the
             Wi-Fi upload screen).
 
-          The merged image and manifest are **not verified on hardware yet**; see
-          docs/decisions.md.
+          The StickS3 merged image was verified with esptool on a real device;
+          the browser path and the T-Display-S3 image are not verified yet
+          (see docs/decisions.md).
 
           ## Decks
 
