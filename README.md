@@ -75,10 +75,11 @@ setup mode and a tap tries again.
   (change, forget, reconnect), the statistics and the JSON at `/api/stats` and
   `/api/status`. The side button on the device stops the portal.
 - Without the phone: **Decks → + Get decks** joins the home Wi-Fi and lists the
-  catalog on the device screen (`+` new, `=` here, `~` here in another build;
-  tap moves, **hold downloads** or, on a deck that is here, studies it; the side
-  button goes back). In setup mode the page also offers **Get decks on the
-  device screen**, and a fresh device's boot screen offers it with a hold.
+  catalog's decks by title on the device screen (`+` new, `=` here, `~` here in
+  another build; tap moves, **hold downloads** or, on a deck that is here,
+  studies it; the side button goes back). In setup mode the page also offers
+  **Get decks on the device screen**, and a fresh device's boot screen offers it
+  with a hold.
 - **Settings → Wi-Fi » → Home: <network>** tests the saved network: it joins,
   shows the IP address, the signal, whether the deck catalog answers and
   whether the network time works, then turns the radio off again.
@@ -124,12 +125,14 @@ setup mode and a tap tries again.
   deck yet follows the browser's language, and the page offers English /
   Español links.
 - The default catalog is
-  `https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt`,
-  the dedicated **decks release** for the pack format this firmware reads (see
-  [Prebuilt decks](#prebuilt-decks-and-their-licence) below). It works once that
-  release has been published (a maintainer decision, see "Before publishing" in
-  the roadmap); until then the device says no catalog is published. The page
-  can point it at another catalog (any `http(s)://` URL, e.g. your own server).
+  `https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog-v2.txt`,
+  in the dedicated **decks release** for the pack format this firmware reads (see
+  [Prebuilt decks](#prebuilt-decks-and-their-licence) below). It works once the
+  decks workflow has published `catalog-v2.txt` there (a maintainer action);
+  until then the device says no catalog is published. The page can point it at
+  another catalog (any `http(s)://` URL, e.g. your own server); it must be
+  catalog format v2 (with deck titles), and an older `catalog.txt` is refused as
+  an old format.
 - Everything else works offline as before. **Home mode, the QR codes and the
   Wi-Fi menu are not verified on hardware yet.**
 
@@ -280,10 +283,12 @@ firmware release never hides it, and a rebuild replaces its files in place. It
 holds `*.tgc` packs built with `--strokes` — by default JLPT N5 to N1 and the
 full **Jōyō** deck (2,136 kanji, in school order), each in Spanish and English
 (`n5-es.tgc` ... `n1-en.tgc`, `joyo-es.tgc`, `joyo-en.tgc`) — and the
-line-oriented `catalog.txt` the device reads for **Get decks** (format:
-`tools/pack-builder/README.md`), plus a `catalog.json` for people. Firmware
-reads the release of its own pack format, so a future format gets a new
-`decks-v<N>` release and older firmware keeps the decks it can open.
+line-oriented `catalog-v2.txt` the device reads for **Get decks**, with each
+deck's title (format: `tools/pack-builder/README.md`), plus a `catalog-v2.json`
+for people. The `v2` in the catalog's name is the *catalog* format; the one in
+the tag is the *pack* format. Firmware reads the release of its own pack
+format, so a future format gets a new `decks-v<N>` release and older firmware
+keeps the decks it can open.
 
 The workflow's inputs are the JLPT levels (`5 4 3 2 1`), the meaning languages
 (`es en`), whether to build the Jōyō deck, and whether to publish (off: build,

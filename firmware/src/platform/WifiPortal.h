@@ -282,6 +282,7 @@ private:
     std::vector<CatalogEntry> catalog_;
     FetchResult catFetch_;
     CatalogError catError_ = CatalogError::Ok;
+    int catVersion_ = 0;  // the catalog's format version (UnsupportedVersion: older or newer)
 
     // Home mode: one deck download from the page at a time. POST /deck stages
     // it (stage 1); the next poll only marks the device screen for a repaint

@@ -9,7 +9,7 @@
  CSV/Anki* ─┘             font (Noto Sans JP) ─► glyphs ─┘      └─ config         Quiz engine ─► UI
                                                                                   Board HAL (StickS3 / T-Display-S3)
         phone/laptop ──(setup mode: open AP 192.168.4.1 | home mode: home Wi-Fi, http://<ip>/)──► Wi-Fi portal (HTTP) ──► /packs
-        decks-v<format> release: catalog.txt + packs ──(home Wi-Fi, HTTPS, on demand)──► Get decks / portal page ──► /packs
+        decks-v<format> release: catalog-v2.txt + packs ──(home Wi-Fi, HTTPS, on demand)──► Get decks / portal page ──► /packs
  * later phases
 ```
 
@@ -37,7 +37,7 @@
 | `pack/`       | `PackReader`: parse header/tables (pack v1 and v2), glyph lookup, string access, stroke masks; `Rle` decodes v2's compressed glyph bitmaps and stroke masks on read, through a small window over the file. Pure C++, unit tested natively |
 | `render/`     | Draw 4bpp glyphs, 1bpp stroke masks and UTF-8 text onto a GFX canvas: pack glyphs, the built-in Font0 (captions) and the UI font (`Renderer::kTextUi` / `kTextUiNumeral`, no pack needed), with `drawLabel` (one line, cap-height centred, ellipsis). `Widgets`: the flat UX components (header, hint bar, option tile, list row, pill, progress bar, a scrolling list drawer) and `presentRegion` (a partial push: `setClipRect` + `pushSprite`) |
 | `quiz/`       | Build a question (prompt + 4 options) from a card and its distractors. Pure C++ |
-| `catalog/`    | Parse the line-oriented deck catalog (`tangocho-pack catalog`): version check, per-record validation (safe file name, numbers, SHA-256, URL), bare-file-name URLs resolved against the catalog URL, entry cap; own-language ordering and a deck's state against `/packs` (new / on device / update). Pure C++, unit tested natively |
+| `catalog/`    | Parse the line-oriented deck catalog (`tangocho-pack catalog`, format v2 only, `catalog-v2.txt`): version check, per-record validation (safe file name, deck title as UTF-8, numbers, SHA-256, URL), bare-file-name URLs resolved against the catalog URL, entry cap; own-language ordering and a deck's state against `/packs` (new / on device / update). Pure C++, unit tested natively |
 | `portal/`     | The Wi-Fi portal's pure helpers: the `WIFI:` QR text for the open access point (escaping), the QR version for a text, the page language (device UI language, else the browser's Accept-Language) and the deck-list language, RSSI quality words; and every page string in English and Spanish (`PortalText`). Pure C++, unit tested natively |
 | `srs/`        | Scheduling (FSRS, phase 2) and persisted review state; the day clock and the real date (`WallClock`: the 04:00 study day); time zones (`TimeZone`: POSIX TZ rules with daylight saving time, the curated zone list), so study days are 23/25 h on a change day. Pure C++, unit tested natively |
 | `imu/`        | `OrientationFilter`: accelerometer samples to a stable display rotation for the Auto orientation (hysteresis, settle time, flat and motion rejection). Pure C++, unit tested natively |

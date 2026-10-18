@@ -209,6 +209,7 @@ struct UiStrings {
     const char* netNotPublished;
     const char* netBadCatalog;
     const char* netNewerCatalog;
+    const char* netOldCatalog;  // a catalog format older than kCatalogVersion (v1 catalog.txt)
     const char* netCorrupt;
     const char* netNoSpace;
     const char* netNoSpaceUpdate;  // detail: an update needs room for the old and the new copy
@@ -313,7 +314,8 @@ const UiStrings kUiEn = {
     "No home Wi-Fi saved", "Settings > Wi-Fi > Setup mode, then save your network on the page",
     "Network not found", "Wrong password?", "Could not connect", "Server unreachable",
     "Secure connection failed", "Server error %d", "No catalog published at this URL yet",
-    "Bad catalog", "Newer catalog format: update the firmware", "Download corrupt",
+    "Bad catalog", "Newer catalog format: update the firmware",
+    "Old catalog format: set a catalog-v2.txt URL on the portal page", "Download corrupt",
     "Not enough space",
     "An update needs room for both copies. Delete the old one first: Settings > Wi-Fi > Web portal",
     "Not a valid deck", "Download failed", "Cancelled",
@@ -371,7 +373,8 @@ const UiStrings kUiEs = {
     "Sin Wi-Fi de casa", "Ajustes > Wi-Fi > Modo configuración, y guarda tu red en la página",
     "Red no encontrada", "¿Contraseña incorrecta?", "No se pudo conectar", "Servidor inaccesible",
     "Fallo de conexión segura", "Error del servidor %d", "Aún no hay catálogo en esta URL",
-    "Catálogo no válido", "Catálogo más nuevo: actualiza el firmware", "Descarga dañada",
+    "Catálogo no válido", "Catálogo más nuevo: actualiza el firmware",
+    "Catálogo antiguo: pon una URL de catalog-v2.txt en la página del portal", "Descarga dañada",
     "No hay espacio",
     "Hace falta sitio para las dos copias. Borra antes la vieja: Ajustes > Wi-Fi > Portal web",
     "Mazo no válido", "Descarga fallida", "Cancelado",
@@ -2011,10 +2014,11 @@ void drawGetDecks() {
             const uint16_t fg = st == tgc::DeckState::OnDevice ? kGreen
                                 : (st == tgc::DeckState::Update ? kYellow : kWhite);
             const int ty = y + (rowH - 2 - 8) / 2;
-            // Right column "en 704K"; when the name would not fit next to it
-            // (the 135 px portrait), only the size (the footer has the language).
+            // The deck's title ("JLPT N5"; the file name when it has none). Right
+            // column "en 704K"; when the title would not fit next to it (the
+            // 135 px portrait), only the size (the footer has the language).
             const int nameX = 13;
-            String name = e.name.c_str();
+            String name = tgc::catalogDisplayName(e).c_str();
             char right[24], size[12];
             formatBytes(e.bytes, size, sizeof size, true);
             snprintf(right, sizeof right, "%s %s", e.lang.c_str(), size);
@@ -2026,10 +2030,14 @@ void drawGetDecks() {
             smallText(d, right, W - 4, ty, kWhite, bg, lgfx::top_right);
             smallText(d, st == tgc::DeckState::OnDevice ? "=" : (st == tgc::DeckState::Update ? "~" : "+"),
                       4, ty, fg, bg);
-            // The name gets what the size column leaves, cut with ".." if needed.
+            // The title gets what the size column leaves, cut with ".." if
+            // needed, a whole UTF-8 character at a time.
             if (gRender.textWidth(name.c_str(), kSmall) > maxW) {
-                while (name.length() > 1 && gRender.textWidth((name + "..").c_str(), kSmall) > maxW)
-                    name.remove(name.length() - 1);
+                while (name.length() > 1 && gRender.textWidth((name + "..").c_str(), kSmall) > maxW) {
+                    unsigned len = name.length() - 1;
+                    while (len > 1 && (static_cast<uint8_t>(name[len]) & 0xC0) == 0x80) --len;
+                    name.remove(len);
+                }
                 name += "..";
             }
             smallText(d, name.c_str(), nameX, ty, fg, bg);
@@ -3345,7 +3353,9 @@ bool catalogFailure(const tgc::CatalogFetch& c, const String& url, char* title, 
             if (c.parse.error == tgc::CatalogError::Ok) return false;
             snprintf(title, tn, "%s", ui().netBadCatalog);
             if (c.parse.error == tgc::CatalogError::UnsupportedVersion)
-                snprintf(detail, dn, "%s", ui().netNewerCatalog);
+                snprintf(detail, dn, "%s",
+                         c.parse.version < tgc::kCatalogVersion ? ui().netOldCatalog
+                                                                : ui().netNewerCatalog);
             return true;
         case tgc::FetchStatus::Connect:
             snprintf(title, tn, "%s", ui().netNoServer);

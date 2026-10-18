@@ -913,9 +913,15 @@ void WifiPortal::appendHomeDecks(String& h, const PortalStats& st) {
     for (const CatalogEntry& e : rows) {
         const String name = htmlEscape(e.name.c_str());
         const DeckState ds = deckStateOnDisk(kPacksDir, e);
+        // The deck's title, then the file it is saved as (what "Your decks"
+        // lists) before its language, cards and size.
         h += "<tr><td><b>";
-        h += name;
+        h += htmlEscape(catalogDisplayName(e).c_str());
         h += "</b><br><span class=\"muted\">";
+        if (!e.title.empty()) {
+            h += name;
+            h += ".tgc &middot; ";
+        }
         h += fmt(t.deckInfoFmt, htmlEscape(e.lang.empty() ? "?" : e.lang.c_str()).c_str(),
                  (unsigned)e.cards, formatSize(e.bytes).c_str());
         h += "</span></td><td class=\"r\">";
@@ -1098,7 +1104,8 @@ String WifiPortal::catalogProblem() const {
     const PortalText& t = portalText(pageLang());
     switch (catFetch_.status) {
         case FetchStatus::Ok:
-            return catError_ == CatalogError::UnsupportedVersion ? t.catalogNewer : t.catalogBad;
+            if (catError_ != CatalogError::UnsupportedVersion) return t.catalogBad;
+            return catVersion_ < kCatalogVersion ? t.catalogOlder : t.catalogNewer;
         case FetchStatus::Connect: return t.netServer;
         case FetchStatus::Tls:
             return String(t.netTls) + fmt(" (mbedTLS -0x%04X)", (unsigned)(-catFetch_.tlsError));
@@ -1710,6 +1717,7 @@ void WifiPortal::loadCatalog() {
     CatalogFetch c = fetchCatalog(HomeWifi::catalogUrl());
     catFetch_ = c.fetch;
     catError_ = c.parse.error;
+    catVersion_ = c.parse.version;
     if (c.fetch.status == FetchStatus::Ok && c.parse.error == CatalogError::Ok) {
         catalog_ = std::move(c.parse.entries);
         catState_ = CatalogState::Ready;

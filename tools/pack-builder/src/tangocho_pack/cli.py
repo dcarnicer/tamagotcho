@@ -73,6 +73,11 @@ def cmd_build(a) -> int:
     if not name.isascii():
         print(f"warning: deck name {name!r} is not ASCII; the device draws the deck name "
               "in its built-in ASCII font, so it will not show correctly", file=sys.stderr)
+    from .catalog import title_problem
+    problem = title_problem(name)
+    if problem:
+        print(f"warning: deck name {name!r} cannot be a catalog title ({problem}); "
+              "`catalog` will refuse this pack", file=sys.stderr)
     try:
         raw = build_pack(cards, a.font, a.lang, name, a.large_px, a.small_px, a.text_px, a.option_px,
                          strokes=a.strokes, strokes_px=a.strokes_px)
@@ -300,17 +305,21 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--font")
     s.set_defaults(fn=cmd_fixture)
 
-    s = sub.add_parser("catalog", help="write a line-oriented catalog of .tgc packs for the device")
+    from .catalog import FILE_NAME as CATALOG_FILE, JSON_FILE_NAME as CATALOG_JSON
+    from .catalog import VERSION as CATALOG_VERSION
+    s = sub.add_parser("catalog", help=f"write the line-oriented catalog (format v{CATALOG_VERSION}) "
+                                       "of .tgc packs for the device")
     s.add_argument("directory", nargs="?", default=".", help="directory to scan for *.tgc (default: .)")
     s.add_argument("--base-url",
                    help="prefix for the url column; may contain {file}, otherwise joined with '/'")
     s.add_argument("--json", metavar="PATH",
-                   help="also write a human-readable JSON catalog (not read by the device)")
+                   help="also write a human-readable JSON catalog (not read by the device; "
+                        f"published as {CATALOG_JSON})")
     s.add_argument("--order", metavar="NAMES",
                    help="pack names (without .tgc, comma or space separated) to list first, in "
                         "this order; the rest follow by file name")
     s.add_argument("-o", "--output", required=True,
-                   help="catalog file to write, or - for stdout")
+                   help=f"catalog file to write (published as {CATALOG_FILE}), or - for stdout")
     s.set_defaults(fn=cmd_catalog)
 
     a = ap.parse_args(argv)
