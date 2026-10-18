@@ -1899,3 +1899,22 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   UTC) posts UTC as the phone's zone, which replaces a zone chosen by hand at
   every visit. A page option to keep the device's zone would fix it; left out
   until it is seen in practice.
+
+## 2026-10-18 – UX refresh decisions
+
+- The maintainer answered the ten questions of `docs/ux-refresh.md` §6; the
+  full list is there. The ones that change the proposal:
+- **Flat, not rounded.** Radius 0 everywhere and 2 px gaps between tiles:
+  rounded corners cost pixels on a 135 px wide panel.
+- **UI font = Noto Sans JP in the firmware (U3).** The maintainer prefers a
+  sans and the packs already use Noto Sans JP; a firmware font works with no
+  pack loaded and leaves the pack format alone.
+- **Side tap in the quiz = previous option.** Two-way navigation halves the
+  worst case to reach an option. Response time feeds the grade, so fewer taps
+  also make "Hard after" less of a UI measurement.
+- **Date › under Device, not Study.** It holds the time zone too, a device
+  setting.
+- **Catalog v2 without backward compatibility.** Only the maintainer runs
+  the firmware, so v1 is dropped rather than published next to v2. Until
+  there are other users, compatibility with released firmware or packs is
+  not a constraint.
