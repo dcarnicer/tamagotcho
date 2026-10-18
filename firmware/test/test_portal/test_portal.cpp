@@ -2,9 +2,11 @@
 // payload, the QR version, the page language and the deck-list language.
 #include <unity.h>
 
+#include <cstring>
 #include <string>
 
 #include "portal/PortalLogic.h"
+#include "portal/PortalText.h"
 
 using namespace tgc;
 
@@ -96,6 +98,32 @@ void test_rssi_quality() {
     TEST_ASSERT_EQUAL(0, rssiQuality(-100));
 }
 
+// Every page string exists in both tables and the Spanish one translates all
+// of them (a string left out of makeSpanish() would show English on a Spanish
+// page). The table is a plain struct of string pointers, so walk it as one.
+void test_page_text_complete() {
+    static_assert(sizeof(PortalText) % sizeof(const char*) == 0, "PortalText holds only strings");
+    constexpr size_t n = sizeof(PortalText) / sizeof(const char*);
+    const PortalText& en = portalText("en");
+    const PortalText& es = portalText("es");
+    TEST_ASSERT_TRUE(&en != &es);
+    TEST_ASSERT_TRUE(&portalText(nullptr) == &en);
+    TEST_ASSERT_TRUE(&portalText("fr") == &en);
+    const char* const* a = reinterpret_cast<const char* const*>(&en);
+    const char* const* b = reinterpret_cast<const char* const*>(&es);
+    for (size_t i = 0; i < n; ++i) {
+        TEST_ASSERT_NOT_NULL(a[i]);
+        TEST_ASSERT_NOT_NULL(b[i]);
+        if (std::strcmp(a[i], b[i]) == 0) {
+            char msg[160];
+            snprintf(msg, sizeof msg, "untranslated string %u: \"%s\"", (unsigned)i, a[i]);
+            TEST_FAIL_MESSAGE(msg);
+        }
+    }
+    TEST_ASSERT_EQUAL_STRING("es", es.htmlLang);
+    TEST_ASSERT_EQUAL_STRING("Guardar", es.save);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_wifi_qr_escape);
@@ -105,5 +133,6 @@ int main() {
     RUN_TEST(test_page_lang);
     RUN_TEST(test_catalog_order_lang);
     RUN_TEST(test_rssi_quality);
+    RUN_TEST(test_page_text_complete);
     return UNITY_END();
 }
