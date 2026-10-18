@@ -1,5 +1,7 @@
 #include "render/Renderer.h"
 
+#include <esp_timer.h>
+
 #include <cstring>
 
 #include "pack/Utf8.h"
@@ -80,6 +82,7 @@ void Renderer::end() {
     cache_ = nullptr;
     scratch_ = nullptr;
     scratchCap_ = 0;
+    scratchGlyph_ = kNoGlyph;
     pack_ = nullptr;
 }
 
@@ -99,29 +102,47 @@ bool Renderer::builtinCanDraw(const char* s) {
     return true;
 }
 
-// Returns bitmap bytes (cached for small glyph sets, scratch for set 0).
+// The shared scratch buffer, grown to at least n bytes (null if out of memory).
+uint8_t* Renderer::scratchFor(size_t n) {
+    if (n > scratchCap_) {
+        const Allocator& a = pack_->allocator();
+        if (scratch_) a.release(scratch_);
+        scratch_ = static_cast<uint8_t*>(a.alloc(n));
+        scratchCap_ = scratch_ ? n : 0;
+        scratchGlyph_ = kNoGlyph;
+    }
+    return scratch_;
+}
+
+// Returns the decoded bitmap (cached for small glyph sets, scratch for set 0).
 const uint8_t* Renderer::bitmapFor(const Glyph& g) {
+    lastFetchUs_ = 0;
     size_t n = PackReader::bitmapSize(g);
     if (n == 0) return nullptr;
     const Allocator& a = pack_->allocator();
+    const uint32_t idx = pack_->glyphIndex(&g);
     if (g.set != kGlyphSetLarge) {
-        uint32_t idx = pack_->glyphIndex(&g);
         if (cache_[idx]) return cache_[idx];
         uint8_t* buf = static_cast<uint8_t*>(a.alloc(n));
+        const int64_t t0 = esp_timer_get_time();
         if (buf && pack_->readGlyphBitmap(g, buf, n)) {
+            lastFetchUs_ = static_cast<uint32_t>(esp_timer_get_time() - t0);
             cache_[idx] = buf;
             return buf;
         }
         if (buf) a.release(buf);
         return nullptr;
     }
-    if (n > scratchCap_) {
-        if (scratch_) a.release(scratch_);
-        scratch_ = static_cast<uint8_t*>(a.alloc(n));
-        scratchCap_ = scratch_ ? n : 0;
-        if (!scratch_) return nullptr;
+    if (scratchGlyph_ == idx) return scratch_;
+    if (!scratchFor(n)) return nullptr;
+    const int64_t t0 = esp_timer_get_time();
+    if (!pack_->readGlyphBitmap(g, scratch_, n)) {
+        scratchGlyph_ = kNoGlyph;
+        return nullptr;
     }
-    return pack_->readGlyphBitmap(g, scratch_, n) ? scratch_ : nullptr;
+    lastFetchUs_ = static_cast<uint32_t>(esp_timer_get_time() - t0);
+    scratchGlyph_ = idx;
+    return scratch_;
 }
 
 const Glyph* Renderer::glyphFor(uint8_t set, uint32_t cp) const {
@@ -309,14 +330,8 @@ bool Renderer::drawStroke(lgfx::LovyanGFX& dst, uint32_t cardIdx, uint16_t i, in
     Stroke s;
     if (!pack_->strokeAt(cardIdx, i, &s)) return false;
     const size_t n = PackReader::strokeBitmapSize(s);
-    if (n == 0) return false;
-    const Allocator& a = pack_->allocator();
-    if (n > scratchCap_) {
-        if (scratch_) a.release(scratch_);
-        scratch_ = static_cast<uint8_t*>(a.alloc(n));
-        scratchCap_ = scratch_ ? n : 0;
-        if (!scratch_) return false;
-    }
+    if (n == 0 || !scratchFor(n)) return false;
+    scratchGlyph_ = kNoGlyph;  // the scratch now holds a mask
     if (!pack_->readStrokeBitmap(s, scratch_, n)) return false;
     drawBitmap1bpp(dst, emX + s.xOff, emY + s.yOff, scratch_, s.w, s.h, ink);
     return true;

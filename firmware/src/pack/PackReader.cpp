@@ -56,7 +56,8 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
 
     PackHeader hd{};
     hd.version = rd16(h + 4);
-    if (hd.version != 1) return PackError::BadVersion;
+    if (hd.version < kPackVersionMin || hd.version > kPackVersionMax) return PackError::BadVersion;
+    const bool v2 = hd.version >= 2;
     hd.headerSize = rd16(h + 6);
     if (hd.headerSize < kPackHeaderSize || hd.headerSize > total) return PackError::BadHeader;
     hd.cardCount = rd32(h + 8);
@@ -126,12 +127,20 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
             g.advance = e[10];
             g.dataOff = rd32(e + 12);
             if (g.set > kGlyphSetOption) return fail(PackError::BadTable);
-            if (g.encoding != 0) return fail(PackError::BadTable);  // only raw 4bpp is defined
             if (i > 0) {
                 const Glyph& p = glyphs_[i - 1];
                 if (g.set < p.set || (g.set == p.set && g.codepoint <= p.codepoint)) return fail(PackError::BadTable);
             }
-            if (g.encoding == 0 && !inBounds(g.dataOff, bitmapSize(g), total)) return fail(PackError::BadTable);
+            if (g.encoding == kGlyphEncRaw) {
+                if (!inBounds(g.dataOff, bitmapSize(g), total)) return fail(PackError::BadTable);
+            } else if (g.encoding == kGlyphEncRle && v2) {
+                // The stream length is implied by its codes; it starts inside
+                // the glyph data and is checked while decoding (readGlyphBitmap).
+                if (bitmapSize(g) == 0 || g.dataOff < hd.glyphDataOff || g.dataOff >= total)
+                    return fail(PackError::BadTable);
+            } else {
+                return fail(PackError::BadTable);  // unknown encoding, or RLE in a v1 pack
+            }
         }
     }
 
@@ -163,31 +172,49 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
             for (uint32_t q = 0; q < m; ++q, ++i) {
                 const uint32_t blk = rd32(idx + q * 4);
                 if (blk == 0) continue;  // no stroke data for this card
-                if ((blk & 3u) || !inBounds(blk, 8, total)) return fail(PackError::BadTable);
-                uint8_t sh[8];
-                if (!src.read(blk, sh, 8)) return fail(PackError::Io);
-                const uint16_t count = rd16(sh);
-                const uint16_t px = rd16(sh + 2);
-                if (px == 0 || px != hd.largePx) return fail(PackError::BadTable);
-                if (!inBounds(blk + 8, static_cast<uint64_t>(count) * 8, total))
-                    return fail(PackError::BadTable);
-                uint8_t eb[8 * 32];
-                for (uint16_t k = 0; k < count;) {
-                    uint16_t z = count - k;
-                    if (z > 32) z = 32;
-                    if (!src.read(blk + 8 + k * 8u, eb, z * 8u)) return fail(PackError::Io);
-                    for (uint16_t j = 0; j < z; ++j) {
-                        const uint8_t* e = eb + j * 8;
-                        const uint8_t w = e[2], hgt = e[3];
-                        if (w == 0 || hgt == 0) return fail(PackError::BadTable);
-                        const uint32_t doff = rd32(e + 4);
-                        const uint64_t msz = static_cast<uint64_t>((w + 7) / 8) * hgt;
-                        if (!inBounds(doff, msz, total)) return fail(PackError::BadTable);
-                    }
-                    k += z;
-                }
+                const PackError e = checkStrokeBlock(blk, total);
+                if (e != PackError::Ok) return fail(e);
             }
         }
+    }
+    return PackError::Ok;
+}
+
+// One card's stroke block: header, entries and (bounds of) every mask. v1 entries
+// carry an absolute offset per raw mask; v2 entries carry encoding and size, the
+// masks following each other from the block's data_off.
+PackError PackReader::checkStrokeBlock(uint32_t blk, uint32_t total) const {
+    if ((blk & 3u) || !inBounds(blk, 8, total)) return PackError::BadTable;
+    uint8_t sh[8];
+    if (!src_->read(blk, sh, 8)) return PackError::Io;
+    const uint16_t count = rd16(sh);
+    const uint16_t px = rd16(sh + 2);
+    if (px == 0 || px != hdr_.largePx) return PackError::BadTable;
+    if (!inBounds(blk + 8ull, static_cast<uint64_t>(count) * 8, total)) return PackError::BadTable;
+    const bool v2 = hdr_.version >= 2;
+    uint64_t cursor = rd32(sh + 4);  // v2: first mask
+    uint8_t eb[8 * 32];
+    for (uint16_t k = 0; k < count;) {
+        uint16_t z = count - k;
+        if (z > 32) z = 32;
+        if (!src_->read(blk + 8 + k * 8u, eb, z * 8u)) return PackError::Io;
+        for (uint16_t j = 0; j < z; ++j) {
+            const uint8_t* e = eb + j * 8;
+            const uint8_t w = e[2], hgt = e[3];
+            if (w == 0 || hgt == 0) return PackError::BadTable;
+            const uint64_t raw = static_cast<uint64_t>((w + 7) / 8) * hgt;
+            if (v2) {
+                const uint8_t enc = e[4];
+                const uint16_t size = rd16(e + 6);
+                if (enc > kMaskEncXorRuns) return PackError::BadTable;
+                if (enc == kMaskEncRaw ? size != raw : size > raw) return PackError::BadTable;
+                if (!inBounds(cursor, size, total)) return PackError::BadTable;
+                cursor += size;
+            } else if (!inBounds(rd32(e + 4), raw, total)) {
+                return PackError::BadTable;
+            }
+        }
+        k += z;
     }
     return PackError::Ok;
 }
@@ -253,15 +280,23 @@ const Glyph* PackReader::findGlyph(uint8_t set, uint32_t codepoint) const {
 }
 
 bool PackReader::readGlyphBitmap(const Glyph& g, uint8_t* buf, size_t cap) const {
-    if (!src_ || g.encoding != 0) return false;
-    size_t n = bitmapSize(g);
+    if (!src_) return false;
+    const size_t n = bitmapSize(g);
     if (n > cap) return false;
     if (n == 0) return true;
-    return src_->read(g.dataOff, buf, n);
+    if (g.encoding == kGlyphEncRaw) return src_->read(g.dataOff, buf, n);
+    if (g.encoding != kGlyphEncRle) return false;
+    // The stream is never longer than the raw bitmap (docs/pack-format.md), so
+    // that bounds the input; the window reads only as much as the codes need.
+    const uint32_t total = src_->size();
+    if (g.dataOff >= total) return false;
+    const uint32_t avail = total - g.dataOff;
+    ByteIn in(*src_, g.dataOff, n < avail ? static_cast<uint32_t>(n) : avail);
+    return decodeGlyphRle(in, g.width, g.height, buf, cap);
 }
 
 bool PackReader::strokeBlock(uint32_t cardIdx, uint32_t* entriesOff, uint16_t* count,
-                             uint16_t* px) const {
+                             uint16_t* px, uint32_t* firstMask) const {
     if (!src_ || hdr_.strokeOff == 0 || cardIdx >= hdr_.cardCount) return false;
     uint8_t ib[4];
     if (!src_->read(hdr_.strokeOff + cardIdx * 4u, ib, 4)) return false;
@@ -272,6 +307,7 @@ bool PackReader::strokeBlock(uint32_t cardIdx, uint32_t* entriesOff, uint16_t* c
     if (entriesOff) *entriesOff = blk + 8;
     if (count) *count = rd16(sh);
     if (px) *px = rd16(sh + 2);
+    if (firstMask) *firstMask = rd32(sh + 4);  // v2 only (reserved 0 in v1)
     return true;
 }
 
@@ -289,16 +325,39 @@ bool PackReader::strokeInfo(uint32_t cardIdx, uint16_t* count, uint16_t* px) con
 }
 
 bool PackReader::strokeAt(uint32_t cardIdx, uint16_t i, Stroke* out) const {
-    uint32_t entries = 0;
+    uint32_t entries = 0, mask = 0;
     uint16_t count = 0;
-    if (!out || !strokeBlock(cardIdx, &entries, &count, nullptr) || i >= count) return false;
+    if (!out || !strokeBlock(cardIdx, &entries, &count, nullptr, &mask) || i >= count) return false;
     uint8_t e[8];
-    if (!src_->read(entries + i * 8u, e, 8)) return false;
+    if (hdr_.version < 2) {
+        if (!src_->read(entries + i * 8u, e, 8)) return false;
+        out->encoding = kMaskEncRaw;
+        out->size = static_cast<uint16_t>((e[2] + 7) / 8 * e[3]);
+        out->dataOff = rd32(e + 4);
+    } else {
+        // v2: masks are back to back, so stroke i starts after the sizes of
+        // strokes 0..i-1 (read in one go: entries are 8 bytes).
+        uint8_t eb[8 * 32];
+        for (uint16_t k = 0; k <= i;) {
+            uint16_t z = static_cast<uint16_t>(i + 1 - k);
+            if (z > 32) z = 32;
+            if (!src_->read(entries + k * 8u, eb, z * 8u)) return false;
+            for (uint16_t j = 0; j < z; ++j, ++k) {
+                if (k == i) {
+                    std::memcpy(e, eb + j * 8, 8);
+                } else {
+                    mask += rd16(eb + j * 8 + 6);
+                }
+            }
+        }
+        out->encoding = e[4];
+        out->size = rd16(e + 6);
+        out->dataOff = mask;
+    }
     out->xOff = static_cast<int8_t>(e[0]);
     out->yOff = static_cast<int8_t>(e[1]);
     out->w = e[2];
     out->h = e[3];
-    out->dataOff = rd32(e + 4);
     return true;
 }
 
@@ -307,7 +366,10 @@ bool PackReader::readStrokeBitmap(const Stroke& s, uint8_t* buf, size_t cap) con
     const size_t n = strokeBitmapSize(s);
     if (n > cap) return false;
     if (n == 0) return true;
-    return src_->read(s.dataOff, buf, n);
+    if (s.encoding == kMaskEncRaw) return s.size == n && src_->read(s.dataOff, buf, n);
+    if (s.encoding != kMaskEncRuns && s.encoding != kMaskEncXorRuns) return false;
+    ByteIn in(*src_, s.dataOff, s.size);
+    return decodeMaskRle(in, s.w, s.h, s.encoding == kMaskEncXorRuns, buf, cap);
 }
 
 }  // namespace tgc

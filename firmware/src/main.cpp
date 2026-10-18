@@ -605,6 +605,23 @@ bool questionCard(tgc::Card* out) {
 // the settings home on both screens.
 void drawNoQuestion() { showError(ui().errOpenPack, ui().doneMenuHint); }
 
+// The quiz prompt's set-0 kanji. With TGC_QUIZ_LOG it also traces the draw
+// cost: the whole call and the bitmap fetch inside it (file read plus the v2
+// decode; 0 when the renderer still held this glyph from the last redraw).
+void drawPromptKanji(lgfx::LovyanGFX& d, uint32_t cp, int x, int y, int w, int h) {
+#if defined(TGC_QUIZ_LOG)
+    const uint32_t t0 = micros();
+#endif
+    gRender.drawKanji(d, tgc::kGlyphSetLarge, cp, x, y, w, h, kWhite, kBlack);
+#if defined(TGC_QUIZ_LOG)
+    const uint32_t us = micros() - t0;
+    const tgc::Glyph* g = gPack->findGlyph(tgc::kGlyphSetLarge, cp);
+    QLOG("R U+%04X kanji %ux%u enc=%u draw %u us (fetch %u us)\n", (unsigned)cp,
+         g ? (unsigned)g->width : 0u, g ? (unsigned)g->height : 0u, g ? (unsigned)g->encoding : 0u,
+         (unsigned)us, (unsigned)gRender.lastFetchUs());
+#endif
+}
+
 void drawQuiz() {
     tgc::Card card;
     if (!questionCard(&card)) {
@@ -656,11 +673,9 @@ void drawQuiz() {
         gRender.drawCentred(d, prompt, pX + 3, boxY, pW - 6, boxH - (landscape ? 2 : 0), ml,
                             kWhite, kBlack, set);
     } else if (landscape) {
-        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH, leftW, H - headerH,
-                          kWhite, kBlack);
+        drawPromptKanji(d, card.codepoint, 0, headerH, leftW, H - headerH);
     } else {
-        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH + 2, W, kanjiH, kWhite,
-                          kBlack);
+        drawPromptKanji(d, card.codepoint, 0, headerH + 2, W, kanjiH);
     }
     if (landscape)
         smallText(d, k2m ? ui().quizKanji : (reading ? ui().quizReading : ui().quizMeaning),
@@ -1280,9 +1295,18 @@ void drawDetailKanji(int boxX, int boxY, int boxW, int boxH, uint32_t cp) {
     }
     const int emX = boxX + (boxW - px) / 2;
     const int emY = boxY + (boxH - px) / 2;
+#if defined(TGC_QUIZ_LOG)
+    const uint32_t t0 = micros();
+#endif
     for (int i = 0; i <= gAnimFrame; ++i)
         gRender.drawStroke(d, gQ.cardIndex, static_cast<uint16_t>(i), emX, emY,
                            i == gAnimFrame ? kYellow : kWhite);
+#if defined(TGC_QUIZ_LOG)
+    // One line per animation loop: the last frame draws every stroke (worst case).
+    if (gAnimFrame == static_cast<int>(gAnimStrokes) - 1)
+        QLOG("R U+%04X strokes %d draw %u us\n", (unsigned)cp, gAnimFrame + 1,
+             (unsigned)(micros() - t0));
+#endif
 }
 
 // Detail card (roadmap phase 3): a tap after a wrong reveal opens this read-only

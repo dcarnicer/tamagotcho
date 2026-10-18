@@ -1,6 +1,7 @@
 // Native tests for the deck catalog parser (src/catalog). The first two
 // fixtures are verbatim `tangocho-pack catalog` output for two copies of the
-// builder's committed mini.tgc, without and with --base-url.
+// builder's v1 mini.tgc (now kept as fixtures/mini_v1.tgc), without and with
+// --base-url.
 #include <unity.h>
 
 #include <cstring>
