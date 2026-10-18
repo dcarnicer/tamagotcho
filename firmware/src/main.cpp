@@ -176,6 +176,7 @@ struct UiStrings {
     const char* netNewerCatalog;
     const char* netCorrupt;
     const char* netNoSpace;
+    const char* netNoSpaceUpdate;  // detail: an update needs room for the old and the new copy
     const char* netInvalid;
     const char* netFailed;
     const char* netCancelled;
@@ -214,7 +215,9 @@ const UiStrings kUiEn = {
     "Network not found", "Wrong password?", "Could not connect", "Server unreachable",
     "Secure connection failed", "Server error %d", "No catalog published at this URL yet",
     "Bad catalog", "Newer catalog format: update the firmware", "Download corrupt",
-    "Not enough space", "Not a valid deck", "Download failed", "Cancelled",
+    "Not enough space",
+    "An update needs room for both copies. Delete the old one first: Settings > Wi-Fi, 192.168.4.1",
+    "Not a valid deck", "Download failed", "Cancelled",
     "hold: get decks (home Wi-Fi)",
 };
 
@@ -252,7 +255,9 @@ const UiStrings kUiEs = {
     "Red no encontrada", "¿Contraseña incorrecta?", "No se pudo conectar", "Servidor inaccesible",
     "Fallo de conexión segura", "Error del servidor %d", "Aún no hay catálogo en esta URL",
     "Catálogo no válido", "Catálogo más nuevo: actualiza el firmware", "Descarga dañada",
-    "No hay espacio", "Mazo no válido", "Descarga fallida", "Cancelado",
+    "No hay espacio",
+    "Hace falta sitio para las dos copias. Borra antes la vieja: Ajustes > Wi-Fi, 192.168.4.1",
+    "Mazo no válido", "Descarga fallida", "Cancelado",
     "larga: bajar mazos (Wi-Fi de casa)",
 };
 
@@ -301,7 +306,10 @@ int gNavTaps = 0;          // navigation taps on the current question
 constexpr uint32_t kNavAllowanceMs = 400;
 uint32_t gLastAnswerAt = 0;
 int gDirty = 0;            // answers not yet persisted
-uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
+// "Study more" override for the daily new-card cap (the done screen's tap), and
+// the SRS day it was granted on: it only applies on that day (extraNewToday()).
+uint16_t gExtraNew = 0;
+uint16_t gExtraNewDay = 0;
 
 enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks };
 // Screen::Choice is shared by the row pickers (see openChoice()).
@@ -384,6 +392,11 @@ char gNetErrTitle[48] = "";
 char gNetErrDetail[96] = "";
 char gNetNote[48] = "";      // footer status line (cleared when the selection moves)
 uint16_t gNetNoteColor = 0;
+// A sleep asked for during a blocking download (power button, critical
+// battery): netProgress() cancels the download, and netDownload() sleeps once
+// fetchPackFile() has cleaned up after it.
+enum class NetSleep : uint8_t { None, User, Critical };
+NetSleep gNetSleep = NetSleep::None;
 // The catalog is a few KB; anything larger is not a catalog.
 constexpr size_t kCatalogMaxBytes = 32u * 1024u;
 constexpr uint32_t kCatalogTimeoutMs = 30000;
@@ -520,6 +533,14 @@ void packDueNew(uint32_t* due, uint32_t* fresh) {
     if (fresh) *fresh = n;
 }
 
+// The "study more" override in force. It belongs to the day it was granted, so
+// any change of the day index (uptime rollover, sleep time, a manual date, a
+// real-time sync) drops it without each of those paths having to.
+uint16_t extraNewToday() {
+    if (gExtraNewDay != gSrs.today()) gExtraNew = 0;
+    return gExtraNew;
+}
+
 // Pops the next queue item and builds a question for it, trying the item's
 // mode first and then the other two (a card may lack readings/meanings).
 // False when the queue is exhausted.
@@ -562,8 +583,27 @@ void drawGetDecks();
 void formatDate(uint16_t days, char* out, size_t n);
 [[noreturn]] void sleepNow(bool critical);
 void netRadioOff();
+void openDecks();
+
+// The card of the question on screen. False when there is none to draw or
+// grade: no pack open, no question built yet, or an index the open pack does
+// not have. (A question left over from a pack the portal or Get decks replaced
+// is replaced itself, in portalPacksChanged().)
+bool questionCard(tgc::Card* out) {
+    return gPack->isOpen() && gQ.count > 0 && gPack->card(gQ.cardIndex, out);
+}
+
+// Stand-in for the quiz or detail screen when questionCard() fails (a deck that
+// could not be loaded): says so and how to get out, since a side hold opens
+// the settings home on both screens.
+void drawNoQuestion() { showError(ui().errOpenPack, ui().doneMenuHint); }
 
 void drawQuiz() {
+    tgc::Card card;
+    if (!questionCard(&card)) {
+        drawNoQuestion();
+        return;
+    }
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
 
@@ -582,8 +622,6 @@ void drawQuiz() {
     // Prompt: the kanji, or (meaning -> kanji) the meaning text.
     const bool reading = gQ.mode == tgc::QuizMode::Reading;
     const bool k2m = gQ.mode == tgc::QuizMode::MeaningToKanji;
-    tgc::Card card;
-    gPack->card(gQ.cardIndex, &card);
     const int largePx = gPack->header().largePx ? gPack->header().largePx : 64;
     // Landscape: prompt in the left column, options bounded to the right one.
     const bool landscape = W > H;
@@ -1250,6 +1288,11 @@ void drawDetailKanji(int boxX, int boxY, int boxW, int boxH, uint32_t cp) {
 // When the pack carries stroke data for the card, the kanji animates instead
 // (see drawDetailKanji and the Screen::Detail branch of loop()).
 void drawDetail() {
+    tgc::Card card;
+    if (!questionCard(&card)) {
+        drawNoQuestion();
+        return;
+    }
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     const int headerH = 14;
@@ -1257,8 +1300,6 @@ void drawDetail() {
     smallText(d, gPack->deckName(), 3, 3, kWhite, kGrey);
     smallText(d, ui().detailTitle, W - 3, 3, kWhite, kGrey, lgfx::top_right);
 
-    tgc::Card card;
-    gPack->card(gQ.cardIndex, &card);
     const int largePx = gPack->header().largePx ? gPack->header().largePx : 64;
     const bool landscape = W > H;
 
@@ -1358,8 +1399,8 @@ void drawDetail() {
 }
 
 void showDetail() {
-    tgc::Card c;
-    gPack->card(gQ.cardIndex, &c);
+    tgc::Card c{};  // stays zero when there is no card (drawDetail() then says so)
+    questionCard(&c);
     // Start the stroke animation when the pack has stroke data for this card.
     uint16_t sc = 0;
     gAnimOn = gPack->strokeInfo(gQ.cardIndex, &sc, nullptr) && sc > 0;
@@ -1675,10 +1716,19 @@ void portalFillStats(tgc::PortalStats& out) {
     out.packCards = gPack->isOpen() ? gPack->cardCount() : 0;
 }
 
-// Called by the portal after /packs changed. Rescans the folder and keeps the
-// live pack usable: reload the loaded pack (its contents may have changed),
-// else fall back to the first remaining one, else leave no pack open.
+// Called by the portal after /packs changed, and by Get decks after a download.
+// Rescans the folder and keeps the live pack usable: reload the loaded pack (its
+// contents may have changed), else fall back to the first remaining one, else
+// leave no pack open. Both callers run under the settings home, whose
+// "Continue" returns to the quiz, detail or done screen; when the live reader
+// was replaced or closed, the question kept for it belongs to the old pack and
+// must never be shown or graded. So Continue gets a fresh question from the
+// rebuilt queue (or the done screen) -- or, with no pack left, the deck list,
+// where "+ Get decks" still works. A failed reload that kept the old reader
+// keeps its question too.
 bool portalPacksChanged() {
+    const tgc::PackReader* const before = gPack->isOpen() ? gPack.get() : nullptr;
+    const String pathBefore = gCurrentPack;
     listPacks(gPacks);
     if (gPacks.empty()) {
         gRender.end();
@@ -1686,15 +1736,21 @@ bool portalPacksChanged() {
         gSource.reset();
         gCurrentPack = "";
         gPrefs.remove("pack");
-        return false;
+    } else {
+        String want = gCurrentPack;
+        if (want.isEmpty() || std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end())
+            want = gPacks[0];
+        if (loadPack(want) || loadPack(gPacks[0])) gPrefs.putString("pack", gCurrentPack);
     }
-    String want = gCurrentPack;
-    if (want.isEmpty() || std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end())
-        want = gPacks[0];
-    if (!loadPack(want) && !loadPack(gPacks[0])) return false;
-    gPrefs.putString("pack", gCurrentPack);
-    gQueue.rebuild(*gPack, gSrs, gRng);
-    return true;
+    if (!gPack->isOpen()) {
+        gQueue.rebuild(*gPack, gSrs, gRng);  // empty: nothing refers to the old cards
+        gBeforeMenu = Screen::Decks;
+    } else if (gPack.get() != before) {
+        if (gCurrentPack != pathBefore) gExtraNew = 0;  // another deck, as in selectPack()
+        gQueue.rebuild(*gPack, gSrs, gRng, extraNewToday());
+        gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
+    }
+    return gPack->isOpen();
 }
 
 // Called by the portal with the browser's clock (POST /time on every page load).
@@ -1764,7 +1820,18 @@ void openMenu() {
 }
 
 void closeMenu() {
+    if (gBeforeMenu == Screen::Decks) {  // no pack open (see portalPacksChanged())
+        openDecks();
+        return;
+    }
     gScreen = gBeforeMenu;
+    // The question was hidden behind the settings, or even built there (see
+    // portalPacksChanged()): restart its answer clock, as wakeScreen() does,
+    // so the time away does not grade it Hard.
+    if (gScreen == Screen::Quiz && !gRevealed) {
+        gShownAt = millis();
+        gNavTaps = 0;
+    }
     drawScreen();
 }
 
@@ -2097,8 +2164,20 @@ void netLoadCatalog() {
     gNetStep = NetStep::List;
 }
 
+// Critical-battery guard (power/BatteryGuard.h): one reading every
+// kBatteryGuardMs, from loop() and during a download. True when the device must
+// save and sleep now.
+bool batteryCritical(uint32_t now) {
+    if (now - gBatteryGuardAt < kBatteryGuardMs) return false;
+    gBatteryGuardAt = now;
+    const bool external = tgc::board::externalPower() || tgc::board::isCharging();
+    return gBatteryGuard.update(tgc::board::batteryPercent(), external);
+}
+
 // Download progress: redraw on a new percentage, keep the idle timers away and
-// let the side button cancel (its release is swallowed afterwards).
+// let the side button cancel (its release is swallowed afterwards). The power
+// button and a critical battery cancel too and ask netDownload() to sleep: a
+// download may run for minutes at 240 MHz, and neither can wait that long.
 bool netProgress(size_t done, size_t total, void*) {
     const uint32_t now = millis();
     gNetActivityAt = now;
@@ -2106,6 +2185,14 @@ bool netProgress(size_t done, size_t total, void*) {
         gNetInputAt = now;
         tgc::board::update();
         if (tgc::board::isHeld(Button::Next)) return false;
+        if (tgc::board::powerButtonClicked()) {
+            gNetSleep = NetSleep::User;
+            return false;
+        }
+    }
+    if (batteryCritical(now)) {
+        gNetSleep = NetSleep::Critical;
+        return false;
     }
     const int pct = total ? static_cast<int>(static_cast<uint64_t>(done) * 100u / total) : 0;
     if (pct != gNetPct) {
@@ -2137,6 +2224,15 @@ const char* netDownloadError(const tgc::FetchResult& r, char* buf, size_t n) {
 void netDownload(int i) {
     const tgc::CatalogEntry& e = gCatalog[i];
     const String path = catalogPath(e);
+    const bool updating = gCatalogState[i] == kDeckUpdate;
+    // On battery below the level a critical sleep resumes at, the download
+    // would likely be cut by the guard: refuse it up front.
+    const bool external = tgc::board::externalPower() || tgc::board::isCharging();
+    if (!tgc::BatteryGuard::canResume(tgc::board::batteryPercent(), external)) {
+        netNote(ui().batteryTitle, kYellow);
+        drawScreen();
+        return;
+    }
     // Replacing the loaded deck: close it first so its file is not open while
     // the new one is renamed over it; portalPacksChanged() reloads it below.
     const bool replacingLive = gPack->isOpen() && path == gCurrentPack;
@@ -2149,6 +2245,7 @@ void netDownload(int i) {
     gNetPct = -1;
     gNetNote[0] = 0;
     gNetInputAt = millis();
+    gNetSleep = NetSleep::None;
     drawScreen();
 
     tgc::PackFetchRequest req;
@@ -2170,19 +2267,23 @@ void netDownload(int i) {
     Serial.printf("[net] get %s: %s (%u bytes in %u ms, http %d, tls %d)\n", req.fileName.c_str(),
                   tgc::fetchStatusString(r.status), (unsigned)r.bytes,
                   (unsigned)(millis() - started), r.httpCode, r.tlsError);
+    // Cancelled for a sleep: the temp is gone and the old deck untouched, so
+    // sleep now (sleepNow() saves); the wake reopens the deck closed above.
+    if (gNetSleep != NetSleep::None) sleepNow(gNetSleep == NetSleep::Critical);
 
     // Rescan /packs the portal's way; that also reopens the deck closed above, or
-    // loads the first one when none was open (the boot-time path).
-    const bool packOpen = gPack->isOpen();
-    if (r.packsChanged || !packOpen) portalPacksChanged();
-    // A deck that was (re)loaded invalidates the question the quiz was showing:
-    // prepare a fresh one for when the settings home's "Continue" returns there.
-    if (!packOpen && gPack->isOpen()) gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
+    // loads the first one when none was open (the boot-time path), and gives
+    // the settings home's "Continue" a question from the deck now loaded.
+    if (r.packsChanged || !gPack->isOpen()) portalPacksChanged();
     netRefreshStates();
     char buf[48];
     if (r.status == tgc::FetchStatus::Ok) {
         snprintf(buf, sizeof buf, ui().netSavedFmt, e.name.c_str());
         netNote(buf, kGreen);
+    } else if (r.status == tgc::FetchStatus::NoSpace && updating) {
+        // The old copy stays until the new one validated, so an update needs
+        // room for both: say how to make it.
+        netError(ui().netNoSpace, ui().netNoSpaceUpdate);
     } else {
         netNote(netDownloadError(r, buf, sizeof buf), kYellow);
     }
@@ -2293,18 +2394,19 @@ void applySleepTime() {
 
 // Leaves what the next wake needs in RTC memory: when the chip went to sleep
 // (for applySleepTime) and whether the boot-time date question is still open.
-// Call right before every board::deepSleep().
+// Called by prepareDeepSleep() right after the save, so the saved day carry and
+// this timestamp describe the same moment and the wake adds exactly the time
+// since (a notice shown before the sleep included).
 void armSleep() {
     gSleptAtUs = tgc::board::rtcMicros();
     gSleepMagic = kSleepMagic;
     gDatePending = gScreen == Screen::Date && gAfterDate == Screen::Quiz;
 }
 
-// Idle timeout reached: persist, stop the radio, then sleep (battery) or blank
-// the panel (USB power). Returns only in the USB case.
-void goIdle() {
-    // Also persists the uptime carry. A store that failed to load and has no
-    // answers is not written, so a damaged file (and its .bak) stays on disk.
+// Persists the SRS, which also persists the uptime day carry, and stops the
+// portal and the home Wi-Fi. A store that failed to load and has no answers is
+// not written, so a damaged file (and its .bak) stays on disk.
+void saveAndRadiosOff() {
     if (gDirty || gSrsLoaded) {
         gSrs.save(gSrsIo);
         gDirty = 0;
@@ -2312,23 +2414,37 @@ void goIdle() {
     if (gPortal.active()) {
         gPortal.end();
         setCpuFrequencyMhz(kCpuMhz);
-        QLOG("W wifi: stopped (idle)\n");
+        QLOG("W wifi: stopped\n");
     }
-    if (gHome.state() != tgc::HomeWifi::State::Off) {
-        netRadioOff();
-        QLOG("N home wifi: stopped (idle)\n");
-    }
-    if (tgc::board::externalPower()) {
-        tgc::board::setDisplayOn(false);
-        gScreenOff = true;
-        gDimmed = false;
-        gLastPowerCheck = millis();
-        QLOG("P screen off (usb)\n");
-        return;
-    }
+    if (gHome.state() != tgc::HomeWifi::State::Off) QLOG("N home wifi: stopped\n");
+    netRadioOff();  // safe in any state
+}
+
+// What every deep sleep of the running app needs first: the state saved, the
+// radios off and the RTC timestamp the wake adds to the day clock. Used by the
+// idle sleep on battery, the sleep after unplugging a dark panel and the
+// explicit sleep. Not by the critical-battery re-sleep at boot, which keeps the
+// first sleep's timestamp, nor by halt(), where the SRS may not be loaded.
+void prepareDeepSleep() {
+    saveAndRadiosOff();
     armSleep();
-    QLOG("P deep sleep\n");
-    tgc::board::deepSleep();
+}
+
+// Idle timeout reached: on battery, deep-sleep. On USB power only the panel
+// goes dark (the serial port stays up), after the same save and radio stop;
+// powerTick() sleeps once it is unplugged. Returns only in the USB case.
+void goIdle() {
+    if (!tgc::board::externalPower()) {
+        prepareDeepSleep();
+        QLOG("P deep sleep\n");
+        tgc::board::deepSleep();
+    }
+    saveAndRadiosOff();
+    tgc::board::setDisplayOn(false);
+    gScreenOff = true;
+    gDimmed = false;
+    gLastPowerCheck = millis();
+    QLOG("P screen off (usb)\n");
 }
 
 // First input after the panel went dark or dim: restore it. A Wi-Fi screen whose
@@ -2373,15 +2489,9 @@ void showNotice(const char* title, const char* hint, uint16_t titleColor) {
 // asked for it (or the cell is about to die) -- after a short notice that says
 // how to wake up. The RTC timestamp keeps the day clock running through it.
 void sleepNow(bool critical) {
-    if (gDirty || gSrsLoaded) {
-        gSrs.save(gSrsIo);
-        gDirty = 0;
-    }
-    if (gPortal.active()) {
-        gPortal.end();
-        setCpuFrequencyMhz(kCpuMhz);
-    }
-    netRadioOff();  // Get decks may have the home Wi-Fi up
+    // Saved before the notice: the first click of a double click (power off)
+    // already gets the state onto the flash.
+    prepareDeepSleep();
     QLOG("P deep sleep (%s)\n", critical ? "battery" : "user");
     if (gScreenOff) tgc::board::setDisplayOn(true);
     tgc::board::setBrightness(gBrightness);
@@ -2392,18 +2502,20 @@ void sleepNow(bool critical) {
     delay(critical ? kBatteryNoticeMs : kSleepNoticeMs);
     gSleptCritical = critical;
     gSleepUiEs = gUi == &kUiEs;
-    armSleep();
     tgc::board::deepSleep();
 }
 
 // Called once per loop() with the current time: dims, then idles.
 void powerTick(uint32_t now) {
     if (gScreenOff) {
-        // Unplugged while dark: nothing keeps it awake any more.
+        // Unplugged while dark: nothing keeps it awake any more. The day carry
+        // kept running in RAM since goIdle() saved (a night on the charger is
+        // hours of it, maybe the 04:00 rollover), so save again first.
         if (now - gLastPowerCheck >= kPowerCheckMs) {
             gLastPowerCheck = now;
             if (!tgc::board::externalPower()) {
-                armSleep();
+                prepareDeepSleep();
+                QLOG("P deep sleep (unplugged)\n");
                 tgc::board::deepSleep();
             }
         }
@@ -2500,6 +2612,11 @@ void setup() {
         showError(ui().errNoFilesystem, ui().errNoFilesystemHint);
         halt();
     }
+    // A power cut in the middle of a download or an upload leaves its temp
+    // behind (up to 5 MB), which would count against every later free-space
+    // check. Nothing can be in flight at boot.
+    for (const char* tmp : {tgc::kFetchTmp, tgc::WifiPortal::kUploadTmp})
+        if (LittleFS.remove(tmp)) Serial.printf("fs: removed stale %s\n", tmp);
     listPacks(gPacks);
 
     // No packs yet: do not halt. Start the Wi-Fi portal so a pack can be
@@ -2593,6 +2710,8 @@ void tapAction() {
         afterReveal();
         return;
     }
+    tgc::Card card;
+    if (!questionCard(&card)) return;  // also keeps gQ.count from being 0 below
     gSel = (gSel + 1) % gQ.count;
     ++gNavTaps;
     drawScreen();
@@ -2603,6 +2722,10 @@ void holdAction(uint32_t pressedAt) {
         afterReveal();
         return;
     }
+    // No card, no grade: a record must never be written for a card that is not
+    // the one on screen (see questionCard()).
+    tgc::Card card;
+    if (!questionCard(&card)) return;
     gRevealed = true;
 
     const bool correct = gSel == gQ.correct;
@@ -2621,8 +2744,6 @@ void holdAction(uint32_t pressedAt) {
     else
         grade = tgc::Grade::Good;
 
-    tgc::Card card;
-    gPack->card(gQ.cardIndex, &card);
     const float u01 = gRng.below(1000) / 1000.0f;
     gSrs.grade(card.codepoint, grade, gSrs.today(), static_cast<uint8_t>(gQ.mode), u01);
     gSrs.addReviewMs(rt_ms);
@@ -2752,8 +2873,9 @@ void loop() {
         if (b == 2) {
             openMenu();
         } else if (a || b == 1) {
-            // Nothing due and the daily new cap is spent: study kMoreNew more.
-            gExtraNew = static_cast<uint16_t>(gExtraNew + 10);
+            // Nothing due and the daily new cap is spent: study 10 more today.
+            gExtraNew = static_cast<uint16_t>(extraNewToday() + 10);
+            gExtraNewDay = gSrs.today();
             gQueue.rebuild(*gPack, gSrs, gRng, gExtraNew);
             if (newQuestion()) {
                 gScreen = Screen::Quiz;
@@ -2796,11 +2918,7 @@ void loop() {
     orientTick(t, downA || downB);
     // Save and sleep before a nearly flat cell browns out and takes the RTC
     // timer (the SRS day clock) with it.
-    if (t - gBatteryGuardAt >= kBatteryGuardMs) {
-        gBatteryGuardAt = t;
-        const bool external = tgc::board::externalPower() || tgc::board::isCharging();
-        if (gBatteryGuard.update(tgc::board::batteryPercent(), external)) sleepNow(true);
-    }
+    if (batteryCritical(t)) sleepNow(true);
     powerTick(t);
     delay(10);
 }

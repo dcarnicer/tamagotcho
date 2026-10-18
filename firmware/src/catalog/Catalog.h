@@ -66,7 +66,7 @@ CatalogParse parseCatalog(const char* text, size_t len, const char* catalogUrl);
 
 // True for a name the device may save as "/packs/<name>.tgc": 1..43 characters
 // from [A-Za-z0-9._-], not starting with '.' (hidden: the pack listers skip it),
-// and no "..".
+// not ending with '.' (the file name would contain ".."), and no "..".
 bool catalogNameIsSafe(const char* name, size_t len);
 
 // Exactly 64 hex digits (either case) -> 32 bytes.

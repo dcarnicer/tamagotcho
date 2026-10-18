@@ -1112,3 +1112,80 @@ Short log of non-obvious choices. Newest last.
   "Continue" returns to, so a sync there does not leave a stale "all reviewed".
 - **Flash:** the StickS3 build grows by ~4 KB (the SNTP client is linked now).
   **Not verified on hardware.**
+
+## 2026-10-18 – Integration review fixes
+
+Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10-18`).
+
+- **A catalog deck name may not end in '.'.** `x.` was accepted and saved as
+  `/packs/x..tgc`, which the portal's delete refuses (it rejects any ".."), so
+  the deck could never be removed again. `catalogNameIsSafe()` now refuses a
+  trailing '.' too (native test).
+- **Stale download/upload temps are removed.** `fetchPackFile()` measured the
+  free space *before* removing a `/packs/.fetch.tmp` left by an interrupted
+  download, and nothing else removed it, so a power cut mid-download kept up to
+  5 MB occupied and every later download or upload failed "not enough space".
+  `setup()` now removes `/packs/.fetch.tmp` and `/packs/.upload.tmp` right after
+  mounting LittleFS (nothing can be in flight at boot), and the download and the
+  portal upload discard their temp before measuring the space. `kFetchTmp`
+  moved to `NetFetch.h` for that.
+- **Unplugging a dark panel saves before sleeping.** On USB power the idle
+  timeout saves and only blanks the panel; the uptime rule keeps advancing the
+  day carry in RAM, and the unplug path went straight to `armSleep()` +
+  `deepSleep()`, so a night on the charger lost those hours (04:00 rollover
+  included) on the next wake. Every sleep of the running app now goes through
+  `prepareDeepSleep()`: save (with the usual guard: a store that failed to load
+  and has no answers is not written), portal and home Wi-Fi off, then
+  `armSleep()`. The explicit sleep calls it before its notice, so the saved
+  carry and the RTC timestamp describe the same moment. The critical-battery
+  re-sleep at boot (keeps the first sleep's timestamp) and `halt()` (SRS maybe
+  not loaded) stay as they were.
+- **A pack change under the settings refreshes "Continue".** The portal (upload,
+  delete, URL download) and Get decks reload, swap or close the live pack while
+  the settings home waits to "Continue" into the quiz, detail or done screen,
+  but only `netDownload()` refreshed the question kept for it, and only when
+  it had closed the live deck itself to replace it (or none was open).
+  Deleting every pack and pressing Continue drew a closed pack (crash);
+  replacing or deleting the live pack showed the old question and a hold graded
+  whatever card sat at that index in the new pack. `portalPacksChanged()`, the
+  path both share, now notices when the live reader was replaced or closed:
+  with a pack open it rebuilds the queue and builds the question Continue
+  returns to (or the done screen); with none, Continue opens the deck list,
+  whose "+ Get decks" row still works. The deck list was chosen over the
+  boot-time upload screen because that one deliberately makes the side button
+  inert, and the portal opened from the settings must stay leavable. A failed
+  reload that kept the old reader keeps its question. Continue also restarts
+  the answer clock of an unrevealed question, as a wake from a dark panel does:
+  the question was hidden (or built) behind the settings, and that time must
+  not grade it Hard. As a last line of defence, `drawQuiz()`, `drawDetail()`,
+  `tapAction()` and `holdAction()` check `questionCard()` (pack open, a question
+  built, its card readable) and otherwise draw "Cannot open pack / side hold:
+  menu" or do nothing, so nothing is ever graded for a card that is not on
+  screen.
+- **A download no longer blocks the power button and the battery guard.** Get
+  decks downloads block `loop()` for up to 10 min at 240 MHz, and the progress
+  callback only watched the side button. It now also feeds the critical-battery
+  guard every 10 s (`batteryCritical()`, shared with `loop()`) and polls the
+  power button; either one cancels the download and records the sleep request,
+  and `netDownload()` calls `sleepNow()` only after `fetchPackFile()` returned,
+  so the temp is already removed and the old deck untouched (the wake reopens
+  a deck that was closed to be replaced). A download is also refused on battery
+  below the guard's resume level (6 %, `BatteryGuard::canResume()`), with
+  "Battery low" in the footer. The portal's URL download has no progress
+  callback and is unchanged (it is capped at 60 s).
+- **"Study more" is for today only.** The done screen's +10 new-card override
+  (`gExtraNew`) was never reset on a day change, so the next day started with
+  yesterday's raised cap (and every further tap stacked on it). It now carries
+  the day it was granted, and `extraNewToday()` drops it once the day index
+  differs: one check at the point of use covers the uptime rollover, the sleep
+  time, a manual date and a wall-clock sync alike, instead of a reset in each
+  of those paths. Loading another deck still resets it, now also when the
+  portal or Get decks swaps the live deck. Verified on the way: the NTP merge's
+  `applyWallClock()` already gives the settings home's "Continue" a fresh
+  question when a sync on the Wi-Fi or Get decks screen starts a new day.
+- **An update that does not fit says what to do.** A download keeps the old
+  copy until the new one validated, so updating a big deck needs room for both,
+  and the footer only said "Not enough space". For an update (`~` row) that
+  fails that way, Get decks now shows its error screen: "Not enough space" and
+  "An update needs room for both copies. Delete the old one first: Settings >
+  Wi-Fi, 192.168.4.1" (es: "Hace falta sitio para las dos copias...").

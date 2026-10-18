@@ -636,6 +636,8 @@ void WifiPortal::handleUploadChunk() {
                 uploadError_ = "Bad filename (use a short name.tgc)";
                 return;
             }
+            // Discard a temp left by an earlier run before measuring the space.
+            LittleFS.remove(kUploadTmp);
             const size_t total = LittleFS.totalBytes();
             const size_t used = LittleFS.usedBytes();
             const size_t freeB = total > used ? total - used : 0;
@@ -655,7 +657,6 @@ void WifiPortal::handleUploadChunk() {
             LittleFS.mkdir(kPacksDir);
             uploadName_ = name;
             uploadFree_ = freeB;
-            LittleFS.remove(kUploadTmp);  // discard a temp left by an earlier run
             uploadFile_ = LittleFS.open(kUploadTmp, "w");
             if (!uploadFile_) {
                 uploadError_ = "Cannot create file";

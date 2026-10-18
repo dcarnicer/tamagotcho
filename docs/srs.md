@@ -498,8 +498,11 @@ list. Rebuilt on boot and on every pack change.
    is `now_day` if still `I < 1`, so it comes back tomorrow. This is the only
    path that can show a card twice.
 7. **Empty queue**: "done" state showing the number due next and the interval
-   of the next card (from `future`). A "study more new cards" override can be
-   added later.
+   of the next card (from `future`). A tap there is the "study more" override:
+   each one raises today's new-card allowance by 10 and rebuilds the queue. It
+   belongs to the day it was granted: once the day index moves on (uptime
+   rollover, sleep time, a manual date or a real-time sync) it no longer
+   applies, and loading another deck resets it.
 
 Optionally mixing one new card every 3 reviews (instead of all reviews then all
 new) is a one-constant change; phase 2 keeps the literal reviews-first order.
