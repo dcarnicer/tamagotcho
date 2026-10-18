@@ -19,6 +19,7 @@
 #include "render/Renderer.h"
 #include "srs/Queue.h"
 #include "srs/SrsStore.h"
+#include "srs/WallClock.h"
 #include "ui/UiLang.h"
 
 using tgc::board::Button;
@@ -218,6 +219,13 @@ Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
 int gDateSel = 0;
+// A real wall-clock time was applied since boot (applyWallClock), so the
+// power-cut date question is not needed.
+bool gWallClockSynced = false;
+// NVS `tangocho`/`tz`: the UTC offset of the last wall-clock sync, in minutes
+// east of UTC (int16). Absent until the first sync; kept for a later NTP sync,
+// which only yields UTC (docs/srs.md section 5.1).
+constexpr const char* kPrefTz = "tz";
 std::vector<String> gPacks;  // paths of the *.tgc files in /packs
 int gMenuSel = 0;            // highlighted row on the settings home
 int gDeckSel = 0;            // highlighted row on the deck list
@@ -696,36 +704,13 @@ void showDone() {
     drawDone();
 }
 
-// Civil date helpers (Howard Hinnant's algorithms) for the internal day index.
-// Day 0 is 2026-10-17; only differences matter for the SRS, the date is a
-// convenience for the user.
-long daysFromCivil(int y, unsigned m, unsigned d) {
-    y -= m <= 2;
-    const long era = (y >= 0 ? y : y - 399) / 400;
-    const unsigned yoe = static_cast<unsigned>(y - era * 400);
-    const unsigned doy = (153u * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
-    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    return era * 146097 + static_cast<long>(doe) - 719468;
-}
-
-void civilFromDays(long z, int* y, unsigned* m, unsigned* d) {
-    z += 719468;
-    const long era = (z >= 0 ? z : z - 146096) / 146097;
-    const unsigned doe = static_cast<unsigned>(z - era * 146097);
-    const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    const int yr = static_cast<int>(yoe) + static_cast<int>(era) * 400;
-    const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    const unsigned mp = (5 * doy + 2) / 153;
-    *d = doy - (153 * mp + 2) / 5 + 1;
-    *m = mp + (mp < 10 ? 3 : -9);
-    *y = yr + (*m <= 2);
-}
-
-void formatDate(uint16_t days, char* out, size_t n) {
-    static const long kBase = daysFromCivil(2026, 10, 17);
-    int y = 2026;
-    unsigned m = 10, d = 17;
-    civilFromDays(kBase + days, &y, &m, &d);
+// The calendar date of SRS day `day`: the store's wall-clock anchor once a real
+// time was synced, else the fixed 2026-10-17 base (docs/srs.md section 4.1).
+// Only differences matter for the schedule; the date is for the user.
+void formatDate(uint16_t day, char* out, size_t n) {
+    int y = 0;
+    unsigned m = 0, d = 0;
+    tgc::civilFromDays(gSrs.epochDayOf(day), &y, &m, &d);
     snprintf(out, n, "%04d-%02d-%02d", y, m, d);
 }
 
@@ -1067,6 +1052,65 @@ void applyDate() {
     drawScreen();
 }
 
+const char* clockSyncName(tgc::ClockSync k) {
+    switch (k) {
+        case tgc::ClockSync::Rejected: return "rejected";
+        case tgc::ClockSync::Anchored: return "anchored";
+        case tgc::ClockSync::Same: return "same day";
+        case tgc::ClockSync::Advanced: return "advanced";
+        case tgc::ClockSync::Reanchored: return "re-anchored";
+    }
+    return "?";
+}
+
+// Applies a real wall-clock time to the SRS day clock (docs/srs.md section 5.1):
+// the phone's browser through the portal's POST /time today, an NTP client
+// later. Anchors or advances the day, aligns the 04:00 rollover, remembers the
+// UTC offset and brings the screen up to date: a pending power-cut date
+// question is answered, and a new day rebuilds the queue. `tzOffsetMin` is local
+// time minus UTC in minutes. False when the time was rejected as implausible;
+// nothing changes then.
+bool applyWallClock(int64_t utcMs, int tzOffsetMin) {
+    const uint16_t before = gSrs.today();
+    const tgc::ClockSyncResult r = gSrs.syncWallClock(utcMs, tzOffsetMin);
+    if (r.kind == tgc::ClockSync::Rejected) {
+        Serial.printf("clock: rejected (%ld s, utc%+d min)\n", static_cast<long>(utcMs / 1000),
+                      tzOffsetMin);
+        return false;
+    }
+    gWallClockSynced = true;
+    if (!gPrefs.isKey(kPrefTz) || gPrefs.getShort(kPrefTz, 0) != tzOffsetMin)
+        gPrefs.putShort(kPrefTz, static_cast<int16_t>(tzOffsetMin));
+    // Persist a new anchor or day. A same-day sync (every page reload) only
+    // moved the carry, which the idle save persists, so it does not write the
+    // flash. As in goIdle(), a store that failed to load and has no answers is
+    // not written over a damaged file; the next answer saves it.
+    if (r.kind != tgc::ClockSync::Same && (gDirty || gSrsLoaded)) {
+        gSrs.save(gSrsIo);
+        gDirty = 0;
+    }
+    char date[16];
+    formatDate(gSrs.today(), date, sizeof date);
+    Serial.printf("clock: %s, day %u -> %u (%s), utc%+d min\n", clockSyncName(r.kind),
+                  (unsigned)before, (unsigned)gSrs.today(), date, tzOffsetMin);
+
+    // The boot-time "how many days?" question: the real time answers it.
+    if (gScreen == Screen::Date && gAfterDate == Screen::Quiz) {
+        leaveDate();
+        return true;
+    }
+    if (gSrs.today() != before && gPack->isOpen()) {
+        // A new day: cards may have come due. An unanswered question (or the
+        // done screen) gives way to the new queue; after an answer, the next
+        // question comes from it.
+        gQueue.rebuild(*gPack, gSrs, gRng);
+        if ((gScreen == Screen::Quiz && !gRevealed) || gScreen == Screen::Done)
+            gScreen = newQuestion() ? Screen::Quiz : Screen::Done;
+    }
+    if (!gScreenOff) drawScreen();
+    return true;
+}
+
 void drawScreen() {
     if (gScreen == Screen::Menu) drawMenu();
     else if (gScreen == Screen::Decks) drawDecks();
@@ -1129,6 +1173,8 @@ bool loadPack(const String& path) {
 void portalFillStats(tgc::PortalStats& out) {
     const tgc::Stats st = gSrs.stats();
     out.day = gSrs.today();
+    formatDate(gSrs.today(), out.date, sizeof out.date);
+    out.dateSynced = gSrs.hasWallClock();
     out.seen = st.seen;
     out.learned = st.learned;
     out.answers = st.answers;
@@ -1162,7 +1208,12 @@ bool portalPacksChanged() {
     return true;
 }
 
-const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged};
+// Called by the portal with the browser's clock (POST /time on every page load).
+bool portalTime(int64_t utcMs, int16_t tzOffsetMin) {
+    return applyWallClock(utcMs, tzOffsetMin);
+}
+
+const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged, portalTime};
 
 // Opens the Wi-Fi screen and starts the portal (from the settings home, or at
 // boot when there is no pack yet). The boot-time upload mode is decided by the
@@ -1599,9 +1650,10 @@ void setup() {
                   (unsigned)gSrs.today(), today, (unsigned)gSrs.count(), (unsigned)due,
                   (unsigned)fresh, srsLoaded ? "" : " (new)", gPoweredOff ? 1 : 0);
 
-    if (gPoweredOff && gSrs.count() > 0) {
+    if (gPoweredOff && gSrs.count() > 0 && !gWallClockSynced) {
         // Power cut: the elapsed days are unknown. Ask *before* deciding "done",
-        // because advancing the day can make reviews due.
+        // because advancing the day can make reviews due. A real time applied
+        // earlier in this boot (applyWallClock) already answered it.
         gAfterDate = Screen::Quiz;
         gDateSel = 0;
         gScreen = Screen::Date;

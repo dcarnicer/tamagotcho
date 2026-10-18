@@ -1,7 +1,8 @@
 #pragma once
 // On-device Wi-Fi access point + HTTP portal (roadmap phase 4): upload, delete
 // and download packs under /packs and read the SRS statistics from a phone or
-// laptop -- no computer running `uploadfs`. Arduino/ESP32 only; not part of the
+// laptop -- no computer running `uploadfs`. Opening the page also hands the
+// browser's clock to the app, which is how the device learns the real date. Arduino/ESP32 only; not part of the
 // native build.
 //
 // Security: the AP is intentionally open (no password) so joining it is easy.
@@ -10,8 +11,8 @@
 // running on an untrusted network.
 //
 // The class is deliberately decoupled from main.cpp: the app hands over a small
-// Hooks struct (statistics + a "packs changed" callback) and the portal never
-// reaches into the app's globals.
+// Hooks struct (statistics, a "packs changed" callback and a sink for the
+// browser's clock) and the portal never reaches into the app's globals.
 #include <Arduino.h>
 #include <FS.h>
 #include <WebServer.h>
@@ -25,6 +26,8 @@ namespace tgc {
 // portal only reads it while building a page.
 struct PortalStats {
     uint32_t day = 0;
+    char date[12] = "";       // "YYYY-MM-DD" of `day` (docs/srs.md section 5.1)
+    bool dateSynced = false;  // the date comes from a real clock, not the fixed base
     uint32_t seen = 0, learned = 0, answers = 0, reps = 0, lapses = 0;
     uint32_t streakCurrent = 0, streakBest = 0;
     uint32_t reviewMs = 0;
@@ -42,6 +45,12 @@ public:
         // when a usable pack is loaded afterwards (used to leave the boot-time
         // "no packs yet" screen).
         bool (*onPacksChanged)() = nullptr;
+        // Called with the browser's clock, which the page posts on every load
+        // (POST /time): `utcMs` is Date.now(), `tzOffsetMin` the offset in
+        // minutes east of UTC (-getTimezoneOffset()). The app checks that the
+        // time is plausible and applies it; the portal never touches the SRS.
+        // Returns true when the time was accepted.
+        bool (*onTime)(int64_t utcMs, int16_t tzOffsetMin) = nullptr;
     };
 
     WifiPortal() = default;
@@ -93,6 +102,7 @@ private:
     void handleFetchRequest();
     void handleUploadChunk();
     void handleUploadDone();
+    void handleTime();
     void handleNotFound();
 
     // Blocking download of `url` into /packs; true on success.
