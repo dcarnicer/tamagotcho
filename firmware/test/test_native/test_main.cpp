@@ -682,7 +682,7 @@ static const char* kMini = "../tools/pack-builder/fixtures/mini.tgc";
 void test_mini_fixture() {
     StdioSource src(kMini);
     if (!src.ok()) TEST_IGNORE_MESSAGE("mini.tgc not found");
-    TEST_ASSERT_EQUAL_UINT32(8288, src.size());
+    TEST_ASSERT_EQUAL_UINT32(9244, src.size());
     PackReader r;
     TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
     const PackHeader& h = r.header();
@@ -715,9 +715,9 @@ void test_mini_fixture() {
         uint16_t freq, level;
     };
     const E exp[3] = {
-        {26085, "day; sun; Japan", "ニチ、ジツ", "ひ、び、か", {2, 1}, {1, 0}, 1, 1, 0},
-        {26376, "month; moon", "ゲツ、ガツ", "つき", {2, 0}, {0, 2}, 2, 23, 1},
-        {28779, "fire", "カ", "ひ、び、ほ", {1, 0}, {1, 0}, 1, 574, 2},
+        {26085, "day; sun; Japan", "ニチ、ジツ", "ひ、び、か", {1, 2}, {1, 0}, 1, 1, 0},
+        {26376, "month; moon", "ゲツ、ガツ", "つき", {0, 2}, {0, 2}, 2, 23, 1},
+        {28779, "fire", "カ", "ひ、び、ほ", {0, 1}, {1, 0}, 1, 574, 2},
     };
     const uint32_t distOffs[3] = {2224, 2230, 2236};
     const uint32_t readOffs[3] = {2242, 2246, 2252};
@@ -746,44 +746,44 @@ void test_mini_fixture() {
     }
     const Glyph* g = r.findGlyph(0, 26085);
     TEST_ASSERT_NOT_NULL(g);
-    TEST_ASSERT_EQUAL_UINT8(19, g->width);
-    TEST_ASSERT_EQUAL_UINT8(26, g->height);
-    TEST_ASSERT_EQUAL_INT8(6, g->xOff);
-    TEST_ASSERT_EQUAL_INT8(-29, g->yOff);
+    TEST_ASSERT_EQUAL_UINT8(22, g->width);
+    TEST_ASSERT_EQUAL_UINT8(28, g->height);
+    TEST_ASSERT_EQUAL_INT8(5, g->xOff);
+    TEST_ASSERT_EQUAL_INT8(-30, g->yOff);
     TEST_ASSERT_EQUAL_UINT8(32, g->advance);
     TEST_ASSERT_EQUAL_UINT32(2372, g->dataOff);
     g = r.findGlyph(0, 28779);
-    TEST_ASSERT_EQUAL_UINT8(29, g->width);
-    TEST_ASSERT_EQUAL_UINT32(2968, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT8(30, g->width);
+    TEST_ASSERT_EQUAL_UINT32(3057, g->dataOff);
     g = r.findGlyph(1, 26085);
     TEST_ASSERT_NOT_NULL(g);
-    TEST_ASSERT_EQUAL_UINT8(11, g->width);
-    TEST_ASSERT_EQUAL_UINT8(13, g->height);
-    TEST_ASSERT_EQUAL_INT8(-15, g->yOff);
-    TEST_ASSERT_EQUAL_UINT32(3403, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT8(12, g->width);
+    TEST_ASSERT_EQUAL_UINT8(15, g->height);
+    TEST_ASSERT_EQUAL_INT8(-16, g->yOff);
+    TEST_ASSERT_EQUAL_UINT32(3492, g->dataOff);
     g = r.findGlyph(2, 'A');
     TEST_ASSERT_NOT_NULL(g);
-    TEST_ASSERT_EQUAL_UINT8(9, g->width);
-    TEST_ASSERT_EQUAL_UINT8(8, g->advance);
+    TEST_ASSERT_EQUAL_UINT8(8, g->width);
+    TEST_ASSERT_EQUAL_UINT8(7, g->advance);
     uint8_t bm[64];
     TEST_ASSERT_TRUE(r.readGlyphBitmap(*g, bm, sizeof bm));
-    const uint8_t want[] = {0x00, 0x03, 0xb0, 0x00, 0x00};  // first row of 'A' per mini.json
-    TEST_ASSERT_EQUAL_UINT8_ARRAY(want, bm, 5);
+    const uint8_t want[] = {0x00, 0x2f, 0x60, 0x00};  // first row of 'A' per mini.json
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(want, bm, 4);
     g = r.findGlyph(2, ' ');
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(0, g->width);
-    TEST_ASSERT_EQUAL_UINT8(4, g->advance);
+    TEST_ASSERT_EQUAL_UINT8(3, g->advance);
     g = r.findGlyph(2, 12491);
     TEST_ASSERT_NOT_NULL(g);
-    TEST_ASSERT_EQUAL_UINT8(6, g->height);
-    TEST_ASSERT_EQUAL_UINT32(6563, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT8(8, g->height);
+    TEST_ASSERT_EQUAL_UINT32(7166, g->dataOff);
     // Set 3: the same ニ rendered larger for reading answers.
     g = r.findGlyph(3, 12491);
     TEST_ASSERT_NOT_NULL(g);
-    TEST_ASSERT_EQUAL_UINT8(14, g->width);
-    TEST_ASSERT_EQUAL_UINT8(9, g->height);
+    TEST_ASSERT_EQUAL_UINT8(15, g->width);
+    TEST_ASSERT_EQUAL_UINT8(13, g->height);
     TEST_ASSERT_EQUAL_UINT8(18, g->advance);
-    TEST_ASSERT_EQUAL_UINT32(7829, g->dataOff);
+    TEST_ASSERT_EQUAL_UINT32(8743, g->dataOff);
     int cnt[4] = {0, 0, 0, 0};
     for (uint32_t i = 0; i < r.glyphCount(); ++i) ++cnt[r.glyphAt(i)->set];
     TEST_ASSERT_EQUAL(3, cnt[0]);
@@ -792,7 +792,7 @@ void test_mini_fixture() {
     TEST_ASSERT_EQUAL(14, cnt[3]);
 
     // Stroke order section (KanjiVG excerpts for the three mini kanji).
-    TEST_ASSERT_EQUAL_UINT32(7892, h.strokeOff);
+    TEST_ASSERT_EQUAL_UINT32(8848, h.strokeOff);
     TEST_ASSERT_TRUE(r.hasStrokeOrder());
     uint16_t sc = 0, spx = 0;
     TEST_ASSERT_TRUE(r.strokeInfo(0, &sc, &spx));
@@ -805,7 +805,7 @@ void test_mini_fixture() {
     TEST_ASSERT_EQUAL_INT8(6, st.yOff);
     TEST_ASSERT_EQUAL_UINT8(3, st.w);
     TEST_ASSERT_EQUAL_UINT8(21, st.h);
-    TEST_ASSERT_EQUAL_UINT32(8024, st.dataOff);
+    TEST_ASSERT_EQUAL_UINT32(8980, st.dataOff);
     TEST_ASSERT_EQUAL_UINT32(21, PackReader::strokeBitmapSize(st));  // ceil(3/8)*21
     uint8_t sb[64];
     TEST_ASSERT_TRUE(r.readStrokeBitmap(st, sb, sizeof sb));

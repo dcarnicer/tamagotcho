@@ -9,13 +9,15 @@ version). Anything downloaded by `tangocho-pack fetch` lands in
 third-party-derived files in the repo are the three kanji in
 `tools/pack-builder/tests/data/mini_kanjidic2.xml` (a KANJIDIC2 excerpt), the
 three KanjiVG SVG excerpts in `tools/pack-builder/tests/data/kanjivg/`, the
-fixture pack built from them, and the hand-written WaniKani API response
-fixtures in `tools/pack-builder/tests/data/wanikani/` (a handful of kanji and
+fixture packs built from them (glyphs rendered from Noto Sans JP), and the
+hand-written WaniKani API response fixtures in
+`tools/pack-builder/tests/data/wanikani/` (a handful of kanji and
 their English glosses, © Tofugu LLC, used only to test the importer offline),
 and the UX mockups in `docs/ux/*.png`. The mockups render five N5 kanji with
 their KANJIDIC2 glosses and readings (hard-coded in
-`tools/ux-mockups/render.py`), Klee One glyphs and the KanjiVG stroke shapes of
-one kanji, so they carry the same CC BY-SA terms and attribution as a pack.
+`tools/ux-mockups/render.py`), Klee One glyphs (the default font when they
+were drawn) and the KanjiVG stroke shapes of one kanji, so they carry the same
+CC BY-SA terms and attribution as a pack.
 
 ## KANJIDIC2
 
@@ -137,24 +139,41 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
   (the three mini kanji 日/月/火). They are committed, with this attribution, so
   the `mini.tgc` fixture and its tests need no network.
 
-## Klee One (font)
+## Noto Sans JP (default font)
 
-- URL: https://github.com/fontworks-fonts/Klee (`fonts/ttf/KleeOne-SemiBold.ttf`,
-  `KleeOne-Regular.ttf`, `OFL.txt`)
-- Licence: SIL Open Font License 1.1. Copyright Fontworks Inc.
-- Used for: rasterising kanji and text glyphs into the packs. The default is
-  SemiBold (better legibility at small sizes on a low-density LCD).
+- URL: https://github.com/notofonts/noto-cjk, release tag `Sans2.004`
+  (Noto Sans CJK 2.004, 2022-01-27; pinned in `fetch.py`): the Japanese subset
+  `Sans/SubsetOTF/JP/NotoSansJP-Regular.otf` and the repository's `LICENSE`,
+  fetched to `cache/noto/`.
+- Licence: SIL Open Font License 1.1. © 2014-2021 Adobe
+  (http://www.adobe.com/). Noto is a trademark of Google Inc.
+- Used for: rendering the kanji and text glyphs of a pack (sets 0-3) into 4bpp
+  bitmaps at build time. Only the Regular weight is used: Medium clogged dense
+  kanji at the 40 px option size (docs/decisions.md, 2026-10-18).
 - OFL notes: the OFL permits use, embedding and redistribution of the font and
   of output made with it; it does not require the licence of rendered output
   to change. The pre-rendered 4bpp bitmaps in a pack are such output (they are
   not the font software and cannot be used to reconstruct a usable font file).
   We nevertheless credit the font in README/attribution screens as a courtesy,
-  and we never redistribute the `.ttf` files (they stay in `cache/`). The
+  and we never redistribute the `.otf` file (it stays in `cache/`). The
   reserved font name restrictions apply only to modified/redistributed font
   files, which we do not ship. A user may substitute any font with `--font`;
   its licence must then be checked by whoever distributes the resulting pack.
-- Suggested credit: "Glyphs rendered from Klee One, (c) Fontworks Inc.,
+- Suggested credit: "Glyphs rendered from Noto Sans JP, (c) Adobe,
   SIL Open Font License 1.1."
+
+## Klee One (optional font)
+
+- URL: https://github.com/fontworks-fonts/Klee (`fonts/ttf/KleeOne-SemiBold.ttf`,
+  `KleeOne-Regular.ttf`, `OFL.txt`), fetched to `cache/fonts/` only with
+  `tangocho-pack fetch --klee-one`.
+- Licence: SIL Open Font License 1.1. Copyright Fontworks Inc. The OFL notes
+  above apply in the same way.
+- Used for: nothing by default since 2026-10-18 (it was the default font
+  before). A pack built with `--font cache/fonts/KleeOne-SemiBold.ttf` renders
+  its glyphs from it, and the UX mockups in `docs/ux/` were drawn with it.
+- Suggested credit for such a pack: "Glyphs rendered from Klee One,
+  (c) Fontworks Inc., SIL Open Font License 1.1."
 
 ## Adafruit GLCD font (built-in UI font)
 
@@ -182,10 +201,12 @@ the firmware.
 
 > Kanji data from KANJIDIC2 (c) EDRDG, CC BY-SA 4.0, https://www.edrdg.org/edrdg/licence.html.
 > JLPT levels from Jonathan Waller's JLPT Resources (tanos.co.uk) via
-> davidluzgouveia/kanji-data (MIT). Glyphs rendered from Klee One
-> (c) Fontworks Inc., SIL OFL 1.1. Stroke order data from KanjiVG
+> davidluzgouveia/kanji-data (MIT). Glyphs rendered from Noto Sans JP
+> (c) Adobe, SIL OFL 1.1. Stroke order data from KanjiVG
 > (c) Ulrich Apel, CC BY-SA 3.0, https://kanjivg.tagaini.net (present only in
 > packs built with `--strokes`). This pack is licensed CC BY-SA.
+
+A pack built with another `--font` credits that font instead of Noto Sans JP.
 
 A pack built with `--wanikani-token` is different: it contains WaniKani-derived
 content (© Tofugu LLC) and must not be redistributed; the CC BY-SA licence above

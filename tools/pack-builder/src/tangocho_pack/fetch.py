@@ -7,6 +7,11 @@ from pathlib import Path
 
 from . import paths
 
+# Noto Sans JP (the default font) is pinned to the noto-cjk "Sans2.004" release
+# tag: the Japanese subset OTF, plus the repository's LICENSE (SIL OFL 1.1, the
+# licence of every Noto CJK font).
+NOTO_RELEASE = "Sans2.004"
+NOTO = f"https://raw.githubusercontent.com/notofonts/noto-cjk/{NOTO_RELEASE}"
 KLEE = "https://github.com/fontworks-fonts/Klee/raw/master"
 # KanjiVG is pinned to a dated release (tag + asset name carry the same date).
 KANJIVG_RELEASE = "r20260714"
@@ -21,16 +26,22 @@ SOURCES: list[tuple[str, Path]] = [
         "https://raw.githubusercontent.com/davidluzgouveia/kanji-data/master/kanji.json",
         paths.KANJI_JSON,
     ),
-    (f"{KLEE}/fonts/ttf/KleeOne-SemiBold.ttf", paths.FONT_DIR / "KleeOne-SemiBold.ttf"),
-    (f"{KLEE}/fonts/ttf/KleeOne-Regular.ttf", paths.FONT_DIR / "KleeOne-Regular.ttf"),
-    (f"{KLEE}/OFL.txt", paths.FONT_DIR / "OFL.txt"),
+    (f"{NOTO}/Sans/SubsetOTF/JP/NotoSansJP-Regular.otf", paths.DEFAULT_FONT),
+    (f"{NOTO}/LICENSE", paths.NOTO_LICENCE),
     (KANJIVG_ZIP_URL, paths.KANJIVG_ZIP),
     (KANJIVG_COPYING_URL, paths.KANJIVG_LICENCE),
 ]
+# Klee One, the default font before 2026-10-18 (textbook style). Opt-in with
+# `fetch --klee-one`; build with it through `--font`.
+KLEE_SOURCES: list[tuple[str, Path]] = [
+    (f"{KLEE}/fonts/ttf/KleeOne-SemiBold.ttf", paths.KLEE_ONE),
+    (f"{KLEE}/fonts/ttf/KleeOne-Regular.ttf", paths.FONT_DIR / "KleeOne-Regular.ttf"),
+    (f"{KLEE}/OFL.txt", paths.FONT_DIR / "OFL.txt"),
+]
 
 
-def fetch_all(force: bool = False) -> None:
-    for url, dest in SOURCES:
+def fetch_all(force: bool = False, klee_one: bool = False) -> None:
+    for url, dest in SOURCES + (KLEE_SOURCES if klee_one else []):
         if dest.exists() and not force:
             print(f"have  {dest.relative_to(paths.ROOT)}")
             continue
