@@ -109,9 +109,9 @@ struct UiStrings {
     // Stepper status line when that failed (caption, wrapped).
     const char* dateNoNetwork;   // could not join
     const char* dateNoTime;      // joined, but no (plausible) time came back
-    // Settings > Date: the submenu (row labels; the date and the zone's city
-    // are their values) and the time zone list (a city and its offsets, see
-    // drawTzList()).
+    // Settings > Device > Date: the submenu (row labels; the date and the
+    // zone's city are their values) and the time zone list (a city and its
+    // offsets, see drawTzList()).
     const char* dateMenuRows[2];  // the date (the stepper), the zone (the list)
     const char* tzNone;           // the zone row's value when no zone is known
     const char* tzTitle;          // header (ASCII)
@@ -219,7 +219,7 @@ struct UiStrings {
     const char* wifiHoldSetup;     // hint bar, joining / failed: a hold opens setup mode
     const char* wifiTapRetry;      // hint bar, failed: a tap tries again
     const char* wifiLinkLost;      // home mode: the link dropped, the driver reconnects
-    const char* wifiStudyHint;     // hint bar, boot-time screen once a deck is loaded: the side button
+    const char* wifiStudyHint;     // hint bar, the side button on the boot-time screen with a deck
     const char* wifiDownloadFmt;   // %s = deck, %u = percent (a download from the page)
     const char* wifiFreeFmt;       // free space: %s free, %s total
     const char* wifiFallbackFmt;   // boot: home join failed, setup mode instead; network, reason
@@ -234,10 +234,10 @@ struct UiStrings {
     const char* testTimeFail;
     const char* testHoldAgain;  // hint bar: the hold
     const char* testNoNetworkHint;
-    // Settings > About (drawAbout()): the header title (ASCII), each item's
-    // heading (label face, the colon dropped; at most 127 px) and the deck
-    // item's value when none is loaded. The names and licences themselves are
-    // in Credits.h.
+    // Settings > Device > About (drawAbout()): the header title (ASCII), each
+    // item's heading (label face, the colon dropped; at most 127 px) and the
+    // deck item's value when none is loaded. The names and licences themselves
+    // are in Credits.h.
     const char* aboutTitle;
     const char* aboutFirmware;  // + MIT
     const char* aboutDecks;     // + CC BY-SA, the licence of the published decks
@@ -257,7 +257,7 @@ struct UiStrings {
     const char* hintChoose;
     const char* hintBack;
     const char* getDecksCaption;  // the Get decks row's second line
-    const char* aboutUiFont;      // Settings > About: + the firmware's UI font
+    const char* aboutUiFont;      // About: + the firmware's UI font
     // --- Settings tree (docs/ux-refresh.md §3, §6.6; ui/SettingsTree.h) ------
     // Row labels are the UI font's Label face (18 px). Budgets in the 135 px
     // portrait: a home row has 93 px for its label, a 5 px gap and its value
@@ -583,8 +583,8 @@ bool gWallClockSynced = false;
 // - `tz` (int16): the UTC offset in minutes east the page last sent; the only
 //   zone a page from before the rule left, read as a fixed rule then;
 // - `tzm` (string): the IANA name of a zone chosen by hand from kTzZones
-//   (Settings > Date > Time zone). It wins while set; the next page visit that
-//   sends a zone removes it.
+//   (Settings > Device > Date > Zone). It wins while set; the next page visit
+//   that sends a zone removes it.
 // NTP yields UTC only, so without a zone the network time is not used.
 constexpr const char* kPrefTz = "tz";
 constexpr const char* kPrefTzRule = "tzr";
@@ -592,7 +592,7 @@ constexpr const char* kPrefTzName = "tzn";
 constexpr const char* kPrefTzManual = "tzm";
 tgc::TzRule gTz;                // the zone in use (valid while gTzKnown)
 bool gTzKnown = false;
-bool gTzManual = false;         // gTz came from Settings > Date > Time zone
+bool gTzManual = false;         // gTz came from Settings > Device > Date > Zone
 char gTzName[48] = "";          // its IANA name, "" when unknown
 char gTzRuleText[tgc::kTzRuleMaxLen + 1] = "";
 tgc::TzRule gPhoneTz;           // the zone the page last sent (the "From phone" row)
@@ -1481,7 +1481,8 @@ void choiceValue(int i, char* out, size_t n) {
     const uint16_t v = gChoiceValues[i];
     out[0] = 0;
     if (gChoice == Choice::AutoAdvance) {
-        if (v != tgc::kAdvanceOff) st::formatSeconds(tgc::advanceMsFor(v), ui().decimalPoint, out, n);
+        if (v != tgc::kAdvanceOff)
+            st::formatSeconds(tgc::advanceMsFor(v), ui().decimalPoint, out, n);
     } else if (gChoice == Choice::HoldTime) {
         st::formatSeconds(tgc::holdMsFor(v), ui().decimalPoint, out, n);
     } else if ((gChoice == Choice::NewPerDay && v == tgc::kSrsDefaultNewPerDay) ||
@@ -1542,8 +1543,8 @@ void drawChoice() {
         if (top + descH + rowsH <= H - kHintH) {
             for (size_t i = 0; i < lines.size(); ++i) {
                 const std::string line(desc + lines[i].begin, lines[i].len);
-                wg::drawCaption(d, gRender, line.c_str(), kGutter, top + 3 + 10 * static_cast<int>(i),
-                                tgc::theme::kTextDim, kBlack);
+                const int y = top + 3 + 10 * static_cast<int>(i);
+                wg::drawCaption(d, gRender, line.c_str(), kGutter, y, tgc::theme::kTextDim, kBlack);
             }
             top += descH;
         }
@@ -1674,7 +1675,7 @@ void formatDate(uint16_t day, char* out, size_t n) {
 // hold takes one back (never below the current day: the index does not
 // rewind), a hold confirms, a side tap cancels. Asked on a power-on boot (where
 // the network time comes first when it can, see dateSyncBegin()) and opened
-// from Settings > Date for manual corrections.
+// from Settings > Device > Date for manual corrections.
 uint16_t dateTarget() {
     const uint32_t t = static_cast<uint32_t>(gSrs.today()) + gDateSteps;
     return t > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(t);
@@ -1787,7 +1788,8 @@ void drawDate() {
     const int maxLines = e.h / 10;
     int lines = 0;
     if (gDateSync == DateSync::NoNetwork || gDateSync == DateSync::NoTime) {
-        const char* status = gDateSync == DateSync::NoNetwork ? ui().dateNoNetwork : ui().dateNoTime;
+        const char* status =
+            gDateSync == DateSync::NoNetwork ? ui().dateNoNetwork : ui().dateNoTime;
         lines = drawCaptionLines(d, status, e.x, e.y, e.w, maxLines, kWarn, align);
         ++lines;  // a blank line under it
     }
@@ -1803,7 +1805,7 @@ void drawDate() {
     present();
 }
 
-// --- Settings > Date ---------------------------------------------------------
+// --- Settings > Device > Date ------------------------------------------------
 
 // "+1", "-3", "+5:30", "0": one offset for the zone list's right column.
 void formatOffsetShort(int offsetMin, char* out, size_t n) {
@@ -1848,9 +1850,9 @@ void currentZoneLabel(char* out, size_t n) {
         tgc::formatUtcOffset(gTz.stdOffsetSec / 60, out, n);
 }
 
-// Settings > Date: the date (the stepper) and the time zone (the list), in the
-// Wi-Fi submenu's look: the row's value is the date or the zone's city. The
-// side button goes back to the settings home.
+// Settings > Device > Date: the date (the stepper) and the time zone (the
+// list), in the Wi-Fi submenu's look: the row's value is the date or the
+// zone's city. The side button goes back to the Device page.
 constexpr int kDateMenuRows = 2;
 tgc::ListView gDateMenuList;
 char gDateMenuNote[48] = "";
@@ -1880,7 +1882,7 @@ void drawDateMenu() {
     present();  // a move clears the note: the whole frame
 }
 
-// Settings > Date > Time zone: "From phone" (the zone the portal page last
+// Settings > Device > Date > Zone: "From phone" (the zone the portal page last
 // sent), then tgc::kTzZones. Row 0 is "From phone", row i is kTzZones[i - 1].
 tgc::ListView gTzListView;
 int tzListRows() { return 1 + static_cast<int>(tgc::kTzZoneCount); }
@@ -2065,9 +2067,9 @@ void drawStats() {
     present();
 }
 
-// Settings > About: the firmware's name, version and licence, the decks'
-// licence, the UI font and where the source lives; then the loaded deck and
-// the credits of its data (Credits.h, from docs/data-sources.md). Each item is
+// Settings > Device > About: the firmware's name, version and licence, the
+// decks' licence, the UI font and where the source lives; then the loaded deck
+// and the credits of its data (Credits.h, from docs/data-sources.md). Each item is
 // a label-face heading over its value in captions, so it works before any deck
 // is loaded. Two groups -- the firmware, the deck -- laid out by
 // ui/TextLayout.h: everything on one page when it fits, else a group that does
@@ -2751,8 +2753,8 @@ void leaveDate() {
 
 // Applies the stepped days (advanceDaysManual also restarts the day carry, see
 // docs/srs.md section 5), persists them, rebuilds the queue (cards may now be
-// due) and goes back to where the date screen was opened from: Settings > Date,
-// or the quiz on a power-off boot.
+// due) and goes back to where the date screen was opened from: Settings >
+// Device > Date, or the quiz on a power-off boot.
 void applyDate() {
     dateSyncCancel();
     gSrs.advanceDaysManual(gDateSteps);
@@ -2886,7 +2888,7 @@ bool applyWallClock(int64_t utcMs, const tgc::TzRule& zone) {
 bool netTimeSync() {
     if (!gTzKnown) {
         Serial.printf("clock: no NTP sync, no time zone yet (open the portal page once, or "
-                      "Settings > Date > Time zone)\n");
+                      "Settings > Device > Date > Zone)\n");
         return false;
     }
     int64_t utcMs = 0;
@@ -2939,7 +2941,7 @@ bool dateSyncPoll() {
     return false;
 }
 
-// --- Settings > Date: loop ---------------------------------------------------
+// --- Settings > Device > Date: loop ------------------------------------------
 
 void dateMenuNote(const char* text, uint16_t color) {
     snprintf(gDateMenuNote, sizeof gDateMenuNote, "%s", text ? text : "");
@@ -3724,11 +3726,14 @@ const MenuItem& menuItem(st::Item id) {
          [] { openChoice(Choice::Brightness); }},
         {I::Language, [] { return ui().deviceRows[2]; },
          [](char* o, size_t n) {
-             snprintf(o, n, "%s", ui().langRows[gUiLangPref >= 0 && gUiLangPref < 3 ? gUiLangPref : 0]);
+             const int pref = gUiLangPref >= 0 && gUiLangPref < 3 ? gUiLangPref : 0;
+             snprintf(o, n, "%s", ui().langRows[pref]);
          },
          [] { openChoice(Choice::UiLang); }},
         {I::HoldTime, [] { return ui().deviceRows[3]; },
-         [](char* o, size_t n) { snprintf(o, n, "%s", ui().holdRows[gHoldPref % tgc::kHoldChoices]); },
+         [](char* o, size_t n) {
+             snprintf(o, n, "%s", ui().holdRows[gHoldPref % tgc::kHoldChoices]);
+         },
          [] { openChoice(Choice::HoldTime); }},
         {I::Date, [] { return ui().deviceRows[4]; },
          [](char* o, size_t n) { shortDate(gSrs.today(), o, n); }, [] { openDateMenu(true); }},
@@ -4899,7 +4904,7 @@ void loop() {
                 --gDateSteps;
                 drawScreen();
             }
-        } else if (b == 1) {  // cancel: back to Settings > Date, or straight into the quiz
+        } else if (b == 1) {  // cancel: back to the Date submenu, or straight into the quiz
             if (gAfterDate != Screen::Quiz)
                 openDateMenu(false);
             else
