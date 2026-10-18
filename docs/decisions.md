@@ -902,3 +902,17 @@ Short log of non-obvious choices. Newest last.
   queue, an answered one or the detail card continues into it, the done screen
   re-checks. As with a date set from the settings, the question left behind the
   menu is still shown on return and may come up once more.
+
+## 2026-10-18 – The date question survives a sleep
+
+- Found while integrating the power-button and day-detection branches: after a
+  power cut the boot shows the date question, but the idle timeout (2 min on
+  battery), a power-button click or the Sleep row could deep-sleep the device
+  before it was answered, and the wake then went straight to the quiz -- the
+  unknown gap was silently treated as zero days.
+- Every deep sleep now goes through `armSleep()`, which stores the sleep
+  timestamp (as before) and `gDatePending` in RTC memory when the boot-time
+  question is on screen. A wake from deep sleep with the flag set asks again.
+  The proposed date starts from the current index, which by then includes the
+  slept time, so stepping to the real date does not count the sleep twice. A
+  critical-battery re-sleep at boot leaves the flag untouched.

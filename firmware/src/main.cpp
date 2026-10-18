@@ -53,6 +53,9 @@ constexpr uint32_t kSleepMagic = 0x51EE9A7Eu;
 // the "battery low" notice shown before a pack (and its language) is loaded.
 RTC_DATA_ATTR bool gSleptCritical = false;
 RTC_DATA_ATTR bool gSleepUiEs = false;
+// The boot-time date question (after a power cut) was still open when the chip
+// went to sleep: the wake asks it again instead of silently dropping it.
+RTC_DATA_ATTR bool gDatePending = false;
 
 namespace {
 
@@ -1650,6 +1653,15 @@ void applySleepTime() {
                   (unsigned)gSrs.today());
 }
 
+// Leaves what the next wake needs in RTC memory: when the chip went to sleep
+// (for applySleepTime) and whether the boot-time date question is still open.
+// Call right before every board::deepSleep().
+void armSleep() {
+    gSleptAtUs = tgc::board::rtcMicros();
+    gSleepMagic = kSleepMagic;
+    gDatePending = gScreen == Screen::Date && gAfterDate == Screen::Quiz;
+}
+
 // Idle timeout reached: persist, stop the radio, then sleep (battery) or blank
 // the panel (USB power). Returns only in the USB case.
 void goIdle() {
@@ -1672,8 +1684,7 @@ void goIdle() {
         QLOG("P screen off (usb)\n");
         return;
     }
-    gSleptAtUs = tgc::board::rtcMicros();
-    gSleepMagic = kSleepMagic;
+    armSleep();
     QLOG("P deep sleep\n");
     tgc::board::deepSleep();
 }
@@ -1736,8 +1747,7 @@ void sleepNow(bool critical) {
     delay(critical ? kBatteryNoticeMs : kSleepNoticeMs);
     gSleptCritical = critical;
     gSleepUiEs = gUi == &kUiEs;
-    gSleptAtUs = tgc::board::rtcMicros();
-    gSleepMagic = kSleepMagic;
+    armSleep();
     tgc::board::deepSleep();
 }
 
@@ -1748,8 +1758,7 @@ void powerTick(uint32_t now) {
         if (now - gLastPowerCheck >= kPowerCheckMs) {
             gLastPowerCheck = now;
             if (!tgc::board::externalPower()) {
-                gSleptAtUs = tgc::board::rtcMicros();
-                gSleepMagic = kSleepMagic;
+                armSleep();
                 tgc::board::deepSleep();
             }
         }
@@ -1889,7 +1898,10 @@ void setup() {
                   (unsigned)gSrs.today(), today, (unsigned)gSrs.count(), (unsigned)due,
                   (unsigned)fresh, srsLoaded ? "" : " (new)", gPoweredOff ? 1 : 0);
 
-    if (gPoweredOff && gSrs.count() > 0 && !gWallClockSynced) {
+    // A wake from a sleep taken while the question was open asks it again.
+    const bool datePending = tgc::board::wokeFromSleep() && gDatePending;
+    gDatePending = false;
+    if ((gPoweredOff || datePending) && gSrs.count() > 0 && !gWallClockSynced) {
         // Power cut: the elapsed days are unknown. Ask *before* deciding "done",
         // because advancing the day can make reviews due. A real time applied
         // earlier in this boot (applyWallClock) already answered it.
