@@ -273,6 +273,7 @@ struct UiStrings {
     const char* hintChoose;
     const char* hintBack;
     const char* getDecksCaption;  // the Get decks row's second line
+    const char* aboutUiFont;      // Settings > About: + the firmware's UI font
 };
 
 const UiStrings kUiEn = {
@@ -328,6 +329,7 @@ const UiStrings kUiEn = {
     "ABOUT", "Firmware:", "Decks:", "Deck:", "none", "Kanji data:", "Stroke order:",
     "JLPT levels:", "Glyphs:", "tap: more",
     "move", "open", "choose", "back", "home Wi-Fi",
+    "UI font:",
 };
 
 const UiStrings kUiEs = {
@@ -385,6 +387,7 @@ const UiStrings kUiEs = {
     "ACERCA DE", "Firmware:", "Mazos:", "Mazo:", "ninguno", "Datos de kanji:", "Orden de trazos:",
     "Niveles JLPT:", "Glifos:", "toque: más",
     "mover", "abrir", "elegir", "atrás", "Wi-Fi de casa",
+    "Fuente:",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -1607,12 +1610,13 @@ void drawStats() {
 }
 
 // Settings > About: the firmware's name, version and licence, the decks'
-// licence and where the source lives; then the loaded deck and the credits of
-// its data (Credits.h, from docs/data-sources.md). Built-in font only, so it
-// works before any deck is loaded. Two groups -- the firmware, the deck --
-// laid out by ui/TextLayout.h: everything on one page when it fits, else a
-// group that does not fit the rest of a page starts the next one. A tap turns
-// the page (after the last, back to the first); the side button goes back.
+// licence, the UI font and where the source lives; then the loaded deck and
+// the credits of its data (Credits.h, from docs/data-sources.md). Built-in
+// font only, so it works before any deck is loaded. Two groups -- the
+// firmware, the deck -- laid out by ui/TextLayout.h: everything on one page
+// when it fits, else a group that does not fit the rest of a page starts the
+// next one. A tap turns the page (after the last, back to the first); the side
+// button goes back.
 int gAboutPage = 0;
 
 // "Tangochō" in the 2x built-in font, which has no "ō": the "o" gets a macron
@@ -1650,6 +1654,7 @@ void drawAbout() {
         {"", tgc::firmwareVersion(), true, true},
         {ui().aboutFirmware, cr::kFirmwareLicence, false, false},
         {ui().aboutDecks, cr::kDecksLicence, false, false},
+        {ui().aboutUiFont, cr::kUiFont, false, false},
         {"", cr::kRepo, false, false},
         {ui().aboutDeck, deckOpen ? gPack->deckName() : ui().aboutNoDeck, false, true},
         {ui().aboutKanji, cr::kKanjidic, false, false},
