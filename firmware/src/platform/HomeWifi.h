@@ -69,6 +69,12 @@ public:
     Failure failure() const { return failure_; }
     const char* ssid() const { return ssid_; }  // the network being joined
 
+    // While Connected: whether the link is up right now (the driver reconnects
+    // by itself after a drop), the station IP ("" while down) and the signal.
+    bool linkUp() const;
+    String localIp() const;
+    int rssi() const;
+
     // NTP (roadmap phase 2, "real date from NTP"). Blocking: needs Connected,
     // runs SNTP for at most `timeoutMs` and stops it again. On success stores the
     // UTC time in milliseconds since 1970 and returns true. The app turns it into

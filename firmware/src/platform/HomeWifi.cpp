@@ -191,6 +191,12 @@ void HomeWifi::end() {
     state_ = State::Off;
 }
 
+bool HomeWifi::linkUp() const { return state_ == State::Connected && WiFi.status() == WL_CONNECTED; }
+
+String HomeWifi::localIp() const { return linkUp() ? WiFi.localIP().toString() : String(); }
+
+int HomeWifi::rssi() const { return linkUp() ? static_cast<int>(WiFi.RSSI()) : 0; }
+
 void HomeWifi::radioOff() {
     if (eventId_) {
         WiFi.removeEvent(static_cast<wifi_event_id_t>(eventId_));

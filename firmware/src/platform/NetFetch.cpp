@@ -79,14 +79,6 @@ private:
     std::unique_ptr<WiFiClient> plain_;
 };
 
-void logHeap(const char* what) {
-    Serial.printf("[net] %s: internal heap %u free, %u largest, %u min since boot; psram %u free\n",
-                  what, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
-                  (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
-                  (unsigned)ESP.getFreePsram());
-}
-
 // Prepares `http` for a GET of `url` (following redirects) and sends it.
 // Returns false when the URL could not even be parsed (`code` untouched);
 // otherwise `code` is the HTTP status or a negative HTTPClient error, and a TLS
@@ -106,10 +98,10 @@ bool sendGet(HTTPClient& http, Transport& transport, const String& url, bool htt
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     if (http10) http.useHTTP10(true);
     if (!http.begin(*client, url)) return false;
-    if (https) logHeap("before TLS");
+    if (https) logNetHeap("before TLS");
     *code = http.GET();
     if (*code < 0) res->tlsError = transport.tlsError();
-    if (https) logHeap("after TLS connect");
+    if (https) logNetHeap("after TLS connect");
     return true;
 }
 
@@ -157,6 +149,14 @@ FetchStatus readBody(HTTPClient& http, int remaining, uint32_t idleMs, uint32_t 
 }
 
 }  // namespace
+
+void logNetHeap(const char* what) {
+    Serial.printf("[net] %s: internal heap %u free, %u largest, %u min since boot; psram %u free\n",
+                  what, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                  (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)ESP.getFreePsram());
+}
 
 size_t fsFreeBytes() {
     const size_t total = LittleFS.totalBytes();
@@ -326,6 +326,21 @@ FetchResult fetchText(const String& url, size_t maxBytes, uint32_t timeoutMs, st
         res.status = st;
     }
     return res;
+}
+
+CatalogFetch fetchCatalog(const String& url) {
+    CatalogFetch c;
+    std::string text;
+    c.fetch = fetchText(url, kCatalogMaxBytes, kCatalogTimeoutMs, &text);
+    Serial.printf("[net] catalog %s: %s (http %d, tls %d, %u bytes)\n", url.c_str(),
+                  fetchStatusString(c.fetch.status), c.fetch.httpCode, c.fetch.tlsError,
+                  (unsigned)c.fetch.bytes);
+    if (c.fetch.status != FetchStatus::Ok) return c;
+    c.parse = parseCatalog(text.data(), text.size(), url.c_str());
+    Serial.printf("[net] catalog: %s, %u decks, %u skipped%s\n", catalogErrorString(c.parse.error),
+                  (unsigned)c.parse.entries.size(), (unsigned)c.parse.skipped,
+                  c.parse.truncated ? ", truncated" : "");
+    return c;
 }
 
 bool validatePackFile(const String& path) {
