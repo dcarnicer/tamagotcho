@@ -23,15 +23,20 @@ Scope for now: **kanji only** (no vocabulary decks).
         "Power off" settings row does the same; save and sleep at critical
         battery (~3 %) before the cell dies. Check on hardware that the PM1
         honours the registers.
-      - [ ] Real date from the phone: the portal page posts `Date.now()` and the
-        browser's time zone (`POST /time`); store an absolute epoch day in the
-        SRS header's reserved bytes (v1-compatible) and roll the day over at a
-        fixed local hour (04:00, as Anki) instead of every 24 h from an arbitrary
-        origin.
+      - [x] Real date from the phone (2026-10-18): opening the portal page posts
+        the browser's clock (`POST /time`: `Date.now()` and the UTC offset); the
+        SRS header stores an absolute anchor (epoch day of SRS day 0, byte 38,
+        v1-compatible) and the day rolls over at 04:00 local, as Anki, instead of
+        every 24 h from an arbitrary origin. The statistics screen, the portal
+        page and `/api/stats` show the real date. `applyWallClock()` is the entry
+        point the NTP item below will reuse; the offset is kept in NVS (`tz`).
+        Native-tested; not yet verified with a phone on hardware.
       - [ ] Real date from NTP over the home Wi-Fi (phase 4) after a power cut,
         with a short timeout and the manual question as the fallback.
-      - [ ] Better manual fallback: show the last-used date and step a proposed
-        "today" (tap +1 day, hold confirms) instead of the 0/1/2-7/14+ buckets.
+      - [x] Better manual fallback (2026-10-18): the date screen shows the
+        last-used date and a proposed "today" with its weekday (tap +1 day, hold
+        confirms, side hold -1 day, side tap cancels) instead of the 0/1/2-7/14+
+        buckets. A sync from the phone answers it instead.
 - [~] **Phase 3 – Better cards.** Distractors done for visual similarity,
       shared classical radicals and confusable readings; meaning→kanji questions
       done; the mistake detail card is done (a tap after a wrong answer opens a
