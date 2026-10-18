@@ -28,9 +28,12 @@
 #include "srs/Queue.h"
 #include "srs/SrsStore.h"
 #include "srs/WallClock.h"
+#include "ui/DeckSummary.h"
 #include "ui/Icons.h"
 #include "ui/InputPrefs.h"
 #include "ui/ListView.h"
+#include "ui/ScreenLayout.h"
+#include "ui/SettingsTree.h"
 #include "ui/TextLayout.h"
 #include "ui/Theme.h"
 #include "ui/UiLang.h"
@@ -84,15 +87,9 @@ struct UiStrings {
     const char* appName;  // error screen title bar
     const char* settingsTitle;
     const char* decksTitle;
-    // continue, decks, date (a submenu), new/day, speed, stats, wifi (a submenu),
-    // orientation, language, brightness, sleep, about. Row labels are drawn in
-    // the UI font (accents are fine); a chevron marks the rows that open a
-    // screen, so the labels carry no "»".
-    const char* menuRows[12];
     const char* newPerDayTitle;
-    const char* speedTitle;
-    const char* speedOff;
-    const char* speedSecondsFmt;
+    const char* hardAfterTitle;  // Study > Hard after (it was "Speed")
+    const char* hardAfterOff;    // its value that disables Hard
     const char* quizMeaning;
     const char* quizReading;
     const char* quizKanji;
@@ -276,14 +273,54 @@ struct UiStrings {
     const char* hintBack;
     const char* getDecksCaption;  // the Get decks row's second line
     const char* aboutUiFont;      // Settings > About: + the firmware's UI font
+    // --- Settings tree (docs/ux-refresh.md §3, §6.6; ui/SettingsTree.h) ------
+    // Row labels are the UI font's Label face (18 px). Budgets in the 135 px
+    // portrait: a home row has 93 px for its label, a 5 px gap and its value
+    // (the icon and the chevron take the rest) and shows the value only when
+    // both fit (Spanish "Estudio" and "Progreso" go without; "Estadísticas",
+    // 99 px, did not fit at all); a Study / Device row puts its value on a
+    // caption line under the label, so its label gets 107 px. Landscape rows
+    // are wider: 110 px on the home, 212 on a page.
+    const char* groupRows[5];   // decks, study, stats, Wi-Fi, device
+    const char* studyRows[3];   // new per day, hard after, auto-advance
+    const char* deviceRows[7];  // orientation, brightness, language, hold time, date, sleep, about
+    const char* studyTitle;     // headers (Font0, ASCII)
+    const char* deviceTitle;
+    const char* advanceTitle;
+    const char* holdTitle;
+    const char* studyValueFmt;  // the Study row's value, %u = new per day
+    const char* wifiOff;        // the Wi-Fi row's value while the radio is off
+    const char* decimalPoint;   // "1.5 s" / "1,5 s"
+    const char* advanceRows[3];  // ui/InputPrefs.h order: off, short, normal
+    const char* holdRows[3];     // short, normal, long
+    const char* months[12];      // short names: the header's "18 Oct", the date tile's "OCT 2026"
+    const char* choiceDefault;   // a picker row's value on the default choice
+    // Pickers: a description under the header (Font0, wrapped to the width: at
+    // most three lines of 21 characters in the 135 px portrait; in landscape
+    // only when every row still fits, i.e. on the three-row pickers).
+    const char* descNewPerDay;
+    const char* descHardAfter;
+    const char* descAdvance;
+    const char* descHold;
+    const char* descOrient;  // only with an accelerometer (it explains Auto)
+    const char* descBright;
+    const char* descLang;
+    // The summary card: due (accent) and new on one caption line under the deck
+    // name; landscape adds "seen 45/79" over the coverage bar (12 characters
+    // in its 84 px column, else only the numbers).
+    const char* summaryDueFmt;
+    const char* summaryNewFmt;
+    const char* summarySeenFmt;
+    const char* summaryNoDeck;      // label face, no deck loaded
+    const char* summaryNoDeckHint;  // caption under it
+    const char* hintCancel;         // hint bar: the side button cancels
+    const char* hintMore;           // hint bar: About's next page
 };
 
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS",
-    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi", "Orientation",
-     "Language", "Brightness", "Sleep", "About"},
-    "NEW/DAY", "SPEED", "no", "%.1f s",
+    "NEW/DAY", "HARD AFTER", "off",
     "MEANING", "READING", "KANJI",
     "DATE", "last used", "today", "+1 day", "+%u days",
     {"tap: +1 day", "hold: OK", "side hold: -1 day", "side: cancel"},
@@ -295,7 +332,7 @@ const UiStrings kUiEn = {
     "DONE", "All reviewed for now", "day %u  %u cards", "due %u  new %u", "tap/hold: +10 new",
     "side hold: menu",
     "%u due · %u new",
-    "STATISTICS", "seen %u / %u", "due %u  new %u", "answers %u", "accuracy %u%%", "learned %u",
+    "STATS", "seen %u / %u", "due %u  new %u", "answers %u", "accuracy %u%%", "learned %u",
     "Storage damaged", "Hold the front button to erase it. Decks and progress are lost.",
     "Preparing storage...", "First start: this takes a few seconds.",
     "No pack found", "Put a .tgc in data/packs/ then run uploadfs",
@@ -333,14 +370,30 @@ const UiStrings kUiEn = {
     "JLPT levels:", "Glyphs:", "tap: more",
     "move", "open", "choose", "back", "home Wi-Fi",
     "UI font:",
+    {"Decks", "Study", "Stats", "Wi-Fi", "Device"},
+    {"New per day", "Hard after", "Auto next"},
+    {"Orientation", "Brightness", "Language", "Hold time", "Date", "Sleep", "About"},
+    "STUDY", "DEVICE", "AUTO NEXT", "HOLD TIME",
+    "%u/day", "off", ".",
+    {"Off", "Short", "Normal"},
+    {"Short", "Normal", "Long"},
+    {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"},
+    "default",
+    "New kanji added to each day's reviews.",
+    "Slower correct answers count as Hard.",
+    "After a correct answer, the next card comes by itself.",
+    "How long to hold a button to choose.",
+    "Auto turns the screen as you hold the device.",
+    "Lower saves battery.",
+    "Auto follows the loaded deck.",
+    "%u due", "%u new", "seen %u/%u", "No deck", "Get one in Decks",
+    "cancel", "more",
 };
 
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS",
-    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadísticas", "Wi-Fi", "Orientación",
-     "Idioma", "Brillo", "Suspender", "Acerca de"},
-    "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
+    "NUEVAS/DIA", "DIFICIL TRAS", "no",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", "último uso", "hoy", "+1 día", "+%u días",
     {"toque: +1 día", "larga: OK", "lateral larga: -1 día", "lateral: cancelar"},
@@ -352,7 +405,7 @@ const UiStrings kUiEs = {
     "FIN", "Todo repasado", "dia %u  %u tarjetas", "vencen %u  nuevas %u",
     "toque/larga: +10", "lateral: menu",
     "%u hoy · %u nuevas",
-    "ESTADISTICAS", "vistos %u / %u", "pendientes %u  nuevas %u", "respuestas %u",
+    "PROGRESO", "vistos %u / %u", "pendientes %u  nuevas %u", "respuestas %u",
     "precisión %u%%", "aprendidas %u",
     "Memoria dañada", "Mantén el botón frontal para borrarla. Se pierden mazos y progreso.",
     "Preparando memoria...", "Primer arranque: tarda unos segundos.",
@@ -392,6 +445,24 @@ const UiStrings kUiEs = {
     "Niveles JLPT:", "Glifos:", "toque: más",
     "mover", "abrir", "elegir", "atrás", "Wi-Fi de casa",
     "Fuente:",
+    {"Mazos", "Estudio", "Progreso", "Wi-Fi", "Dispositivo"},
+    {"Nuevas/día", "Difícil tras", "Pasar solo"},
+    {"Orientación", "Brillo", "Idioma", "Pulsación", "Fecha", "Suspender", "Acerca de"},
+    "ESTUDIO", "DISPOSITIVO", "PASAR SOLO", "PULSACION",
+    "%u/día", "apagado", ",",
+    {"No", "Rápido", "Normal"},
+    {"Corta", "Normal", "Larga"},
+    {"ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"},
+    "por defecto",
+    "Kanji nuevos que entran cada día.",
+    "Un acierto más lento cuenta como Difícil.",
+    "Tras un acierto, la siguiente tarjeta llega sola.",
+    "Cuánto mantener pulsado un botón para elegir.",
+    "Auto gira la pantalla según sostengas el aparato.",
+    "Más bajo ahorra batería.",
+    "Auto sigue el mazo cargado.",
+    "%u hoy", "%u nuevas", "vistos %u/%u", "Sin mazo", "Bájalo en Mazos",
+    "cancelar", "más",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -453,7 +524,9 @@ enum class Screen {
     FirstLang, DateMenu, TzList
 };
 // Screen::Choice is shared by the row pickers (see openChoice()).
-enum class Choice { NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi };
+enum class Choice {
+    NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi, AutoAdvance, HoldTime
+};
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
@@ -495,7 +568,7 @@ enum class DateSync : uint8_t { None, Joining, NoNetwork, NoTime };
 DateSync gDateSync = DateSync::None;
 std::vector<String> gPacks;  // paths of the *.tgc files in /packs
 // The list screens' focus and scroll position are tgc::ListViews next to
-// their draw functions (gMenuList, gDeckList, gChoiceList, ...).
+// their draw functions (gMenuLists, gDeckList, gChoiceList, ...).
 Choice gChoice = Choice::NewPerDay;
 int gChoiceCount = 0;
 uint16_t gChoiceValues[4] = {0, 0, 0, 0};
@@ -599,7 +672,8 @@ constexpr uint32_t kPowerCheckMs = 5000;  // VBUS poll while the panel is off
 // 80 MHz is plenty for the quiz; Wi-Fi gets full speed while the portal runs.
 constexpr uint32_t kCpuMhz = 80;
 constexpr uint32_t kCpuWifiMhz = 240;
-uint8_t gBrightness = 128;      // NVS `tangocho`/`bri`
+constexpr uint8_t kBrightnessDefault = 128;
+uint8_t gBrightness = kBrightnessDefault;  // NVS `tangocho`/`bri`
 uint8_t gAdvancePref = tgc::kAdvanceDefault;  // NVS `tangocho`/`adv` (ui/InputPrefs.h)
 uint8_t gHoldPref = tgc::kHoldDefault;        // NVS `tangocho`/`hold`
 uint32_t gLastInputAt = 0;      // millis() of the last button activity
@@ -712,22 +786,14 @@ const char* gradeName(tgc::Grade g) {
     return "?";
 }
 
-// Count the current pack's cards that are due or unseen, for the boot log and
-// the done screen. Cheap: one pass over the card table.
+// The loaded deck's counts (ui/DeckSummary.h): one pass over the card table.
+tgc::DeckSummary deckCounts() { return tgc::deckSummary(*gPack, gSrs); }
+
+// The current pack's cards that are due or unseen, for the boot log.
 void packDueNew(uint32_t* due, uint32_t* fresh) {
-    uint32_t d = 0, n = 0;
-    const uint16_t today = gSrs.today();
-    for (uint32_t i = 0; i < gPack->cardCount(); ++i) {
-        tgc::Card c;
-        if (!gPack->card(i, &c)) continue;
-        const tgc::Record* r = gSrs.find(c.codepoint);
-        if (!r || r->dueDay == 0)
-            ++n;
-        else if (r->dueDay <= today)
-            ++d;
-    }
-    if (due) *due = d;
-    if (fresh) *fresh = n;
+    const tgc::DeckSummary s = deckCounts();
+    if (due) *due = s.due;
+    if (fresh) *fresh = s.fresh;
 }
 
 // The "study more" override in force. It belongs to the day it was granted, so
@@ -997,9 +1063,14 @@ using tgc::theme::kHintH;
 
 tgc::theme::Layout layout() { return tgc::theme::layoutFor(W, H); }
 
-void menuHeader(lgfx::LovyanGFX& d, const char* title) {
+// The menus' header: the title, an optional value (the date, a page number)
+// and the battery; the radio icon while the Wi-Fi is on.
+void menuHeader(lgfx::LovyanGFX& d, const char* title, const char* right = nullptr,
+                bool wifi = false) {
     wg::Header h;
     h.title = title;
+    h.right = right;
+    h.wifi = wifi;
     h.battery = tgc::board::batteryPercent();
     wg::drawHeader(d, gRender, W, h);
 }
@@ -1074,30 +1145,148 @@ void presentList(const tgc::ListView& list) {
     present();
 }
 
-// Settings home (hold the side button from the quiz): tap moves the focus,
-// hold activates the row. Twelve flat rows for now (the groups of
-// docs/ux-refresh.md §3 come later); the list scrolls in every orientation.
-constexpr int kSettingRows = 12;
-tgc::ListView gMenuList;
+// --- Settings tree (docs/ux-refresh.md §3, §6.6) ----------------------------
+// Hold the side button from the quiz. The home has a summary card (the loaded
+// deck, due and new, its coverage) and five group rows with their values;
+// Study and Device are pages of rows (a one-level group stack,
+// ui/SettingsTree.h), the other groups open their own screens. Tap moves the
+// focus, a hold opens or changes the row, the side button goes back: from a
+// page to the home, from the home to where the settings were opened. Every
+// screen opened from a page returns to it (gMenuPage stays put meanwhile).
+namespace st = tgc::settings;
+st::Page gMenuPage = st::Page::Home;
+tgc::ListView gMenuLists[st::kPageCount];  // each page keeps its focus
+tgc::ListView& menuList() { return gMenuLists[static_cast<int>(gMenuPage)]; }
 
-// Rows that open another screen get a chevron; Continue and Sleep act at once.
-bool settingOpensScreen(int row) { return row != 0 && row != 10; }
+// One row of a settings page: its label, its value (none when `value` is null
+// or writes "") and what a hold does. menuItem() has one per st::Item.
+struct MenuItem {
+    st::Item id;
+    const char* (*label)();
+    void (*value)(char* out, size_t n);
+    void (*action)();
+};
+const MenuItem& menuItem(st::Item id);  // the table, after the actions it calls
+
+// "18 Oct": the current day for the settings header and the Date row.
+void shortDate(uint16_t day, char* out, size_t n) {
+    int y = 0;
+    unsigned m = 1, dd = 1;
+    tgc::civilFromDays(gSrs.epochDayOf(day), &y, &m, &dd);
+    st::formatDayMonth(dd, ui().months[(m + 11) % 12], out, n);
+}
+
+// The summary card (§2.4): the loaded deck's name, "12 due · 5 new" and its
+// coverage (seen / total) as a bar. Portrait: a band over the group rows with
+// "45/79" right of the name. Landscape: a column, one count per line.
+void drawSummaryCard(lgfx::LovyanGFX& d, const tgc::layout::Home& l) {
+    using namespace tgc::theme;
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    const tgc::layout::Rect& c = l.card;
+    d.fillRect(c.x, c.y, c.w, c.h, kSurface);
+    const int px = c.x + 6;
+    const int pw = c.w - 12;
+    if (!gPack->isOpen()) {
+        gRender.drawLabel(d, ui().summaryNoDeck, px, c.y + 3, pw, 20, kText, kSurface);
+        gRender.drawWrapped(d, ui().summaryNoDeckHint, px, c.y + 25, pw, l.cardColumn ? 4 : 1,
+                            kTextDim, kSurface, kSmall);
+        return;
+    }
+    const tgc::DeckSummary s = deckCounts();
+    char due[24], fresh[24], seen[32];
+    snprintf(due, sizeof due, ui().summaryDueFmt, (unsigned)s.due);
+    snprintf(fresh, sizeof fresh, ui().summaryNewFmt, (unsigned)s.fresh);
+    if (!l.cardColumn) {
+        snprintf(seen, sizeof seen, "%u/%u", (unsigned)s.seen(), (unsigned)s.total);
+        const int sw = wg::captionWidth(seen);
+        gRender.drawLabel(d, gPack->deckName(), px, c.y + 3, pw - sw - 6, 20, kText, kSurface);
+        wg::drawCaption(d, gRender, seen, c.right() - 6 - sw, c.y + 10, kTextDim, kSurface);
+        int x = px;
+        x += wg::drawCaption(d, gRender, due, x, c.y + 25, kAccentHi, kSurface);
+        x += wg::drawCaption(d, gRender, " · ", x, c.y + 25, kTextFaint, kSurface);
+        wg::drawCaption(d, gRender, fresh, x, c.y + 25, kTextDim, kSurface);
+        wg::drawProgress(d, px, c.y + 37, pw, 3, static_cast<int>(s.seen()),
+                         static_cast<int>(s.total));
+        return;
+    }
+    snprintf(seen, sizeof seen, ui().summarySeenFmt, (unsigned)s.seen(), (unsigned)s.total);
+    if (wg::captionWidth(seen) > pw)
+        snprintf(seen, sizeof seen, "%u/%u", (unsigned)s.seen(), (unsigned)s.total);
+    gRender.drawLabel(d, gPack->deckName(), px, c.y + 4, pw, 20, kText, kSurface);
+    gRender.drawLabel(d, due, px, c.y + 30, pw, 8, kAccentHi, kSurface, kSmall);
+    gRender.drawLabel(d, fresh, px, c.y + 42, pw, 8, kTextDim, kSurface, kSmall);
+    gRender.drawLabel(d, seen, px, c.y + 54, pw, 8, kTextDim, kSurface, kSmall);
+    wg::drawProgress(d, px, c.y + 67, pw, 3, static_cast<int>(s.seen()), static_cast<int>(s.total));
+}
+
+// One settings row. On the home: the group's icon, its value when it fits and
+// a chevron. On a page: the value right of the label where rows are wide
+// (landscape), else on a caption line under it; a row without a value keeps
+// its label centred.
+void drawMenuRow(lgfx::LovyanGFX& d, st::Item id, int x, int y, int w, int h, bool focused) {
+    const MenuItem& m = menuItem(id);
+    char value[48] = "";
+    if (m.value) m.value(value, sizeof value);
+    wg::Row row;
+    row.label = m.label();
+    row.icon = st::itemIcon(id);
+    row.chevron = st::hasChevron(id);
+    row.focused = focused;
+    if (value[0]) {
+        if (gMenuPage == st::Page::Home) {
+            row.value = value;
+            // A network name is cut; the other values show whole or not at all.
+            row.keepLabel = id == st::Item::Wifi;
+            row.valueIfFits = !row.keepLabel;
+        } else if (wideRows()) {
+            row.value = value;
+            row.keepLabel = true;
+        } else {
+            row.caption = value;
+        }
+    }
+    wg::drawRow(d, gRender, x, y, w, h, row);
+}
 
 void drawMenu() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    menuHeader(d, ui().settingsTitle);
-    gMenuList.setCount(kSettingRows);
-    layoutList(gMenuList, kHeaderH, H - kHintH, layout().row1H);
-    wg::drawList(d, gMenuList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
-        wg::Row row;
-        row.label = ui().menuRows[i];
-        row.chevron = settingOpensScreen(i);
-        row.focused = f;
-        wg::drawRow(d, gRender, x, y, w, h, row);
-    });
+    const st::PageItems items = st::pageItems(gMenuPage);
+    tgc::ListView& list = menuList();
+    list.setCount(items.count);
+    auto row = [&](int i, int x, int y, int w, int h, bool f) {
+        drawMenuRow(d, items.items[i], x, y, w, h, f);
+    };
+    if (gMenuPage == st::Page::Home) {
+        char date[16];
+        shortDate(gSrs.today(), date, sizeof date);
+        menuHeader(d, ui().settingsTitle, date);
+        const tgc::layout::Home l = tgc::layout::homeFor(W, H);
+        drawSummaryCard(d, l);
+        layoutList(list, l.rowsTop, l.rowsBottom, layout().row1H);
+        wg::drawList(d, list, l.rowsX, l.rowsW, row);
+    } else {
+        menuHeader(d, gMenuPage == st::Page::Study ? ui().studyTitle : ui().deviceTitle);
+        layoutList(list, kHeaderH, H - kHintH, wideRows() ? layout().row1H : layout().row2H);
+        wg::drawList(d, list, listX(), listW(), row);
+    }
     menuHints(d, ui().hintOpen);
-    presentList(gMenuList);
+    presentList(list);
+}
+
+// A group row of the home opened its page: from the top.
+void openMenuPage(st::Page p) {
+    gMenuPage = p;
+    menuList().setCount(st::pageItems(p).count);
+    menuList().reset(0);
+    gScreen = Screen::Menu;
+    drawScreen();
+}
+
+// Back to the settings tree from one of its screens (the page it came from).
+void backToMenu() {
+    gScreen = Screen::Menu;
+    drawScreen();
 }
 
 // Deck list (opened from "Decks"): one row per pack, the file name and the
@@ -1154,47 +1343,118 @@ void drawDecks() {
 tgc::ListView gChoiceList;
 int gChoiceSaved = -1;  // row of the saved value, -1 when none (Forget Wi-Fi)
 
+// The Hard threshold as the Study row and its picker show it: "3 s", "off".
+void hardAfterText(uint16_t ms, char* out, size_t n) {
+    if (ms == 0xFFFF)
+        snprintf(out, n, "%s", ui().hardAfterOff);
+    else
+        st::formatSeconds(ms, ui().decimalPoint, out, n);
+}
+
 void choiceLabel(int i, char* out, size_t n) {
+    const uint16_t v = gChoiceValues[i];
     if (gChoice == Choice::Orientation) {
-        snprintf(out, n, "%s", ui().orientRows[gChoiceValues[i] % 3]);
+        snprintf(out, n, "%s", ui().orientRows[v % 3]);
     } else if (gChoice == Choice::ForgetWifi) {
         snprintf(out, n, "%s", ui().forgetRows[i % 2]);
     } else if (gChoice == Choice::UiLang) {
         snprintf(out, n, "%s", ui().langRows[i]);
     } else if (gChoice == Choice::Brightness) {
-        snprintf(out, n, "%u%%", (unsigned)(gChoiceValues[i] * 100u / 255u));
+        snprintf(out, n, "%u%%", (unsigned)(v * 100u / 255u));
     } else if (gChoice == Choice::SlowMs) {
-        if (gChoiceValues[i] == 0xFFFF) snprintf(out, n, "%s", ui().speedOff);
-        else snprintf(out, n, ui().speedSecondsFmt, gChoiceValues[i] / 1000.0f);
+        hardAfterText(v, out, n);
+    } else if (gChoice == Choice::AutoAdvance) {
+        snprintf(out, n, "%s", ui().advanceRows[v % tgc::kAdvanceChoices]);
+    } else if (gChoice == Choice::HoldTime) {
+        snprintf(out, n, "%s", ui().holdRows[v % tgc::kHoldChoices]);
     } else {
-        snprintf(out, n, "%u", (unsigned)gChoiceValues[i]);
+        snprintf(out, n, "%u", (unsigned)v);
     }
+}
+
+// A picker row's value: the duration a timing choice stands for, else
+// "default" on the default choice; "" for none.
+void choiceValue(int i, char* out, size_t n) {
+    const uint16_t v = gChoiceValues[i];
+    out[0] = 0;
+    if (gChoice == Choice::AutoAdvance) {
+        if (v != tgc::kAdvanceOff) st::formatSeconds(tgc::advanceMsFor(v), ui().decimalPoint, out, n);
+    } else if (gChoice == Choice::HoldTime) {
+        st::formatSeconds(tgc::holdMsFor(v), ui().decimalPoint, out, n);
+    } else if ((gChoice == Choice::NewPerDay && v == tgc::kSrsDefaultNewPerDay) ||
+               (gChoice == Choice::SlowMs && v == tgc::kSrsDefaultSlowMs) ||
+               (gChoice == Choice::Brightness && v == kBrightnessDefault)) {
+        snprintf(out, n, "%s", ui().choiceDefault);
+    }
+}
+
+const char* choiceTitle() {
+    switch (gChoice) {
+        case Choice::NewPerDay: return ui().newPerDayTitle;
+        case Choice::SlowMs: return ui().hardAfterTitle;
+        case Choice::Orientation: return ui().orientTitle;
+        case Choice::Brightness: return ui().brightTitle;
+        case Choice::ForgetWifi: return ui().forgetTitle;
+        case Choice::AutoAdvance: return ui().advanceTitle;
+        case Choice::HoldTime: return ui().holdTitle;
+        case Choice::UiLang: break;
+    }
+    return ui().langTitle;
+}
+
+// The one-line explanation under a picker's header; null for none.
+const char* choiceDescription() {
+    switch (gChoice) {
+        case Choice::NewPerDay: return ui().descNewPerDay;
+        case Choice::SlowMs: return ui().descHardAfter;
+        case Choice::AutoAdvance: return ui().descAdvance;
+        case Choice::HoldTime: return ui().descHold;
+        case Choice::Orientation: return tgc::board::hasAccel() ? ui().descOrient : nullptr;
+        case Choice::Brightness: return ui().descBright;
+        case Choice::UiLang: return ui().descLang;
+        case Choice::ForgetWifi: break;
+    }
+    return nullptr;
 }
 
 void drawChoice() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    const char* title = gChoice == Choice::NewPerDay  ? ui().newPerDayTitle
-                        : gChoice == Choice::SlowMs   ? ui().speedTitle
-                        : gChoice == Choice::Orientation ? ui().orientTitle
-                        : gChoice == Choice::Brightness  ? ui().brightTitle
-                        : gChoice == Choice::ForgetWifi  ? ui().forgetTitle
-                                                         : ui().langTitle;
-    menuHeader(d, title);
+    menuHeader(d, choiceTitle());
     int top = kHeaderH;
+    const int rowH = layout().row1H;
     // "Forget": which network, between the header and the rows.
     if (gChoice == Choice::ForgetWifi) {
         gRender.drawLabel(d, gWifiMenuSsid.c_str(), kGutter, kHeaderH + 2, W - 2 * kGutter, 20,
                           tgc::theme::kWarn, kBlack, tgc::Renderer::kTextUi, tgc::Align::Centre);
         top += 22;
     }
+    // The description, wrapped in the caption font, when every row still fits
+    // under it (the four-row pickers in landscape go without).
+    if (const char* desc = choiceDescription()) {
+        const std::vector<tgc::TextSpan> lines = tgc::wrapText(desc, (W - 2 * kGutter) / 6);
+        const int descH = 3 + static_cast<int>(lines.size()) * 10;
+        const int rowsH = gChoiceCount * (rowH + tgc::theme::kGap) - tgc::theme::kGap +
+                          2 * tgc::theme::kMarkerBand;
+        if (top + descH + rowsH <= H - kHintH) {
+            for (size_t i = 0; i < lines.size(); ++i) {
+                const std::string line(desc + lines[i].begin, lines[i].len);
+                wg::drawCaption(d, gRender, line.c_str(), kGutter, top + 3 + 10 * static_cast<int>(i),
+                                tgc::theme::kTextDim, kBlack);
+            }
+            top += descH;
+        }
+    }
     gChoiceList.setCount(gChoiceCount);
-    layoutList(gChoiceList, top, H - kHintH, layout().row1H);
+    layoutList(gChoiceList, top, H - kHintH, rowH);
     wg::drawList(d, gChoiceList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
-        char label[24];
+        char label[24], value[24];
         choiceLabel(i, label, sizeof label);
+        choiceValue(i, value, sizeof value);
         wg::Row row;
         row.label = label;
+        row.value = value;
+        row.keepLabel = true;
         row.focused = f;
         if (gChoiceSaved >= 0) row.radio = i == gChoiceSaved ? wg::Radio::On : wg::Radio::Off;
         wg::drawRow(d, gRender, x, y, w, h, row);
@@ -3027,8 +3287,9 @@ void openMenu() {
     }
     gBeforeMenu = gScreen;
     gScreen = Screen::Menu;
-    gMenuList.setCount(kSettingRows);
-    gMenuList.reset(0);
+    gMenuPage = st::Page::Home;
+    menuList().setCount(st::pageItems(gMenuPage).count);
+    menuList().reset(0);
     drawScreen();
 }
 
@@ -3104,6 +3365,15 @@ void openChoice(Choice which) {
         showChoice(saved);
         return;
     }
+    if (which == Choice::AutoAdvance || which == Choice::HoldTime) {
+        // ui/InputPrefs.h: the row is the stored index.
+        gChoiceCount = 3;
+        for (int i = 0; i < gChoiceCount; ++i) gChoiceValues[i] = static_cast<uint16_t>(i);
+        saved = which == Choice::AutoAdvance ? gAdvancePref : gHoldPref;
+        if (saved >= gChoiceCount) saved = -1;
+        showChoice(saved);
+        return;
+    }
     gChoiceCount = 4;
     if (which == Choice::Brightness) {
         gChoiceValues[0] = 32;
@@ -3130,7 +3400,8 @@ void openChoice(Choice which) {
     showChoice(saved);
 }
 
-// Applies the focused choice, persists it and returns to the settings home.
+// Applies the focused choice, persists it and returns to the settings page it
+// came from (the Wi-Fi submenu for "Forget").
 void applyChoice() {
     const int sel = gChoiceList.focus();
     if (gChoice == Choice::Orientation) {
@@ -3172,6 +3443,20 @@ void applyChoice() {
         drawScreen();
         return;
     }
+    if (gChoice == Choice::AutoAdvance) {
+        gAdvancePref = static_cast<uint8_t>(gChoiceValues[sel]);
+        gPrefs.putUChar(tgc::kPrefAdvance, gAdvancePref);
+        backToMenu();
+        return;
+    }
+    if (gChoice == Choice::HoldTime) {
+        // Read by loop() from the next press on; the hold that chose it has
+        // fired already.
+        gHoldPref = static_cast<uint8_t>(gChoiceValues[sel]);
+        gPrefs.putUChar(tgc::kPrefHold, gHoldPref);
+        backToMenu();
+        return;
+    }
     const uint16_t v = gChoiceValues[sel];
     if (gChoice == Choice::NewPerDay) {
         gSrs.setNewPerDay(v);
@@ -3187,46 +3472,97 @@ void applyChoice() {
     drawScreen();
 }
 
-// Activates the focused settings row.
+void openStats() {
+    gScreen = Screen::Stats;
+    drawScreen();
+}
+
+// Every settings row: its label (UiStrings), its value and what a hold does.
+// A page lists its rows in ui/SettingsTree.h; a new setting gets an st::Item,
+// a place on a page there and an entry here.
+const MenuItem& menuItem(st::Item id) {
+    using I = st::Item;
+    static const MenuItem kItems[] = {
+        // --- home
+        {I::Decks, [] { return ui().groupRows[0]; },
+         [](char* o, size_t n) { snprintf(o, n, "%u", (unsigned)gPacks.size()); }, openDecks},
+        {I::Study, [] { return ui().groupRows[1]; },
+         [](char* o, size_t n) { snprintf(o, n, ui().studyValueFmt, (unsigned)gSrs.newPerDay()); },
+         [] { openMenuPage(st::Page::Study); }},
+        {I::Stats, [] { return ui().groupRows[2]; },
+         [](char* o, size_t n) {
+             const tgc::Stats s = gSrs.stats();
+             const int acc = st::accuracyPercent(s.reps, s.lapses);
+             if (acc >= 0) snprintf(o, n, "%d%%", acc);
+         },
+         openStats},
+        {I::Wifi, [] { return ui().groupRows[3]; },
+         // The radio is on only on the Wi-Fi screens, so the home sees it off.
+         [](char* o, size_t n) {
+             snprintf(o, n, "%s", gHome.active() ? gHome.ssid() : ui().wifiOff);
+         },
+         [] { openWifiMenu(true); }},
+        {I::Device, [] { return ui().groupRows[4]; }, nullptr,
+         [] { openMenuPage(st::Page::Device); }},
+        // --- Study
+        {I::NewPerDay, [] { return ui().studyRows[0]; },
+         [](char* o, size_t n) { snprintf(o, n, "%u", (unsigned)gSrs.newPerDay()); },
+         [] { openChoice(Choice::NewPerDay); }},
+        {I::HardAfter, [] { return ui().studyRows[1]; },
+         [](char* o, size_t n) { hardAfterText(gSrs.slowMs(), o, n); },
+         [] { openChoice(Choice::SlowMs); }},
+        {I::AutoAdvance, [] { return ui().studyRows[2]; },
+         [](char* o, size_t n) {
+             snprintf(o, n, "%s", ui().advanceRows[gAdvancePref % tgc::kAdvanceChoices]);
+         },
+         [] { openChoice(Choice::AutoAdvance); }},
+        // --- Device
+        {I::Orientation, [] { return ui().deviceRows[0]; },
+         [](char* o, size_t n) { snprintf(o, n, "%s", ui().orientRows[gOrientPref % 3]); },
+         [] { openChoice(Choice::Orientation); }},
+        {I::Brightness, [] { return ui().deviceRows[1]; },
+         [](char* o, size_t n) { snprintf(o, n, "%u%%", (unsigned)(gBrightness * 100u / 255u)); },
+         [] { openChoice(Choice::Brightness); }},
+        {I::Language, [] { return ui().deviceRows[2]; },
+         [](char* o, size_t n) {
+             snprintf(o, n, "%s", ui().langRows[gUiLangPref >= 0 && gUiLangPref < 3 ? gUiLangPref : 0]);
+         },
+         [] { openChoice(Choice::UiLang); }},
+        {I::HoldTime, [] { return ui().deviceRows[3]; },
+         [](char* o, size_t n) { snprintf(o, n, "%s", ui().holdRows[gHoldPref % tgc::kHoldChoices]); },
+         [] { openChoice(Choice::HoldTime); }},
+        {I::Date, [] { return ui().deviceRows[4]; },
+         [](char* o, size_t n) { shortDate(gSrs.today(), o, n); }, [] { openDateMenu(true); }},
+        {I::Sleep, [] { return ui().deviceRows[5]; }, nullptr, [] { sleepNow(false); }},
+        {I::About, [] { return ui().deviceRows[6]; }, nullptr, openAbout},
+    };
+    static_assert(sizeof kItems / sizeof kItems[0] == st::kItemCount, "one entry per item");
+    for (const MenuItem& m : kItems)
+        if (m.id == id) return m;
+    return kItems[0];
+}
+
+// A hold on the focused settings row.
 void activateSetting() {
-    switch (gMenuList.focus()) {
-        case 0:  // Seguir
-            closeMenu();
-            break;
-        case 1:  // Mazos
-            openDecks();
-            break;
-        case 2:  // Fecha >: the date and the time zone
-            openDateMenu(true);
-            break;
-        case 3:  // Nuevas/dia
-            openChoice(Choice::NewPerDay);
-            break;
-        case 4:  // Velocidad
-            openChoice(Choice::SlowMs);
-            break;
-        case 5:  // Estadisticas
-            gScreen = Screen::Stats;
+    menuItem(st::itemAt(gMenuPage, menuList().focus())).action();
+}
+
+// loop() on the settings tree: tap moves, hold activates, the side button goes
+// from a page back to the home and from the home out of the settings.
+void menuLoop(int a, int b) {
+    if (a == 1) {
+        moveListFocus(menuList());
+        drawScreen();
+    } else if (a == 2) {
+        activateSetting();
+    }
+    if (b && gScreen == Screen::Menu) {
+        if (gMenuPage != st::Page::Home) {
+            gMenuPage = st::Page::Home;  // the home's focus is still on the group
             drawScreen();
-            break;
-        case 6:  // Wi-Fi >
-            openWifiMenu(true);
-            break;
-        case 7:  // Orientacion
-            openChoice(Choice::Orientation);
-            break;
-        case 8:  // Idioma / Language
-            openChoice(Choice::UiLang);
-            break;
-        case 9:  // Brillo / Brightness
-            openChoice(Choice::Brightness);
-            break;
-        case 10:  // Suspender / Sleep
-            sleepNow(false);
-            break;
-        case 11:  // Acerca de / About
-            openAbout();
-            break;
+        } else {
+            closeMenu();
+        }
     }
 }
 
@@ -4302,13 +4638,7 @@ void loop() {
         wakeScreen();
     }
     if (gScreen == Screen::Menu) {
-        if (a == 1) {
-            moveListFocus(gMenuList);
-            drawScreen();
-        } else if (a == 2) {
-            activateSetting();
-        }
-        if (b) closeMenu();  // side button backs out to the previous screen
+        menuLoop(a, b);
     } else if (gScreen == Screen::Decks) {
         if (a == 1) {
             gDeckList.setCount(static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
