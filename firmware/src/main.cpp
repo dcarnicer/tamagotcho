@@ -20,6 +20,7 @@
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
 #include "platform/WifiPortal.h"
+#include "portal/PortalLogic.h"
 #include "power/BatteryGuard.h"
 #include "quiz/Quiz.h"
 #include "render/Renderer.h"
@@ -76,8 +77,8 @@ struct UiStrings {
     const char* settingsTitle;
     const char* decksTitle;
     const char* backHint;
-    // continue, decks, date, new/day, speed, stats, wifi, orientation, language,
-    // brightness, sleep
+    // continue, decks, date, new/day, speed, stats, wifi (a submenu), orientation,
+    // language, brightness, sleep
     const char* menuRows[11];
     const char* newPerDayTitle;
     const char* speedTitle;
@@ -143,9 +144,8 @@ struct UiStrings {
     // table so a user can find their language whatever the current one is).
     const char* langTitle;
     const char* langRows[3];
-    // Wi-Fi portal screen.
+    // Wi-Fi portal screen (the hints and status lines are 1x, see drawWifi()).
     const char* wifiTitle;
-    const char* wifiHint;
     const char* brightTitle;
     // Full-screen notices before a deep sleep: a short title (2x font, wrapped
     // at spaces, so no word longer than 10 characters) and a hint (1x font).
@@ -186,13 +186,46 @@ struct UiStrings {
     const char* netFailed;
     const char* netCancelled;
     const char* wifiGetDecksHint;  // boot-time upload screen with a saved home Wi-Fi
+    // Settings > Wi-Fi: the submenu (rows drawn by drawRow(), so accents are
+    // fine; the titles are header text and stay ASCII).
+    const char* wifiMenuRows[4];  // web portal, home network ("%s" = name), setup mode, forget
+    const char* wifiHomeNone;     // the home-network row's value when none is saved
+    const char* wifiNoNetwork;    // note: no home network saved
+    const char* wifiForgotten;    // note: the network was forgotten
+    const char* forgetTitle;      // the confirmation picker's header
+    const char* forgetRows[2];    // cancel, forget
+    // The portal screen.
+    const char* wifiScanJoin;      // over the join QR (setup mode)
+    const char* wifiScanOpen;      // over the page QR
+    const char* wifiTapOtherQr;    // setup mode: a tap swaps the two QR codes
+    const char* wifiViaFmt;        // home mode, %s = the home network
+    const char* wifiConnectingTo;  // joining the home network for the portal
+    const char* wifiHoldSetup;     // joining / failed: a hold opens setup mode
+    const char* wifiTapRetry;      // failed: a tap tries again
+    const char* wifiLinkLost;      // home mode: the link dropped, the driver reconnects
+    const char* wifiStudyHint;     // boot-time screen in home mode once a deck is loaded
+    const char* wifiDownloadFmt;   // %s = deck, %u = percent (a download from the page)
+    const char* wifiCancelHint;    // during that download
+    const char* wifiFreeFmt;       // %s = free space
+    const char* wifiFallbackFmt;   // boot: home join failed, setup mode instead; network, reason
+    // Settings > Wi-Fi > Home network: the connection test.
+    const char* testTitle;
+    const char* testChecking;
+    const char* testIpFmt;       // %s = station IP
+    const char* testSignalFmt;   // %d = dBm, %s = testQuality word
+    const char* testQuality[4];  // weak, fair, good, excellent (rssiQuality())
+    const char* testCatalogFmt;  // %u = decks in the catalog
+    const char* testTimeOk;
+    const char* testTimeFail;
+    const char* testHoldAgain;
+    const char* testNoNetworkHint;
 };
 
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS", "side: back",
-    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi", "Orientation", "Language",
-     "Brightness", "Sleep"},
+    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi »", "Orientation",
+     "Language", "Brightness", "Sleep"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
     "DATE", "last used", "today", "+1 day", "+%u days", "tap +1  hold: OK", "side hold: -1",
@@ -210,28 +243,36 @@ const UiStrings kUiEn = {
     "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
     "streak %u/%u", "time %s", "%uh %um", "%um %us", "%us",
     "LANGUAGE", {"Auto", "English", "Español"},
-    "WI-FI", "Open the URL on your phone and upload a .tgc",
+    "WI-FI",
     "BRIGHTNESS",
     "Sleeping", "Progress saved. The front button wakes me.",
     "Battery low", "Charge me, then press the front button.",
     "+ Get decks", "GET DECKS", "Connecting...", "Reading catalog...", "Downloading %u%%",
     "hold: download", "hold: update", "hold: study", "hold: retry", "Saved %s", "%s, %u cards, %s",
     "No decks in the catalog",
-    "No home Wi-Fi saved", "Settings > Wi-Fi: open 192.168.4.1 and save your network there",
+    "No home Wi-Fi saved", "Settings > Wi-Fi > Setup mode, then save your network on the page",
     "Network not found", "Wrong password?", "Could not connect", "Server unreachable",
     "Secure connection failed", "Server error %d", "No catalog published at this URL yet",
     "Bad catalog", "Newer catalog format: update the firmware", "Download corrupt",
     "Not enough space",
-    "An update needs room for both copies. Delete the old one first: Settings > Wi-Fi, 192.168.4.1",
+    "An update needs room for both copies. Delete the old one first: Settings > Wi-Fi > Web portal",
     "Not a valid deck", "Download failed", "Cancelled",
     "hold: get decks (home Wi-Fi)",
+    {"Web portal", "Home: %s", "Setup mode", "Forget network"}, "none", "No home network saved",
+    "Network forgotten", "FORGET WI-FI?", {"Cancel", "Forget"},
+    "Scan to join", "Scan to open the page", "tap: other QR", "via %s", "Connecting to",
+    "hold: setup mode", "tap: try again", "Connection lost...", "side: start studying", "%s %u%%",
+    "side: cancel", "%s free", "%s: %s",
+    "HOME NETWORK", "Checking catalog...", "IP %s", "signal %d dBm (%s)",
+    {"weak", "fair", "good", "excellent"}, "catalog: %u decks", "network time: ok",
+    "network time: no answer", "hold: test again", "Wi-Fi > Setup mode: save it on the page",
 };
 
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS", "lateral: atrás",
-    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi", "Orientacion", "Idioma",
-     "Brillo", "Suspender"},
+    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi »", "Orientacion",
+     "Idioma", "Brillo", "Suspender"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", "último uso", "hoy", "+1 día", "+%u días", "toque +1  larga: OK", "lateral larga: -1",
@@ -250,7 +291,7 @@ const UiStrings kUiEs = {
     "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
     "racha %u/%u", "tiempo %s", "%uh %um", "%um %us", "%us",
     "IDIOMA", {"Auto", "English", "Español"},
-    "WI-FI", "Abre la URL en el móvil y sube un .tgc",
+    "WI-FI",
     "BRILLO",
     "Suspendido", "Progreso guardado. El botón frontal me despierta.",
     "Batería baja", "Cárgame y pulsa el botón frontal.",
@@ -258,14 +299,22 @@ const UiStrings kUiEs = {
     "larga: descargar", "larga: actualizar", "larga: estudiar", "larga: reintentar",
     "Guardado %s", "%s %u tarjetas %s",
     "El catálogo está vacío",
-    "Sin Wi-Fi de casa", "Ajustes > Wi-Fi: abre 192.168.4.1 y guarda allí tu red",
+    "Sin Wi-Fi de casa", "Ajustes > Wi-Fi > Modo configuración, y guarda tu red en la página",
     "Red no encontrada", "¿Contraseña incorrecta?", "No se pudo conectar", "Servidor inaccesible",
     "Fallo de conexión segura", "Error del servidor %d", "Aún no hay catálogo en esta URL",
     "Catálogo no válido", "Catálogo más nuevo: actualiza el firmware", "Descarga dañada",
     "No hay espacio",
-    "Hace falta sitio para las dos copias. Borra antes la vieja: Ajustes > Wi-Fi, 192.168.4.1",
+    "Hace falta sitio para las dos copias. Borra antes la vieja: Ajustes > Wi-Fi > Portal web",
     "Mazo no válido", "Descarga fallida", "Cancelado",
     "larga: bajar mazos (Wi-Fi de casa)",
+    {"Portal web", "Casa: %s", "Modo configuración", "Olvidar red"}, "ninguna",
+    "No hay red de casa guardada", "Red olvidada", "OLVIDAR WI-FI?", {"Cancelar", "Olvidar"},
+    "Escanea para unirte", "Escanea para abrir la página", "toque: otro QR", "vía %s",
+    "Conectando a", "larga: modo config.", "toque: reintentar", "Conexión perdida...",
+    "lateral: a estudiar", "%s %u%%", "lateral: cancelar", "%s libres", "%s: %s",
+    "RED DE CASA", "Comprobando catálogo...", "IP %s", "señal %d dBm (%s)",
+    {"débil", "regular", "buena", "excelente"}, "catálogo: %u mazos", "hora de red: ok",
+    "hora de red: sin respuesta", "larga: repetir", "Wi-Fi > Modo configuración: guárdala en la página",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -322,9 +371,9 @@ int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;
 uint16_t gExtraNewDay = 0;
 
-enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks };
+enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks, WifiMenu, NetTest };
 // Screen::Choice is shared by the row pickers (see openChoice()).
-enum class Choice { NewPerDay, SlowMs, Orientation, UiLang, Brightness };
+enum class Choice { NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi };
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
@@ -377,6 +426,37 @@ float gAccel[3] = {0, 0, 0};          // last sample, for the rotation log
 // leave for the settings home.
 tgc::WifiPortal gPortal;
 bool gWifiBootUpload = false;
+// The portal's two modes (WifiPortal.h): home = the page over the saved home
+// network, which the screen joins first (gHome); setup = the device's own open
+// access point. Home is the default once a network is saved.
+enum class PortalMode : uint8_t { Setup, Home };
+// The Wi-Fi screen: joining the home network, serving the page, or a failed
+// join (or access point) with its reason and the way to setup mode.
+enum class WifiStep : uint8_t { Joining, Serving, Failed };
+PortalMode gPortalMode = PortalMode::Setup;
+WifiStep gWifiStep = WifiStep::Serving;
+int gQrPage = 0;                      // setup mode: 0 = join the AP, 1 = open the page
+char gWifiNote[64] = "";              // setup mode after the boot-time home join failed: why
+// Bumped whenever the Wi-Fi screen changes under loop()'s feet (a mode switch,
+// a blocking download from the page, leaving for Get decks), so the input read
+// before the portal's poll() is not applied to what came after it.
+uint32_t gWifiEpoch = 0;
+
+// Settings > Wi-Fi (the submenu replacing the single settings row).
+int gWifiMenuSel = 0;
+String gWifiMenuSsid;          // the saved home network, read when the menu opens
+char gWifiMenuNote[48] = "";   // footer note (cleared when the selection moves)
+uint16_t gWifiMenuNoteColor = 0;
+// Settings > Wi-Fi > Home network: join, show the IP and the signal, read the
+// catalog (and the network time), radio off again.
+enum class NetTestStep : uint8_t { NoNetwork, Joining, Checking, Done, Failed };
+NetTestStep gTestStep = NetTestStep::NoNetwork;
+String gTestIp;
+int gTestRssi = 0;
+int gTestTime = -1;            // network time: -1 not tried (no offset saved), 0 failed, 1 ok
+char gTestCatalog[64] = "";
+uint16_t gTestCatalogColor = 0;
+char gTestFail[48] = "";
 
 // "Get decks" (roadmap phase 4): the last row of the deck list. Joins the saved
 // home Wi-Fi on demand (HomeWifi), reads the release catalog over HTTPS and
@@ -386,18 +466,16 @@ bool gWifiBootUpload = false;
 // progress callback that redraws, keeps the idle timers away and lets the side
 // button cancel.
 enum class NetStep { Connecting, Catalog, List, Error };
-// A catalog deck compared with /packs: absent, present with the catalog's size,
-// or present with another size (an older or newer build).
-enum DeckState : uint8_t { kDeckNew, kDeckOnDevice, kDeckUpdate };
 tgc::HomeWifi gHome;
 NetStep gNetStep = NetStep::Connecting;
 bool gNetFromBoot = false;   // opened from the boot-time upload screen
 std::string gGetDecksLangHint;  // the phone's language from the portal page, or ""
 std::vector<tgc::CatalogEntry> gCatalog;
-std::vector<uint8_t> gCatalogState;  // DeckState per gCatalog entry
+std::vector<tgc::DeckState> gCatalogState;  // per gCatalog entry
 int gNetSel = 0;
 bool gNetBusy = false;       // a download is running (footer shows the progress)
 int gNetPct = -1;            // last drawn download percentage
+char gNetDeck[48] = "";      // the deck being downloaded (the portal screen shows it)
 uint32_t gNetActivityAt = 0; // millis() of the last network progress (idle timers)
 uint32_t gNetInputAt = 0;    // last button poll during a blocking download
 char gNetErrTitle[48] = "";
@@ -409,9 +487,6 @@ uint16_t gNetNoteColor = 0;
 // fetchPackFile() has cleaned up after it.
 enum class NetSleep : uint8_t { None, User, Critical };
 NetSleep gNetSleep = NetSleep::None;
-// The catalog is a few KB; anything larger is not a catalog.
-constexpr size_t kCatalogMaxBytes = 32u * 1024u;
-constexpr uint32_t kCatalogTimeoutMs = 30000;
 // TLS stalls are longer than on the local portal; a big pack may take minutes.
 constexpr uint32_t kNetIdleMs = 15000;
 constexpr uint32_t kNetDownloadMs = 10u * 60u * 1000u;
@@ -592,11 +667,17 @@ bool newQuestion() {
 void drawScreen();  // dispatches to the active screen
 void applyRotation(uint8_t r);
 void drawGetDecks();
+void drawWifiMenu();
+void drawNetTest();
+void openNetTest();
 void formatDate(uint16_t days, char* out, size_t n);
 [[noreturn]] void sleepNow(bool critical);
 void netRadioOff();
+void netSyncClock();
 void openDecks();
 void openGetDecks(bool fromBoot);
+void openPortal(PortalMode mode);
+tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e);
 
 // The card of the question on screen. False when there is none to draw or
 // grade: no pack open, no question built yet, or an index the open pack does
@@ -874,9 +955,14 @@ void drawChoice() {
                         : gChoice == Choice::SlowMs   ? ui().speedTitle
                         : gChoice == Choice::Orientation ? ui().orientTitle
                         : gChoice == Choice::Brightness  ? ui().brightTitle
+                        : gChoice == Choice::ForgetWifi  ? ui().forgetTitle
                                                          : ui().langTitle;
     smallText(d, title, 3, 3, kWhite, kGrey);
     drawBackHint(d);
+    // "Forget": which network, between the header and the rows.
+    if (gChoice == Choice::ForgetWifi)
+        gRender.drawCentred(d, gWifiMenuSsid.c_str(), 2, 20, W - 4, 16, 1, kYellow, kBlack,
+                            tgc::Renderer::kTextBuiltinSmall);
 
     // Shrink the row step on the short landscape screen so all rows fit; portrait
     // keeps the original 40 px step and 32 px box.
@@ -891,6 +977,8 @@ void drawChoice() {
         char label[16];
         if (gChoice == Choice::Orientation) {
             snprintf(label, sizeof label, "%s", ui().orientRows[gChoiceValues[i] % 3]);
+        } else if (gChoice == Choice::ForgetWifi) {
+            snprintf(label, sizeof label, "%s", ui().forgetRows[i % 2]);
         } else if (gChoice == Choice::UiLang) {
             snprintf(label, sizeof label, "%s", ui().langRows[i]);
         } else if (gChoice == Choice::Brightness) {
@@ -1109,44 +1197,6 @@ void drawStats() {
     present();
 }
 
-// Wi-Fi portal screen (roadmap phase 4): the SSID and URL to join and open, a
-// hint, free space, how many packs were received this session and the portal's
-// last status line. Six short lines fit both orientations; the built-in GFX font
-// is used so accented Spanish renders. Safe before a pack is open (only the
-// built-in font is used, which does not touch the pack).
-void drawWifi() {
-    auto& d = *gCanvas;
-    d.fillScreen(kBlack);
-    const int headerH = 14;
-    d.fillRect(0, 0, W, headerH, kGrey);
-    smallText(d, ui().wifiTitle, 3, 3, kWhite, kGrey);
-    drawBackHint(d);
-
-    const size_t total = LittleFS.totalBytes();
-    const size_t used = LittleFS.usedBytes();
-    const size_t freeB = total > used ? total - used : 0;
-    char freeLine[40];
-    snprintf(freeLine, sizeof freeLine, "free %u / %u KB", (unsigned)(freeB / 1024),
-             (unsigned)(total / 1024));
-    char upLine[40];
-    snprintf(upLine, sizeof upLine, "uploaded: %u", (unsigned)gPortal.uploadedPacks());
-
-    // On the boot-time upload screen a saved home Wi-Fi also offers Get decks.
-    const bool offerGetDecks = gWifiBootUpload && tgc::HomeWifi::hasCredentials();
-    const char* lines[] = {gPortal.ssid(), gPortal.url(), ui().wifiHint, freeLine, upLine,
-                           gPortal.lastMessage(), ui().wifiGetDecksHint};
-    const int kN = offerGetDecks ? 7 : 6;
-    const int top = headerH + 4;
-    int step = (H - top - 2) / kN;
-    if (step > 22) step = 22;
-    if (step < 10) step = 10;
-    for (int i = 0; i < kN; ++i)
-        gRender.drawCentred(d, lines[i], 2, top + i * step, W - 4, step - 2, 2,
-                            i == 1 ? kYellow : (i == 6 ? kGreen : kWhite), kBlack,
-                            tgc::Renderer::kTextBuiltinSmall);
-    present();
-}
-
 // "704 KB" / "1.2 MB", or "704K" / "1.2M" when `compact`.
 void formatBytes(uint32_t bytes, char* out, size_t n, bool compact) {
     if (bytes >= 1024u * 1024u) {
@@ -1155,6 +1205,230 @@ void formatBytes(uint32_t bytes, char* out, size_t n, bool compact) {
     } else {
         snprintf(out, n, compact ? "%uK" : "%u KB", (unsigned)((bytes + 1023u) / 1024u));
     }
+}
+
+// A QR code of `text`, as large as fits a `box` px square, with a white
+// 2-module quiet zone (the spec asks for 4; phone cameras read 2 fine, and on a
+// 135 px screen every pixel goes to the modules). Top-left at (x, y). Returns
+// the side drawn, 0 when the text is too long for a legible code.
+int qrSide(const char* text, int box) {
+    const int version = tgc::qrVersionForBytes(std::strlen(text));
+    if (version == 0) return 0;
+    const int cells = tgc::qrModules(version) + 4;
+    const int px = box / cells;
+    return px > 0 ? cells * px : 0;
+}
+
+int drawQr(lgfx::LovyanGFX& d, const char* text, int x, int y, int box) {
+    const int side = qrSide(text, box);
+    if (side == 0) return 0;
+    const int version = tgc::qrVersionForBytes(std::strlen(text));
+    const int modules = tgc::qrModules(version);
+    const int px = side / (modules + 4);
+    d.fillRect(x, y, side, side, kWhite);
+    // Exactly modules * px wide, so qrcode() uses px-sized modules with no
+    // margin of its own; starting at our version it never needs a larger one.
+    d.qrcode(text, x + 2 * px, y + 2 * px, modules * px, static_cast<uint8_t>(version));
+    return side;
+}
+
+// The page address for the screen: whole when it fits `w` in the 1x font, else
+// without "http://" and the trailing '/' (a browser takes the bare IP too).
+void shownUrl(const char* url, int w, char* out, size_t n) {
+    snprintf(out, n, "%s", url);
+    if (gRender.textWidth(out, tgc::Renderer::kTextBuiltinSmall) <= w) return;
+    const char* host = std::strncmp(url, "http://", 7) == 0 ? url + 7 : url;
+    snprintf(out, n, "%s", host);
+    const size_t len = std::strlen(out);
+    if (len > 0 && out[len - 1] == '/') out[len - 1] = 0;
+}
+
+// Wi-Fi portal screen (WifiPortal.h). Serving: a QR code -- in setup mode the
+// one that joins the device's access point, or (a tap) the one that opens the
+// page; in home mode the page's address -- with the network, the address, the
+// portal's status line (or a download's progress), the free space and the
+// hints. Portrait stacks them under the QR, landscape puts them right of it.
+// Joining and failed: the network, why, and the way to setup mode. Only the
+// built-in font is used, so it works before any pack is open.
+void drawWifi() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    const int headerH = 14;
+    d.fillRect(0, 0, W, headerH, kGrey);
+    smallText(d, ui().wifiTitle, 3, 3, kWhite, kGrey);
+    // On the boot-time screen without a deck the side button does nothing.
+    if (!gWifiBootUpload || gPack->isOpen()) drawBackHint(d);
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+
+    if (gWifiStep != WifiStep::Serving) {
+        const bool failed = gWifiStep == WifiStep::Failed;
+        const char* title = failed ? gNetErrTitle : ui().wifiConnectingTo;
+        gRender.drawCentred(d, title, 2, H / 2 - 36, W - 4, 22, 2, failed ? kYellow : kWhite, kBlack,
+                            labelFont(title, 22, 16, W - 8));
+        gRender.drawCentred(d, failed ? gNetErrDetail : gHome.ssid(), 2, H / 2 - 10, W - 4, 20, 2,
+                            failed ? kWhite : kYellow, kBlack, kSmall);
+        if (failed) gRender.drawCentred(d, ui().wifiTapRetry, 2, H - 23, W - 4, 10, 1, kWhite, kBlack, kSmall);
+        gRender.drawCentred(d, ui().wifiHoldSetup, 2, H - 12, W - 4, 10, 1, kWhite, kBlack, kSmall);
+        present();
+        return;
+    }
+
+    const bool home = gPortalMode == PortalMode::Home;
+    const bool landscape = W > H;
+    const bool joinQr = !home && gQrPage == 0;
+    const std::string qrText =
+        joinQr ? tgc::wifiQrOpenNetwork(gPortal.ssid()) : std::string(gPortal.url());
+    const char* qrLabel = joinQr ? ui().wifiScanJoin : ui().wifiScanOpen;
+
+    int y = headerH + 2;
+    int tx = 2, tw = W - 4;
+    if (landscape) {
+        const int side = drawQr(d, qrText.c_str(), 2, y + 1, H - y - 3);
+        tx = side + 6;
+        tw = W - tx - 2;
+    } else {
+        gRender.drawCentred(d, qrLabel, 2, y, W - 4, 10, 1, kYellow, kBlack, kSmall);
+        y += 11;
+        const int box = std::min(W - 4, (H - y) * 11 / 20);
+        const int side = qrSide(qrText.c_str(), box);
+        drawQr(d, qrText.c_str(), (W - side) / 2, y, box);
+        y += side + 3;
+    }
+    // One line (or `n` wrapped lines) of 1x text in the text area.
+    auto line = [&](const char* s, uint16_t color, int n = 1) {
+        if (!s || !*s || y + 10 * n > H) return;
+        gRender.drawCentred(d, s, tx, y, tw, 10 * n, n, color, kBlack, kSmall);
+        y += 10 * n + 1;
+    };
+    char buf[72];
+    if (landscape) line(qrLabel, kYellow, 2);
+    if (home) {
+        snprintf(buf, sizeof buf, ui().wifiViaFmt, gPortal.ssid());
+        line(buf, kWhite);
+    } else {
+        line(gPortal.ssid(), kWhite);
+    }
+    shownUrl(gPortal.url(), tw, buf, sizeof buf);
+    line(buf, kYellow);
+    if (gPortal.mdnsUrl()[0]) {
+        shownUrl(gPortal.mdnsUrl(), tw, buf, sizeof buf);
+        line(buf, kWhite);
+    }
+
+    // Status: a download from the page, a dropped link, or the portal's line.
+    if (gNetBusy) {
+        snprintf(buf, sizeof buf, ui().wifiDownloadFmt, gNetDeck, (unsigned)(gNetPct < 0 ? 0 : gNetPct));
+        line(buf, kYellow);
+        if (y + 8 <= H) {
+            d.drawRect(tx + 2, y, tw - 4, 7, kWhite);
+            const int fill = gNetPct > 0 ? (tw - 6) * gNetPct / 100 : 0;
+            if (fill > 0) d.fillRect(tx + 3, y + 1, fill, 5, kGreen);
+            y += 9;
+        }
+        line(ui().wifiCancelHint, kWhite);
+        present();
+        return;
+    }
+    // The boot-time fallback's reason first; the status line then gets one line
+    // so the hints still fit the portrait screen.
+    if (gWifiNote[0]) line(gWifiNote, kYellow, 2);
+    if (home && !gPortal.linkUp())
+        line(ui().wifiLinkLost, kYellow);
+    else
+        line(gPortal.lastMessage(), kGreen, gWifiNote[0] ? 1 : 2);
+    char size[16];
+    formatBytes(static_cast<uint32_t>(tgc::fsFreeBytes()), size, sizeof size, false);
+    snprintf(buf, sizeof buf, ui().wifiFreeFmt, size);
+    line(buf, kWhite);
+
+    // Hints.
+    if (!home) line(ui().wifiTapOtherQr, kWhite);
+    if (gWifiBootUpload && gPack->isOpen())
+        line(ui().wifiStudyHint, kGreen);
+    else if (gWifiBootUpload && tgc::HomeWifi::hasCredentials())
+        line(ui().wifiGetDecksHint, kGreen);
+    present();
+}
+
+// Settings > Wi-Fi: the web portal (home mode once a network is saved), the
+// home network with its test, setup mode (the access point, e.g. to change
+// networks) and "forget". Same rows as the settings home; a footer note says
+// what the last action did.
+constexpr int kWifiMenuRows = 4;
+
+void drawWifiMenu() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, ui().wifiTitle, 3, 3, kWhite, kGrey);
+    drawBackHint(d);
+
+    const int top = 20;
+    const int noteH = 12;
+    int step = 36;
+    if (top + step * kWifiMenuRows > H - noteH) step = (H - noteH - top - 2) / kWifiMenuRows;
+    const int rowH = step - 4 < 32 ? step - 4 : 32;
+    char home[64];
+    snprintf(home, sizeof home, ui().wifiMenuRows[1],
+             gWifiMenuSsid.length() ? gWifiMenuSsid.c_str() : ui().wifiHomeNone);
+    const char* labels[kWifiMenuRows] = {ui().wifiMenuRows[0], home, ui().wifiMenuRows[2],
+                                         ui().wifiMenuRows[3]};
+    for (int i = 0; i < kWifiMenuRows; ++i) drawRow(d, labels[i], top + i * step, rowH, i == gWifiMenuSel);
+    if (gWifiMenuNote[0])
+        gRender.drawCentred(d, gWifiMenuNote, 2, H - noteH + 1, W - 4, 10, 1, gWifiMenuNoteColor,
+                            kBlack, tgc::Renderer::kTextBuiltinSmall);
+    present();
+}
+
+// Settings > Wi-Fi > Home network: joining, checking (NTP and the catalog),
+// then the result -- network, IP, signal, catalog, network time -- with the
+// radio off again; or why it failed, or that no network is saved.
+void drawNetTest() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, ui().testTitle, 3, 3, kWhite, kGrey);
+    drawBackHint(d);
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+
+    if (gTestStep == NetTestStep::NoNetwork) {
+        gRender.drawCentred(d, ui().wifiNoNetwork, 2, H / 2 - 36, W - 4, 22, 2, kYellow, kBlack, kSmall);
+        gRender.drawCentred(d, ui().testNoNetworkHint, 2, H / 2 - 8, W - 4, 40, 4, kWhite, kBlack, kSmall);
+        present();
+        return;
+    }
+    if (gTestStep == NetTestStep::Joining || gTestStep == NetTestStep::Failed) {
+        const bool failed = gTestStep == NetTestStep::Failed;
+        const char* title = failed ? gTestFail : ui().netConnecting;
+        gRender.drawCentred(d, title, 2, H / 2 - 36, W - 4, 22, 2, kYellow, kBlack,
+                            labelFont(title, 22, 16, W - 8));
+        gRender.drawCentred(d, gHome.ssid(), 2, H / 2 - 10, W - 4, 20, 2, kWhite, kBlack, kSmall);
+        if (failed)
+            gRender.drawCentred(d, ui().testHoldAgain, 2, H - 12, W - 4, 10, 1, kWhite, kBlack, kSmall);
+        present();
+        return;
+    }
+    int y = 20;
+    auto line = [&](const char* s, uint16_t color, int n = 1) {
+        if (!s || !*s || y + 10 * n > H - 12) return;
+        gRender.drawCentred(d, s, 2, y, W - 4, 10 * n, n, color, kBlack, kSmall);
+        y += 10 * n + (H > W ? 4 : 1);
+    };
+    char buf[72];
+    line(gHome.ssid(), kYellow, 2);
+    snprintf(buf, sizeof buf, ui().testIpFmt, gTestIp.c_str());
+    line(buf, kWhite);
+    snprintf(buf, sizeof buf, ui().testSignalFmt, gTestRssi, ui().testQuality[tgc::rssiQuality(gTestRssi)]);
+    line(buf, kWhite, 2);
+    if (gTestStep == NetTestStep::Checking) {
+        line(ui().testChecking, kYellow);
+        present();
+        return;
+    }
+    line(gTestCatalog, gTestCatalogColor, 2);
+    if (gTestTime >= 0) line(gTestTime ? ui().testTimeOk : ui().testTimeFail, gTestTime ? kGreen : kYellow);
+    gRender.drawCentred(d, ui().testHoldAgain, 2, H - 12, W - 4, 10, 1, kWhite, kBlack, kSmall);
+    present();
 }
 
 // "Get decks" screen. Connecting / reading: a centred status and the network
@@ -1208,8 +1482,9 @@ void drawGetDecks() {
             d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
             if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
             const tgc::CatalogEntry& e = gCatalog[i];
-            const uint8_t st = gCatalogState[i];
-            const uint16_t fg = st == kDeckOnDevice ? kGreen : (st == kDeckUpdate ? kYellow : kWhite);
+            const tgc::DeckState st = gCatalogState[i];
+            const uint16_t fg = st == tgc::DeckState::OnDevice ? kGreen
+                                : (st == tgc::DeckState::Update ? kYellow : kWhite);
             const int ty = y + (rowH - 2 - 8) / 2;
             // Right column "en 704K"; when the name would not fit next to it
             // (the 135 px portrait), only the size (the footer has the language).
@@ -1224,7 +1499,8 @@ void drawGetDecks() {
                 maxW = W - 4 - gRender.textWidth(right, kSmall) - 6 - nameX;
             }
             smallText(d, right, W - 4, ty, kWhite, bg, lgfx::top_right);
-            smallText(d, st == kDeckOnDevice ? "=" : (st == kDeckUpdate ? "~" : "+"), 4, ty, fg, bg);
+            smallText(d, st == tgc::DeckState::OnDevice ? "=" : (st == tgc::DeckState::Update ? "~" : "+"),
+                      4, ty, fg, bg);
             // The name gets what the size column leaves, cut with ".." if needed.
             if (gRender.textWidth(name.c_str(), kSmall) > maxW) {
                 while (name.length() > 1 && gRender.textWidth((name + "..").c_str(), kSmall) > maxW)
@@ -1253,9 +1529,10 @@ void drawGetDecks() {
                  (unsigned)e.cards, size);
     }
     if (!gNetBusy && n > 0) {
-        const uint8_t st = gCatalogState[gNetSel];
-        line2 = st == kDeckOnDevice ? ui().netHoldStudy
-                                    : (st == kDeckUpdate ? ui().netHoldUpdate : ui().netHoldDownload);
+        const tgc::DeckState st = gCatalogState[gNetSel];
+        line2 = st == tgc::DeckState::OnDevice
+                    ? ui().netHoldStudy
+                    : (st == tgc::DeckState::Update ? ui().netHoldUpdate : ui().netHoldDownload);
     }
     gRender.drawCentred(d, line1, 2, footY + 1, W - 4, 10, 1, c1, kBlack, kSmall);
     if (gNetBusy) {
@@ -1550,8 +1827,9 @@ bool applyWallClock(int64_t utcMs, int tzOffsetMin) {
     if (gSrs.today() != before && gPack->isOpen()) {
         // A new day: cards may have come due. An unanswered question (or the
         // done screen) gives way to the new queue; after an answer, the next
-        // question comes from it. On the portal or Get decks screen the same
-        // goes for the quiz screen that the settings home's "Continue" shows.
+        // question comes from it. On the portal, Get decks or network test
+        // screen the same goes for the quiz screen that the settings home's
+        // "Continue" shows.
         gQueue.rebuild(*gPack, gSrs, gRng);
         auto refresh = [](Screen& s) {
             if ((s == Screen::Quiz && !gRevealed) || s == Screen::Done)
@@ -1559,7 +1837,7 @@ bool applyWallClock(int64_t utcMs, int tzOffsetMin) {
         };
         if (gScreen == Screen::Quiz || gScreen == Screen::Done)
             refresh(gScreen);
-        else if (gScreen == Screen::Wifi || gScreen == Screen::GetDecks)
+        else if (gScreen == Screen::Wifi || gScreen == Screen::GetDecks || gScreen == Screen::NetTest)
             refresh(gBeforeMenu);
     }
     if (!gScreenOff) drawScreen();
@@ -1630,6 +1908,8 @@ void drawScreen() {
     else if (gScreen == Screen::Detail) drawDetail();
     else if (gScreen == Screen::Wifi) drawWifi();
     else if (gScreen == Screen::GetDecks) drawGetDecks();
+    else if (gScreen == Screen::WifiMenu) drawWifiMenu();
+    else if (gScreen == Screen::NetTest) drawNetTest();
     else drawQuiz();
 }
 
@@ -1751,6 +2031,11 @@ void portalFillStats(tgc::PortalStats& out) {
     out.streakBest = st.streakBest;
     out.reviewMs = st.reviewMs;
     out.packCards = gPack->isOpen() ? gPack->cardCount() : 0;
+    if (gPack->isOpen()) {
+        const int slash = gCurrentPack.lastIndexOf('/');
+        snprintf(out.loadedPack, sizeof out.loadedPack, "%s",
+                 gCurrentPack.substring(slash >= 0 ? slash + 1 : 0).c_str());
+    }
 }
 
 // Called by the portal after /packs changed, and by Get decks after a download.
@@ -1795,52 +2080,129 @@ bool portalTime(int64_t utcMs, int16_t tzOffsetMin) {
     return applyWallClock(utcMs, tzOffsetMin);
 }
 
+// The page's language: the screens' own ("en"/"es"), or none under Auto while
+// no deck is loaded (the page then follows the browser, as Get decks follows
+// the phone's language in that case).
+const char* portalUiLang() {
+    return (gUiLangPref == tgc::kUiLangAuto && !gPack->isOpen()) ? "" : uiLangCode();
+}
+
+// The page sends the user to the device screen: undo an idle dim (the time
+// spent typing on the phone is not button input).
+void undoDim() {
+    if (gDimmed) {
+        tgc::board::setBrightness(gBrightness);
+        gDimmed = false;
+    }
+}
+
 // Stops the portal and opens Get decks in its place: the boot-time upload
-// screen's hold, and the portal page's "Get decks now" (the portal's onGetDecks
-// hook, called from poll() once its response is out) from the boot-time portal
-// or the settings one. Get decks then leaves as it always does: back to the
-// boot-time screen (or into the quiz once a deck is loaded), else the deck list.
+// screen's hold, and the portal page's "Get decks on the device screen" (the
+// portal's onGetDecks hook, called from poll() once its response is out) from
+// the boot-time portal or the settings one. Get decks then leaves as it always
+// does: back to the boot-time screen (or into the quiz once a deck is loaded),
+// else the deck list. In home mode the station stays up and Get decks uses it.
 void wifiToGetDecks(const char* phoneLang) {
     // Only an Auto UI with no deck loaded has no language of its own (it shows
     // English); then the phone's language orders the deck list instead.
     gGetDecksLangHint = phoneLang ? phoneLang : "";
     gPortal.end();
-    setCpuFrequencyMhz(kCpuMhz);  // openGetDecks() raises it again while the radio is on
+    ++gWifiEpoch;
+    // openGetDecks() raises it again while the radio is on.
+    if (!gHome.active()) setCpuFrequencyMhz(kCpuMhz);
     QLOG("W wifi: stopped for Get decks\n");
-    // The page sends the user to the device screen: undo an idle dim (the time
-    // spent typing on the phone is not button input).
-    if (gDimmed) {
-        tgc::board::setBrightness(gBrightness);
-        gDimmed = false;
-    }
+    undoDim();
     openGetDecks(gWifiBootUpload);
 }
 
-const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged, portalTime,
-                                             wifiToGetDecks};
-
-// Opens the Wi-Fi screen and starts the portal (from the settings home, or at
-// boot when there is no pack yet). The boot-time upload mode is decided by the
-// caller (setup sets gWifiBootUpload); opening the portal from settings never
-// makes the side button inert.
-void openWifi() {
-    setCpuFrequencyMhz(kCpuWifiMhz);
-    if (!gPortal.begin(kPortalHooks))
-        QLOG("W wifi: portal start failed (%s)\n", gPortal.lastMessage());
-    else
-        QLOG("W wifi: ssid=%s url=%s\n", gPortal.ssid(), gPortal.url());
-    gScreen = Screen::Wifi;
-    drawScreen();
+// "Switch to my Wi-Fi" / "Reconnect" on the page (the portal's onSwitchToHome
+// hook, from poll() once its response is out): the portal again, in home mode.
+void portalSwitchToHome() {
+    QLOG("W wifi: page asked for home mode\n");
+    undoDim();
+    openPortal(PortalMode::Home);
 }
 
-// Leaves the Wi-Fi screen for the settings home. On the boot-time upload screen
-// there is nothing to return to, so the side button does nothing there.
-void closeWifi() {
-    if (gWifiBootUpload) return;
-    gPortal.end();
+// Home mode: a deck download the page asked for (the portal's onDeckDownload
+// hook, blocking, from poll()). The Wi-Fi screen shows the progress.
+tgc::DeckDownloadResult portalDeckDownload(const tgc::CatalogEntry& e, bool update) {
+    ++gWifiEpoch;
+    QLOG("W wifi: page download %s (%s)\n", e.name.c_str(), update ? "update" : "new");
+    return downloadCatalogDeck(e);
+}
+
+const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged, portalTime,
+                                             wifiToGetDecks,  portalUiLang,       portalSwitchToHome,
+                                             portalDeckDownload};
+
+// The mode the portal opens in: home once a network is saved, else setup.
+PortalMode defaultPortalMode() {
+    return tgc::HomeWifi::hasCredentials() ? PortalMode::Home : PortalMode::Setup;
+}
+
+// Why joining the home Wi-Fi failed (the radio is already off).
+const char* joinFailureText() {
+    using F = tgc::HomeWifi::Failure;
+    const F f = gHome.failure();
+    return f == F::NotFound ? ui().netNotFound
+                            : (f == F::AuthFailed ? ui().netAuthFailed : ui().netNoConnect);
+}
+
+// The Wi-Fi screen's failed state: a title (why) and a detail (the network).
+void wifiFailed(const char* title, const char* detail) {
+    gWifiStep = WifiStep::Failed;
+    snprintf(gNetErrTitle, sizeof gNetErrTitle, "%s", title);
+    snprintf(gNetErrDetail, sizeof gNetErrDetail, "%s", detail ? detail : "");
+    QLOG("W wifi: failed: %s | %s\n", gNetErrTitle, gNetErrDetail);
+}
+
+// Stops the portal and the radio, whichever mode ran; CPU back to normal.
+void stopPortal() {
+    if (gPortal.active()) {
+        gPortal.end();
+        QLOG("W wifi: stopped\n");
+    }
+    netRadioOff();
     setCpuFrequencyMhz(kCpuMhz);
-    QLOG("W wifi: stopped\n");
-    gScreen = Screen::Menu;
+}
+
+// Opens the Wi-Fi screen in `mode` (from the Wi-Fi submenu, the page's switch
+// to home mode, or at boot when there is no pack yet). Home mode joins the
+// saved network first (wifiLoop() polls it) and then serves the page on it;
+// setup mode starts the access point at once. Whatever ran before stops first.
+// The boot-time upload mode is decided by the caller (setup() sets
+// gWifiBootUpload); opening the portal from the settings never makes the side
+// button inert.
+void openPortal(PortalMode mode) {
+    if (gPortal.active()) gPortal.end();
+    netRadioOff();
+    ++gWifiEpoch;
+    gPortalMode = mode;
+    gScreen = Screen::Wifi;
+    gQrPage = 0;
+    gWifiNote[0] = 0;
+    gNetActivityAt = millis();  // the join keeps the idle timers away (powerTick)
+    setCpuFrequencyMhz(kCpuWifiMhz);
+    if (mode == PortalMode::Home) {
+        if (!gHome.begin()) {
+            netRadioOff();
+            setCpuFrequencyMhz(kCpuMhz);
+            const bool none = gHome.failure() == tgc::HomeWifi::Failure::NoCredentials;
+            wifiFailed(none ? ui().netNoWifi : ui().netNoConnect, none ? "" : gHome.ssid());
+        } else {
+            gWifiStep = WifiStep::Joining;
+            QLOG("W wifi: joining %s for the portal\n", gHome.ssid());
+        }
+        drawScreen();
+        return;
+    }
+    if (!gPortal.begin(kPortalHooks)) {
+        setCpuFrequencyMhz(kCpuMhz);
+        wifiFailed(gPortal.lastMessage(), "");
+    } else {
+        gWifiStep = WifiStep::Serving;
+        QLOG("W wifi: setup mode ssid=%s url=%s\n", gPortal.ssid(), gPortal.url());
+    }
     drawScreen();
 }
 
@@ -1856,15 +2218,100 @@ void startQuizFromPortal() {
     drawScreen();
 }
 
-// On the boot-time upload screen, move on to the quiz once a pack is loaded.
-// True when it took over the screen.
+void openWifiMenu(bool fresh);
+void wifiMenuNote(const char* text, uint16_t color);
+
+// Leaves the Wi-Fi screen (radio off): for the Wi-Fi submenu, or -- on the
+// boot-time screen once the home-mode page brought a deck -- into the quiz. On
+// the boot-time screen without a deck there is nothing to return to, so the
+// side button does nothing there.
+void closeWifi() {
+    if (gWifiBootUpload && !gPack->isOpen()) return;
+    stopPortal();
+    if (gWifiBootUpload) {
+        gWifiBootUpload = false;
+        startQuizFromPortal();
+        return;
+    }
+    openWifiMenu(false);
+}
+
+// On the boot-time upload screen in setup mode, move on to the quiz once a pack
+// is loaded (an upload or a URL download). Home mode stays, so the page can
+// fetch more decks; its side button then starts studying (closeWifi()). True
+// when it took over the screen.
 bool wifiUploadReadyToQuiz() {
-    if (!gWifiBootUpload || !gPack->isOpen()) return false;
-    gPortal.end();
-    setCpuFrequencyMhz(kCpuMhz);
+    if (!gWifiBootUpload || !gPack->isOpen() || gPortalMode != PortalMode::Setup) return false;
+    stopPortal();
     gWifiBootUpload = false;
     startQuizFromPortal();
     return true;
+}
+
+// loop() while on the Wi-Fi screen.
+void wifiLoop(int a, int b) {
+    if (gWifiStep == WifiStep::Joining) {
+        const tgc::HomeWifi::State st = gHome.poll();
+        if (st == tgc::HomeWifi::State::Connected) {
+            // The network is up anyway: take the real date from NTP first, as
+            // Get decks does (blocking, at most kNtpTimeoutMs).
+            netSyncClock();
+            gSwallowInput = true;  // presses made while blocked must not act now
+            gNetActivityAt = millis();
+            if (gPortal.beginHome(kPortalHooks, gHome.ssid())) {
+                gWifiStep = WifiStep::Serving;
+                QLOG("W wifi: home mode on %s at %s\n", gHome.ssid(), gPortal.url());
+            } else {
+                netRadioOff();
+                wifiFailed(ui().netNoConnect, gHome.ssid());
+            }
+            drawScreen();
+            return;
+        }
+        if (st == tgc::HomeWifi::State::Failed) {
+            setCpuFrequencyMhz(kCpuMhz);  // the radio is off already
+            if (gWifiBootUpload) {
+                // Nothing to study yet: the device's own network instead, and
+                // why on its screen.
+                char note[sizeof gWifiNote];
+                snprintf(note, sizeof note, ui().wifiFallbackFmt, gHome.ssid(), joinFailureText());
+                openPortal(PortalMode::Setup);
+                if (gWifiStep == WifiStep::Serving) {
+                    snprintf(gWifiNote, sizeof gWifiNote, "%s", note);
+                    drawScreen();
+                }
+                return;
+            }
+            wifiFailed(joinFailureText(), gHome.ssid());
+            drawScreen();
+            return;
+        }
+        if (a == 2) openPortal(PortalMode::Setup);
+        else if (b) closeWifi();  // cancel the join
+        return;
+    }
+    if (gWifiStep == WifiStep::Failed) {
+        if (a == 1) openPortal(gPortalMode);  // try again
+        else if (a == 2) openPortal(PortalMode::Setup);
+        else if (b) closeWifi();
+        return;
+    }
+    // Serving. The page may leave this screen (Get decks), switch the mode or
+    // run a download inside poll(); the input read before it is then stale.
+    const uint32_t epoch = gWifiEpoch;
+    gPortal.poll();
+    if (gScreen != Screen::Wifi || epoch != gWifiEpoch) return;
+    if (gPortal.consumeDirty()) drawScreen();
+    if (wifiUploadReadyToQuiz()) return;
+    if (b) {
+        closeWifi();
+    } else if (a == 1 && gPortalMode == PortalMode::Setup) {
+        gQrPage ^= 1;  // the other QR code: join the AP / open the page
+        drawScreen();
+    } else if (a == 2 && gWifiBootUpload && !gPack->isOpen() && tgc::HomeWifi::hasCredentials()) {
+        // Boot-time screen with a saved home Wi-Fi: Get decks on the device.
+        wifiToGetDecks(nullptr);
+    }
 }
 
 void openMenu() {
@@ -1916,6 +2363,15 @@ void openChoice(Choice which) {
         gChoiceValues[gChoiceCount++] = kOrientLandscape;
         for (int i = 0; i < gChoiceCount; ++i)
             if (gChoiceValues[i] == gOrientPref) gChoiceSel = i;
+        gScreen = Screen::Choice;
+        drawScreen();
+        return;
+    }
+    if (which == Choice::ForgetWifi) {
+        // Cancel first and selected: forgetting takes a tap and a hold.
+        gChoiceCount = 2;
+        gChoiceValues[0] = 0;
+        gChoiceValues[1] = 1;
         gScreen = Screen::Choice;
         drawScreen();
         return;
@@ -1974,6 +2430,14 @@ void applyChoice() {
         }
         return;
     }
+    if (gChoice == Choice::ForgetWifi) {
+        if (gChoiceValues[gChoiceSel] == 1) {
+            tgc::HomeWifi::forgetCredentials();
+            wifiMenuNote(ui().wifiForgotten, kGreen);
+        }
+        openWifiMenu(false);
+        return;
+    }
     if (gChoice == Choice::UiLang) {
         gUiLangPref = static_cast<int>(gChoiceValues[gChoiceSel]);
         gPrefs.putInt("ui", gUiLangPref);
@@ -2028,8 +2492,8 @@ void activateSetting() {
             gScreen = Screen::Stats;
             drawScreen();
             break;
-        case 6:  // Wi-Fi
-            openWifi();
+        case 6:  // Wi-Fi >
+            openWifiMenu(true);
             break;
         case 7:  // Orientacion
             openChoice(Choice::Orientation);
@@ -2090,16 +2554,17 @@ void netNote(const char* text, uint16_t color) {
 
 String catalogPath(const tgc::CatalogEntry& e) { return String("/packs/") + e.name.c_str() + ".tgc"; }
 
-// Compares the catalog with /packs (existence and size).
+// Compares the catalog with /packs (existence and size, catalogDeckState()).
 void netRefreshStates() {
     listPacks(gPacks);
-    gCatalogState.assign(gCatalog.size(), kDeckNew);
+    gCatalogState.assign(gCatalog.size(), tgc::DeckState::New);
     for (size_t i = 0; i < gCatalog.size(); ++i) {
         const String path = catalogPath(gCatalog[i]);
         if (!LittleFS.exists(path)) continue;
         File f = LittleFS.open(path, "r");
         if (!f) continue;
-        gCatalogState[i] = f.size() == gCatalog[i].bytes ? kDeckOnDevice : kDeckUpdate;
+        gCatalogState[i] =
+            tgc::catalogDeckState(true, static_cast<uint32_t>(f.size()), gCatalog[i].bytes);
         f.close();
     }
 }
@@ -2146,7 +2611,7 @@ void closeGetDecks() {
             gWifiBootUpload = false;
             startQuizFromPortal();
         } else {
-            openWifi();
+            openPortal(defaultPortalMode());
         }
         return;
     }
@@ -2168,51 +2633,51 @@ void netSyncClock() {
     if (gHome.fetchUtcMs(&utcMs, kNtpTimeoutMs)) applyWallClock(utcMs, tz);
 }
 
+// Why a catalog read failed, as a title and a detail line (the error screen's
+// two parts; the network test shows the title). False when it did not fail.
+bool catalogFailure(const tgc::CatalogFetch& c, const String& url, char* title, size_t tn,
+                    char* detail, size_t dn) {
+    snprintf(detail, dn, "%s", url.c_str());
+    switch (c.fetch.status) {
+        case tgc::FetchStatus::Ok:
+            if (c.parse.error == tgc::CatalogError::Ok) return false;
+            snprintf(title, tn, "%s", ui().netBadCatalog);
+            if (c.parse.error == tgc::CatalogError::UnsupportedVersion)
+                snprintf(detail, dn, "%s", ui().netNewerCatalog);
+            return true;
+        case tgc::FetchStatus::Connect:
+            snprintf(title, tn, "%s", ui().netNoServer);
+            return true;
+        case tgc::FetchStatus::Tls:
+            snprintf(title, tn, "%s", ui().netTls);
+            snprintf(detail, dn, "mbedTLS -0x%04X  %s", (unsigned)(-c.fetch.tlsError), url.c_str());
+            return true;
+        case tgc::FetchStatus::Http:
+            // 404 on the default URL: no release with a catalog exists yet.
+            snprintf(title, tn, ui().netHttpFmt, c.fetch.httpCode);
+            if (c.fetch.httpCode == 404) snprintf(detail, dn, "%s", ui().netNotPublished);
+            return true;
+        case tgc::FetchStatus::TooLarge:
+            snprintf(title, tn, "%s", ui().netBadCatalog);
+            return true;
+        default:
+            snprintf(title, tn, "%s", ui().netFailed);
+            return true;
+    }
+}
+
 // Connected: read and parse the catalog (blocking), then show the list.
 void netLoadCatalog() {
     const String url = tgc::HomeWifi::catalogUrl();
-    std::string text;
-    const tgc::FetchResult r = tgc::fetchText(url, kCatalogMaxBytes, kCatalogTimeoutMs, &text);
+    tgc::CatalogFetch c = tgc::fetchCatalog(url);
     gNetActivityAt = millis();
     gSwallowInput = true;  // presses made while blocked must not act now
-    Serial.printf("[net] catalog %s: %s (http %d, tls %d, %u bytes)\n", url.c_str(),
-                  tgc::fetchStatusString(r.status), r.httpCode, r.tlsError, (unsigned)r.bytes);
-    char detail[96];
-    switch (r.status) {
-        case tgc::FetchStatus::Ok:
-            break;
-        case tgc::FetchStatus::Connect:
-            netError(ui().netNoServer, url.c_str());
-            return;
-        case tgc::FetchStatus::Tls:
-            snprintf(detail, sizeof detail, "mbedTLS -0x%04X  %s", (unsigned)(-r.tlsError), url.c_str());
-            netError(ui().netTls, detail);
-            return;
-        case tgc::FetchStatus::Http: {
-            // 404 on the default URL: no release with a catalog exists yet.
-            char title[40];
-            snprintf(title, sizeof title, ui().netHttpFmt, r.httpCode);
-            netError(title, r.httpCode == 404 ? ui().netNotPublished : url.c_str());
-            return;
-        }
-        case tgc::FetchStatus::TooLarge:
-            netError(ui().netBadCatalog, url.c_str());
-            return;
-        default:
-            netError(ui().netFailed, url.c_str());
-            return;
-    }
-    tgc::CatalogParse parsed = tgc::parseCatalog(text.data(), text.size(), url.c_str());
-    Serial.printf("[net] catalog: %s, %u decks, %u skipped%s\n", tgc::catalogErrorString(parsed.error),
-                  (unsigned)parsed.entries.size(), (unsigned)parsed.skipped,
-                  parsed.truncated ? ", truncated" : "");
-    if (parsed.error != tgc::CatalogError::Ok) {
-        netError(ui().netBadCatalog, parsed.error == tgc::CatalogError::UnsupportedVersion
-                                         ? ui().netNewerCatalog
-                                         : url.c_str());
+    char title[48], detail[96];
+    if (catalogFailure(c, url, title, sizeof title, detail, sizeof detail)) {
+        netError(title, detail);
         return;
     }
-    gCatalog = std::move(parsed.entries);
+    gCatalog = std::move(c.parse.entries);
     // The decks in the screen's language first, the catalog order otherwise
     // (every other language is still listed after them).
     const char* firstLang =
@@ -2225,7 +2690,7 @@ void netLoadCatalog() {
     // Start on the first deck that is not here yet.
     gNetSel = 0;
     for (size_t i = 0; i < gCatalogState.size(); ++i)
-        if (gCatalogState[i] != kDeckOnDevice) {
+        if (gCatalogState[i] != tgc::DeckState::OnDevice) {
             gNetSel = static_cast<int>(i);
             break;
         }
@@ -2244,11 +2709,14 @@ bool batteryCritical(uint32_t now) {
 
 // Download progress: redraw on a new percentage, keep the idle timers away and
 // let the side button cancel (its release is swallowed afterwards). The power
-// button and a critical battery cancel too and ask netDownload() to sleep: a
-// download may run for minutes at 240 MHz, and neither can wait that long.
+// button and a critical battery cancel too and ask downloadCatalogDeck() to
+// sleep: a download may run for minutes at 240 MHz, and neither can wait that
+// long. A download the portal page asked for also lets the portal answer the
+// page's progress view meanwhile.
 bool netProgress(size_t done, size_t total, void*) {
     const uint32_t now = millis();
     gNetActivityAt = now;
+    if (gScreen == Screen::Wifi) gPortal.serviceDownload(done, total);
     if (now - gNetInputAt >= 50) {
         gNetInputAt = now;
         tgc::board::update();
@@ -2287,19 +2755,19 @@ const char* netDownloadError(const tgc::FetchResult& r, char* buf, size_t n) {
     }
 }
 
-// Downloads catalog deck `i` into /packs (atomic; size and SHA-256 checked),
-// then rescans /packs through the portal's path and marks the row.
-void netDownload(int i) {
-    const tgc::CatalogEntry& e = gCatalog[i];
+// Downloads catalog deck `e` into /packs (atomic; size and SHA-256 checked),
+// then rescans /packs through the portal's path. Shared by the Get decks screen
+// and the portal page in home mode; the progress shows on whichever of the two
+// is open (netProgress() redraws it), and the side button cancels.
+tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e) {
+    tgc::DeckDownloadResult out;
     const String path = catalogPath(e);
-    const bool updating = gCatalogState[i] == kDeckUpdate;
     // On battery below the level a critical sleep resumes at, the download
     // would likely be cut by the guard: refuse it up front.
     const bool external = tgc::board::externalPower() || tgc::board::isCharging();
     if (!tgc::BatteryGuard::canResume(tgc::board::batteryPercent(), external)) {
-        netNote(ui().batteryTitle, kYellow);
-        drawScreen();
-        return;
+        out.batteryLow = true;
+        return out;
     }
     // Replacing the loaded deck: close it first so its file is not open while
     // the new one is renamed over it; portalPacksChanged() reloads it below.
@@ -2309,9 +2777,9 @@ void netDownload(int i) {
         gPack->close();
         gSource.reset();
     }
+    snprintf(gNetDeck, sizeof gNetDeck, "%s", e.name.c_str());
     gNetBusy = true;
     gNetPct = -1;
-    gNetNote[0] = 0;
     gNetInputAt = millis();
     gNetSleep = NetSleep::None;
     drawScreen();
@@ -2343,6 +2811,22 @@ void netDownload(int i) {
     // loads the first one when none was open (the boot-time path), and gives
     // the settings home's "Continue" a question from the deck now loaded.
     if (r.packsChanged || !gPack->isOpen()) portalPacksChanged();
+    out.fetch = r;
+    return out;
+}
+
+// Get decks: downloads catalog deck `i` and marks the row.
+void netDownload(int i) {
+    const tgc::CatalogEntry e = gCatalog[i];
+    const bool updating = gCatalogState[i] == tgc::DeckState::Update;
+    gNetNote[0] = 0;
+    const tgc::DeckDownloadResult d = downloadCatalogDeck(e);
+    if (d.batteryLow) {
+        netNote(ui().batteryTitle, kYellow);
+        drawScreen();
+        return;
+    }
+    const tgc::FetchResult& r = d.fetch;
     netRefreshStates();
     char buf[48];
     if (r.status == tgc::FetchStatus::Ok) {
@@ -2377,13 +2861,7 @@ void netStudy(int i) {
 }
 
 // Shows why joining the home Wi-Fi failed (the radio is already off).
-void netJoinFailed() {
-    using F = tgc::HomeWifi::Failure;
-    const F f = gHome.failure();
-    netError(f == F::NotFound ? ui().netNotFound
-                              : (f == F::AuthFailed ? ui().netAuthFailed : ui().netNoConnect),
-             gHome.ssid());
-}
+void netJoinFailed() { netError(joinFailureText(), gHome.ssid()); }
 
 // loop() while on the Get decks screen.
 void getDecksLoop(int a, int b) {
@@ -2415,11 +2893,155 @@ void getDecksLoop(int a, int b) {
         gNetNote[0] = 0;
         drawScreen();
     } else if (a == 2) {
-        if (gCatalogState[gNetSel] == kDeckOnDevice)
+        if (gCatalogState[gNetSel] == tgc::DeckState::OnDevice)
             netStudy(gNetSel);
         else
             netDownload(gNetSel);
     }
+}
+
+// --- Settings > Wi-Fi --------------------------------------------------------
+
+void wifiMenuNote(const char* text, uint16_t color) {
+    snprintf(gWifiMenuNote, sizeof gWifiMenuNote, "%s", text ? text : "");
+    gWifiMenuNoteColor = color;
+}
+
+// Opens the Wi-Fi submenu: `fresh` from the settings home (first row, no note),
+// else back from one of its screens (selection and note kept).
+void openWifiMenu(bool fresh) {
+    if (fresh) {
+        gWifiMenuSel = 0;
+        gWifiMenuNote[0] = 0;
+    }
+    gWifiMenuSsid = tgc::HomeWifi::savedSsid();
+    gScreen = Screen::WifiMenu;
+    drawScreen();
+}
+
+void activateWifiMenu() {
+    switch (gWifiMenuSel) {
+        case 0:  // Web portal: home mode once a network is saved, else setup mode
+            openPortal(defaultPortalMode());
+            break;
+        case 1:  // Home network: the connection test
+            openNetTest();
+            break;
+        case 2:  // Setup mode: the access point, e.g. to save another network
+            openPortal(PortalMode::Setup);
+            break;
+        case 3:  // Forget network: confirmed on a picker (Cancel first)
+            if (gWifiMenuSsid.isEmpty()) {
+                wifiMenuNote(ui().wifiNoNetwork, kYellow);
+                drawScreen();
+            } else {
+                openChoice(Choice::ForgetWifi);
+            }
+            break;
+    }
+}
+
+void wifiMenuLoop(int a, int b) {
+    if (a == 1) {
+        gWifiMenuSel = (gWifiMenuSel + 1) % kWifiMenuRows;
+        gWifiMenuNote[0] = 0;
+        drawScreen();
+    } else if (a == 2) {
+        activateWifiMenu();
+    }
+    if (b && gScreen == Screen::WifiMenu) {  // side button returns to the settings home
+        gScreen = Screen::Menu;
+        drawScreen();
+    }
+}
+
+// Settings > Wi-Fi > Home network: joins the saved network (radio on, CPU at
+// kCpuWifiMhz); netTestLoop() takes it from there.
+void openNetTest() {
+    gScreen = Screen::NetTest;
+    gTestIp = "";
+    gTestRssi = 0;
+    gTestTime = -1;
+    gTestCatalog[0] = 0;
+    gTestFail[0] = 0;
+    gNetActivityAt = millis();  // the join keeps the idle timers away (powerTick)
+    if (!tgc::HomeWifi::hasCredentials()) {
+        gTestStep = NetTestStep::NoNetwork;
+        drawScreen();
+        return;
+    }
+    netRadioOff();
+    setCpuFrequencyMhz(kCpuWifiMhz);
+    if (!gHome.begin()) {
+        netRadioOff();
+        setCpuFrequencyMhz(kCpuMhz);
+        gTestStep = NetTestStep::Failed;
+        snprintf(gTestFail, sizeof gTestFail, "%s", ui().netNoConnect);
+        drawScreen();
+        return;
+    }
+    gTestStep = NetTestStep::Joining;
+    QLOG("N test: joining %s\n", gHome.ssid());
+    drawScreen();
+}
+
+// Connected: the network time (as every join does, when the offset is saved)
+// and the catalog, the end-to-end check that the catalog host is reachable and
+// answers with a catalog. Blocking; the radio is off again afterwards.
+void netTestCheck() {
+    gTestIp = gHome.localIp();
+    gTestRssi = gHome.rssi();
+    gTestStep = NetTestStep::Checking;
+    drawScreen();
+    int16_t tz = 0;
+    if (savedTzOffset(&tz)) {
+        int64_t utcMs = 0;
+        gTestTime = gHome.fetchUtcMs(&utcMs, kNtpTimeoutMs) ? 1 : 0;
+        if (gTestTime) applyWallClock(utcMs, tz);
+    }
+    const String url = tgc::HomeWifi::catalogUrl();
+    const tgc::CatalogFetch c = tgc::fetchCatalog(url);
+    char title[48], detail[96];
+    if (catalogFailure(c, url, title, sizeof title, detail, sizeof detail)) {
+        // A 404 says more as "no catalog published at this URL yet".
+        const bool notPublished =
+            c.fetch.status == tgc::FetchStatus::Http && c.fetch.httpCode == 404;
+        snprintf(gTestCatalog, sizeof gTestCatalog, "%s", notPublished ? ui().netNotPublished : title);
+        gTestCatalogColor = kYellow;
+    } else {
+        snprintf(gTestCatalog, sizeof gTestCatalog, ui().testCatalogFmt,
+                 (unsigned)c.parse.entries.size());
+        gTestCatalogColor = kGreen;
+    }
+    Serial.printf("[net] test: \"%s\" ip %s rssi %d dBm, catalog %s, time %d\n", gHome.ssid(),
+                  gTestIp.c_str(), gTestRssi, gTestCatalog, gTestTime);
+    netRadioOff();
+    gSwallowInput = true;  // presses made while blocked must not act now
+    gNetActivityAt = millis();
+    gTestStep = NetTestStep::Done;
+}
+
+void netTestLoop(int a, int b) {
+    if (b) {  // back to the Wi-Fi submenu (cancels a join in progress)
+        netRadioOff();
+        openWifiMenu(false);
+        return;
+    }
+    if (gTestStep == NetTestStep::Joining) {
+        const tgc::HomeWifi::State st = gHome.poll();
+        if (st == tgc::HomeWifi::State::Connected) {
+            netTestCheck();
+            drawScreen();
+        } else if (st == tgc::HomeWifi::State::Failed) {
+            setCpuFrequencyMhz(kCpuMhz);  // the radio is off already
+            snprintf(gTestFail, sizeof gTestFail, "%s", joinFailureText());
+            gTestStep = NetTestStep::Failed;
+            gNetActivityAt = millis();
+            drawScreen();
+        }
+        return;
+    }
+    if (a == 2) openNetTest();  // test again
 }
 
 // Tap/hold detection: 1 = tap (on release), 2 = hold (at the threshold).
@@ -2527,8 +3149,11 @@ void wakeScreen() {
             gShownAt = millis();
             gNavTaps = 0;
         }
-        if (gScreen == Screen::Wifi && !gPortal.active()) {
-            openWifi();
+        if (gScreen == Screen::Wifi && gWifiStep != WifiStep::Failed && !gPortal.active()) {
+            openPortal(gPortalMode);  // the idle timeout stopped the portal: start it again
+        } else if (gScreen == Screen::NetTest &&
+                   (gTestStep == NetTestStep::Joining || gTestStep == NetTestStep::Checking)) {
+            openNetTest();  // the idle timeout cut the test short: run it again
         } else if (gScreen == Screen::GetDecks && gNetStep != NetStep::Error && !gHome.active()) {
             openGetDecks(gNetFromBoot);  // the idle timeout turned the radio off: join again
         } else {
@@ -2747,15 +3372,17 @@ void setup() {
         gBootDay = gSrs.today();
         gSrs.beginSession();
         applySleepTime();
-        setCpuFrequencyMhz(kCpuWifiMhz);
-        if (!gPortal.begin(kPortalHooks)) {
+        // With a home Wi-Fi saved, the page over it (setup mode if the join
+        // fails, see wifiLoop()); without one, the device's own access point.
+        gWifiBootUpload = true;
+        openPortal(defaultPortalMode());
+        if (gPortalMode == PortalMode::Setup && gWifiStep != WifiStep::Serving) {
             showError(ui().errNoPack, ui().errNoPackHint);
             halt();
         }
-        gWifiBootUpload = true;
-        Serial.printf("wifi: no packs, upload-ready (ssid %s)\n", gPortal.ssid());
-        gScreen = Screen::Wifi;
-        drawScreen();
+        Serial.printf("wifi: no packs, upload-ready (%s %s)\n",
+                      gPortalMode == PortalMode::Home ? "joining" : "ssid",
+                      gPortalMode == PortalMode::Home ? gHome.ssid() : gPortal.ssid());
         return;
     }
 
@@ -2932,9 +3559,13 @@ void loop() {
         } else if (a == 2) {
             applyChoice();
         }
-        if (b) {  // cancel: back to the settings home
-            gScreen = Screen::Menu;
-            drawScreen();
+        if (b && gScreen == Screen::Choice) {  // cancel: back to where the picker came from
+            if (gChoice == Choice::ForgetWifi) {
+                openWifiMenu(false);
+            } else {
+                gScreen = Screen::Menu;
+                drawScreen();
+            }
         }
     } else if (gScreen == Screen::Date) {
         // Tap: one more day. Hold: confirm. Side hold: one day back, never below
@@ -3002,21 +3633,16 @@ void loop() {
             }
         }
     } else if (gScreen == Screen::Wifi) {
-        gPortal.poll();  // the page's "Get decks now" may leave this screen (wifiToGetDecks)
-        if (gPortal.consumeDirty()) drawScreen();
-        // On the boot-time upload screen, continue booting as soon as a pack has
-        // been uploaded; otherwise the side button leaves for the settings home
-        // (closeWifi itself ignores the button in the boot-time state).
-        if (gScreen == Screen::Wifi && !wifiUploadReadyToQuiz()) {
-            if (b) {
-                closeWifi();
-            } else if (a == 2 && gWifiBootUpload && tgc::HomeWifi::hasCredentials()) {
-                // Boot-time screen with a saved home Wi-Fi: fetch a deck instead.
-                wifiToGetDecks(nullptr);
-            }
-        }
+        // The page may leave this screen (Get decks), switch to home mode or
+        // download; the boot-time upload screen moves on to the quiz as soon as
+        // a pack arrived in setup mode (see wifiLoop()).
+        wifiLoop(a, b);
     } else if (gScreen == Screen::GetDecks) {
         getDecksLoop(a, b);
+    } else if (gScreen == Screen::WifiMenu) {
+        wifiMenuLoop(a, b);
+    } else if (gScreen == Screen::NetTest) {
+        netTestLoop(a, b);
     } else {
         if (a == 1) tapAction();
         else if (a == 2) holdAction(keyA.downAt);
