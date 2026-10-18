@@ -271,6 +271,7 @@ namespace {
 void rowContent(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, const Row& row,
                 uint16_t bg) {
     const bool f = row.focused;
+    const bool muted = row.muted && !f;
     // A two-line row keeps its last 13 px for the caption.
     const bool twoLines = row.caption != nullptr;
     const int lineH = twoLines ? h - 13 : h;
@@ -286,7 +287,11 @@ void rowContent(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, con
         lx += row.icon->w + 5;
     }
     int rx = x + w - kRowPadX;
-    if (row.chevron) {
+    if (row.mark) {
+        drawIcon(d, *row.mark, rx - row.mark->w, centreY(y, lineH, row.mark->h),
+                 f ? kText : row.markColor);
+        rx -= row.mark->w + 4;
+    } else if (row.chevron) {
         drawIcon(d, kIconChevron, rx - kIconChevron.w, centreY(y, lineH, kIconChevron.h),
                  f ? kText : kTextFaint);
         rx -= kIconChevron.w + 4;
@@ -294,32 +299,54 @@ void rowContent(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, con
     const uint16_t valueFg = f ? kText : kTextDim;
     const int valueY = centreY(y, lineH, kCaptionCap);
     const bool hasValue = row.value && *row.value;
+    // A tag pill follows the label, 4 px after it.
+    const int tagW = row.tag ? pillWidth(row.tag) + 4 : 0;
     int labelRoom = rx - lx;
     if (hasValue && row.keepLabel) {
         // The label as it is; the value gets what is left, cut if needed.
-        const int labelW = std::min(r.textWidth(row.label, Renderer::kTextUi), labelRoom);
+        const int labelW =
+            std::min(r.textWidth(row.label, Renderer::kTextUi) + tagW, labelRoom);
         const int room = rx - lx - labelW - 5;
         if (room >= 12)
             r.drawLabel(d, row.value, rx - room, valueY, room, kCaptionCap, valueFg, bg, kCaption,
                         Align::Right);
+    } else if (hasValue && row.valueIfFits) {
+        const int vw = captionWidth(row.value);
+        if (r.textWidth(row.label, Renderer::kTextUi) + tagW + 5 + vw <= labelRoom) {
+            drawCaption(d, r, row.value, rx - vw, valueY, valueFg, bg);
+            labelRoom -= vw + 5;
+        }
     } else if (hasValue) {
         const int vw = captionWidth(row.value);
         drawCaption(d, r, row.value, rx - vw, valueY, valueFg, bg);
         labelRoom -= vw + 5;
     }
-    r.drawLabel(d, row.label, lx, y, labelRoom, lineH, f ? kText : row.labelColor, bg,
-                Renderer::kTextUi);
-    if (twoLines)
-        r.drawLabel(d, row.caption, x + kRowPadX, y + h - 11, w - 2 * kRowPadX, kCaptionCap,
-                    f ? kText : kTextDim, bg, kCaption);
+    const int labelW = r.drawLabel(d, row.label, lx, y, labelRoom - tagW, lineH,
+                                   f ? kText : (muted ? kTextFaint : row.labelColor), bg,
+                                   Renderer::kTextUi);
+    if (row.tag)
+        drawPill(d, r, lx + labelW + 4, centreY(y, lineH, kPillH), row.tag, f ? kText : kTextDim,
+                 kSurfaceHi);
+    const int barX = x + kRowPadX;
+    const int barW = w - 2 * kRowPadX;
+    const uint16_t barFill = f ? kText : kAccent;
+    if (twoLines && row.progress >= 0)
+        drawProgress(d, barX, y + h - 9, barW, 4, row.progress, 100, barFill, kSurfaceHi);
+    else if (twoLines)
+        r.drawLabel(d, row.caption, barX, y + h - 11, barW, kCaptionCap,
+                    f ? kText : (muted ? kTextFaint : kTextDim), bg, kCaption);
+    else if (row.progress >= 0)
+        drawProgress(d, barX, y + h - 4, barW, 2, row.progress, 100, barFill, kSurfaceHi);
 }
 }  // namespace
 
 void drawRow(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, const Row& row) {
     ClipScope clip(d, x, y, w, h);
     if (clip.empty()) return;
-    const uint16_t bg = row.focused ? kAccent : kSurface;
+    const bool muted = row.muted && !row.focused;
+    const uint16_t bg = row.focused ? kAccent : (muted ? kBg : kSurface);
     d.fillRect(x, y, w, h, bg);
+    if (muted) d.drawRect(x, y, w, h, kLine);
     if (!row.focused || gPress < 0.0f) {
         rowContent(d, r, x, y, w, h, row, bg);
         return;

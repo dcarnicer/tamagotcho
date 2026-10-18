@@ -103,6 +103,18 @@ struct Row {
     bool focused = false;
     bool keepLabel = false;  // cut the value rather than the label
     uint16_t labelColor = theme::kText;  // while not focused
+    // The value only when the label and the whole value fit (else none), for
+    // values that are a nicety (the settings home's "10/day", "87%").
+    bool valueIfFits = false;
+    const char* tag = nullptr;  // a caption pill right after the label ("EN")
+    // Not focused: no fill, a 1 px `line` outline and faint text (a catalog
+    // deck already on the device).
+    bool muted = false;
+    const Icon* mark = nullptr;  // an icon at the right end, in place of the chevron
+    uint16_t markColor = theme::kTextDim;
+    // 0..100: a progress bar in place of the caption (a two-line row) or along
+    // the row's bottom; < 0 for none.
+    int progress = -1;
 };
 void drawRow(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, const Row& row);
 

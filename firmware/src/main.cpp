@@ -28,12 +28,16 @@
 #include "srs/Queue.h"
 #include "srs/SrsStore.h"
 #include "srs/WallClock.h"
+#include "ui/DeckSummary.h"
 #include "ui/Icons.h"
 #include "ui/InputPrefs.h"
 #include "ui/ListView.h"
 #include "ui/QuizUi.h"
+#include "ui/ScreenLayout.h"
+#include "ui/SettingsTree.h"
 #include "ui/TextLayout.h"
 #include "ui/Theme.h"
+#include "ui/UiFont.h"
 #include "ui/UiLang.h"
 #include "Credits.h"
 #include "Version.h"
@@ -85,40 +89,30 @@ struct UiStrings {
     const char* appName;  // error screen title bar
     const char* settingsTitle;
     const char* decksTitle;
-    // continue, decks, date (a submenu), new/day, speed, stats, wifi (a submenu),
-    // orientation, language, brightness, sleep, about. Row labels are drawn in
-    // the UI font (accents are fine); a chevron marks the rows that open a
-    // screen, so the labels carry no "»".
-    const char* menuRows[12];
     const char* newPerDayTitle;
-    const char* speedTitle;
-    const char* speedOff;
-    const char* speedSecondsFmt;
+    const char* hardAfterTitle;  // Study > Hard after (it was "Speed")
+    const char* hardAfterOff;    // its value that disables Hard
     const char* quizMeaning;
     const char* quizReading;
     const char* quizKanji;
     const char* dateTitle;
     // Date screen: the last-used day and a proposed "today" the user steps.
-    const char* dateLastUsed;  // label of the last-used date
-    const char* dateToday;     // label of the proposed date
-    const char* dateOneDay;    // "+1 day"
-    const char* dateDaysFmt;   // "+%u days" (0 and 2 and up)
-    // The stepper's button hints, packed into as few 1x lines as the width
-    // allows (drawDate()): front tap, front hold, side hold, side tap.
-    const char* dateHints[4];
+    const char* dateLastUsed;  // caption before the last-used date: "last used Sat 17 Oct"
+    const char* dateToday;     // the pill while the proposed day is the current one
+    const char* dateOneDay;    // "+1 day": the pill, and the hint bar's tap word
+    const char* dateDaysFmt;   // "+%u days" (2 and up)
     const char* weekdays[7];   // short names, Sunday first
     // The boot-time question tries the network time first (docs/srs.md 5.1):
-    // a 2x title (words of at most 10 characters), the network in the 1x font
-    // and the hint that a tap gives up and sets the date by hand.
+    // a label-face title and the network in a caption; the hint bar's tap
+    // (hintByHand) gives up and sets the date by hand.
     const char* dateNetTitle;
     const char* dateNetViaFmt;  // %s = home Wi-Fi name
-    const char* dateNetHint;
-    // Stepper status line when that failed. 1x font, two lines in portrait.
+    // Stepper status line when that failed (caption, wrapped).
     const char* dateNoNetwork;   // could not join
     const char* dateNoTime;      // joined, but no (plausible) time came back
-    // Settings > Date: the submenu (row labels; the date and the zone's city
-    // are their values) and the time zone list (a city and its offsets, see
-    // drawTzList()).
+    // Settings > Device > Date: the submenu (row labels; the date and the
+    // zone's city are their values) and the time zone list (a city and its
+    // offsets, see drawTzList()).
     const char* dateMenuRows[2];  // the date (the stepper), the zone (the list)
     const char* tzNone;           // the zone row's value when no zone is known
     const char* tzTitle;          // header (ASCII)
@@ -126,32 +120,21 @@ struct UiStrings {
     const char* tzSummerFmt;      // a row's offsets: "UTC+1, summer UTC+2"
     const char* tzPhoneNone;      // "From phone" when the page never sent a zone
     const char* tzSaved;          // Date submenu note after a choice
-    const char* doneBadge;
-    // Font0 is 6 px/char and each done-screen line is centred on the 135 px
-    // portrait width, so every done line must stay short (about 21 chars).
-    const char* doneAllReviewed;
-    const char* doneDayFmt;
-    const char* doneDueFmt;
-    const char* doneStudyMore;
-    const char* doneMenuHint;
     // The loaded deck's caption in the deck list (Font0 under the row, from
     // its left padding: at most 19 characters in the 135 px portrait).
-    const char* deckCountsFmt;  // due, new
+    const char* deckCountsFmt;  // cards, due
     const char* statsTitle;
-    const char* statsSeenFmt;
-    const char* statsDueNewFmt;
-    const char* statsAnswersFmt;
-    const char* statsAccuracyFmt;
-    const char* statsLearnedFmt;
+    // Error screens (showError()): what happened as a label-face title (two
+    // lines at most), then one action in a wrapped caption. End-user words.
     const char* errNoFilesystem;      // LittleFS present but will not mount
     const char* errNoFilesystemHint;  // hold the front button to erase it
     // First boot on an erased (or foreign) data partition: formatting it takes
-    // a few seconds. 2x title (words of at most 10 characters) + 1x hint.
+    // a few seconds. Label-face title + caption hint (showNotice()).
     const char* fsPreparing;
     const char* fsPreparingHint;
-    const char* errNoPack;
+    const char* errNoPack;      // no deck, and the access point would not start
     const char* errNoPackHint;
-    const char* errOpenPack;
+    const char* errOpenPack;    // no deck on the device opens
     const char* orientTitle;
     const char* orientRows[3];  // indexed by OrientPref: portrait, landscape, auto
     // Detail card (shown after a wrong answer). `detailOn`/`detailKun` label the
@@ -161,9 +144,8 @@ struct UiStrings {
     const char* detailKun;
     const char* detailStrokesFmt;
     const char* detailAccuracyFmt;
-    // Statistics: day streak and total time on questions.
-    const char* statsStreakFmt;  // current, best
-    const char* statsTimeFmt;    // whole line, %s = the formatted duration
+    // Statistics: total time on questions (its tile shows the first unit
+    // alone when both do not fit).
     const char* statsTimeHM;     // "%uh %um"
     const char* statsTimeMS;     // "%um %us"
     const char* statsTimeS;      // "%us"
@@ -185,20 +167,21 @@ struct UiStrings {
     const char* batteryTitle;
     const char* batteryHint;
     // "Get decks" (last row of the deck list, a UI-font label): download decks
-    // from the release catalog over the home Wi-Fi. The screen's strings below
-    // are drawn with the 1x built-in font in the list footer and on the error
-    // screen, so keep each line short.
+    // from the release catalog over the home Wi-Fi. Status lines are label-face
+    // titles; notes and details are captions (21 characters a line in the
+    // 135 px portrait; error details wrap).
     const char* getDecksRow;
     const char* getDecksTitle;
     const char* netConnecting;
     const char* netCatalog;
-    const char* netDownloadingFmt;  // %u = percent
+    // The hint bar's hold word for the focused deck: download, update, study;
+    // and retry on the error screen. "update" is also the deck's caption.
     const char* netHoldDownload;
     const char* netHoldUpdate;
     const char* netHoldStudy;
     const char* netHoldRetry;
     const char* netSavedFmt;  // %s = deck name
-    const char* netCardsFmt;  // %s = language, %u = cards, %s = size
+    const char* netCardsFmt;  // a deck's caption: %s = language (upper case), %u = cards
     const char* netEmpty;
     const char* netNoWifi;
     const char* netNoWifiHint;
@@ -218,7 +201,7 @@ struct UiStrings {
     const char* netInvalid;
     const char* netFailed;
     const char* netCancelled;
-    const char* wifiGetDecksHint;  // boot-time upload screen with a saved home Wi-Fi
+    const char* wifiGetDecksHint;  // hint bar: the boot-time screen's hold (with a home Wi-Fi)
     // Settings > Wi-Fi: the submenu (UI-font row labels, so accents are fine;
     // the titles are header text and stay ASCII).
     const char* wifiMenuRows[4];  // web portal, home network (its name is the value), setup mode, forget
@@ -227,19 +210,19 @@ struct UiStrings {
     const char* wifiForgotten;    // note: the network was forgotten
     const char* forgetTitle;      // the confirmation picker's header
     const char* forgetRows[2];    // cancel, forget
-    // The portal screen.
+    // The portal screen. Captions, 21 characters in the 135 px portrait (the
+    // QR captions too); the hint bar's words are marked.
     const char* wifiScanJoin;      // over the join QR (setup mode)
     const char* wifiScanOpen;      // over the page QR
-    const char* wifiTapOtherQr;    // setup mode: a tap swaps the two QR codes
+    const char* wifiTapOtherQr;    // hint bar, setup mode: a tap swaps the two QR codes
     const char* wifiViaFmt;        // home mode, %s = the home network
-    const char* wifiConnectingTo;  // joining the home network for the portal
-    const char* wifiHoldSetup;     // joining / failed: a hold opens setup mode
-    const char* wifiTapRetry;      // failed: a tap tries again
+    const char* wifiConnectingTo;  // joining the home network for the portal (label face)
+    const char* wifiHoldSetup;     // hint bar, joining / failed: a hold opens setup mode
+    const char* wifiTapRetry;      // hint bar, failed: a tap tries again
     const char* wifiLinkLost;      // home mode: the link dropped, the driver reconnects
-    const char* wifiStudyHint;     // boot-time screen in home mode once a deck is loaded
+    const char* wifiStudyHint;     // hint bar, the side button on the boot-time screen with a deck
     const char* wifiDownloadFmt;   // %s = deck, %u = percent (a download from the page)
-    const char* wifiCancelHint;    // during that download
-    const char* wifiFreeFmt;       // %s = free space
+    const char* wifiFreeFmt;       // free space: %s free, %s total
     const char* wifiFallbackFmt;   // boot: home join failed, setup mode instead; network, reason
     // Settings > Wi-Fi > Home network: the connection test.
     const char* testTitle;
@@ -250,12 +233,12 @@ struct UiStrings {
     const char* testCatalogFmt;  // %u = decks in the catalog
     const char* testTimeOk;
     const char* testTimeFail;
-    const char* testHoldAgain;
+    const char* testHoldAgain;  // hint bar: the hold
     const char* testNoNetworkHint;
-    // Settings > About (drawAbout()): the header title (ASCII), the label in
-    // front of each line (1x font, yellow, the value follows on the same line),
-    // the deck line's value when none is loaded, and the footer hint while a
-    // page follows. The names and licences themselves are in Credits.h.
+    // Settings > Device > About (drawAbout()): the header title (ASCII), each
+    // item's heading (label face, the colon dropped; at most 127 px) and the
+    // deck item's value when none is loaded. The names and licences themselves
+    // are in Credits.h.
     const char* aboutTitle;
     const char* aboutFirmware;  // + MIT
     const char* aboutDecks;     // + CC BY-SA, the licence of the published decks
@@ -265,7 +248,6 @@ struct UiStrings {
     const char* aboutStrokes;   // + KanjiVG ...
     const char* aboutJlpt;      // + Jonathan Waller ...
     const char* aboutGlyphs;    // + Noto Sans JP ...
-    const char* aboutMore;      // after "1/2" in the footer
     // The menus' hint bar (widgets::drawHintBar(), Font0, 6 px a character):
     // the front tap, the front hold (open a row / choose a value) and the side
     // button. The side word needs 6 px clear of the front items, else only its
@@ -298,41 +280,114 @@ struct UiStrings {
     // The detail card's header counter while the strokes animate (stroke,
     // count); the bare "4/13" when the worded one does not fit.
     const char* detailStrokeFmt;
+    // --- Settings tree (docs/ux-refresh.md §3, §6.6; ui/SettingsTree.h) ------
+    // Row labels are the UI font's Label face (18 px). Budgets in the 135 px
+    // portrait: a home row has 93 px for its label, a 5 px gap and its value
+    // (the icon and the chevron take the rest) and shows the value only when
+    // both fit (Spanish "Estudio" and "Progreso" go without; "Estadísticas",
+    // 99 px, did not fit at all); a Study / Device row puts its value on a
+    // caption line under the label, so its label gets 107 px. Landscape rows
+    // are wider: 110 px on the home, 212 on a page.
+    const char* groupRows[5];   // decks, study, stats, Wi-Fi, device
+    const char* studyRows[3];   // new per day, hard after, auto-advance
+    const char* deviceRows[7];  // orientation, brightness, language, hold time, date, sleep, about
+    const char* studyTitle;     // headers (Font0, ASCII)
+    const char* deviceTitle;
+    const char* advanceTitle;
+    const char* holdTitle;
+    const char* studyValueFmt;  // the Study row's value, %u = new per day
+    const char* wifiOff;        // the Wi-Fi row's value while the radio is off
+    const char* decimalPoint;   // "1.5 s" / "1,5 s"
+    const char* advanceRows[3];  // ui/InputPrefs.h order: off, short, normal
+    const char* holdRows[3];     // short, normal, long
+    const char* months[12];      // short names: the header's "18 Oct", the date tile's "OCT 2026"
+    const char* choiceDefault;   // a picker row's value on the default choice
+    // Pickers: a description under the header (Font0, wrapped to the width: at
+    // most three lines of 21 characters in the 135 px portrait; in landscape
+    // only when every row still fits, i.e. on the three-row pickers).
+    const char* descNewPerDay;
+    const char* descHardAfter;
+    const char* descAdvance;
+    const char* descHold;
+    const char* descOrient;  // only with an accelerometer (it explains Auto)
+    const char* descBright;
+    const char* descLang;
+    // The summary card: due (accent) and new on one caption line under the deck
+    // name; landscape adds "seen 45/79" over the coverage bar (12 characters
+    // in its 84 px column, else only the numbers).
+    const char* summaryDueFmt;
+    const char* summaryNewFmt;
+    const char* summarySeenFmt;
+    const char* summaryNoDeck;      // label face, no deck loaded
+    const char* summaryNoDeckHint;  // caption under it
+    const char* hintCancel;         // hint bar: the side button cancels
+    const char* hintMore;           // hint bar: About's next page
+    // --- Secondary screens (docs/ux-refresh.md §2.4, §4 phase 3) -------------
+    // The date stepper's calendar tile: the weekday in the label face under
+    // the day (at most 96 px: "Wednesday"; the tile is 100 px wide).
+    const char* weekdaysLong[7];  // Sunday first
+    const char* dateWasOff;       // the notice over "last used" at boot (caption, warn)
+    // Under the pill: how to confirm and how to step back (caption, wrapped:
+    // three lines of 21 characters in both orientations).
+    const char* dateExplain;
+    const char* hintByHand;  // hint bar on "Getting the date": a tap sets it by hand
+    // Statistics: the ring's caption, the six tiles' captions (Font0 in a
+    // 62 px tile with 5 px padding: at most 9 characters) and the seen line.
+    const char* statsAccuracy;
+    const char* statsTiles[6];  // streak, best, due, new, learned, time
+    const char* statsSeen;
+    // Done screen: the title (label face), tomorrow's due count and the streak
+    // (captions: 21 characters in the 135 px portrait), the button (label face)
+    // and the hint bar's hold word.
+    const char* doneTitle;
+    const char* doneTomorrowFmt;  // %u = cards due by tomorrow
+    const char* doneStreakFmt;    // %u days, 2 and up
+    const char* doneStreakOne;
+    const char* doneMore;
+    const char* hintStudyMore;
+    // Errors: the action after "Cannot open the deck" at boot, and on the quiz
+    // screen when its deck went away (the side hold opens the settings).
+    const char* errOpenPackHint;
+    const char* errOpenPackMenu;
+    const char* hintErase;     // hint bar: the damaged-storage screen's hold
+    const char* hintSettings;  // hint bar: the side hold opens the settings
+    // Get decks: the line under the header (caption: the network and the
+    // catalog's size) and an installed deck's caption ("EN · on device", 19
+    // characters with the language in the 135 px portrait).
+    const char* netListFmt;  // %s = home network, %u = decks
+    const char* netOnDevice;
+    const char* hintStop;    // hint bar: the side button stops the portal
+    const char* deckCardsFmt;  // the deck list's caption of a deck not loaded: %u cards
 };
 
 const UiStrings kUiEn = {
-    "Tangocho",
+    "TANGOCHO",
     "SETTINGS", "DECKS",
-    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi", "Orientation",
-     "Language", "Brightness", "Sleep", "About"},
-    "NEW/DAY", "SPEED", "no", "%.1f s",
+    "NEW/DAY", "HARD AFTER", "off",
     "MEANING", "READING", "KANJI",
     "DATE", "last used", "today", "+1 day", "+%u days",
-    {"tap: +1 day", "hold: OK", "side hold: -1 day", "side: cancel"},
     {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
-    "Getting the date", "via %s...", "tap: set it by hand",
+    "Getting the date", "via %s...",
     "No network: set it by hand", "No network time: set it by hand",
     {"Date", "Zone"}, "none", "TIME ZONE", "From phone", "%s, summer %s",
     "open the web portal", "Time zone saved",
-    "DONE", "All reviewed for now", "day %u  %u cards", "due %u  new %u", "tap/hold: +10 new",
-    "side hold: menu",
-    "%u due · %u new",
-    "STATISTICS", "seen %u / %u", "due %u  new %u", "answers %u", "accuracy %u%%", "learned %u",
+    "%u kanji · %u due",
+    "STATS",
     "Storage damaged", "Hold the front button to erase it. Decks and progress are lost.",
     "Preparing storage...", "First start: this takes a few seconds.",
-    "No pack found", "Put a .tgc in data/packs/ then run uploadfs",
-    "Cannot open pack",
+    "No decks yet", "The Wi-Fi to get one did not start. Turn the device off and on again.",
+    "Cannot open the deck",
     "ORIENTATION", {"Portrait", "Landscape", "Auto"},
     "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
-    "streak %u/%u", "time %s", "%uh %um", "%um %us", "%us",
+    "%uh %um", "%um %us", "%us",
     "LANGUAGE", {"Auto", "English", "Español"},
     "other", "OK",
     "WI-FI",
     "BRIGHTNESS",
     "Sleeping", "Progress saved. The front button wakes me.",
     "Battery low", "Charge me, then press the front button.",
-    "Get decks", "GET DECKS", "Connecting...", "Reading catalog...", "Downloading %u%%",
-    "hold: download", "hold: update", "hold: study", "hold: retry", "Saved %s", "%s, %u cards, %s",
+    "Get decks", "GET DECKS", "Connecting...", "Reading catalog...",
+    "get", "update", "study", "retry", "Saved %s", "%s · %u kanji",
     "No decks in the catalog",
     "No home Wi-Fi saved", "Settings > Wi-Fi > Setup mode, then save your network on the page",
     "Network not found", "Wrong password?", "Could not connect", "Server unreachable",
@@ -342,59 +397,85 @@ const UiStrings kUiEn = {
     "Not enough space",
     "An update needs room for both copies. Delete the old one first: Settings > Wi-Fi > Web portal",
     "Not a valid deck", "Download failed", "Cancelled",
-    "hold: get decks (home Wi-Fi)",
+    "get decks",
     {"Web portal", "Home", "Setup mode", "Forget network"}, "none", "No home network saved",
     "Network forgotten", "FORGET WI-FI?", {"Cancel", "Forget"},
-    "Scan to join", "Scan to open the page", "tap: other QR", "via %s", "Connecting to",
-    "hold: setup mode", "tap: try again", "Connection lost...", "side: start studying", "%s %u%%",
-    "side: cancel", "%s free", "%s: %s",
+    "Scan to join", "Scan to open the page", "other QR", "via %s", "Connecting to",
+    "setup", "retry", "Connection lost...", "study", "%s %u%%",
+    "free %s / %s", "%s: %s",
     "HOME NETWORK", "Checking catalog...", "IP %s", "signal %d dBm (%s)",
     {"weak", "fair", "good", "excellent"}, "catalog: %u decks", "network time: ok",
-    "network time: no answer", "hold: test again", "Wi-Fi > Setup mode: save it on the page",
+    "network time: no answer", "test again", "Wi-Fi > Setup mode: save it on the page",
     "ABOUT", "Firmware:", "Decks:", "Deck:", "none", "Kanji data:", "Stroke order:",
-    "JLPT levels:", "Glyphs:", "tap: more",
+    "JLPT levels:", "Glyphs:",
     "move", "open", "choose", "back", "home Wi-Fi",
     "UI font:",
     "GOOD", "HARD", "AGAIN", "d", "which kanji means",
     "answer", "next", "details",
     "stroke %u/%u",
+    {"Decks", "Study", "Stats", "Wi-Fi", "Device"},
+    {"New per day", "Hard after", "Auto next"},
+    {"Orientation", "Brightness", "Language", "Hold time", "Date", "Sleep", "About"},
+    "STUDY", "DEVICE", "AUTO NEXT", "HOLD TIME",
+    "%u/day", "off", ".",
+    {"Off", "Short", "Normal"},
+    {"Short", "Normal", "Long"},
+    {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"},
+    "default",
+    "New kanji added to each day's reviews.",
+    "Slower correct answers count as Hard.",
+    "After a correct answer, the next card comes by itself.",
+    "How long to hold a button to choose.",
+    "Auto turns the screen as you hold the device.",
+    "Lower saves battery.",
+    "Auto follows the loaded deck.",
+    "%u due", "%u new", "seen %u/%u", "No deck", "Get one in Decks",
+    "cancel", "more",
+    {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"},
+    "Device was off.",
+    "Hold when it shows today. Side hold: a day back.",
+    "by hand",
+    "accuracy",
+    {"streak", "best", "due", "new", "learned", "time"},
+    "seen",
+    "All caught up", "tomorrow: %u due", "%u-day streak", "1-day streak", "+10 new",
+    "study more",
+    "Update the firmware from the release page.",
+    "Choose another deck in Settings > Decks.",
+    "erase", "settings",
+    "%s · %u decks", "on device", "stop",
+    "%u kanji",
 };
 
 const UiStrings kUiEs = {
-    "Tangocho",
+    "TANGOCHO",
     "AJUSTES", "MAZOS",
-    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadísticas", "Wi-Fi", "Orientación",
-     "Idioma", "Brillo", "Suspender", "Acerca de"},
-    "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
+    "NUEVAS/DIA", "DIFICIL TRAS", "no",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", "último uso", "hoy", "+1 día", "+%u días",
-    {"toque: +1 día", "larga: OK", "lateral larga: -1 día", "lateral: cancelar"},
     {"dom", "lun", "mar", "mié", "jue", "vie", "sáb"},
-    "Obteniendo la fecha", "de %s...", "toque: ponerla a mano",
+    "Obteniendo la fecha", "de %s...",
     "Sin red: ajústala a mano", "Sin hora de red: ajústala a mano",
     {"Fecha", "Zona"}, "ninguna", "ZONA HORARIA", "Del móvil", "%s, verano %s",
     "abre el portal web", "Zona horaria guardada",
-    "FIN", "Todo repasado", "dia %u  %u tarjetas", "vencen %u  nuevas %u",
-    "toque/larga: +10", "lateral: menu",
-    "%u hoy · %u nuevas",
-    "ESTADISTICAS", "vistos %u / %u", "pendientes %u  nuevas %u", "respuestas %u",
-    "precisión %u%%", "aprendidas %u",
+    "%u kanji · %u hoy",
+    "PROGRESO",
     "Memoria dañada", "Mantén el botón frontal para borrarla. Se pierden mazos y progreso.",
     "Preparando memoria...", "Primer arranque: tarda unos segundos.",
-    "No hay ningún mazo", "Pon un .tgc en data/packs/ y ejecuta uploadfs",
+    "Aún no hay mazos", "No arrancó el Wi-Fi para bajar uno. Apaga y enciende el aparato.",
     "No se puede abrir el mazo",
     "ORIENTACION", {"Vertical", "Horizontal", "Auto"},
     "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
-    "racha %u/%u", "tiempo %s", "%uh %um", "%um %us", "%us",
+    "%uh %um", "%um %us", "%us",
     "IDIOMA", {"Auto", "English", "Español"},
     "otro", "OK",
     "WI-FI",
     "BRILLO",
     "Suspendido", "Progreso guardado. El botón frontal me despierta.",
     "Batería baja", "Cárgame y pulsa el botón frontal.",
-    "Descargar", "DESCARGAR", "Conectando...", "Leyendo catálogo...", "Descargando %u%%",
-    "larga: descargar", "larga: actualizar", "larga: estudiar", "larga: reintentar",
-    "Guardado %s", "%s %u tarjetas %s",
+    "Descargar", "DESCARGAR", "Conectando...", "Leyendo catálogo...",
+    "bajar", "actualizar", "estudiar", "repetir",
+    "Guardado %s", "%s · %u kanji",
     "El catálogo está vacío",
     "Sin Wi-Fi de casa", "Ajustes > Wi-Fi > Modo configuración, y guarda tu red en la página",
     "Red no encontrada", "¿Contraseña incorrecta?", "No se pudo conectar", "Servidor inaccesible",
@@ -404,22 +485,54 @@ const UiStrings kUiEs = {
     "No hay espacio",
     "Hace falta sitio para las dos copias. Borra antes la vieja: Ajustes > Wi-Fi > Portal web",
     "Mazo no válido", "Descarga fallida", "Cancelado",
-    "larga: bajar mazos (Wi-Fi de casa)",
+    "descargar",
     {"Portal web", "Casa", "Modo configuración", "Olvidar red"}, "ninguna",
     "No hay red de casa guardada", "Red olvidada", "OLVIDAR WI-FI?", {"Cancelar", "Olvidar"},
-    "Escanea para unirte", "Escanea para abrir la página", "toque: otro QR", "vía %s",
-    "Conectando a", "larga: modo config.", "toque: reintentar", "Conexión perdida...",
-    "lateral: a estudiar", "%s %u%%", "lateral: cancelar", "%s libres", "%s: %s",
+    "Escanea y únete", "Escanea y abre la web", "otro QR", "vía %s",
+    "Conectando a", "config.", "repetir", "Conexión perdida...",
+    "estudiar", "%s %u%%", "libre %s / %s", "%s: %s",
     "RED DE CASA", "Comprobando catálogo...", "IP %s", "señal %d dBm (%s)",
     {"débil", "regular", "buena", "excelente"}, "catálogo: %u mazos", "hora de red: ok",
-    "hora de red: sin respuesta", "larga: repetir", "Wi-Fi > Modo configuración: guárdala en la página",
+    "hora de red: sin respuesta", "repetir", "Wi-Fi > Modo configuración: guárdala en la página",
     "ACERCA DE", "Firmware:", "Mazos:", "Mazo:", "ninguno", "Datos de kanji:", "Orden de trazos:",
-    "Niveles JLPT:", "Glifos:", "toque: más",
+    "Niveles JLPT:", "Glifos:",
     "mover", "abrir", "elegir", "atrás", "Wi-Fi de casa",
     "Fuente:",
     "BIEN", "DIFICIL", "OTRA VEZ", "d", "qué kanji significa",
     "responder", "siguiente", "detalles",
     "trazo %u/%u",
+    {"Mazos", "Estudio", "Progreso", "Wi-Fi", "Dispositivo"},
+    {"Nuevas/día", "Difícil tras", "Pasar solo"},
+    {"Orientación", "Brillo", "Idioma", "Pulsación", "Fecha", "Suspender", "Acerca de"},
+    "ESTUDIO", "DISPOSITIVO", "PASAR SOLO", "PULSACION",
+    "%u/día", "apagado", ",",
+    {"No", "Rápido", "Normal"},
+    {"Corta", "Normal", "Larga"},
+    {"ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"},
+    "por defecto",
+    "Kanji nuevos que entran cada día.",
+    "Un acierto más lento cuenta como Difícil.",
+    "Tras un acierto, la siguiente tarjeta llega sola.",
+    "Cuánto mantener pulsado un botón para elegir.",
+    "Auto gira la pantalla según sostengas el aparato.",
+    "Más bajo ahorra batería.",
+    "Auto sigue el mazo cargado.",
+    "%u hoy", "%u nuevas", "vistos %u/%u", "Sin mazo", "Bájalo en Mazos",
+    "cancelar", "más",
+    {"Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"},
+    "Estuvo apagado.",
+    "Mantén cuando sea hoy. Lateral larga: un día atrás.",
+    "a mano",
+    "precisión",
+    {"racha", "mejor", "hoy", "nuevas", "dominadas", "tiempo"},
+    "vistos",
+    "Todo al día", "%u para mañana", "racha de %u días", "racha de 1 día", "+10 nuevas",
+    "estudiar más",
+    "Actualiza el firmware desde la página de versiones.",
+    "Elige otro mazo en Ajustes > Mazos.",
+    "borrar", "ajustes",
+    "%s · %u mazos", "en el equipo", "parar",
+    "%u kanji",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -490,7 +603,9 @@ enum class Screen {
     FirstLang, DateMenu, TzList
 };
 // Screen::Choice is shared by the row pickers (see openChoice()).
-enum class Choice { NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi };
+enum class Choice {
+    NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi, AutoAdvance, HoldTime
+};
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
@@ -505,8 +620,8 @@ bool gWallClockSynced = false;
 // - `tz` (int16): the UTC offset in minutes east the page last sent; the only
 //   zone a page from before the rule left, read as a fixed rule then;
 // - `tzm` (string): the IANA name of a zone chosen by hand from kTzZones
-//   (Settings > Date > Time zone). It wins while set; the next page visit that
-//   sends a zone removes it.
+//   (Settings > Device > Date > Zone). It wins while set; the next page visit
+//   that sends a zone removes it.
 // NTP yields UTC only, so without a zone the network time is not used.
 constexpr const char* kPrefTz = "tz";
 constexpr const char* kPrefTzRule = "tzr";
@@ -514,7 +629,7 @@ constexpr const char* kPrefTzName = "tzn";
 constexpr const char* kPrefTzManual = "tzm";
 tgc::TzRule gTz;                // the zone in use (valid while gTzKnown)
 bool gTzKnown = false;
-bool gTzManual = false;         // gTz came from Settings > Date > Time zone
+bool gTzManual = false;         // gTz came from Settings > Device > Date > Zone
 char gTzName[48] = "";          // its IANA name, "" when unknown
 char gTzRuleText[tgc::kTzRuleMaxLen + 1] = "";
 tgc::TzRule gPhoneTz;           // the zone the page last sent (the "From phone" row)
@@ -532,7 +647,7 @@ enum class DateSync : uint8_t { None, Joining, NoNetwork, NoTime };
 DateSync gDateSync = DateSync::None;
 std::vector<String> gPacks;  // paths of the *.tgc files in /packs
 // The list screens' focus and scroll position are tgc::ListViews next to
-// their draw functions (gMenuList, gDeckList, gChoiceList, ...).
+// their draw functions (gMenuLists, gDeckList, gChoiceList, ...).
 Choice gChoice = Choice::NewPerDay;
 int gChoiceCount = 0;
 uint16_t gChoiceValues[4] = {0, 0, 0, 0};
@@ -608,7 +723,7 @@ std::vector<tgc::DeckState> gCatalogState;  // per gCatalog entry
 int gNetSel = 0;
 bool gNetBusy = false;       // a download is running (footer shows the progress)
 int gNetPct = -1;            // last drawn download percentage
-char gNetDeck[48] = "";      // the deck being downloaded (the portal screen shows it)
+char gNetDeck[72] = "";      // the title of the deck being downloaded (the portal screen shows it)
 uint32_t gNetActivityAt = 0; // millis() of the last network progress (idle timers)
 uint32_t gNetInputAt = 0;    // last button poll during a blocking download
 char gNetErrTitle[48] = "";
@@ -636,7 +751,8 @@ constexpr uint32_t kPowerCheckMs = 5000;  // VBUS poll while the panel is off
 // 80 MHz is plenty for the quiz; Wi-Fi gets full speed while the portal runs.
 constexpr uint32_t kCpuMhz = 80;
 constexpr uint32_t kCpuWifiMhz = 240;
-uint8_t gBrightness = 128;      // NVS `tangocho`/`bri`
+constexpr uint8_t kBrightnessDefault = 128;
+uint8_t gBrightness = kBrightnessDefault;  // NVS `tangocho`/`bri`
 uint8_t gAdvancePref = tgc::kAdvanceDefault;  // NVS `tangocho`/`adv` (ui/InputPrefs.h)
 uint8_t gHoldPref = tgc::kHoldDefault;        // NVS `tangocho`/`hold`
 uint32_t gLastInputAt = 0;      // millis() of the last button activity
@@ -735,21 +851,9 @@ void createCanvas() {
     }
 }
 
-void showError(const char* line1, const char* line2 = "") {
-    auto& d = *gCanvas;
-    d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kRed);
-    smallText(d, ui().appName, 3, 3, kWhite, kRed);
-    d.setTextWrap(true);
-    d.setCursor(4, 24);
-    d.setFont(&lgfx::fonts::Font0);
-    d.setTextColor(kYellow, kBlack);
-    d.println(line1);
-    d.setTextColor(kWhite, kBlack);
-    d.println();
-    d.println(line2);
-    present();
-}
+// Error screen (defined with the menu helpers): what happened, the one thing
+// to do, and the hint bar when a button does something here.
+void showError(const char* title, const char* action, const tgc::widgets::Hints* hints = nullptr);
 
 // Fill `out` with the *.tgc files in /packs (sorted for a stable menu order).
 void listPacks(std::vector<String>& out) {
@@ -775,23 +879,10 @@ const char* gradeName(tgc::Grade g) {
     return "?";
 }
 
-// Count the current pack's cards that are due or unseen, for the boot log and
-// the done screen. Cheap: one pass over the card table.
-void packDueNew(uint32_t* due, uint32_t* fresh) {
-    uint32_t d = 0, n = 0;
-    const uint16_t today = gSrs.today();
-    for (uint32_t i = 0; i < gPack->cardCount(); ++i) {
-        tgc::Card c;
-        if (!gPack->card(i, &c)) continue;
-        const tgc::Record* r = gSrs.find(c.codepoint);
-        if (!r || r->dueDay == 0)
-            ++n;
-        else if (r->dueDay <= today)
-            ++d;
-    }
-    if (due) *due = d;
-    if (fresh) *fresh = n;
-}
+// The loaded deck's counts (ui/DeckSummary.h): one pass over the card table,
+// for the boot log, the settings summary, the deck list, the statistics and
+// the done screen.
+tgc::DeckSummary deckCounts() { return tgc::deckSummary(*gPack, gSrs); }
 
 // The "study more" override in force. It belongs to the day it was granted, so
 // any change of the day index (uptime rollover, sleep time, a manual date, a
@@ -866,7 +957,12 @@ bool questionCard(tgc::Card* out) {
 // Stand-in for the quiz or detail screen when questionCard() fails (a deck that
 // could not be loaded): says so and how to get out, since a side hold opens
 // the settings home on both screens.
-void drawNoQuestion() { showError(ui().errOpenPack, ui().doneMenuHint); }
+void drawNoQuestion() {
+    tgc::widgets::Hints h;
+    h.side = &tgc::kIconMenu;
+    h.sideWord = ui().hintSettings;
+    showError(ui().errOpenPack, ui().errOpenPackMenu, &h);
+}
 
 // The quiz prompt's set-0 kanji. With TGC_QUIZ_LOG it also traces the draw
 // cost: the whole call and the bitmap fetch inside it (file read plus the v2
@@ -1166,16 +1262,6 @@ void moveQuizFocus(bool down) {
          (unsigned)(micros() - t0), (unsigned)gPushUs, gPushRows);
 }
 
-// Pick the built-in font size for a menu/list label: the 2x font when the box
-// is at least `minH` tall and the label fits `w`, else the 1x font so long or
-// narrow labels are never clipped.
-uint8_t labelFont(const char* label, int h, int minH, int w) {
-    if (h < minH) return tgc::Renderer::kTextBuiltinSmall;
-    if (gRender.textWidth(label, tgc::Renderer::kTextBuiltin) > w)
-        return tgc::Renderer::kTextBuiltinSmall;
-    return tgc::Renderer::kTextBuiltin;
-}
-
 // --- Menu screens (docs/ux-refresh.md §2.4) ---------------------------------
 // The list screens are built from render/Widgets: a header (title, battery,
 // hairline), rows of the layout's height that scroll instead of shrinking
@@ -1189,9 +1275,14 @@ using tgc::theme::kHintH;
 
 tgc::theme::Layout layout() { return tgc::theme::layoutFor(W, H); }
 
-void menuHeader(lgfx::LovyanGFX& d, const char* title) {
+// The menus' header: the title, an optional value (the date, a page number)
+// and the battery; the radio icon while the Wi-Fi is on.
+void menuHeader(lgfx::LovyanGFX& d, const char* title, const char* right = nullptr,
+                bool wifi = false) {
     wg::Header h;
     h.title = title;
+    h.right = right;
+    h.wifi = wifi;
     h.battery = tgc::board::batteryPercent();
     wg::drawHeader(d, gRender, W, h);
 }
@@ -1204,6 +1295,49 @@ void menuHints(lgfx::LovyanGFX& d, const char* holdWord) {
     h.side = &tgc::kIconBack;
     h.sideWord = ui().hintBack;
     wg::drawHintBar(d, gRender, W, H, h);
+}
+
+// The hint bar of a screen whose side button only goes back.
+void backHints(lgfx::LovyanGFX& d, const char* tap = nullptr, const char* hold = nullptr) {
+    wg::Hints h;
+    h.tap = tap;
+    h.hold = hold;
+    h.side = &tgc::kIconBack;
+    h.sideWord = ui().hintBack;
+    wg::drawHintBar(d, gRender, W, H, h);
+}
+
+// Lines of `text` wrapped in the caption font to `w` px, drawn from y one
+// every 10 px, centred or from x; at most `maxLines`. Returns the lines drawn.
+int drawCaptionLines(lgfx::LovyanGFX& d, const char* text, int x, int y, int w, int maxLines,
+                     uint16_t color, tgc::Align align = tgc::Align::Centre) {
+    if (!text || !*text) return 0;
+    const std::vector<tgc::TextSpan> lines = tgc::wrapText(text, w / 6);
+    int n = 0;
+    for (const tgc::TextSpan& l : lines) {
+        if (n >= maxLines) break;
+        const std::string s(text + l.begin, l.len);
+        gRender.drawLabel(d, s.c_str(), x, y + 10 * n, w, 8, color, kBlack,
+                          tgc::Renderer::kTextBuiltinSmall, align);
+        ++n;
+    }
+    return n;
+}
+
+void showError(const char* title, const char* action, const wg::Hints* hints) {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    menuHeader(d, ui().appName);
+    // The title (two label lines at most) and the action under it, centred
+    // in the space between the header and the hint bar.
+    const int lines = static_cast<int>(tgc::wrapText(action ? action : "", (W - 8) / 6).size());
+    const int blockH = 44 + 10 * std::min(lines, 6);
+    const int top = kHeaderH + std::max(4, (H - kHeaderH - kHintH - blockH) / 2);
+    gRender.drawCentred(d, title, 4, top, W - 8, 40, 2, tgc::theme::kWarn, kBlack,
+                        tgc::Renderer::kTextUi);
+    drawCaptionLines(d, action, 4, top + 44, W - 8, 6, kWhite);
+    if (hints) wg::drawHintBar(d, gRender, W, H, *hints);
+    present();
 }
 
 // Fits `list` (rows of `rowH`) between y `top` and `bottom`, keeping a band
@@ -1266,47 +1400,190 @@ void presentList(const tgc::ListView& list) {
     present();
 }
 
-// Settings home (hold the side button from the quiz): tap moves the focus,
-// hold activates the row. Twelve flat rows for now (the groups of
-// docs/ux-refresh.md §3 come later); the list scrolls in every orientation.
-constexpr int kSettingRows = 12;
-tgc::ListView gMenuList;
+// --- Settings tree (docs/ux-refresh.md §3, §6.6) ----------------------------
+// Hold the side button from the quiz. The home has a summary card (the loaded
+// deck, due and new, its coverage) and five group rows with their values;
+// Study and Device are pages of rows (a one-level group stack,
+// ui/SettingsTree.h), the other groups open their own screens. Tap moves the
+// focus, a hold opens or changes the row, the side button goes back: from a
+// page to the home, from the home to where the settings were opened. Every
+// screen opened from a page returns to it (gMenuPage stays put meanwhile).
+namespace st = tgc::settings;
+st::Page gMenuPage = st::Page::Home;
+tgc::ListView gMenuLists[st::kPageCount];  // each page keeps its focus
+tgc::ListView& menuList() { return gMenuLists[static_cast<int>(gMenuPage)]; }
 
-// Rows that open another screen get a chevron; Continue and Sleep act at once.
-bool settingOpensScreen(int row) { return row != 0 && row != 10; }
+// One row of a settings page: its label, its value (none when `value` is null
+// or writes "") and what a hold does. menuItem() has one per st::Item.
+struct MenuItem {
+    st::Item id;
+    const char* (*label)();
+    void (*value)(char* out, size_t n);
+    void (*action)();
+};
+const MenuItem& menuItem(st::Item id);  // the table, after the actions it calls
+
+// "18 Oct": the current day for the settings header and the Date row.
+void shortDate(uint16_t day, char* out, size_t n) {
+    int y = 0;
+    unsigned m = 1, dd = 1;
+    tgc::civilFromDays(gSrs.epochDayOf(day), &y, &m, &dd);
+    st::formatDayMonth(dd, ui().months[(m + 11) % 12], out, n);
+}
+
+// The summary card (§2.4): the loaded deck's name, "12 due · 5 new" and its
+// coverage (seen / total) as a bar. Portrait: a band over the group rows with
+// "45/79" right of the name. Landscape: a column, one count per line.
+void drawSummaryCard(lgfx::LovyanGFX& d, const tgc::layout::Home& l) {
+    using namespace tgc::theme;
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    const tgc::layout::Rect& c = l.card;
+    d.fillRect(c.x, c.y, c.w, c.h, kSurface);
+    const int px = c.x + 6;
+    const int pw = c.w - 12;
+    if (!gPack->isOpen()) {
+        gRender.drawLabel(d, ui().summaryNoDeck, px, c.y + 3, pw, 20, kText, kSurface);
+        gRender.drawWrapped(d, ui().summaryNoDeckHint, px, c.y + 25, pw, l.cardColumn ? 4 : 1,
+                            kTextDim, kSurface, kSmall);
+        return;
+    }
+    const tgc::DeckSummary s = deckCounts();
+    char due[24], fresh[24], seen[32];
+    snprintf(due, sizeof due, ui().summaryDueFmt, (unsigned)s.due);
+    snprintf(fresh, sizeof fresh, ui().summaryNewFmt, (unsigned)s.fresh);
+    if (!l.cardColumn) {
+        snprintf(seen, sizeof seen, "%u/%u", (unsigned)s.seen(), (unsigned)s.total);
+        const int sw = wg::captionWidth(seen);
+        gRender.drawLabel(d, gPack->deckName(), px, c.y + 3, pw - sw - 6, 20, kText, kSurface);
+        wg::drawCaption(d, gRender, seen, c.right() - 6 - sw, c.y + 10, kTextDim, kSurface);
+        int x = px;
+        x += wg::drawCaption(d, gRender, due, x, c.y + 25, kAccentHi, kSurface);
+        x += wg::drawCaption(d, gRender, " · ", x, c.y + 25, kTextFaint, kSurface);
+        wg::drawCaption(d, gRender, fresh, x, c.y + 25, kTextDim, kSurface);
+        wg::drawProgress(d, px, c.y + 37, pw, 3, static_cast<int>(s.seen()),
+                         static_cast<int>(s.total));
+        return;
+    }
+    snprintf(seen, sizeof seen, ui().summarySeenFmt, (unsigned)s.seen(), (unsigned)s.total);
+    if (wg::captionWidth(seen) > pw)
+        snprintf(seen, sizeof seen, "%u/%u", (unsigned)s.seen(), (unsigned)s.total);
+    gRender.drawLabel(d, gPack->deckName(), px, c.y + 4, pw, 20, kText, kSurface);
+    gRender.drawLabel(d, due, px, c.y + 30, pw, 8, kAccentHi, kSurface, kSmall);
+    gRender.drawLabel(d, fresh, px, c.y + 42, pw, 8, kTextDim, kSurface, kSmall);
+    gRender.drawLabel(d, seen, px, c.y + 54, pw, 8, kTextDim, kSurface, kSmall);
+    wg::drawProgress(d, px, c.y + 67, pw, 3, static_cast<int>(s.seen()), static_cast<int>(s.total));
+}
+
+// One settings row. On the home: the group's icon, its value when it fits and
+// a chevron. On a page: the value right of the label where rows are wide
+// (landscape), else on a caption line under it; a row without a value keeps
+// its label centred.
+void drawMenuRow(lgfx::LovyanGFX& d, st::Item id, int x, int y, int w, int h, bool focused) {
+    const MenuItem& m = menuItem(id);
+    char value[48] = "";
+    if (m.value) m.value(value, sizeof value);
+    wg::Row row;
+    row.label = m.label();
+    row.icon = st::itemIcon(id);
+    row.chevron = st::hasChevron(id);
+    row.focused = focused;
+    if (value[0]) {
+        if (gMenuPage == st::Page::Home) {
+            row.value = value;
+            // A network name is cut; the other values show whole or not at all.
+            row.keepLabel = id == st::Item::Wifi;
+            row.valueIfFits = !row.keepLabel;
+        } else if (wideRows()) {
+            row.value = value;
+            row.keepLabel = true;
+        } else {
+            row.caption = value;
+        }
+    }
+    wg::drawRow(d, gRender, x, y, w, h, row);
+}
 
 void drawMenu() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    menuHeader(d, ui().settingsTitle);
-    gMenuList.setCount(kSettingRows);
-    layoutList(gMenuList, kHeaderH, H - kHintH, layout().row1H);
-    wg::drawList(d, gMenuList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
-        wg::Row row;
-        row.label = ui().menuRows[i];
-        row.chevron = settingOpensScreen(i);
-        row.focused = f;
-        wg::drawRow(d, gRender, x, y, w, h, row);
-    });
+    const st::PageItems items = st::pageItems(gMenuPage);
+    tgc::ListView& list = menuList();
+    list.setCount(items.count);
+    auto row = [&](int i, int x, int y, int w, int h, bool f) {
+        drawMenuRow(d, items.items[i], x, y, w, h, f);
+    };
+    if (gMenuPage == st::Page::Home) {
+        char date[16];
+        shortDate(gSrs.today(), date, sizeof date);
+        menuHeader(d, ui().settingsTitle, date);
+        const tgc::layout::Home l = tgc::layout::homeFor(W, H);
+        drawSummaryCard(d, l);
+        layoutList(list, l.rowsTop, l.rowsBottom, layout().row1H);
+        wg::drawList(d, list, l.rowsX, l.rowsW, row);
+    } else {
+        menuHeader(d, gMenuPage == st::Page::Study ? ui().studyTitle : ui().deviceTitle);
+        layoutList(list, kHeaderH, H - kHintH, wideRows() ? layout().row1H : layout().row2H);
+        wg::drawList(d, list, listX(), listW(), row);
+    }
     menuHints(d, ui().hintOpen);
-    presentList(gMenuList);
+    presentList(list);
 }
 
-// Deck list (opened from "Decks"): one row per pack, the file name and the
-// loaded pack's due/new counts (under it in portrait, right of it in
-// landscape); a radio marks the loaded pack. Hold loads the focused pack; the
-// side button returns to the settings home. The last row, "Get decks", opens
-// the download screen (drawGetDecks).
+// A group row of the home opened its page: from the top.
+void openMenuPage(st::Page p) {
+    gMenuPage = p;
+    menuList().setCount(st::pageItems(p).count);
+    menuList().reset(0);
+    gScreen = Screen::Menu;
+    drawScreen();
+}
+
+// Back to the settings tree from one of its screens (the page it came from).
+void backToMenu() {
+    gScreen = Screen::Menu;
+    drawScreen();
+}
+
+// Deck list (opened from "Decks"; docs/ux-refresh.md, decks mockup): one row
+// per pack with the deck name from its header, a language pill and "79 kanji"
+// ("79 kanji · 12 due" for the loaded one, whose radio is on); the caption
+// goes under the name in portrait, right of it in landscape. Hold loads the
+// focused pack; the side button returns to the settings home. The last row,
+// "Get decks", opens the download screen (drawGetDecks).
 tgc::ListView gDeckList;
+
+// The header of each pack in gPacks (peekPackInfo(): two small reads a file),
+// read when the deck list opens (an update keeps the file name but may change
+// the header) and again whenever the list of files changed under it.
+std::vector<tgc::PackInfo> gPackInfo;
+std::vector<String> gPackInfoFor;  // the gPacks the infos were read for
+
+void refreshPackInfo() {
+    if (gPackInfoFor == gPacks) return;
+    gPackInfo.assign(gPacks.size(), tgc::PackInfo{});
+    for (size_t i = 0; i < gPacks.size(); ++i) {
+        tgc::FsPackSource src(LittleFS.open(gPacks[i], "r"));
+        if (src.ok()) tgc::peekPackInfo(src, &gPackInfo[i]);
+    }
+    gPackInfoFor = gPacks;
+}
+
+// A pack's file name without the folder and ".tgc", for a deck whose header
+// gives no name.
+String packFileStem(const String& path) {
+    String s = path;
+    const int slash = s.lastIndexOf('/');
+    if (slash >= 0) s = s.substring(slash + 1);
+    if (s.endsWith(".tgc")) s = s.substring(0, s.length() - 4);
+    return s;
+}
 
 void drawDecks() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     menuHeader(d, ui().decksTitle);
-    uint32_t due = 0, fresh = 0;
-    packDueNew(&due, &fresh);  // only shown on the loaded pack's row
-    char counts[48];
-    snprintf(counts, sizeof counts, ui().deckCountsFmt, (unsigned)due, (unsigned)fresh);
+    refreshPackInfo();
+    const uint32_t due = deckCounts().due;  // only shown on the loaded pack's row
     const int packs = static_cast<int>(gPacks.size());
     gDeckList.setCount(packs + 1);  // + "Get decks"
     const bool wide = wideRows();
@@ -1314,7 +1591,8 @@ void drawDecks() {
     wg::drawList(d, gDeckList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
         wg::Row row;
         row.focused = f;
-        String label;
+        String stem;
+        char caption[48], lang[8];
         if (i == packs) {
             row.label = ui().getDecksRow;
             row.icon = &tgc::kIconDown;
@@ -1322,17 +1600,32 @@ void drawDecks() {
             (wide ? row.value : row.caption) = ui().getDecksCaption;
             row.labelColor = tgc::theme::kAccentHi;
         } else {
-            label = gPacks[i];
-            const int slash = label.lastIndexOf('/');
-            if (slash >= 0) label = label.substring(slash + 1);
-            if (label.endsWith(".tgc")) label = label.substring(0, label.length() - 4);
+            const tgc::PackInfo& info = gPackInfo[i];
             const bool loaded = gPacks[i] == gCurrentPack;
-            row.label = label.c_str();
-            row.radio = loaded ? wg::Radio::On : wg::Radio::Off;
-            if (wide)
-                row.value = loaded ? counts : nullptr;
+            if (info.name[0]) {
+                row.label = info.name;
+            } else {
+                stem = packFileStem(gPacks[i]);
+                row.label = stem.c_str();
+            }
+            snprintf(lang, sizeof lang, "%s", info.lang);
+            for (char* p = lang; *p; ++p)
+                if (*p >= 'a' && *p <= 'z') *p = static_cast<char>(*p - 'a' + 'A');
+            if (lang[0]) row.tag = lang;
+            if (loaded)
+                snprintf(caption, sizeof caption, ui().deckCountsFmt, (unsigned)info.cards,
+                         (unsigned)due);
+            else if (info.cards)
+                snprintf(caption, sizeof caption, ui().deckCardsFmt, (unsigned)info.cards);
             else
-                row.caption = loaded ? counts : "";
+                caption[0] = 0;
+            row.radio = loaded ? wg::Radio::On : wg::Radio::Off;
+            if (wide) {
+                row.value = caption;
+                row.keepLabel = true;
+            } else {
+                row.caption = caption;
+            }
         }
         wg::drawRow(d, gRender, x, y, w, h, row);
     });
@@ -1346,47 +1639,119 @@ void drawDecks() {
 tgc::ListView gChoiceList;
 int gChoiceSaved = -1;  // row of the saved value, -1 when none (Forget Wi-Fi)
 
+// The Hard threshold as the Study row and its picker show it: "3 s", "off".
+void hardAfterText(uint16_t ms, char* out, size_t n) {
+    if (ms == 0xFFFF)
+        snprintf(out, n, "%s", ui().hardAfterOff);
+    else
+        st::formatSeconds(ms, ui().decimalPoint, out, n);
+}
+
 void choiceLabel(int i, char* out, size_t n) {
+    const uint16_t v = gChoiceValues[i];
     if (gChoice == Choice::Orientation) {
-        snprintf(out, n, "%s", ui().orientRows[gChoiceValues[i] % 3]);
+        snprintf(out, n, "%s", ui().orientRows[v % 3]);
     } else if (gChoice == Choice::ForgetWifi) {
         snprintf(out, n, "%s", ui().forgetRows[i % 2]);
     } else if (gChoice == Choice::UiLang) {
         snprintf(out, n, "%s", ui().langRows[i]);
     } else if (gChoice == Choice::Brightness) {
-        snprintf(out, n, "%u%%", (unsigned)(gChoiceValues[i] * 100u / 255u));
+        snprintf(out, n, "%u%%", (unsigned)(v * 100u / 255u));
     } else if (gChoice == Choice::SlowMs) {
-        if (gChoiceValues[i] == 0xFFFF) snprintf(out, n, "%s", ui().speedOff);
-        else snprintf(out, n, ui().speedSecondsFmt, gChoiceValues[i] / 1000.0f);
+        hardAfterText(v, out, n);
+    } else if (gChoice == Choice::AutoAdvance) {
+        snprintf(out, n, "%s", ui().advanceRows[v % tgc::kAdvanceChoices]);
+    } else if (gChoice == Choice::HoldTime) {
+        snprintf(out, n, "%s", ui().holdRows[v % tgc::kHoldChoices]);
     } else {
-        snprintf(out, n, "%u", (unsigned)gChoiceValues[i]);
+        snprintf(out, n, "%u", (unsigned)v);
     }
+}
+
+// A picker row's value: the duration a timing choice stands for, else
+// "default" on the default choice; "" for none.
+void choiceValue(int i, char* out, size_t n) {
+    const uint16_t v = gChoiceValues[i];
+    out[0] = 0;
+    if (gChoice == Choice::AutoAdvance) {
+        if (v != tgc::kAdvanceOff)
+            st::formatSeconds(tgc::advanceMsFor(v), ui().decimalPoint, out, n);
+    } else if (gChoice == Choice::HoldTime) {
+        st::formatSeconds(tgc::holdMsFor(v), ui().decimalPoint, out, n);
+    } else if ((gChoice == Choice::NewPerDay && v == tgc::kSrsDefaultNewPerDay) ||
+               (gChoice == Choice::SlowMs && v == tgc::kSrsDefaultSlowMs) ||
+               (gChoice == Choice::Brightness && v == kBrightnessDefault)) {
+        snprintf(out, n, "%s", ui().choiceDefault);
+    }
+}
+
+const char* choiceTitle() {
+    switch (gChoice) {
+        case Choice::NewPerDay: return ui().newPerDayTitle;
+        case Choice::SlowMs: return ui().hardAfterTitle;
+        case Choice::Orientation: return ui().orientTitle;
+        case Choice::Brightness: return ui().brightTitle;
+        case Choice::ForgetWifi: return ui().forgetTitle;
+        case Choice::AutoAdvance: return ui().advanceTitle;
+        case Choice::HoldTime: return ui().holdTitle;
+        case Choice::UiLang: break;
+    }
+    return ui().langTitle;
+}
+
+// The one-line explanation under a picker's header; null for none.
+const char* choiceDescription() {
+    switch (gChoice) {
+        case Choice::NewPerDay: return ui().descNewPerDay;
+        case Choice::SlowMs: return ui().descHardAfter;
+        case Choice::AutoAdvance: return ui().descAdvance;
+        case Choice::HoldTime: return ui().descHold;
+        case Choice::Orientation: return tgc::board::hasAccel() ? ui().descOrient : nullptr;
+        case Choice::Brightness: return ui().descBright;
+        case Choice::UiLang: return ui().descLang;
+        case Choice::ForgetWifi: break;
+    }
+    return nullptr;
 }
 
 void drawChoice() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    const char* title = gChoice == Choice::NewPerDay  ? ui().newPerDayTitle
-                        : gChoice == Choice::SlowMs   ? ui().speedTitle
-                        : gChoice == Choice::Orientation ? ui().orientTitle
-                        : gChoice == Choice::Brightness  ? ui().brightTitle
-                        : gChoice == Choice::ForgetWifi  ? ui().forgetTitle
-                                                         : ui().langTitle;
-    menuHeader(d, title);
+    menuHeader(d, choiceTitle());
     int top = kHeaderH;
+    const int rowH = layout().row1H;
     // "Forget": which network, between the header and the rows.
     if (gChoice == Choice::ForgetWifi) {
         gRender.drawLabel(d, gWifiMenuSsid.c_str(), kGutter, kHeaderH + 2, W - 2 * kGutter, 20,
                           tgc::theme::kWarn, kBlack, tgc::Renderer::kTextUi, tgc::Align::Centre);
         top += 22;
     }
+    // The description, wrapped in the caption font, when every row still fits
+    // under it (the four-row pickers in landscape go without).
+    if (const char* desc = choiceDescription()) {
+        const std::vector<tgc::TextSpan> lines = tgc::wrapText(desc, (W - 2 * kGutter) / 6);
+        const int descH = 3 + static_cast<int>(lines.size()) * 10;
+        const int rowsH = gChoiceCount * (rowH + tgc::theme::kGap) - tgc::theme::kGap +
+                          2 * tgc::theme::kMarkerBand;
+        if (top + descH + rowsH <= H - kHintH) {
+            for (size_t i = 0; i < lines.size(); ++i) {
+                const std::string line(desc + lines[i].begin, lines[i].len);
+                const int y = top + 3 + 10 * static_cast<int>(i);
+                wg::drawCaption(d, gRender, line.c_str(), kGutter, y, tgc::theme::kTextDim, kBlack);
+            }
+            top += descH;
+        }
+    }
     gChoiceList.setCount(gChoiceCount);
-    layoutList(gChoiceList, top, H - kHintH, layout().row1H);
+    layoutList(gChoiceList, top, H - kHintH, rowH);
     wg::drawList(d, gChoiceList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
-        char label[24];
+        char label[24], value[24];
         choiceLabel(i, label, sizeof label);
+        choiceValue(i, value, sizeof value);
         wg::Row row;
         row.label = label;
+        row.value = value;
+        row.keepLabel = true;
         row.focused = f;
         if (gChoiceSaved >= 0) row.radio = i == gChoiceSaved ? wg::Radio::On : wg::Radio::Off;
         wg::drawRow(d, gRender, x, y, w, h, row);
@@ -1425,25 +1790,61 @@ void drawFirstLang() {
     present();  // the hints follow the focus: the whole frame
 }
 
-// "All done" screen: no card is due and no new card is left today. A tap, hold
-// or side tap rebuilds the queue and tries again; the side hold opens the menu.
+// An icon drawn `s` times larger (each pixel an s x s block).
+void drawIconScaled(lgfx::LovyanGFX& d, const tgc::Icon& ic, int x, int y, int s, uint16_t ink) {
+    for (int yy = 0; yy < ic.h; ++yy)
+        for (int xx = 0; xx < ic.w; ++xx)
+            if (tgc::icons::pixel(ic, xx, yy)) d.fillRect(x + xx * s, y + yy * s, s, s, ink);
+}
+
+// The day streak as it stands today (ui/SettingsTree.h).
+uint32_t currentStreak() {
+    return st::liveStreak(gSrs.streakCurrent(), gSrs.hasStudied(), gSrs.lastStudyDay(),
+                          gSrs.today());
+}
+
+// "All done" screen (docs/ux-refresh.md, done mockup): no card is due and no
+// new card is left today. A check in a circle, "All caught up", tomorrow's due
+// count, the streak and a "+10 new" button. A tap, hold or side tap studies 10
+// more (rebuilds the queue and tries again); the side hold opens the settings.
 void drawDone() {
+    using namespace tgc::theme;
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, gPack->deckName(), 3, 3, kWhite, kGrey);
-    smallText(d, ui().doneBadge, W - 3, 3, kWhite, kGrey, lgfx::top_right);
-
-    uint32_t due = 0, fresh = 0;
-    packDueNew(&due, &fresh);
+    menuHeader(d, gPack->isOpen() ? gPack->deckName() : ui().appName);
+    const tgc::layout::Done l = tgc::layout::doneFor(W, H);
+    d.fillCircle(l.iconCx, l.iconCy, l.iconR, kOkBg);
+    d.drawCircle(l.iconCx, l.iconCy, l.iconR, kOk);
+    d.drawCircle(l.iconCx, l.iconCy, l.iconR - 1, kOk);
+    constexpr int kScale = 3;
+    drawIconScaled(d, tgc::kIconCheck, l.iconCx - tgc::kIconCheck.w * kScale / 2,
+                   l.iconCy - tgc::kIconCheck.h * kScale / 2, kScale, kOkHi);
+    const tgc::Align align = W > H ? tgc::Align::Left : tgc::Align::Centre;
+    gRender.drawLabel(d, ui().doneTitle, l.textX, l.title.y, l.textW, l.title.h, kText, kBg,
+                      tgc::Renderer::kTextUi, align);
     char line[48];
-    smallText(d, ui().doneAllReviewed, W / 2, H / 2 - 24, kWhite, kBlack, lgfx::top_center);
-    snprintf(line, sizeof line, ui().doneDayFmt, (unsigned)gSrs.today(), (unsigned)gSrs.count());
-    smallText(d, line, W / 2, H / 2 - 6, kYellow, kBlack, lgfx::top_center);
-    snprintf(line, sizeof line, ui().doneDueFmt, (unsigned)due, (unsigned)fresh);
-    smallText(d, line, W / 2, H / 2 + 8, kWhite, kBlack, lgfx::top_center);
-    smallText(d, ui().doneStudyMore, W / 2, H / 2 + 30, kWhite, kBlack, lgfx::top_center);
-    smallText(d, ui().doneMenuHint, W / 2, H / 2 + 44, kWhite, kBlack, lgfx::top_center);
+    snprintf(line, sizeof line, ui().doneTomorrowFmt, (unsigned)deckCounts().dueTomorrow);
+    gRender.drawLabel(d, line, l.textX, l.line1Y, l.textW, 8, kTextDim, kBg,
+                      tgc::Renderer::kTextBuiltinSmall, align);
+    const uint32_t streak = currentStreak();
+    if (streak > 0) {
+        if (streak == 1)
+            snprintf(line, sizeof line, "%s", ui().doneStreakOne);
+        else
+            snprintf(line, sizeof line, ui().doneStreakFmt, (unsigned)streak);
+        const int w = tgc::kIconFlame.w + 4 + wg::captionWidth(line);
+        const int x = align == tgc::Align::Left ? l.textX : l.textX + (l.textW - w) / 2;
+        wg::drawIcon(d, tgc::kIconFlame, x, l.line2Y, kWarn);
+        wg::drawCaption(d, gRender, line, x + tgc::kIconFlame.w + 4, l.line2Y, kWarn, kBg);
+    }
+    const tgc::layout::Rect& b = l.button;
+    d.fillRect(b.x, b.y, b.w, b.h, kAccent);
+    gRender.drawLabel(d, ui().doneMore, b.x, b.y, b.w, b.h, kText, kAccent, tgc::Renderer::kTextUi,
+                      tgc::Align::Centre);
+    wg::Hints h;
+    h.hold = ui().hintStudyMore;
+    h.side = &tgc::kIconMenu;
+    wg::drawHintBar(d, gRender, W, H, h);
     present();
 }
 
@@ -1467,7 +1868,7 @@ void formatDate(uint16_t day, char* out, size_t n) {
 // hold takes one back (never below the current day: the index does not
 // rewind), a hold confirms, a side tap cancels. Asked on a power-on boot (where
 // the network time comes first when it can, see dateSyncBegin()) and opened
-// from Settings > Date for manual corrections.
+// from Settings > Device > Date for manual corrections.
 uint16_t dateTarget() {
     const uint32_t t = static_cast<uint32_t>(gSrs.today()) + gDateSteps;
     return t > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(t);
@@ -1484,123 +1885,120 @@ void openDate(Screen after) {
     drawScreen();
 }
 
-// The stepper's button hints packed greedily into lines that fit `w` (two
-// spaces between hints): two lines in English landscape, three or four in the
-// 135 px portrait. Returns the line count.
-int dateHintLines(char (*out)[64], int maxLines, int w) {
-    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
-    int n = 0;
-    out[0][0] = 0;
-    for (const char* h : ui().dateHints) {
-        char joined[64];
-        snprintf(joined, sizeof joined, "%s  %s", out[n], h);
-        if (out[n][0] && gRender.textWidth(joined, kSmall) <= w) {
-            snprintf(out[n], sizeof out[n], "%s", joined);
-        } else {
-            if (out[n][0] && n + 1 < maxLines) ++n;
-            snprintf(out[n], sizeof out[n], "%s", h);
-        }
-    }
-    return n + 1;
+// "Sat 17 Oct": a day as the date screen's "last used" line writes it.
+void weekdayDayMonth(uint16_t day, char* out, size_t n) {
+    char dm[16];
+    shortDate(day, dm, sizeof dm);
+    snprintf(out, n, "%s %s", weekdayName(day), dm);
+}
+
+// The calendar tile (§2.4): an accent band with "OCT 2026", the day in the
+// numeral face and the weekday under it.
+void drawCalendarTile(lgfx::LovyanGFX& d, const tgc::layout::Date& l, uint16_t day) {
+    using namespace tgc::theme;
+    const tgc::layout::Rect& t = l.tile;
+    int y = 0;
+    unsigned m = 1, dd = 1;
+    tgc::civilFromDays(gSrs.epochDayOf(day), &y, &m, &dd);
+    d.fillRect(t.x, t.y, t.w, t.h, kSurface);
+    d.fillRect(t.x, t.y, t.w, l.bandH, kAccent);
+    char band[16], num[4];
+    snprintf(band, sizeof band, "%s %d", ui().months[(m + 11) % 12], y);
+    for (char* p = band; *p; ++p)
+        if (*p >= 'a' && *p <= 'z') *p = static_cast<char>(*p - 'a' + 'A');
+    gRender.drawLabel(d, band, t.x, t.y, t.w, l.bandH, kText, kAccent,
+                      tgc::Renderer::kTextBuiltinSmall, tgc::Align::Centre);
+    snprintf(num, sizeof num, "%u", dd);
+    gRender.drawLabel(d, num, t.x, t.y + l.bandH + 2, t.w, 36, kText, kSurface,
+                      tgc::Renderer::kTextUiNumeral, tgc::Align::Centre);
+    gRender.drawLabel(d, ui().weekdaysLong[tgc::weekdayFromDays(gSrs.epochDayOf(day))], t.x,
+                      t.y + l.bandH + 40, t.w, 20, kTextDim, kSurface, tgc::Renderer::kTextUi,
+                      tgc::Align::Centre);
 }
 
 // The boot-time question's network attempt (gDateSync == Joining): what it is
 // doing, over which network, and that a tap gives up and shows the stepper.
 void drawDateNet() {
+    using namespace tgc::theme;
     auto& d = *gCanvas;
-    constexpr uint8_t kBig = tgc::Renderer::kTextBuiltin;
-    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
-    const int w = W - 4;
+    const int mid = kHeaderH + (H - kHeaderH - kHintH) / 2;
+    gRender.drawCentred(d, ui().dateNetTitle, 4, mid - 36, W - 8, 40, 2, kText, kBg,
+                        tgc::Renderer::kTextUi);
     char line[64];
-    const int top = H / 2 - (H > W ? 52 : 40);
-    gRender.drawCentred(d, ui().dateNetTitle, 2, top, w, 40, 2, kYellow, kBlack, kBig);
     snprintf(line, sizeof line, ui().dateNetViaFmt, gHome.ssid());
-    gRender.drawCentred(d, line, 2, top + 44, w, 20, 2, kWhite, kBlack, kSmall);
-    gRender.drawCentred(d, ui().dateNetHint, 2, H - 12, w, 10, 1, kWhite, kBlack, kSmall);
+    drawCaptionLines(d, line, 4, mid + 8, W - 8, 2, kTextDim);
+    wg::Hints h;
+    h.tap = ui().hintByHand;
+    wg::drawHintBar(d, gRender, W, H, h);
     present();
 }
 
-// Labels share a line with their value when it fits (landscape), else sit above
-// it; the proposed date is one 2x line when it fits, else weekday over date.
-// All text uses the built-in font so accented Spanish renders.
+// The stepper (docs/ux-refresh.md, date mockup): at boot "Device was off." and
+// the last-used day, then the calendar tile of the proposed day, the "+N days"
+// pill, why it is asked by hand when the network time failed, and how to
+// confirm or step back. The hint bar has the front button's two actions and
+// the side button's cancel.
 void drawDate() {
+    using namespace tgc::theme;
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, ui().dateTitle, 3, 3, kWhite, kGrey);
+    menuHeader(d, ui().dateTitle, nullptr, gDateSync == DateSync::Joining);
     if (gDateSync == DateSync::Joining) {
         drawDateNet();
         return;
     }
+    const tgc::layout::Date l = tgc::layout::dateFor(W, H);
+    const bool land = W > H;
+    const tgc::Align align = land ? tgc::Align::Left : tgc::Align::Centre;
+    char line[64], day[32];
 
-    constexpr uint8_t kBig = tgc::Renderer::kTextBuiltin;
-    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
-    const int w = W - 4;
-    const int gap = H > W ? 10 : 3;  // portrait has room to breathe
-    char date[16], value[32], line[64];
+    // At boot: the device was off; always: the day it last ran.
+    const bool boot = gAfterDate == Screen::Quiz;
+    weekdayDayMonth(gBootDay, day, sizeof day);
+    snprintf(line, sizeof line, "%s %s", ui().dateLastUsed, day);
+    const tgc::layout::Rect& n = l.notice;
+    if (boot)
+        gRender.drawLabel(d, ui().dateWasOff, n.x, n.y, n.w, 8, kWarn, kBg,
+                          tgc::Renderer::kTextBuiltinSmall, align);
+    gRender.drawLabel(d, line, n.x, boot ? n.y + 10 : n.y + 5, n.w, 8, kTextDim, kBg,
+                      tgc::Renderer::kTextBuiltinSmall, align);
 
-    // Last used: the day the device last ran.
-    formatDate(gBootDay, date, sizeof date);
-    snprintf(value, sizeof value, "%s %s", weekdayName(gBootDay), date);
-    snprintf(line, sizeof line, "%s: %s", ui().dateLastUsed, value);
-    int y = 19;
-    if (gRender.textWidth(line, kSmall) <= w) {
-        gRender.drawCentred(d, line, 2, y, w, 10, 1, kWhite, kBlack, kSmall);
-        y += 10;
-    } else {
-        gRender.drawCentred(d, ui().dateLastUsed, 2, y, w, 10, 1, kWhite, kBlack, kSmall);
-        gRender.drawCentred(d, value, 2, y + 10, w, 10, 1, kWhite, kBlack, kSmall);
-        y += 20;
-    }
-    y += gap;
-
-    // The proposed "today", highlighted: this is what the buttons change.
-    const uint16_t target = dateTarget();
-    formatDate(target, date, sizeof date);
-    snprintf(value, sizeof value, "%s %s", weekdayName(target), date);
-    gRender.drawCentred(d, ui().dateToday, 2, y, w, 10, 1, kYellow, kBlack, kSmall);
-    y += 11;
-    const bool oneLine = gRender.textWidth(value, kBig) <= w - 8;
-    const int boxH = oneLine ? 24 : 42;
-    d.fillRoundRect(2, y, w, boxH, 5, kHighlight);
-    d.drawRoundRect(2, y, w, boxH, 5, kWhite);
-    if (oneLine) {
-        gRender.drawCentred(d, value, 4, y + 2, w - 4, boxH - 4, 1, kWhite, kHighlight, kBig);
-    } else {
-        gRender.drawCentred(d, weekdayName(target), 4, y + 3, w - 4, 17, 1, kWhite, kHighlight,
-                            kBig);
-        gRender.drawCentred(d, date, 4, y + 21, w - 4, 17, 1, kWhite, kHighlight, kBig);
-    }
-    y += boxH + gap;
-
-    // How far that is from the current day.
-    if (gDateSteps == 1)
+    // The proposed "today": this is what the buttons change.
+    drawCalendarTile(d, l, dateTarget());
+    if (gDateSteps == 0)
+        snprintf(line, sizeof line, "%s", ui().dateToday);
+    else if (gDateSteps == 1)
         snprintf(line, sizeof line, "%s", ui().dateOneDay);
     else
         snprintf(line, sizeof line, ui().dateDaysFmt, (unsigned)gDateSteps);
-    gRender.drawCentred(d, line, 2, y, w, 18, 1, kYellow, kBlack,
-                        gRender.textWidth(line, kBig) <= w ? kBig : kSmall);
+    const int pw = wg::pillWidth(line);
+    wg::drawPill(d, gRender, l.pillCx - pw / 2, l.pillY, line, gDateSteps ? kWarn : kTextDim,
+                 kSurfaceHi);
 
-    // Button hints along the bottom, both directions spelled out.
-    char hints[4][64];
-    const int hintLines = dateHintLines(hints, 4, w);
-    const int hintTop = H - 11 * hintLines;
-    for (int i = 0; i < hintLines; ++i)
-        gRender.drawCentred(d, hints[i], 2, hintTop + 11 * i, w, 10, 1, kWhite, kBlack, kSmall);
-
-    // Why the boot-time question is asked by hand after all (the network time
-    // failed), right above the hints: two lines in portrait, one in landscape,
-    // where the space above is taken.
+    // Why it is asked by hand after all (the network time failed), then how
+    // the buttons work.
+    const tgc::layout::Rect& e = l.explain;
+    const int maxLines = e.h / 10;
+    int lines = 0;
     if (gDateSync == DateSync::NoNetwork || gDateSync == DateSync::NoTime) {
-        const char* status = gDateSync == DateSync::NoNetwork ? ui().dateNoNetwork : ui().dateNoTime;
-        const int lines = H > W ? 2 : 1;
-        gRender.drawCentred(d, status, 2, hintTop - 2 - lines * 10, w, lines * 10, lines, kYellow,
-                            kBlack, kSmall);
+        const char* status =
+            gDateSync == DateSync::NoNetwork ? ui().dateNoNetwork : ui().dateNoTime;
+        lines = drawCaptionLines(d, status, e.x, e.y, e.w, maxLines, kWarn, align);
+        ++lines;  // a blank line under it
     }
+    drawCaptionLines(d, ui().dateExplain, e.x, e.y + 10 * lines, e.w, maxLines - lines, kTextDim,
+                     align);
+
+    wg::Hints h;
+    h.tap = ui().dateOneDay;
+    h.hold = ui().firstLangHold;  // "OK"
+    h.side = &tgc::kIconBack;
+    h.sideWord = ui().hintCancel;
+    wg::drawHintBar(d, gRender, W, H, h);
     present();
 }
 
-// --- Settings > Date ---------------------------------------------------------
+// --- Settings > Device > Date ------------------------------------------------
 
 // "+1", "-3", "+5:30", "0": one offset for the zone list's right column.
 void formatOffsetShort(int offsetMin, char* out, size_t n) {
@@ -1645,9 +2043,9 @@ void currentZoneLabel(char* out, size_t n) {
         tgc::formatUtcOffset(gTz.stdOffsetSec / 60, out, n);
 }
 
-// Settings > Date: the date (the stepper) and the time zone (the list), in the
-// Wi-Fi submenu's look: the row's value is the date or the zone's city. The
-// side button goes back to the settings home.
+// Settings > Device > Date: the date (the stepper) and the time zone (the
+// list), in the Wi-Fi submenu's look: the row's value is the date or the
+// zone's city. The side button goes back to the Device page.
 constexpr int kDateMenuRows = 2;
 tgc::ListView gDateMenuList;
 char gDateMenuNote[48] = "";
@@ -1677,7 +2075,7 @@ void drawDateMenu() {
     present();  // a move clears the note: the whole frame
 }
 
-// Settings > Date > Time zone: "From phone" (the zone the portal page last
+// Settings > Device > Date > Zone: "From phone" (the zone the portal page last
 // sent), then tgc::kTzZones. Row 0 is "From phone", row i is kTzZones[i - 1].
 tgc::ListView gTzListView;
 int tzListRows() { return 1 + static_cast<int>(tgc::kTzZoneCount); }
@@ -1743,10 +2141,10 @@ void drawTzList() {
     presentList(gTzListView);
 }
 
-// "2h 5m", "5m 30s" or "30s" depending on the magnitude. The unit strings come
-// from UiStrings so a language can change them; the result stays short enough
-// for the 135 px portrait width (the stats line shrinks to the 1x font if not).
-void formatReviewTime(uint32_t ms, char* out, size_t n) {
+// "2h 5m", "5m 30s" or "30s" depending on the magnitude; `firstUnit` keeps
+// only the largest unit ("2h", "5m"). The unit strings come from UiStrings so
+// a language can change them.
+void formatReviewTime(uint32_t ms, char* out, size_t n, bool firstUnit = false) {
     const uint32_t totalS = ms / 1000u;
     const uint32_t mins = totalS / 60u;
     const uint32_t hours = mins / 60u;
@@ -1756,94 +2154,148 @@ void formatReviewTime(uint32_t ms, char* out, size_t n) {
         snprintf(out, n, ui().statsTimeMS, (unsigned)mins, (unsigned)(totalS % 60u));
     else
         snprintf(out, n, ui().statsTimeS, (unsigned)totalS);
+    if (firstUnit) {
+        char* space = std::strchr(out, ' ');
+        if (space) *space = 0;
+    }
 }
 
-// Statistics screen (opened from the settings home): the internal date, the day
-// streak and total time on questions, cards seen out of the loaded pack, its
-// due/new counts, and the lifetime answer counters from the SRS store. Read-only;
-// the side button returns to settings.
+// One statistics tile: the value in the label face (after an optional icon)
+// over its caption.
+void drawStatTile(lgfx::LovyanGFX& d, const tgc::layout::Rect& t, const char* value,
+                  const char* caption, const tgc::Icon* icon = nullptr) {
+    using namespace tgc::theme;
+    // 4 px in from the sides: a 62 px tile keeps 54 px, nine caption
+    // characters ("dominadas").
+    constexpr int kPad = 4;
+    d.fillRect(t.x, t.y, t.w, t.h, kSurface);
+    int x = t.x + kPad;
+    // The value (an 18 px box) and the caption under it, centred as a pair.
+    const int valueY = t.y + std::max(3, (t.h - 29) / 2);
+    if (icon) {
+        wg::drawIcon(d, *icon, x, valueY + (18 - icon->h) / 2, kWarn);
+        x += icon->w + 3;
+    }
+    gRender.drawLabel(d, value, x, valueY, t.right() - kPad - x, 18, kText, kSurface);
+    gRender.drawLabel(d, caption, t.x + kPad, valueY + 19, t.w - 2 * kPad, 8, kTextDim, kSurface,
+                      tgc::Renderer::kTextBuiltinSmall);
+}
+
+// Statistics (docs/ux-refresh.md, stats mockup; opened from the settings
+// home): the accuracy over every answer as a ring, six tiles -- the day streak
+// (a flame) and the best one, the loaded deck's due and new cards, the learned
+// cards and the time on questions -- and how much of the deck has been seen.
+// Read-only; the side button goes back.
 void drawStats() {
+    using namespace tgc::theme;
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, ui().statsTitle, 3, 3, kWhite, kGrey);
+    menuHeader(d, ui().statsTitle);
+    const tgc::layout::Stats l = tgc::layout::statsFor(W, H);
+    const tgc::Stats stats = gSrs.stats();
+    const tgc::DeckSummary s = deckCounts();
+    const int acc = st::accuracyPercent(stats.reps, stats.lapses);
 
-    const tgc::Stats st = gSrs.stats();
-    uint32_t due = 0, fresh = 0;
-    packDueNew(&due, &fresh);
-
-    // Accuracy over every grade ever recorded; guard a zero divisor and a
-    // saturation edge (lapses can equal reps but never exceed it).
-    const uint32_t acc = st.reps ? (st.reps > st.lapses ? st.reps - st.lapses : 0) * 100u / st.reps
-                                 : 0;
-
-    char date[16], streak[24], timeLine[32], seen[24], dueNew[32], answers[24], accuracy[24],
-        learned[24], duration[16];
-    formatDate(gSrs.today(), date, sizeof date);
-    snprintf(streak, sizeof streak, ui().statsStreakFmt, (unsigned)st.streakCurrent,
-             (unsigned)st.streakBest);
-    formatReviewTime(st.reviewMs, duration, sizeof duration);
-    snprintf(timeLine, sizeof timeLine, ui().statsTimeFmt, duration);
-    snprintf(seen, sizeof seen, ui().statsSeenFmt, (unsigned)st.seen, (unsigned)gPack->cardCount());
-    snprintf(dueNew, sizeof dueNew, ui().statsDueNewFmt, (unsigned)due, (unsigned)fresh);
-    snprintf(answers, sizeof answers, ui().statsAnswersFmt, (unsigned)st.answers);
-    snprintf(accuracy, sizeof accuracy, ui().statsAccuracyFmt, (unsigned)acc);
-    snprintf(learned, sizeof learned, ui().statsLearnedFmt, (unsigned)st.learned);
-
-    const char* lines[] = {date, streak, timeLine, seen, dueNew, answers, accuracy, learned};
-    constexpr int kStatsLines = 8;
-    // Shrink the line step on the short landscape screen; portrait keeps 26/24.
-    const int top = 26;
-    int step = 24;
-    if (top + step * kStatsLines > H) {
-        step = (H - top - 2) / kStatsLines;
-        if (step < 10) step = 10;
+    // The ring: a track, the accuracy clockwise from 12 o'clock, the number in
+    // the hole ("87" in the numeral face, "%" in the label face, on one
+    // baseline), else the label face alone when that does not fit ("100%").
+    d.fillArc(l.cx, l.cy, l.rOuter, l.rInner, 0.0f, 360.0f, kSurfaceHi);
+    if (acc > 0)
+        d.fillArc(l.cx, l.cy, l.rOuter, l.rInner, tgc::layout::kRingStartDeg,
+                  tgc::layout::ringEndDeg(acc), kAccentHi);
+    char digits[8];
+    snprintf(digits, sizeof digits, acc >= 0 ? "%d" : "--", acc);
+    const int dw = gRender.textWidth(digits, tgc::Renderer::kTextUiNumeral);
+    const int pw = acc >= 0 ? gRender.textWidth("%", tgc::Renderer::kTextUi) : 0;
+    if (tgc::layout::ringFits(dw + pw, l.rInner)) {
+        const int x = l.cx - (dw + pw) / 2;
+        gRender.drawLabel(d, digits, x, l.cy - 12, dw, 24, kText, kBg,
+                          tgc::Renderer::kTextUiNumeral);
+        if (pw) gRender.drawLabel(d, "%", x + dw, l.cy - 2, pw, 14, kTextDim, kBg);
+    } else {
+        char label[8];
+        snprintf(label, sizeof label, "%d%%", acc);
+        gRender.drawLabel(d, label, l.cx - l.rInner, l.cy - 7, 2 * l.rInner, 14, kText, kBg,
+                          tgc::Renderer::kTextUi, tgc::Align::Centre);
     }
-    for (int i = 0; i < kStatsLines; ++i) {
-        const uint8_t set = labelFont(lines[i], step - 2, 18, W - 4);
-        gRender.drawCentred(d, lines[i], 2, top + i * step, W - 4, step - 4, 1,
-                            i == 0 ? kYellow : kWhite, kBlack, set);
+    const int colW = l.seenStacked ? 2 * l.cx : W;
+    gRender.drawLabel(d, ui().statsAccuracy, 0, l.captionY, colW, 8, kTextDim, kBg,
+                      tgc::Renderer::kTextBuiltinSmall, tgc::Align::Centre);
+
+    // The tiles, in pairs.
+    char v[6][16];
+    snprintf(v[0], sizeof v[0], "%u", (unsigned)currentStreak());
+    snprintf(v[1], sizeof v[1], "%u", (unsigned)stats.streakBest);
+    snprintf(v[2], sizeof v[2], "%u", (unsigned)s.due);
+    snprintf(v[3], sizeof v[3], "%u", (unsigned)s.fresh);
+    snprintf(v[4], sizeof v[4], "%u", (unsigned)stats.learned);
+    formatReviewTime(stats.reviewMs, v[5], sizeof v[5]);
+    if (gRender.textWidth(v[5], tgc::Renderer::kTextUi) > l.tiles[5].w - 8)
+        formatReviewTime(stats.reviewMs, v[5], sizeof v[5], true);
+    for (int i = 0; i < 6; ++i)
+        drawStatTile(d, l.tiles[i], v[i], ui().statsTiles[i], i == 0 ? &tgc::kIconFlame : nullptr);
+
+    // Seen / total of the loaded deck: one line across (portrait), or the
+    // caption over the bar in the left column (landscape).
+    char nums[24];
+    snprintf(nums, sizeof nums, "%u/%u", (unsigned)s.seen(), (unsigned)s.total);
+    const tgc::layout::Rect& sn = l.seen;
+    if (!l.seenStacked) {
+        const int ww = wg::captionWidth(ui().statsSeen);
+        const int nw = wg::captionWidth(nums);
+        wg::drawCaption(d, gRender, ui().statsSeen, sn.x, sn.y, kTextDim, kBg);
+        wg::drawCaption(d, gRender, nums, sn.right() - nw, sn.y, kTextDim, kBg);
+        wg::drawProgress(d, sn.x + ww + 6, sn.y + 2, sn.w - ww - nw - 12, 3,
+                         static_cast<int>(s.seen()), static_cast<int>(s.total));
+    } else {
+        char line[40];
+        snprintf(line, sizeof line, ui().summarySeenFmt, (unsigned)s.seen(), (unsigned)s.total);
+        if (wg::captionWidth(line) > sn.w) snprintf(line, sizeof line, "%s", nums);
+        gRender.drawLabel(d, line, sn.x, sn.y, sn.w, 8, kTextDim, kBg,
+                          tgc::Renderer::kTextBuiltinSmall, tgc::Align::Centre);
+        wg::drawProgress(d, sn.x, sn.y + 10, sn.w, 3, static_cast<int>(s.seen()),
+                         static_cast<int>(s.total));
     }
+    backHints(d);
     present();
 }
 
-// Settings > About: the firmware's name, version and licence, the decks'
-// licence, the UI font and where the source lives; then the loaded deck and
-// the credits of its data (Credits.h, from docs/data-sources.md). Built-in
-// font only, so it works before any deck is loaded. Two groups -- the
-// firmware, the deck -- laid out by ui/TextLayout.h: everything on one page
-// when it fits, else a group that does not fit the rest of a page starts the
-// next one. A tap turns the page (after the last, back to the first); the side
-// button goes back.
+// Settings > Device > About: the firmware's name, version and licence, the
+// decks' licence, the UI font and where the source lives; then the loaded deck
+// and the credits of its data (Credits.h, from docs/data-sources.md). Each item is
+// a label-face heading over its value in captions, so it works before any deck
+// is loaded. Two groups -- the firmware, the deck -- laid out by
+// ui/TextLayout.h: everything on one page when it fits, else a group that does
+// not fit the rest of a page starts the next one. A tap turns the page (after
+// the last, back to the first; the header shows "1/2"); the side button goes
+// back.
 int gAboutPage = 0;
 
-// "Tangochō" in the 2x built-in font, which has no "ō": the "o" gets a macron
-// over its top bar (Font0's "o" leaves rows 0-1 blank).
-void drawAppName(lgfx::LovyanGFX& d, int x, int y, uint16_t fg) {
-    d.setFont(&lgfx::fonts::Font0);
-    d.setTextSize(2);
-    d.setTextColor(fg, kBlack);
-    d.setTextDatum(lgfx::top_left);
-    d.drawString("Tangocho", x, y);
-    d.fillRect(x + 7 * 12 + 2, y, 6, 2, fg);  // columns 1-3 of the 8th cell, row 0
+// "Tangochō" in the label face, which has no "ō": the "o" gets a macron 3 px
+// over its ink.
+void drawAppName(lgfx::LovyanGFX& d, int x, int y, int h, uint16_t fg) {
+    const int w = gRender.drawLabel(d, "Tangocho", x, y, W - x, h, fg, kBlack);
+    const tgc::UiGlyph* o = tgc::uiGlyph(tgc::uifont::kLabel, 'o');
+    if (!o || w <= 0) return;
+    const int ox = x + gRender.textWidth("Tangoch", tgc::Renderer::kTextUi) + o->xOff;
+    const int baseline = y + (h + gRender.capHeight(tgc::Renderer::kTextUi)) / 2;
+    d.fillRect(ox + 1, baseline + o->yOff - 4, o->width - 2, 2, fg);
 }
 
 void drawAbout() {
+    using namespace tgc::theme;
     auto& d = *gCanvas;
-    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
-    constexpr int kLineH = 10;   // Font0 1x (8 px) and 2 px leading
-    constexpr int kTitleH = 18;  // Font0 2x (16 px) and 2 px
-    constexpr int kTop = 18;     // below the 14 px header
-    constexpr int kGap = 3;      // between lines of one group
+    constexpr int kLabelH = 20;  // a heading in the label face
+    constexpr int kLineH = 10;   // a caption line (8 px) and 2 px leading
+    constexpr int kGap = 3;      // between the items of one group
     constexpr int kGroupGap = 8;
+    const int top = kHeaderH + 3;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, ui().aboutTitle, 3, 3, kWhite, kGrey);
 
     struct Item {
-        const char* label;  // "" for none
+        const char* label;  // a heading ("Firmware:", its colon dropped); "" for none
         const char* value;
-        bool title;         // drawn under "Tangochō" (the version)
+        bool title;         // the app's name over the version
         bool newGroup;
     };
     namespace cr = tgc::credits;
@@ -1863,59 +2315,45 @@ void drawAbout() {
     items.push_back({ui().aboutJlpt, cr::kJlpt, false, false});
     items.push_back({ui().aboutGlyphs, cr::kGlyphs, false, false});
 
-    // "Label: value", wrapped to the width (6 px a character at 1x).
-    const int maxChars = (W - 6) / 6;
-    std::vector<std::string> texts;
+    // Each value wrapped to the width in the caption font (6 px a character).
+    const int maxChars = (W - 8) / 6;
     std::vector<std::vector<tgc::TextSpan>> lines;
     std::vector<tgc::PageBlock> blocks;
     for (const Item& it : items) {
-        texts.push_back(*it.label ? std::string(it.label) + " " + it.value : std::string(it.value));
-        lines.push_back(tgc::wrapText(texts.back().c_str(), maxChars));
-        const int h = (it.title ? kTitleH : 0) + static_cast<int>(lines.back().size()) * kLineH;
-        blocks.push_back({h, it.newGroup});
+        lines.push_back(tgc::wrapText(it.value, maxChars));
+        const int head = (it.title || *it.label) ? kLabelH : 0;
+        blocks.push_back({head + static_cast<int>(lines.back().size()) * kLineH, it.newGroup});
     }
-    // One page if it all fits; else a footer line for the page number.
-    int pageH = H - kTop - 2;
-    std::vector<tgc::PageSlot> slots = tgc::layoutPages(blocks, pageH, kGap, kGroupGap);
-    int pages = tgc::pageCount(slots);
-    if (pages > 1) {
-        pageH -= kLineH;
-        slots = tgc::layoutPages(blocks, pageH, kGap, kGroupGap);
-        pages = tgc::pageCount(slots);
-    }
+    const int pageH = H - kHintH - 2 - top;
+    const std::vector<tgc::PageSlot> slots = tgc::layoutPages(blocks, pageH, kGap, kGroupGap);
+    const int pages = tgc::pageCount(slots);
     if (gAboutPage >= pages) gAboutPage = 0;
 
-    const int bottom = kTop + pageH;  // a block taller than a page is cut here
+    char pageNo[12] = "";
+    if (pages > 1) snprintf(pageNo, sizeof pageNo, "%d/%d", gAboutPage + 1, pages);
+    menuHeader(d, ui().aboutTitle, pageNo[0] ? pageNo : nullptr);
+
+    const int bottom = top + pageH;  // a block taller than a page is cut here
     for (size_t i = 0; i < items.size(); ++i) {
         if (slots[i].page != gAboutPage) continue;
-        int y = kTop + slots[i].y;
+        int y = top + slots[i].y;
         if (items[i].title) {
-            drawAppName(d, 3, y, kWhite);
-            y += kTitleH;
+            drawAppName(d, kGutter, y, kLabelH, kText);
+            y += kLabelH;
+        } else if (*items[i].label) {
+            std::string label(items[i].label);
+            if (!label.empty() && label.back() == ':') label.pop_back();
+            gRender.drawLabel(d, label.c_str(), kGutter, y, W - 2 * kGutter, kLabelH, kText, kBg);
+            y += kLabelH;
         }
-        const std::string& t = texts[i];
-        const size_t labelLen = std::strlen(items[i].label);
         for (const tgc::TextSpan& l : lines[i]) {
             if (y + 8 > bottom) break;
-            int x = 3;
-            const size_t split = l.begin < labelLen ? std::min(labelLen, l.begin + l.len) : l.begin;
-            if (split > l.begin)
-                x += gRender.drawText(d, t.substr(l.begin, split - l.begin).c_str(), x, y, kYellow,
-                                      kBlack, kSmall);
-            if (l.begin + l.len > split)
-                gRender.drawText(d, t.substr(split, l.begin + l.len - split).c_str(), x, y, kWhite,
-                                 kBlack, kSmall);
+            const std::string s(items[i].value + l.begin, l.len);
+            wg::drawCaption(d, gRender, s.c_str(), kGutter, y, kTextDim, kBg);
             y += kLineH;
         }
     }
-
-    const int footY = H - kLineH;
-    if (pages > 1) {
-        char foot[48];
-        snprintf(foot, sizeof foot, "%u/%u%s%s", (unsigned)(gAboutPage + 1), (unsigned)pages,
-                 gAboutPage + 1 < pages ? "  " : "", gAboutPage + 1 < pages ? ui().aboutMore : "");
-        gRender.drawCentred(d, foot, 2, footY, W - 4, kLineH, 1, kWhite, kBlack, kSmall);
-    }
+    backHints(d, pages > 1 ? ui().hintMore : nullptr);
     present();
 }
 
@@ -1923,16 +2361,6 @@ void openAbout() {
     gAboutPage = 0;
     gScreen = Screen::About;
     drawScreen();
-}
-
-// "704 KB" / "1.2 MB", or "704K" / "1.2M" when `compact`.
-void formatBytes(uint32_t bytes, char* out, size_t n, bool compact) {
-    if (bytes >= 1024u * 1024u) {
-        const unsigned tenths = static_cast<unsigned>(bytes / (1024u * 1024u / 10u));
-        snprintf(out, n, compact ? "%u.%uM" : "%u.%u MB", tenths / 10u, tenths % 10u);
-    } else {
-        snprintf(out, n, compact ? "%uK" : "%u KB", (unsigned)((bytes + 1023u) / 1024u));
-    }
 }
 
 // A QR code of `text`, as large as fits a `box` px square, with a white
@@ -1960,119 +2388,144 @@ int drawQr(lgfx::LovyanGFX& d, const char* text, int x, int y, int box) {
     return side;
 }
 
-// The page address for the screen: whole when it fits `w` in the 1x font, else
-// without "http://" and the trailing '/' (a browser takes the bare IP too).
-void shownUrl(const char* url, int w, char* out, size_t n) {
+// The page address in text set `set`: whole when it fits `w`, else without
+// "http://" and the trailing '/' (a browser takes the bare IP too).
+void shownUrl(const char* url, int w, uint8_t set, char* out, size_t n) {
     snprintf(out, n, "%s", url);
-    if (gRender.textWidth(out, tgc::Renderer::kTextBuiltinSmall) <= w) return;
+    if (gRender.textWidth(out, set) <= w) return;
     const char* host = std::strncmp(url, "http://", 7) == 0 ? url + 7 : url;
     snprintf(out, n, "%s", host);
     const size_t len = std::strlen(out);
     if (len > 0 && out[len - 1] == '/') out[len - 1] = 0;
 }
 
-// Wi-Fi portal screen (WifiPortal.h). Serving: a QR code -- in setup mode the
-// one that joins the device's access point, or (a tap) the one that opens the
-// page; in home mode the page's address -- with the network, the address, the
-// portal's status line (or a download's progress), the free space and the
-// hints. Portrait stacks them under the QR, landscape puts them right of it.
-// Joining and failed: the network, why, and the way to setup mode. Only the
-// built-in font is used, so it works before any pack is open.
+// "4.9" (MB, one decimal), with " MB" when `unit`.
+void formatMb(size_t bytes, bool unit, char* out, size_t n) {
+    const unsigned tenths = static_cast<unsigned>(bytes / (1024u * 1024u / 10u));
+    snprintf(out, n, unit ? "%u.%u MB" : "%u.%u", tenths / 10u, tenths % 10u);
+}
+
+// The free space for decks: "free 4.9 / 5.9 MB" over a bar of it (13 px).
+void drawFreeSpace(lgfx::LovyanGFX& d, int x, int y, int w, tgc::Align align) {
+    const size_t total = LittleFS.totalBytes();
+    const size_t freeB = tgc::fsFreeBytes();
+    char a[16], b[16], line[48];
+    formatMb(freeB, false, a, sizeof a);
+    formatMb(total, true, b, sizeof b);
+    snprintf(line, sizeof line, ui().wifiFreeFmt, a, b);
+    gRender.drawLabel(d, line, x, y, w, 8, tgc::theme::kTextDim, kBlack,
+                      tgc::Renderer::kTextBuiltinSmall, align);
+    wg::drawProgress(d, x, y + 10, w, 3, static_cast<int>(freeB / 1024u),
+                     static_cast<int>(total / 1024u));
+}
+
+// Wi-Fi portal screen (WifiPortal.h; docs/ux-refresh.md, Wi-Fi mockup).
+// Serving: a QR code -- in setup mode the one that joins the device's access
+// point, or (a tap) the one that opens the page; in home mode the page's
+// address -- with what to scan for over it, then the network, the address in
+// the label face (what to type if the QR does not scan), the portal's status
+// (or a download's progress) and the free space as a bar. Portrait stacks them
+// under the QR, landscape puts them right of it. Joining and failed: the
+// network, why, and setup mode in the hint bar. The UI fonts need no pack, so
+// it works before one is open.
 void drawWifi() {
+    using namespace tgc::theme;
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    const int headerH = 14;
-    d.fillRect(0, 0, W, headerH, kGrey);
-    smallText(d, ui().wifiTitle, 3, 3, kWhite, kGrey);
-    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    menuHeader(d, ui().wifiTitle, nullptr, gPortal.active() || gHome.active());
+    // The side button (closeWifi()): stops the portal, starts studying on the
+    // boot-time screen once a deck is there, and does nothing there before.
+    wg::Hints hints;
+    if (!(gWifiBootUpload && !gPack->isOpen())) {
+        hints.side = &tgc::kIconBack;
+        hints.sideWord = gWifiBootUpload ? ui().wifiStudyHint : ui().hintStop;
+    }
 
     if (gWifiStep != WifiStep::Serving) {
         const bool failed = gWifiStep == WifiStep::Failed;
-        const char* title = failed ? gNetErrTitle : ui().wifiConnectingTo;
-        gRender.drawCentred(d, title, 2, H / 2 - 36, W - 4, 22, 2, failed ? kYellow : kWhite, kBlack,
-                            labelFont(title, 22, 16, W - 8));
-        gRender.drawCentred(d, failed ? gNetErrDetail : gHome.ssid(), 2, H / 2 - 10, W - 4, 20, 2,
-                            failed ? kWhite : kYellow, kBlack, kSmall);
-        if (failed) gRender.drawCentred(d, ui().wifiTapRetry, 2, H - 23, W - 4, 10, 1, kWhite, kBlack, kSmall);
-        gRender.drawCentred(d, ui().wifiHoldSetup, 2, H - 12, W - 4, 10, 1, kWhite, kBlack, kSmall);
+        const int mid = kHeaderH + (H - kHeaderH - kHintH) / 2;
+        gRender.drawCentred(d, failed ? gNetErrTitle : ui().wifiConnectingTo, 4, mid - 34, W - 8,
+                            40, 2, failed ? kWarn : kText, kBg, tgc::Renderer::kTextUi);
+        drawCaptionLines(d, failed ? gNetErrDetail : gHome.ssid(), 4, mid + 10, W - 8, 3,
+                         failed ? kText : kAccentHi);
+        if (failed) hints.tap = ui().wifiTapRetry;
+        hints.hold = ui().wifiHoldSetup;
+        wg::drawHintBar(d, gRender, W, H, hints);
         present();
         return;
     }
 
     const bool home = gPortalMode == PortalMode::Home;
-    const bool landscape = W > H;
+    const bool land = W > H;
     const bool joinQr = !home && gQrPage == 0;
     const std::string qrText =
         joinQr ? tgc::wifiQrOpenNetwork(gPortal.ssid()) : std::string(gPortal.url());
     const char* qrLabel = joinQr ? ui().wifiScanJoin : ui().wifiScanOpen;
 
-    int y = headerH + 2;
-    int tx = 2, tw = W - 4;
-    if (landscape) {
-        const int side = drawQr(d, qrText.c_str(), 2, y + 1, H - y - 3);
-        tx = side + 6;
-        tw = W - tx - 2;
+    int y = kHeaderH + 3;
+    int tx = kGutter, tw = W - 2 * kGutter;
+    tgc::Align align = tgc::Align::Centre;
+    if (land) {
+        const int side = drawQr(d, qrText.c_str(), kGutter, y, H - kHintH - 2 - y);
+        tx = kGutter + side + 6;
+        tw = W - kGutter - tx;
+        align = tgc::Align::Left;
+        y += drawCaptionLines(d, qrLabel, tx, y, tw, 2, kText, align) * 10 + 2;
     } else {
-        gRender.drawCentred(d, qrLabel, 2, y, W - 4, 10, 1, kYellow, kBlack, kSmall);
+        drawCaptionLines(d, qrLabel, tx, y, tw, 1, kText);
         y += 11;
-        const int box = std::min(W - 4, (H - y) * 11 / 20);
+        // As large as fits: 4 px modules for a version 2 code on the StickS3.
+        const int box = std::min(W - 2 * kGutter, (H - y) * 56 / 100);
         const int side = qrSide(qrText.c_str(), box);
         drawQr(d, qrText.c_str(), (W - side) / 2, y, box);
-        y += side + 3;
+        y += side + 4;
     }
-    // One line (or `n` wrapped lines) of 1x text in the text area.
-    auto line = [&](const char* s, uint16_t color, int n = 1) {
-        if (!s || !*s || y + 10 * n > H) return;
-        gRender.drawCentred(d, s, tx, y, tw, 10 * n, n, color, kBlack, kSmall);
-        y += 10 * n + 1;
+    // Caption lines under (beside) the QR code.
+    auto caption = [&](const char* s, uint16_t color, int lines = 1) {
+        if (s && *s) y += drawCaptionLines(d, s, tx, y, tw, lines, color, align) * 10 + 1;
     };
     char buf[72];
-    if (landscape) line(qrLabel, kYellow, 2);
     if (home) {
         snprintf(buf, sizeof buf, ui().wifiViaFmt, gPortal.ssid());
-        line(buf, kWhite);
+        caption(buf, kTextDim);
     } else {
-        line(gPortal.ssid(), kWhite);
+        caption(gPortal.ssid(), kText);
     }
-    shownUrl(gPortal.url(), tw, buf, sizeof buf);
-    line(buf, kYellow);
+    shownUrl(gPortal.url(), tw, tgc::Renderer::kTextUi, buf, sizeof buf);
+    gRender.drawLabel(d, buf, tx, y, tw, 20, kAccentHi, kBg, tgc::Renderer::kTextUi, align);
+    y += 21;
     if (gPortal.mdnsUrl()[0]) {
-        shownUrl(gPortal.mdnsUrl(), tw, buf, sizeof buf);
-        line(buf, kWhite);
+        shownUrl(gPortal.mdnsUrl(), tw, kSmall, buf, sizeof buf);
+        caption(buf, kTextDim);
     }
 
-    // Status: a download from the page, a dropped link, or the portal's line.
+    // A download the page asked for: its progress; the side button cancels.
     if (gNetBusy) {
-        snprintf(buf, sizeof buf, ui().wifiDownloadFmt, gNetDeck, (unsigned)(gNetPct < 0 ? 0 : gNetPct));
-        line(buf, kYellow);
-        if (y + 8 <= H) {
-            d.drawRect(tx + 2, y, tw - 4, 7, kWhite);
-            const int fill = gNetPct > 0 ? (tw - 6) * gNetPct / 100 : 0;
-            if (fill > 0) d.fillRect(tx + 3, y + 1, fill, 5, kGreen);
-            y += 9;
-        }
-        line(ui().wifiCancelHint, kWhite);
+        const int pct = gNetPct < 0 ? 0 : gNetPct;
+        snprintf(buf, sizeof buf, ui().wifiDownloadFmt, gNetDeck, (unsigned)pct);
+        caption(buf, kWarn);
+        wg::drawProgress(d, tx, y + 1, tw, 3, pct, 100);
+        wg::Hints busy;
+        busy.side = &tgc::kIconBack;
+        busy.sideWord = ui().hintCancel;
+        wg::drawHintBar(d, gRender, W, H, busy);
         present();
         return;
     }
-    // The boot-time fallback's reason first; the status line then gets one line
-    // so the hints still fit the portrait screen.
-    if (gWifiNote[0]) line(gWifiNote, kYellow, 2);
+    // The boot-time fallback's reason first; the status line then gets one
+    // line so the free space still fits the portrait screen.
+    if (gWifiNote[0]) caption(gWifiNote, kWarn, 2);
     if (home && !gPortal.linkUp())
-        line(ui().wifiLinkLost, kYellow);
+        caption(ui().wifiLinkLost, kWarn);
     else
-        line(gPortal.lastMessage(), kGreen, gWifiNote[0] ? 1 : 2);
-    char size[16];
-    formatBytes(static_cast<uint32_t>(tgc::fsFreeBytes()), size, sizeof size, false);
-    snprintf(buf, sizeof buf, ui().wifiFreeFmt, size);
-    line(buf, kWhite);
+        caption(gPortal.lastMessage(), kOkHi, gWifiNote[0] ? 1 : 2);
+    drawFreeSpace(d, tx, y + 2, tw, align);
 
-    // Hints.
-    if (!home) line(ui().wifiTapOtherQr, kWhite);
-    if (gWifiBootUpload && gPack->isOpen())
-        line(ui().wifiStudyHint, kGreen);
-    else if (gWifiBootUpload && tgc::HomeWifi::hasCredentials())
-        line(ui().wifiGetDecksHint, kGreen);
+    if (!home) hints.tap = ui().wifiTapOtherQr;
+    if (gWifiBootUpload && !gPack->isOpen() && tgc::HomeWifi::hasCredentials())
+        hints.hold = ui().wifiGetDecksHint;
+    wg::drawHintBar(d, gRender, W, H, hints);
     present();
 }
 
@@ -2107,170 +2560,179 @@ void drawWifiMenu() {
 
 // Settings > Wi-Fi > Home network: joining, checking (NTP and the catalog),
 // then the result -- network, IP, signal, catalog, network time -- with the
-// radio off again; or why it failed, or that no network is saved.
+// radio off again; or why it failed, or that no network is saved. A hold
+// tests again.
 void drawNetTest() {
+    using namespace tgc::theme;
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, ui().testTitle, 3, 3, kWhite, kGrey);
-    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    menuHeader(d, ui().testTitle, nullptr, gHome.active());
+    const int mid = kHeaderH + (H - kHeaderH - kHintH) / 2;
 
     if (gTestStep == NetTestStep::NoNetwork) {
-        gRender.drawCentred(d, ui().wifiNoNetwork, 2, H / 2 - 36, W - 4, 22, 2, kYellow, kBlack, kSmall);
-        gRender.drawCentred(d, ui().testNoNetworkHint, 2, H / 2 - 8, W - 4, 40, 4, kWhite, kBlack, kSmall);
+        gRender.drawCentred(d, ui().wifiNoNetwork, 4, mid - 40, W - 8, 40, 2, kWarn, kBg,
+                            tgc::Renderer::kTextUi);
+        drawCaptionLines(d, ui().testNoNetworkHint, 4, mid + 4, W - 8, 4, kText);
+        backHints(d);
         present();
         return;
     }
     if (gTestStep == NetTestStep::Joining || gTestStep == NetTestStep::Failed) {
         const bool failed = gTestStep == NetTestStep::Failed;
-        const char* title = failed ? gTestFail : ui().netConnecting;
-        gRender.drawCentred(d, title, 2, H / 2 - 36, W - 4, 22, 2, kYellow, kBlack,
-                            labelFont(title, 22, 16, W - 8));
-        gRender.drawCentred(d, gHome.ssid(), 2, H / 2 - 10, W - 4, 20, 2, kWhite, kBlack, kSmall);
-        if (failed)
-            gRender.drawCentred(d, ui().testHoldAgain, 2, H - 12, W - 4, 10, 1, kWhite, kBlack, kSmall);
+        gRender.drawCentred(d, failed ? gTestFail : ui().netConnecting, 4, mid - 34, W - 8, 40, 2,
+                            failed ? kWarn : kText, kBg, tgc::Renderer::kTextUi);
+        drawCaptionLines(d, gHome.ssid(), 4, mid + 10, W - 8, 2, kAccentHi);
+        backHints(d, nullptr, failed ? ui().testHoldAgain : nullptr);
         present();
         return;
     }
-    int y = 20;
-    auto line = [&](const char* s, uint16_t color, int n = 1) {
-        if (!s || !*s || y + 10 * n > H - 12) return;
-        gRender.drawCentred(d, s, 2, y, W - 4, 10 * n, n, color, kBlack, kSmall);
-        y += 10 * n + (H > W ? 4 : 1);
+    // Checking / done: the network in the label face, then caption lines.
+    int y = kHeaderH + 4;
+    gRender.drawLabel(d, gHome.ssid(), 4, y, W - 8, 20, kText, kBg, tgc::Renderer::kTextUi,
+                      tgc::Align::Centre);
+    y += 24;
+    const int step = H > W ? 5 : 2;
+    auto line = [&](const char* s, uint16_t color, int lines = 2) {
+        if (s && *s) y += drawCaptionLines(d, s, 4, y, W - 8, lines, color) * 10 + step;
     };
     char buf[72];
-    line(gHome.ssid(), kYellow, 2);
     snprintf(buf, sizeof buf, ui().testIpFmt, gTestIp.c_str());
-    line(buf, kWhite);
-    snprintf(buf, sizeof buf, ui().testSignalFmt, gTestRssi, ui().testQuality[tgc::rssiQuality(gTestRssi)]);
-    line(buf, kWhite, 2);
-    if (gTestStep == NetTestStep::Checking) {
-        line(ui().testChecking, kYellow);
-        present();
-        return;
+    line(buf, kTextDim);
+    snprintf(buf, sizeof buf, ui().testSignalFmt, gTestRssi,
+             ui().testQuality[tgc::rssiQuality(gTestRssi)]);
+    line(buf, kTextDim);
+    const bool done = gTestStep == NetTestStep::Done;
+    if (!done) {
+        line(ui().testChecking, kWarn);
+    } else {
+        line(gTestCatalog, gTestCatalogColor);
+        if (gTestTime >= 0)
+            line(gTestTime ? ui().testTimeOk : ui().testTimeFail, gTestTime ? kOkHi : kWarn);
     }
-    line(gTestCatalog, gTestCatalogColor, 2);
-    if (gTestTime >= 0) line(gTestTime ? ui().testTimeOk : ui().testTimeFail, gTestTime ? kGreen : kYellow);
-    gRender.drawCentred(d, ui().testHoldAgain, 2, H - 12, W - 4, 10, 1, kWhite, kBlack, kSmall);
+    backHints(d, nullptr, done ? ui().testHoldAgain : nullptr);
     present();
 }
 
-// "Get decks" screen. Connecting / reading: a centred status and the network
-// name. List: one row per catalog deck ('+' new, '=' already here, '~' here
-// with another size), scrolled to keep the selection visible, and a two-line
-// footer (language, cards and size of the selection, or a status note, then the
-// hold hint; a progress bar while downloading). Error: a title and a wrapped
-// detail. Only the built-in font is used, so it works before any pack is open.
+// "Get decks" screen (docs/ux-refresh.md, get-decks mockup). Connecting /
+// reading: what it is doing over which network. List: the network and the
+// catalog's size, then one row per catalog deck -- its title, "EN · 79 kanji"
+// and the size; a deck already here is muted with a check, one here in
+// another build has a download mark and "update" -- and a note line over the
+// hint bar (what the last download did). While a deck downloads, its row shows
+// the percentage and a bar, and the side button cancels. Error: a title and a
+// wrapped detail. The UI fonts need no pack, so it works before one is open.
+tgc::ListView gNetList;  // the catalog's window; gNetSel is its focus
+
 void drawGetDecks() {
+    using namespace tgc::theme;
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, ui().getDecksTitle, 3, 3, kWhite, kGrey);
-    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    menuHeader(d, ui().getDecksTitle, nullptr, gHome.active());
+    const int mid = kHeaderH + (H - kHeaderH - kHintH) / 2;
 
     if (gNetStep == NetStep::Connecting || gNetStep == NetStep::Catalog) {
         const char* line = gNetStep == NetStep::Connecting ? ui().netConnecting : ui().netCatalog;
-        gRender.drawCentred(d, line, 2, H / 2 - 22, W - 4, 18, 1, kYellow, kBlack,
-                            labelFont(line, 18, 16, W - 8));
-        gRender.drawCentred(d, gHome.ssid(), 2, H / 2 + 2, W - 4, 20, 2, kWhite, kBlack, kSmall);
+        gRender.drawCentred(d, line, 4, mid - 34, W - 8, 40, 2, kText, kBg, tgc::Renderer::kTextUi);
+        drawCaptionLines(d, gHome.ssid(), 4, mid + 10, W - 8, 2, kAccentHi);
+        wg::Hints h;
+        h.side = &tgc::kIconBack;
+        h.sideWord = ui().hintCancel;
+        wg::drawHintBar(d, gRender, W, H, h);
         present();
         return;
     }
     if (gNetStep == NetStep::Error) {
-        const int titleH = 36;
-        gRender.drawCentred(d, gNetErrTitle, 2, 20, W - 4, titleH, 2, kYellow, kBlack,
-                            labelFont(gNetErrTitle, titleH, 16, W - 8));
-        gRender.drawCentred(d, gNetErrDetail, 2, 20 + titleH + 4, W - 4, H - 20 - titleH - 20, 6,
-                            kWhite, kBlack, kSmall);
-        gRender.drawCentred(d, ui().netHoldRetry, 2, H - 12, W - 4, 10, 1, kWhite, kBlack, kSmall);
+        const int top = kHeaderH + 6;
+        const int titleLines = gRender.drawCentred(d, gNetErrTitle, 4, top, W - 8, 40, 2, kWarn,
+                                                   kBg, tgc::Renderer::kTextUi);
+        const int detailY = top + 20 * std::max(titleLines, 1) + 6;
+        drawCaptionLines(d, gNetErrDetail, 4, detailY, W - 8, (H - kHintH - 2 - detailY) / 10,
+                         kText);
+        backHints(d, nullptr, ui().netHoldRetry);
         present();
         return;
     }
 
-    const int footerH = 22;
-    const int footY = H - footerH;
     const int n = static_cast<int>(gCatalog.size());
+    char line[72];
+    snprintf(line, sizeof line, ui().netListFmt, gHome.ssid(), (unsigned)n);
+    gRender.drawLabel(d, line, kGutter, kHeaderH + 3, W - 2 * kGutter, 8, kTextDim, kBg, kSmall);
+    const int top = kHeaderH + 12;
     if (n == 0) {
-        gRender.drawCentred(d, ui().netEmpty, 2, 20, W - 4, footY - 22, 3, kWhite, kBlack, kSmall);
+        drawCaptionLines(d, ui().netEmpty, 4, mid - 10, W - 8, 3, kText);
     } else {
-        const int top = 18;
-        const int rowH = H >= 200 ? 18 : 15;
-        int visible = (footY - 2 - top) / rowH;
-        if (visible < 1) visible = 1;
-        const int first = gNetSel >= visible ? gNetSel - visible + 1 : 0;
-        for (int i = first; i < n && i < first + visible; ++i) {
-            const int y = top + (i - first) * rowH;
-            const bool sel = i == gNetSel;
-            const uint16_t bg = sel ? kHighlight : kBlack;
-            d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
-            if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
+        const bool wide = wideRows();
+        gNetList.setCount(n);
+        layoutList(gNetList, top, H - kHintH - kNoteH, wide ? layout().row1H : layout().row2H);
+        gNetList.setFocus(gNetSel);
+        wg::drawList(d, gNetList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
             const tgc::CatalogEntry& e = gCatalog[i];
-            const tgc::DeckState st = gCatalogState[i];
-            const uint16_t fg = st == tgc::DeckState::OnDevice ? kGreen
-                                : (st == tgc::DeckState::Update ? kYellow : kWhite);
-            const int ty = y + (rowH - 2 - 8) / 2;
-            // The deck's title ("JLPT N5"; the file name when it has none). Right
-            // column "en 704K"; when the title would not fit next to it (the
-            // 135 px portrait), only the size (the footer has the language).
-            const int nameX = 13;
-            String name = tgc::catalogDisplayName(e).c_str();
-            char right[24], size[12];
-            formatBytes(e.bytes, size, sizeof size, true);
-            snprintf(right, sizeof right, "%s %s", e.lang.c_str(), size);
-            int maxW = W - 4 - gRender.textWidth(right, kSmall) - 6 - nameX;
-            if (gRender.textWidth(name.c_str(), kSmall) > maxW) {
-                snprintf(right, sizeof right, "%s", size);
-                maxW = W - 4 - gRender.textWidth(right, kSmall) - 6 - nameX;
+            const tgc::DeckState state = gCatalogState[i];
+            char lang[8] = "?";
+            if (!e.lang.empty()) {
+                snprintf(lang, sizeof lang, "%s", e.lang.c_str());
+                for (char* p = lang; *p; ++p)
+                    if (*p >= 'a' && *p <= 'z') *p = static_cast<char>(*p - 'a' + 'A');
             }
-            smallText(d, right, W - 4, ty, kWhite, bg, lgfx::top_right);
-            smallText(d, st == tgc::DeckState::OnDevice ? "=" : (st == tgc::DeckState::Update ? "~" : "+"),
-                      4, ty, fg, bg);
-            // The title gets what the size column leaves, cut with ".." if
-            // needed, a whole UTF-8 character at a time.
-            if (gRender.textWidth(name.c_str(), kSmall) > maxW) {
-                while (name.length() > 1 && gRender.textWidth((name + "..").c_str(), kSmall) > maxW) {
-                    unsigned len = name.length() - 1;
-                    while (len > 1 && (static_cast<uint8_t>(name[len]) & 0xC0) == 0x80) --len;
-                    name.remove(len);
-                }
-                name += "..";
+            char caption[48], size[16], value[64];
+            if (state == tgc::DeckState::OnDevice)
+                snprintf(caption, sizeof caption, "%s · %s", lang, ui().netOnDevice);
+            else if (state == tgc::DeckState::Update)
+                snprintf(caption, sizeof caption, "%s · %s", lang, ui().netHoldUpdate);
+            else
+                snprintf(caption, sizeof caption, ui().netCardsFmt, lang, (unsigned)e.cards);
+            formatMb(e.bytes, true, size, sizeof size);
+            const std::string title = tgc::catalogDisplayName(e);
+            wg::Row row;
+            row.label = title.c_str();
+            row.focused = f;
+            row.keepLabel = true;
+            row.muted = state == tgc::DeckState::OnDevice;
+            if (state == tgc::DeckState::OnDevice) {
+                row.mark = &tgc::kIconCheck;
+                row.markColor = kOkHi;
+            } else if (state == tgc::DeckState::Update) {
+                row.mark = &tgc::kIconDown;
+                row.markColor = kWarn;
             }
-            smallText(d, name.c_str(), nameX, ty, fg, bg);
+            if (gNetBusy && f) {
+                const int pct = gNetPct < 0 ? 0 : gNetPct;
+                snprintf(value, sizeof value, "%d%%", pct);
+                row.progress = pct;
+            } else if (wide) {
+                // One line: the caption and the size right of the title.
+                if (state == tgc::DeckState::OnDevice)
+                    snprintf(value, sizeof value, "%s", caption);
+                else
+                    snprintf(value, sizeof value, "%s · %s", caption, size);
+            } else {
+                // Two lines: the size of a new deck right of the title (a deck
+                // with a mark has no room for it).
+                snprintf(value, sizeof value, "%s", state == tgc::DeckState::New ? size : "");
+            }
+            row.value = value;
+            if (!wide) row.caption = caption;
+            wg::drawRow(d, gRender, x, y, w, h, row);
+        });
+    }
+    menuNote(d, gNetNote, gNetNoteColor);
+
+    wg::Hints h;
+    h.side = &tgc::kIconBack;
+    if (gNetBusy) {
+        h.sideWord = ui().hintCancel;
+    } else {
+        h.sideWord = ui().hintBack;
+        if (n > 0) {
+            const tgc::DeckState state = gCatalogState[gNetSel];
+            h.tap = ui().hintMove;
+            h.hold = state == tgc::DeckState::OnDevice ? ui().netHoldStudy
+                     : state == tgc::DeckState::Update ? ui().netHoldUpdate
+                                                       : ui().netHoldDownload;
         }
     }
-
-    // Footer: what the selection is (or a status note), then what a hold does.
-    char line1[64] = "";
-    uint16_t c1 = kWhite;
-    const char* line2 = "";
-    if (gNetBusy) {
-        snprintf(line1, sizeof line1, ui().netDownloadingFmt, (unsigned)(gNetPct < 0 ? 0 : gNetPct));
-        c1 = kYellow;
-    } else if (gNetNote[0]) {
-        snprintf(line1, sizeof line1, "%s", gNetNote);
-        c1 = gNetNoteColor;
-    } else if (n > 0) {
-        const tgc::CatalogEntry& e = gCatalog[gNetSel];
-        char size[16];
-        formatBytes(e.bytes, size, sizeof size, false);
-        snprintf(line1, sizeof line1, ui().netCardsFmt, e.lang.empty() ? "?" : e.lang.c_str(),
-                 (unsigned)e.cards, size);
-    }
-    if (!gNetBusy && n > 0) {
-        const tgc::DeckState st = gCatalogState[gNetSel];
-        line2 = st == tgc::DeckState::OnDevice
-                    ? ui().netHoldStudy
-                    : (st == tgc::DeckState::Update ? ui().netHoldUpdate : ui().netHoldDownload);
-    }
-    gRender.drawCentred(d, line1, 2, footY + 1, W - 4, 10, 1, c1, kBlack, kSmall);
-    if (gNetBusy) {
-        const int bw = W - 8;
-        d.drawRect(4, footY + 12, bw, 8, kWhite);
-        const int fill = gNetPct > 0 ? (bw - 2) * gNetPct / 100 : 0;
-        if (fill > 0) d.fillRect(5, footY + 13, fill, 6, kGreen);
-    } else {
-        gRender.drawCentred(d, line2, 2, footY + 11, W - 4, 10, 1, kWhite, kBlack, kSmall);
-    }
+    wg::drawHintBar(d, gRender, W, H, h);
     present();
 }
 
@@ -2484,8 +2946,8 @@ void leaveDate() {
 
 // Applies the stepped days (advanceDaysManual also restarts the day carry, see
 // docs/srs.md section 5), persists them, rebuilds the queue (cards may now be
-// due) and goes back to where the date screen was opened from: Settings > Date,
-// or the quiz on a power-off boot.
+// due) and goes back to where the date screen was opened from: Settings >
+// Device > Date, or the quiz on a power-off boot.
 void applyDate() {
     dateSyncCancel();
     gSrs.advanceDaysManual(gDateSteps);
@@ -2619,7 +3081,7 @@ bool applyWallClock(int64_t utcMs, const tgc::TzRule& zone) {
 bool netTimeSync() {
     if (!gTzKnown) {
         Serial.printf("clock: no NTP sync, no time zone yet (open the portal page once, or "
-                      "Settings > Date > Time zone)\n");
+                      "Settings > Device > Date > Zone)\n");
         return false;
     }
     int64_t utcMs = 0;
@@ -2672,7 +3134,7 @@ bool dateSyncPoll() {
     return false;
 }
 
-// --- Settings > Date: loop ---------------------------------------------------
+// --- Settings > Device > Date: loop ------------------------------------------
 
 void dateMenuNote(const char* text, uint16_t color) {
     snprintf(gDateMenuNote, sizeof gDateMenuNote, "%s", text ? text : "");
@@ -3224,8 +3686,9 @@ void openMenu() {
     }
     gBeforeMenu = gScreen;
     gScreen = Screen::Menu;
-    gMenuList.setCount(kSettingRows);
-    gMenuList.reset(0);
+    gMenuPage = st::Page::Home;
+    menuList().setCount(st::pageItems(gMenuPage).count);
+    menuList().reset(0);
     drawScreen();
 }
 
@@ -3253,6 +3716,7 @@ void openDecks() {
         if (gPacks[i] == gCurrentPack) sel = static_cast<int>(i);
     gDeckList.setCount(static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
     gDeckList.reset(sel);
+    gPackInfoFor.clear();  // read the headers again (drawDecks())
     gScreen = Screen::Decks;
     drawScreen();
 }
@@ -3302,6 +3766,15 @@ void openChoice(Choice which) {
         showChoice(saved);
         return;
     }
+    if (which == Choice::AutoAdvance || which == Choice::HoldTime) {
+        // ui/InputPrefs.h: the row is the stored index.
+        gChoiceCount = 3;
+        for (int i = 0; i < gChoiceCount; ++i) gChoiceValues[i] = static_cast<uint16_t>(i);
+        saved = which == Choice::AutoAdvance ? gAdvancePref : gHoldPref;
+        if (saved >= gChoiceCount) saved = -1;
+        showChoice(saved);
+        return;
+    }
     gChoiceCount = 4;
     if (which == Choice::Brightness) {
         gChoiceValues[0] = 32;
@@ -3328,7 +3801,8 @@ void openChoice(Choice which) {
     showChoice(saved);
 }
 
-// Applies the focused choice, persists it and returns to the settings home.
+// Applies the focused choice, persists it and returns to the settings page it
+// came from (the Wi-Fi submenu for "Forget").
 void applyChoice() {
     const int sel = gChoiceList.focus();
     if (gChoice == Choice::Orientation) {
@@ -3370,6 +3844,20 @@ void applyChoice() {
         drawScreen();
         return;
     }
+    if (gChoice == Choice::AutoAdvance) {
+        gAdvancePref = static_cast<uint8_t>(gChoiceValues[sel]);
+        gPrefs.putUChar(tgc::kPrefAdvance, gAdvancePref);
+        backToMenu();
+        return;
+    }
+    if (gChoice == Choice::HoldTime) {
+        // Read by loop() from the next press on; the hold that chose it has
+        // fired already.
+        gHoldPref = static_cast<uint8_t>(gChoiceValues[sel]);
+        gPrefs.putUChar(tgc::kPrefHold, gHoldPref);
+        backToMenu();
+        return;
+    }
     const uint16_t v = gChoiceValues[sel];
     if (gChoice == Choice::NewPerDay) {
         gSrs.setNewPerDay(v);
@@ -3385,46 +3873,100 @@ void applyChoice() {
     drawScreen();
 }
 
-// Activates the focused settings row.
+void openStats() {
+    gScreen = Screen::Stats;
+    drawScreen();
+}
+
+// Every settings row: its label (UiStrings), its value and what a hold does.
+// A page lists its rows in ui/SettingsTree.h; a new setting gets an st::Item,
+// a place on a page there and an entry here.
+const MenuItem& menuItem(st::Item id) {
+    using I = st::Item;
+    static const MenuItem kItems[] = {
+        // --- home
+        {I::Decks, [] { return ui().groupRows[0]; },
+         [](char* o, size_t n) { snprintf(o, n, "%u", (unsigned)gPacks.size()); }, openDecks},
+        {I::Study, [] { return ui().groupRows[1]; },
+         [](char* o, size_t n) { snprintf(o, n, ui().studyValueFmt, (unsigned)gSrs.newPerDay()); },
+         [] { openMenuPage(st::Page::Study); }},
+        {I::Stats, [] { return ui().groupRows[2]; },
+         [](char* o, size_t n) {
+             const tgc::Stats s = gSrs.stats();
+             const int acc = st::accuracyPercent(s.reps, s.lapses);
+             if (acc >= 0) snprintf(o, n, "%d%%", acc);
+         },
+         openStats},
+        {I::Wifi, [] { return ui().groupRows[3]; },
+         // The radio is on only on the Wi-Fi screens, so the home sees it off.
+         [](char* o, size_t n) {
+             snprintf(o, n, "%s", gHome.active() ? gHome.ssid() : ui().wifiOff);
+         },
+         [] { openWifiMenu(true); }},
+        {I::Device, [] { return ui().groupRows[4]; }, nullptr,
+         [] { openMenuPage(st::Page::Device); }},
+        // --- Study
+        {I::NewPerDay, [] { return ui().studyRows[0]; },
+         [](char* o, size_t n) { snprintf(o, n, "%u", (unsigned)gSrs.newPerDay()); },
+         [] { openChoice(Choice::NewPerDay); }},
+        {I::HardAfter, [] { return ui().studyRows[1]; },
+         [](char* o, size_t n) { hardAfterText(gSrs.slowMs(), o, n); },
+         [] { openChoice(Choice::SlowMs); }},
+        {I::AutoAdvance, [] { return ui().studyRows[2]; },
+         [](char* o, size_t n) {
+             snprintf(o, n, "%s", ui().advanceRows[gAdvancePref % tgc::kAdvanceChoices]);
+         },
+         [] { openChoice(Choice::AutoAdvance); }},
+        // --- Device
+        {I::Orientation, [] { return ui().deviceRows[0]; },
+         [](char* o, size_t n) { snprintf(o, n, "%s", ui().orientRows[gOrientPref % 3]); },
+         [] { openChoice(Choice::Orientation); }},
+        {I::Brightness, [] { return ui().deviceRows[1]; },
+         [](char* o, size_t n) { snprintf(o, n, "%u%%", (unsigned)(gBrightness * 100u / 255u)); },
+         [] { openChoice(Choice::Brightness); }},
+        {I::Language, [] { return ui().deviceRows[2]; },
+         [](char* o, size_t n) {
+             const int pref = gUiLangPref >= 0 && gUiLangPref < 3 ? gUiLangPref : 0;
+             snprintf(o, n, "%s", ui().langRows[pref]);
+         },
+         [] { openChoice(Choice::UiLang); }},
+        {I::HoldTime, [] { return ui().deviceRows[3]; },
+         [](char* o, size_t n) {
+             snprintf(o, n, "%s", ui().holdRows[gHoldPref % tgc::kHoldChoices]);
+         },
+         [] { openChoice(Choice::HoldTime); }},
+        {I::Date, [] { return ui().deviceRows[4]; },
+         [](char* o, size_t n) { shortDate(gSrs.today(), o, n); }, [] { openDateMenu(true); }},
+        {I::Sleep, [] { return ui().deviceRows[5]; }, nullptr, [] { sleepNow(false); }},
+        {I::About, [] { return ui().deviceRows[6]; }, nullptr, openAbout},
+    };
+    static_assert(sizeof kItems / sizeof kItems[0] == st::kItemCount, "one entry per item");
+    for (const MenuItem& m : kItems)
+        if (m.id == id) return m;
+    return kItems[0];
+}
+
+// A hold on the focused settings row.
 void activateSetting() {
-    switch (gMenuList.focus()) {
-        case 0:  // Seguir
-            closeMenu();
-            break;
-        case 1:  // Mazos
-            openDecks();
-            break;
-        case 2:  // Fecha >: the date and the time zone
-            openDateMenu(true);
-            break;
-        case 3:  // Nuevas/dia
-            openChoice(Choice::NewPerDay);
-            break;
-        case 4:  // Velocidad
-            openChoice(Choice::SlowMs);
-            break;
-        case 5:  // Estadisticas
-            gScreen = Screen::Stats;
+    menuItem(st::itemAt(gMenuPage, menuList().focus())).action();
+}
+
+// loop() on the settings tree: tap moves, hold activates, the side button goes
+// from a page back to the home and from the home out of the settings.
+void menuLoop(int a, int b) {
+    if (a == 1) {
+        moveListFocus(menuList());
+        drawScreen();
+    } else if (a == 2) {
+        activateSetting();
+    }
+    if (b && gScreen == Screen::Menu) {
+        if (gMenuPage != st::Page::Home) {
+            gMenuPage = st::Page::Home;  // the home's focus is still on the group
             drawScreen();
-            break;
-        case 6:  // Wi-Fi >
-            openWifiMenu(true);
-            break;
-        case 7:  // Orientacion
-            openChoice(Choice::Orientation);
-            break;
-        case 8:  // Idioma / Language
-            openChoice(Choice::UiLang);
-            break;
-        case 9:  // Brillo / Brightness
-            openChoice(Choice::Brightness);
-            break;
-        case 10:  // Suspender / Sleep
-            sleepNow(false);
-            break;
-        case 11:  // Acerca de / About
-            openAbout();
-            break;
+        } else {
+            closeMenu();
+        }
     }
 }
 
@@ -3690,7 +4232,7 @@ tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e) {
         gPack->close();
         gSource.reset();
     }
-    snprintf(gNetDeck, sizeof gNetDeck, "%s", e.name.c_str());
+    snprintf(gNetDeck, sizeof gNetDeck, "%s", tgc::catalogDisplayName(e).c_str());
     gNetBusy = true;
     gNetPct = -1;
     gNetInputAt = millis();
@@ -3735,7 +4277,7 @@ void netDownload(int i) {
     gNetNote[0] = 0;
     const tgc::DeckDownloadResult d = downloadCatalogDeck(e);
     if (d.batteryLow) {
-        netNote(ui().batteryTitle, kYellow);
+        netNote(ui().batteryTitle, tgc::theme::kWarn);
         drawScreen();
         return;
     }
@@ -3743,14 +4285,14 @@ void netDownload(int i) {
     netRefreshStates();
     char buf[48];
     if (r.status == tgc::FetchStatus::Ok) {
-        snprintf(buf, sizeof buf, ui().netSavedFmt, e.name.c_str());
-        netNote(buf, kGreen);
+        snprintf(buf, sizeof buf, ui().netSavedFmt, tgc::catalogDisplayName(e).c_str());
+        netNote(buf, tgc::theme::kOkHi);
     } else if (r.status == tgc::FetchStatus::NoSpace && updating) {
         // The old copy stays until the new one validated, so an update needs
         // room for both: say how to make it.
         netError(ui().netNoSpace, ui().netNoSpaceUpdate);
     } else {
-        netNote(netDownloadError(r, buf, sizeof buf), kYellow);
+        netNote(netDownloadError(r, buf, sizeof buf), tgc::theme::kWarn);
     }
     drawScreen();
 }
@@ -3759,7 +4301,7 @@ void netDownload(int i) {
 void netStudy(int i) {
     const String path = catalogPath(gCatalog[i]);
     if (!loadPack(path)) {
-        netNote(ui().netInvalid, kYellow);
+        netNote(ui().netInvalid, tgc::theme::kWarn);
         drawScreen();
         return;
     }
@@ -3920,11 +4462,11 @@ void netTestCheck() {
         const bool notPublished =
             c.fetch.status == tgc::FetchStatus::Http && c.fetch.httpCode == 404;
         snprintf(gTestCatalog, sizeof gTestCatalog, "%s", notPublished ? ui().netNotPublished : title);
-        gTestCatalogColor = kYellow;
+        gTestCatalogColor = tgc::theme::kWarn;
     } else {
         snprintf(gTestCatalog, sizeof gTestCatalog, ui().testCatalogFmt,
                  (unsigned)c.parse.entries.size());
-        gTestCatalogColor = kGreen;
+        gTestCatalogColor = tgc::theme::kOkHi;
     }
     Serial.printf("[net] test: \"%s\" ip %s rssi %d dBm, catalog %s, time %d\n", gHome.ssid(),
                   gTestIp.c_str(), gTestRssi, gTestCatalog, gTestTime);
@@ -4077,16 +4619,15 @@ void wakeScreen() {
     gDimmed = false;
 }
 
-// Full-screen notice: `title` in the 2x built-in font, `hint` below in the 1x
-// one. Built-in fonts only, so it works before a pack is open.
+// Full-screen notice (sleep, battery, first start): `title` in the label face
+// (two lines at most), `hint` under it in captions. The UI fonts need no pack.
 void showNotice(const char* title, const char* hint, uint16_t titleColor) {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     const int mid = H / 2;
     gRender.drawCentred(d, title, 4, mid - 44, W - 8, 40, 2, titleColor, kBlack,
-                        tgc::Renderer::kTextBuiltin);
-    gRender.drawCentred(d, hint, 4, mid + 2, W - 8, 40, 4, kWhite, kBlack,
-                        tgc::Renderer::kTextBuiltinSmall);
+                        tgc::Renderer::kTextUi);
+    drawCaptionLines(d, hint, 4, mid + 2, W - 8, 4, tgc::theme::kTextDim);
     present();
 }
 
@@ -4102,7 +4643,7 @@ void sleepNow(bool critical) {
     if (gScreenOff) tgc::board::setDisplayOn(true);
     tgc::board::setBrightness(gBrightness);
     if (critical)
-        showNotice(ui().batteryTitle, ui().batteryHint, kYellow);
+        showNotice(ui().batteryTitle, ui().batteryHint, tgc::theme::kWarn);
     else
         showNotice(ui().sleepTitle, ui().sleepHint, kWhite);
     delay(critical ? kBatteryNoticeMs : kSleepNoticeMs);
@@ -4193,7 +4734,9 @@ bool mountFilesystem() {
 // restarts into the fresh-device path. The press that woke the chip must be
 // released first, so it cannot become that long press.
 [[noreturn]] void askFormat() {
-    showError(ui().errNoFilesystem, ui().errNoFilesystemHint);
+    wg::Hints hints;
+    hints.hold = ui().hintErase;
+    showError(ui().errNoFilesystem, ui().errNoFilesystemHint, &hints);
     bool released = !tgc::board::isHeld(tgc::board::Button::Select);
     const uint32_t start = millis();
     for (;;) {
@@ -4314,7 +4857,7 @@ void setup() {
         Serial.printf("power: critical wake, battery %d%%%s\n", pct, external ? " (usb)" : "");
         if (!tgc::BatteryGuard::canResume(pct, external)) {
             gUi = gSleepUiEs ? &kUiEs : &kUiEn;
-            showNotice(ui().batteryTitle, ui().batteryHint, kYellow);
+            showNotice(ui().batteryTitle, ui().batteryHint, tgc::theme::kWarn);
             delay(kBatteryNoticeMs);
             tgc::board::deepSleep();
         }
@@ -4356,8 +4899,14 @@ void setup() {
 
     String want = gPrefs.getString("pack", "");
     if (std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end()) want = gPacks[0];
-    if (!loadPack(want)) {
-        showError(ui().errOpenPack, want.c_str());
+    // The saved deck, else the first other one that opens. None opening at all
+    // most likely means decks of a newer pack format than this firmware reads.
+    bool opened = loadPack(want);
+    for (size_t i = 0; !opened && i < gPacks.size(); ++i)
+        if (gPacks[i] != want) opened = loadPack(gPacks[i]);
+    if (!opened) {
+        Serial.printf("pack: none of %u opens\n", (unsigned)gPacks.size());
+        showError(ui().errOpenPack, ui().errOpenPackHint);
         halt();
     }
     gPrefs.putString("pack", gCurrentPack);
@@ -4369,14 +4918,13 @@ void setup() {
     applySleepTime();
     gExtraNew = 0;
     gQueue.rebuild(*gPack, gSrs, gRng);  // loadPack rebuilt with an empty store
-    uint32_t due = 0, fresh = 0;
-    packDueNew(&due, &fresh);
+    const tgc::DeckSummary counts = deckCounts();
 
     char today[16];
     formatDate(gSrs.today(), today, sizeof today);
     Serial.printf("srs: day %u (%s), records %u, due %u, new %u%s, powered_off=%d\n",
-                  (unsigned)gSrs.today(), today, (unsigned)gSrs.count(), (unsigned)due,
-                  (unsigned)fresh, srsLoaded ? "" : " (new)", gPoweredOff ? 1 : 0);
+                  (unsigned)gSrs.today(), today, (unsigned)gSrs.count(), (unsigned)counts.due,
+                  (unsigned)counts.fresh, srsLoaded ? "" : " (new)", gPoweredOff ? 1 : 0);
 
     // A wake from a sleep taken while the question was open asks it again.
     const bool datePending = tgc::board::wokeFromSleep() && gDatePending;
@@ -4624,13 +5172,7 @@ void loop() {
     const bool fillEnded = holdTick(t, keyA.down, keyA.longFired, keyA.downAt, a, holdMs);
     const uint32_t framesBefore = gFrames;
     if (gScreen == Screen::Menu) {
-        if (a == 1) {
-            moveListFocus(gMenuList);
-            drawScreen();
-        } else if (a == 2) {
-            activateSetting();
-        }
-        if (b) closeMenu();  // side button backs out to the previous screen
+        menuLoop(a, b);
     } else if (gScreen == Screen::Decks) {
         if (a == 1) {
             gDeckList.setCount(static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
@@ -4686,7 +5228,7 @@ void loop() {
                 --gDateSteps;
                 drawScreen();
             }
-        } else if (b == 1) {  // cancel: back to Settings > Date, or straight into the quiz
+        } else if (b == 1) {  // cancel: back to the Date submenu, or straight into the quiz
             if (gAfterDate != Screen::Quiz)
                 openDateMenu(false);
             else

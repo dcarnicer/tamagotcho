@@ -21,6 +21,13 @@ with **multiple-choice reviews** and spaced repetition, fully offline.
    side button moves it up, and **holding the front button answers** (the
    option fills up while you hold); holding the side button opens the
    settings. After a correct answer the next card follows by itself.
+4. Hold the side button for the **settings**: a summary of the loaded deck
+   (due and new cards, how much of it you have seen) and five groups --
+   **Decks** (switch decks, Get decks), **Study** (new cards per day, Hard
+   after, auto-advance), **Stats**, **Wi-Fi** and **Device** (orientation,
+   brightness, language, hold time, date and time zone, sleep, About). In
+   every menu a tap moves, a hold opens or chooses, and the side button goes
+   back; the bar at the bottom of the screen says what each does.
 
 ## Getting decks onto the device (Wi-Fi portal)
 
@@ -46,10 +53,10 @@ The portal has two modes:
 1. A brand-new device first asks for its **language**: **English** or
    **Español** (tap moves, hold chooses). The device screens and the portal
    page then stay in that language, whatever the language of the decks you
-   download; **Settings → Language** changes it later (Auto follows the loaded
-   deck).
+   download; **Settings → Device → Language** changes it later (Auto follows
+   the loaded deck).
 2. A device with no decks starts the portal by itself (later: hold the side
-   button for **Settings → Wi-Fi » → Setup mode**). Scan the QR code on the
+   button for **Settings → Wi-Fi → Setup mode**). Scan the QR code on the
    screen with the phone camera to join `Tangocho-XXXX`, then open
    `http://192.168.4.1` (or tap the device's front button and scan the second
    QR code).
@@ -71,20 +78,21 @@ setup mode and a tap tries again.
 
 ### Daily use
 
-- **Settings → Wi-Fi » → Web portal** joins your Wi-Fi and shows the address
+- **Settings → Wi-Fi → Web portal** joins your Wi-Fi and shows the address
   and QR code; open it from any phone or laptop on that network. The page has
   **Get decks** (download or update), **Your decks** (the one being studied is
   marked; delete) and, folded under **Advanced**: upload a `.tgc` file,
   download one from a plain `http://` URL, the deck catalog URL, the home Wi-Fi
   (change, forget, reconnect), the statistics and the JSON at `/api/stats` and
   `/api/status`. The side button on the device stops the portal.
-- Without the phone: **Decks → + Get decks** joins the home Wi-Fi and lists the
-  catalog's decks by title on the device screen (`+` new, `=` here, `~` here in
-  another build; tap moves, **hold downloads** or, on a deck that is here,
-  studies it; the side button goes back). In setup mode the page also offers
-  **Get decks on the device screen**, and a fresh device's boot screen offers it
-  with a hold.
-- **Settings → Wi-Fi » → Home: <network>** tests the saved network: it joins,
+- Without the phone: **Settings → Decks → Get decks** joins the home Wi-Fi and
+  lists the catalog's decks by title on the device screen (a check marks a deck
+  that is here, a download mark one that is here in another build; tap moves,
+  **hold downloads** or, on a deck that is here, studies it; the side button
+  goes back or cancels a download). In setup mode the page also offers **Get
+  decks on the device screen**, and a fresh device's boot screen offers it with
+  a hold.
+- **Settings → Wi-Fi → Home** tests the saved network: it joins,
   shows the IP address, the signal, whether the deck catalog answers and
   whether the network time works, then turns the radio off again.
 - Opening the page sets the device's **date** from the phone's clock and **time
@@ -94,16 +102,16 @@ setup mode and a tap tries again.
   and after a power-off it **tries the network first** ("Getting the date via
   <network>...", about 15 s at most; a tap skips it) before asking for the
   date by hand. NTP needs the time zone: the one the page last sent, or one
-  chosen in **Settings → Date » → Time zone** (a short list of zones, for when
+  chosen in **Settings → Device → Date → Zone** (a short list of zones, for when
   no phone has set one; the next page visit replaces it with the phone's).
 
 ### Changing networks
 
 - Still at home: **Web portal → Advanced → Home Wi-Fi**, save the new network,
   then **Reconnect**.
-- Elsewhere: **Settings → Wi-Fi » → Setup mode**, join `Tangocho-XXXX`, save the
+- Elsewhere: **Settings → Wi-Fi → Setup mode**, join `Tangocho-XXXX`, save the
   new network on the page and press **Switch to my Wi-Fi**.
-- **Settings → Wi-Fi » → Forget network** asks first (Cancel is selected; tap to
+- **Settings → Wi-Fi → Forget network** asks first (Cancel is selected; tap to
   Forget, then hold).
 
 ### Notes and limits
@@ -195,7 +203,7 @@ publishes a GitHub release with those artifacts. Firmware releases carry **no
 packs**; their notes link to the decks release below.
 
 **Version.** Every firmware build carries a version string, shown under
-**Settings › About**, in the portal page's footer, as `"version"` in
+**Settings › Device › About**, in the portal page's footer, as `"version"` in
 `/api/stats` and `/api/status`, and as the first boot log line
 (`Tangocho v0.1.0`). [`firmware/scripts/version.py`](firmware/scripts/version.py)
 sets it: the `TGC_VERSION` environment variable if present (the release
@@ -305,8 +313,8 @@ from the Wi-Fi portal page (Advanced). A pack contains **KANJIDIC2** data (CC
 BY-SA 4.0) and, with `--strokes`, **KanjiVG** data (CC BY-SA 3.0), so prebuilt
 packs are licensed **CC BY-SA**. The combined attribution is in the decks release notes
 and in [docs/data-sources.md](docs/data-sources.md); the device shows it under
-**Settings › About** (with the loaded deck's name) and the portal page in its
-footer.
+**Settings › Device › About** (with the loaded deck's name) and the portal page
+in its footer.
 
 ## Repository layout
 
@@ -326,6 +334,7 @@ and glyphs from the selected font (default Noto Sans JP, © Adobe, SIL OFL
 1.1). The firmware embeds its own UI font, glyphs pre-rendered from Noto Sans
 JP (© Adobe, SIL OFL 1.1; `firmware/src/ui/UiFont.h`, generated by
 `tools/ui-font/`). See [docs/data-sources.md](docs/data-sources.md). On the
-device, **Settings › About** shows the firmware version and licence, the decks'
-licence, the UI font and the data credits (KANJIDIC2, KanjiVG, the JLPT level
-lists, Noto Sans JP), and the Wi-Fi portal page repeats them in its footer.
+device, **Settings › Device › About** shows the firmware version and licence,
+the decks' licence, the UI font and the data credits (KANJIDIC2, KanjiVG, the
+JLPT level lists, Noto Sans JP), and the Wi-Fi portal page repeats them in its
+footer.

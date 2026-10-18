@@ -159,4 +159,16 @@ private:
     char* strings_ = nullptr;
 };
 
+// What a deck list shows of a pack without opening it: the deck name, the
+// language and the card count from the header (and the name from the string
+// pool), after the same header checks as PackReader::open(). Two small reads;
+// the tables are not loaded or validated.
+struct PackInfo {
+    char name[65];  // the header's deck name, cut at 64 bytes; "" on failure
+    char lang[5];
+    uint32_t cards;
+    uint16_t version;
+};
+PackError peekPackInfo(PackSource& src, PackInfo* out);
+
 }  // namespace tgc

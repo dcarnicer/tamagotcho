@@ -1,7 +1,7 @@
 #pragma once
 // Time zones for the SRS day clock: a parser for POSIX TZ rules
 // ("CET-1CEST,M3.5.0,M10.5.0/3"), the UTC offset a rule gives at an instant,
-// and the curated list Settings > Date > Time zone offers. Pure C++, no
+// and the curated list Settings > Device > Date > Zone offers. Pure C++, no
 // Arduino, no libc time zone state (the native tests and the device compute
 // the same thing). Design: docs/srs.md section 5.1.
 //
@@ -67,8 +67,8 @@ void formatUtcOffset(int offsetMin, char* out, size_t n);
 // names without a '/' are kept as they are.
 void tzZoneCity(const char* name, char* out, size_t n);
 
-// Settings > Date > Time zone: a short list of zones as POSIX rules (the tzdata
-// footers, checked in test_tz), west to east.
+// Settings > Device > Date > Zone: a short list of zones as POSIX rules (the
+// tzdata footers, checked in test_tz), west to east.
 struct TzZone {
     const char* name;  // IANA name
     const char* rule;  // POSIX TZ rule

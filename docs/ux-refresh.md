@@ -1,11 +1,12 @@
 # UX refresh: audit, design system and plan
 
 > **Status: approved with changes (2026-10-18).** Phase 1 (foundations, with
-> the UI font of Phase 4) is implemented on `feature/ui-foundation` and Phase 2
-> (quiz, feedback, detail card) on `feature/ux-quiz`, see §4; the later phases
-> are not. Section 6 records the maintainer's answers; where
-> they differ from §2–§4 (flat corners, the UI font, the side tap, the date's
-> group), §6 wins.
+> the UI font of Phase 4) is on `main` and verified on the StickS3; Phase 2
+> (quiz, feedback, detail card) and Phase 3 (the settings tree and the
+> secondary screens) are implemented and integrated on `integrate/ux-round2`,
+> not yet verified on hardware. See §4. Section 6 records the maintainer's
+> answers; where they differ from §2–§4 (flat corners, the UI font, the side
+> tap, the date's group), §6 wins.
 
 The roadmap item "UX refresh" asks for a more modern look and feel, a
 consistent visual language, clearer answer feedback, a lighter settings home
@@ -496,6 +497,19 @@ Settings                     header: "SETTINGS" · date · battery
   drawn, instead of Klee One), paged by a tap. It moves under `Device ›` with
   the group refactor. See docs/decisions.md, "About screen and firmware
   version".
+- **Status of the tree (2026-10-18, `feature/ux-settings`; not yet verified
+  on hardware).** Implemented as amended by §6.6: the summary card and Decks ›
+  (count), Study › (`10/day`: New per day, Hard after, Auto-advance), Stats ›
+  (accuracy), Wi-Fi › (`off`: the existing submenu) and Device › (Orientation,
+  Brightness, Language, Hold time, Date ›, Sleep, About ›); "Continue" is gone.
+  `ui/SettingsTree.h` holds the item tables, `main.cpp` one `MenuItem` (label,
+  value, action) per item and a one-level page stack. The header shows the
+  date. Labels that did not fit their pixel budget changed: the English row is
+  **"Auto next"** ("Auto-advance" is 116 px, a portrait page row leaves 107),
+  the Spanish Stats group is **"Progreso"** ("Estadísticas" is 99 px, a home
+  row leaves 93), and a home row shows its value only when label and value fit
+  whole (Spanish "Estudio" and "Progreso" go without in portrait). See
+  docs/decisions.md, "UX refresh phase 3: settings tree and secondary screens".
 
 ---
 
@@ -621,6 +635,32 @@ conflicts).**
   instruction text and MB units. *(QR codes, MB units and the Wi-Fi submenu
   done on `feature/portal-home-wifi`, see §3.)*
 - New `UiStrings` entries in en/es, and `menuRows[10]` removed.
+
+*Status (2026-10-18, `feature/ux-settings`; not yet verified on hardware).*
+Delivered:
+- The §3 tree as amended by §6.6 (see §3's status): summary card, five groups
+  with values, the Study and Device pages, the Auto-advance and Hold time
+  pickers (they write `gAdvancePref` / `gHoldPref` and NVS; their behaviour is
+  phase 2's), picker descriptions, radios, the default marked and the timing
+  choices' durations. Landscape: the card in a left column.
+- Deck list from pack headers (`peekPackInfo()`): deck name, `EN`/`ES` pill,
+  `79 kanji · 12 due`.
+- Get decks: two-line rows (title; `ES · 367 kanji`, size), on device /
+  update / new with a check, a download mark or the size, the download bar in
+  the row, cancel in the hint bar.
+- Date stepper: calendar tile, `+N days` pill, the notice and the network
+  status, hints in the hint bar; input unchanged.
+- Stats: accuracy ring (`fillArc`), six tiles, seen/total bar. Done: check,
+  "All caught up", tomorrow's due count, streak, "+10 new". About: label-face
+  headings, paging kept. Wi-Fi portal screen: the QR codes as before, the
+  address in the label face, the free space as a bar in MB, hint-bar words.
+  Errors and notices: a label-face title and one end-user action.
+- Pure parts in `ui/SettingsTree.h`, `ui/ScreenLayout.h`, `ui/DeckSummary.h`,
+  native suite `test_settings`.
+
+Not done in phase 3: the "time synced" line on the Wi-Fi screen (the portal
+has no such state to show yet). Decisions: docs/decisions.md, "UX refresh
+phase 3: settings tree and secondary screens".
 
 **Phase 4 – Typography (M, 1–2 d; needs decision 6.2).**
 - U3: `tools/ui-font/` generator → `ui/UiFont.h`, and the Renderer gains a font

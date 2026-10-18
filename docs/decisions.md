@@ -2096,3 +2096,64 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
 - **Flash** (with `TGC_VERSION=dev`): StickS3 1,431,789 → 1,437,625 bytes
   (+5.9 KB), static RAM 54,700 → 54,844; T-Display-S3 1,272,453 → 1,278,425
   bytes, static RAM 52,704 → 52,848. **Not verified on hardware.**
+
+## 2026-10-18 – UX refresh phase 3: settings tree and secondary screens
+
+- **What.** `feature/ux-settings` delivers phase 3 of `docs/ux-refresh.md`
+  (§3 as amended by §6.6, status in §4): the settings tree, the deck list from
+  pack headers, and the date, stats, done, Get decks, Wi-Fi portal, network
+  test, About, error and notice screens in the flat style. The quiz and the
+  detail card (phase 2) are not touched; Auto-advance and Hold time only get
+  their pickers here.
+- **The tree in code.** `ui/SettingsTree.h` lists each page's items, the
+  chevrons and the home's icons; `main.cpp` has one `MenuItem` (label, value,
+  action) per item, found by id, so a new setting is an item, a place on a
+  page and a table entry. One `ListView` per page; a page variable is the
+  one-level stack. Every screen opened from a page returns to it because the
+  page stays put; opening the settings resets to the home; the side button
+  goes page → home → out.
+- **Labels by pixel budget** (UI font 18 px, captions 6 px a character, both
+  orientations checked on a host render of the screens):
+  - A home row leaves 93 px for label, 5 px gap and value in the 135 px
+    portrait (icon and chevron take the rest). The value shows only when both
+    fit whole (`Row::valueIfFits`; the Wi-Fi value is cut instead). Spanish
+    "Estudio" + "10/día" (105 px) goes without in portrait; "Estadísticas"
+    (99 px) did not fit at all, so the group is **"Progreso"** (screen title
+    too). Landscape rows have 110 px and show every value but Progreso's.
+  - Study / Device rows put the value on a caption line in portrait (label
+    ≤ 107 px with the chevron) and right of the label in landscape. English
+    "Auto-advance" is 116 px: the row and its picker are **"Auto next"**;
+    Spanish **"Pasar solo"** (No / Rápido / Normal). Hold time is
+    **"Pulsación"** (Corta / Normal / Larga; "Pulsación larga" is 127 px).
+    "Nuevas/día" stays ("Nuevas por día" is 124 px). "Speed" is now "Hard
+    after" / "Difícil tras".
+  - Stats tiles keep nine caption characters (62 px, 4 px padding): Spanish
+    "learned" is "dominadas". Spanish QR captions became "Escanea y únete" /
+    "Escanea y abre la web" (the old 28-character one was cut).
+- **Values.** Wi-Fi shows the radio state; the home only ever sees "off"
+  (the radio runs on the Wi-Fi screens only), kept as in the mockup. Stats is
+  the accuracy over every grade, none before the first answer. Date is "18
+  Oct" (the header too). Hard after reads "1.5 s" / "3 s" / "off" with the
+  language's decimal point. Picker rows show the duration of a timing choice,
+  or "default" on the default of New per day, Hard after and Brightness.
+  Picker descriptions wrap in captions and show in landscape only where every
+  row still fits (the four-row pickers would scroll).
+- **Counts.** `ui/DeckSummary.h` replaces `packDueNew()`. Seen is now the
+  loaded deck's (total − new); the old stats screen divided the global record
+  count by the deck size, which passes 100 % with two decks. Learned stays
+  global. The streak reads 0 once a study day was skipped (`liveStreak()`):
+  the stored value only resets on the next answer.
+- **Deck list.** Names, language and card count from each pack header
+  (`peekPackInfo()`, two small reads a file, redone each time the list opens:
+  an update keeps the file name); the file name when a header does not read. Get decks' "Saved ..." note and
+  the portal screen's download line use the catalog title, which is what the
+  list shows now.
+- **Errors.** One line of what happened and one action, no developer
+  commands. At boot every deck is tried before "Cannot open the deck"
+  ("Update the firmware from the release page": a newer pack format is the
+  likeliest cause). "No decks yet" (the access point did not start) says to
+  turn the device off and on.
+- **Not done:** the Wi-Fi screen's "time synced" line of the mockup.
+- **Flash** (`git describe` versions): StickS3 1,431,805 → 1,442,773 bytes
+  (+10.7 KB), static RAM 54,700 → 54,828; T-Display-S3 1,272,469 → 1,283,561,
+  RAM 52,704 → 52,832. **Not verified on hardware.**
