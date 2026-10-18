@@ -28,6 +28,7 @@ void Queue::rebuild(const PackReader& pack, const SrsStore& srs, XorShiftRng& rn
     srs_ = &srs;
     items_.clear();
     pos_ = 0;
+    answered_ = 0;
     prevMode_ = -1;
 
     const uint32_t n = pack.cardCount();
@@ -132,6 +133,7 @@ bool Queue::next(QueueItem* out) {
 }
 
 void Queue::answered(uint32_t cardIndex, Grade g) {
+    ++answered_;
     if (g != Grade::Again) return;
     if (cardIndex >= relearned_.size()) return;
     if (relearned_[cardIndex] >= kMaxRelearnPushes) return;

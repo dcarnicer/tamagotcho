@@ -751,17 +751,22 @@ void test_queue_relearn_requeues_and_caps() {
     QueueItem it;
     TEST_ASSERT_TRUE(q.next(&it));
     TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(q.answeredCount()));
     q.answered(0, Grade::Good);  // a correct answer does not requeue
     TEST_ASSERT_EQUAL_UINT32(7, static_cast<uint32_t>(q.remaining()));
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(q.answeredCount()));
 
     q.answered(0, Grade::Again);  // requeue 5 items ahead
     TEST_ASSERT_EQUAL_UINT32(8, static_cast<uint32_t>(q.remaining()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(q.answeredCount()));
     for (uint32_t want = 1; want <= 5; ++want) {
         TEST_ASSERT_TRUE(q.next(&it));
         TEST_ASSERT_EQUAL_UINT32(want, it.cardIndex);  // the gap is respected
     }
     TEST_ASSERT_TRUE(q.next(&it));
     TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);  // the relearned card comes back
+    q.rebuild(pack, srs, rng);  // a new session counts from zero
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(q.answeredCount()));
 
     // At most three relearn pushes per card per session: 1 serve + 3 pushes.
     std::vector<CardSpec> one = {{0x706B, "fire", "カ", "ひ", {}}};
