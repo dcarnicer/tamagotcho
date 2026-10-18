@@ -1918,3 +1918,41 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   the firmware, so v1 is dropped rather than published next to v2. Until
   there are other users, compatibility with released firmware or packs is
   not a constraint.
+
+## 2026-10-18 – Catalog v2: deck titles
+
+- **Why.** Get decks and the portal page listed catalog decks by file name
+  (`n3-es`): the catalog had no human-readable name (`docs/ux-refresh.md` §6,
+  item 8). Supersedes the column list of "Device catalog format: line-oriented
+  text" (2026-10-17) and the default URL of "Decks release".
+- **Format v2** (`tools/pack-builder/README.md`, "Catalog format"): a `title`
+  column, the pack header's `deck_name`, **second**, after `name`, so a person
+  reading the file sees file and deck side by side and `url`, the longest
+  field, stays last. UTF-8, at most **64 bytes** (a 135 px row shows about 20
+  built-in characters and cuts with ".."; 64 bounds the 32-entry list in RAM),
+  spaces allowed, no TAB or other control character. The device also requires
+  well-formed UTF-8 and skips a record that is not. Empty is allowed and shows
+  `name`.
+- **The builder refuses rather than truncates**: `catalog` exits 1 on a deck
+  name over 64 bytes or with a control character (the device would skip that
+  record), like its other "a broken build does not enter a release" checks;
+  `build` warns about such a name.
+- **File names follow the catalog format**: `catalog-v2.txt`, and
+  `catalog-v2.json` for people (renamed too, so the pair stays together). The
+  `decks-v2` tag stays the pack format; either version can change alone.
+  Default URL: `releases/download/decks-v2/catalog-v2.txt`.
+- **No backward compatibility**: the builder writes only v2 and the firmware
+  reads only v2. A v1 file gets the unsupported-version path, but the message
+  now tells an older format ("Old catalog format: set a catalog-v2.txt URL",
+  since a v1 file can only come from a saved URL override) from a newer one
+  ("update the firmware").
+- **`decks.yml`** takes the file names from the builder and, on a rebuild,
+  deletes every catalog asset it did not write (`catalog*.txt`/`.json`, i.e.
+  the v1 `catalog.txt` and `catalog.json`): an old catalog in the same release
+  would list stale sizes and digests for the rebuilt packs. The notes' deck
+  column is the title. `release.yml` finds the decks release in the new URL.
+- **Shown where a deck is chosen**: Get decks rows (same layout, the title in
+  place of the file name; the ".." cut keeps whole UTF-8 characters) and the
+  portal list (bold title, then `<name>.tgc · lang · cards · size`). The
+  "Saved <name>" note and the page's download progress keep the file name,
+  which is what the installed-deck list shows for now.
