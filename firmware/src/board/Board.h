@@ -66,6 +66,15 @@ void setDisplayOn(bool on);
 // Microseconds since the RTC timer started. It keeps counting through deep
 // sleep and resets only on a power cut, so differences measure sleep time.
 uint64_t rtcMicros();
+// True once when the power button was pressed since the last report, meaning
+// "save and sleep now". StickS3: begin() disables the M5PM1's single-click
+// reset (which cuts the chip's power and with it the RTC timer) and this polls
+// the PM1's press flag; the double-click power-off stays as the hardware
+// escape hatch. False when the PM1 is missing, unknown or failed to configure
+// (the button then keeps its factory behaviour), and always on the
+// T-Display-S3. A press does not wake the chip from deepSleep(); only Select
+// does.
+bool powerButtonClicked();
 
 // Hardware random seed.
 uint32_t randomSeed();

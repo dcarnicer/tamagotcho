@@ -176,6 +176,7 @@ void deepSleep() {
 }
 
 uint64_t rtcMicros() { return esp_rtc_get_time_us(); }
+bool powerButtonClicked() { return false; }  // no power-management chip
 uint32_t randomSeed() { return esp_random(); }
 
 }  // namespace board
