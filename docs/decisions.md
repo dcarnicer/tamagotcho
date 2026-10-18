@@ -1207,3 +1207,86 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   that woke the chip was released, then restarts. `LittleFS.begin(true)`
   (format on any failure) was rejected because it would wipe decks and progress
   on a transient or partial corruption without asking.
+
+## 2026-10-18 – Pack format v2: compressed glyphs and strokes
+
+- **Why.** Raw 4bpp bitmaps made packs ~5.5 KB per kanji: JLPT N1 with
+  `--strokes` was 6.8 MB and a Jōyō-sized pack 11.6 MB, over the 5 MB per-pack
+  cap and the StickS3's 5.9 MB filesystem. Set 0 (96 px) alone was two thirds
+  of a pack, and most of its pixels are 0 or 15.
+- **Glyphs: encoding 1, a nibble-code RLE** (docs/pack-format.md). The stream is
+  4-bit codes, high nibble first like the pixels: `1..14` one anti-aliased
+  pixel, `0 L` / `F L` runs of 0 / 15, `0 0 L` copy the next `L` pixels from the
+  row above; lengths are 1–3 codes (1..330). Pixels run on across row ends. The
+  length is implied by the codes and never exceeds the raw size, so the glyph
+  table did not change. The builder keeps encoding 0 whenever RLE is not
+  strictly smaller (it never is for an empty glyph), so the worst case never
+  grows. The encoder is greedy (copy if it covers >= 3 pixels and more than a
+  run, else a run, else a literal); an optimal parse was only 0.1–0.2 points
+  better.
+- **Measured before choosing** (N4, 166 kanji, set 0 / set 1 as % of raw, Klee
+  One | Noto Sans JP Medium): the crude byte RLE 31/70 | 26/59; a byte-oriented
+  code (2-bit op + 6-bit count: zero run, ink run, literal block) 35/70 |
+  31/69, because two thirds of the anti-aliased runs are a single pixel and a
+  byte-aligned code pays a whole byte for each; the nibble code without copies
+  23/50 | 20/43; **with copies 21/46 | 14/32**; zlib per glyph 25/54 | 15/37.
+  Copies from up-left/up-right gained nothing (< 0.1 point). The brief asked
+  for a byte-oriented code; the nibble one was kept because it is a third
+  smaller and decodes with the same "next nibble" step the raw format already
+  uses (no tables, no bit fields across bytes).
+- **Stroke masks: encodings 1 and 2.** Alternating run lengths, empty first,
+  1–3 nibble lengths (0..285), trailing empty pixels implied; encoding 2 codes
+  each row XOR the row above (a vertical stroke becomes two runs). Per mask the
+  builder stores the smallest of raw, 1 and 2. On N4: plain runs alone ~50 %,
+  row XOR alone ~43 %, the per-mask best 33 % (zlib per mask 56 %, over a card's
+  whole mask data 37 %).
+- **Stroke layout change.** A stroke entry had no free byte, so v2 reuses the
+  block's reserved u32 for the offset of the card's first mask and replaces each
+  entry's absolute `data_off` with `encoding`, `reserved` and a u16 `size`; masks
+  are back to back in stroke order. Entries stay 8 bytes, sizes are exact (the
+  reader validates and fetches exactly), and the v1 per-mask 4-byte padding
+  goes. `strokeAt(i)` sums the sizes of the entries before `i` in one read.
+- **Why not deflate (miniz / the ROM's tinfl).** Per bitmap it is not smaller
+  (numbers above), and compressing across bitmaps, where it would win, breaks
+  the random access the reader relies on. Inflate also needs an ~11 KB
+  decompressor state plus a dictionary window or the whole output, more flash,
+  and a second implementation to cross-check in tests; the RLE decoders are
+  ~200 lines with no state beyond the caller's bitmap and a 256-byte read
+  window.
+- **Results** (`--lang es --strokes`, defaults 96/40/18/20 px; v1 → v2 bytes):
+
+  | deck | kanji | Klee One v1 → v2 | Noto Sans JP v1 → v2 |
+  |------|------:|------------------|----------------------|
+  | N5   |    79 | 424,906 → 119,944 | 459,906 → 107,440 |
+  | N4   |   166 | 908,352 → 280,944 | 975,980 → 238,980 |
+  | N3   |   367 | 2,027,180 → 644,120 | 2,150,336 → 539,576 |
+  | N2   |   367 | 2,019,558 → 643,092 | 2,142,434 → 533,712 |
+  | N1   | 1,232 | 6,795,127 → 2,236,624 | 7,160,003 → 1,837,008 |
+  | Jōyō (grades 1–6 + 8) | 2,136 | 11,619,375 → 3,691,532 | 12,271,851 → 3,022,048 |
+
+  Ratios in the Jōyō build: set 0 23 % (Klee) / 16 % (Noto), set 1 50 / 36 %,
+  text sets 58–65 %, masks 34 %; the stroke section is ~340 B per kanji (was
+  ~800 B). Every pack fits the 5 MB cap; the Jōyō pack with strokes is 3.7 MB
+  with Klee One, a little over the ~3.5 MB target, and 3.0 MB with Noto. Pixels
+  are unchanged: the firmware reader decodes the v2 N1 and Jōyō packs to the
+  same bitmaps as the v1 builds (checked by hashing every glyph and mask).
+- **Compatibility.** `version` is 2; readers accept 1 and 2 (in a v1 pack every
+  glyph must be encoding 0 and blocks use the v1 layout), so the packs already
+  on devices keep working. Firmware from before this change checks
+  `version != 1` and refuses a v2 pack with "unsupported pack version" before
+  reading any bitmap. The builder writes v2 only.
+- **Firmware.** `pack/Rle.{h,cpp}` (pure, native-tested) decodes through a
+  `ByteIn`: memory, or a 256-byte window refilled from the `PackSource`.
+  `readGlyphBitmap`/`readStrokeBitmap` decode transparently, so the renderer
+  and the stroke animation draw decoded data as before. The renderer now also
+  keeps the decoded set-0 glyph in its scratch buffer, so the quiz's redraws
+  (every button press) skip the read and decode. +1.9 KB of flash. With
+  `TGC_QUIZ_LOG` (`sticks3-dev`) an `R` line gives the prompt kanji's draw
+  time and the fetch (read + decode) time inside it, and the full stroke frame's
+  draw time; not yet measured on hardware.
+- **Tests.** `tangocho-pack fixture` also writes `fixtures/rle_vectors.bin`
+  (synthetic edge cases, every glyph and mask of `mini.tgc` with its decoded
+  bitmap, malformed streams); the firmware's `test_rle` suite decodes all of it
+  and reads the v2 `mini.tgc` against it. `fixtures/mini_v1.tgc` is the last v1
+  fixture, frozen, for the v1 reader test. The byte-identity baseline of the
+  no-strokes writer is now `tests/data/mini_v2_baseline.tgc`.

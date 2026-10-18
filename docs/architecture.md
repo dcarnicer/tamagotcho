@@ -32,7 +32,7 @@
 | module        | role                                                         |
 |---------------|--------------------------------------------------------------|
 | `board/`      | HAL: display handle and rotation, buttons, accelerometer, battery, sleep. One impl per board |
-| `pack/`       | `PackReader`: parse header/tables, glyph lookup, string access, stroke masks. Pure C++, unit tested natively |
+| `pack/`       | `PackReader`: parse header/tables (pack v1 and v2), glyph lookup, string access, stroke masks; `Rle` decodes v2's compressed glyph bitmaps and stroke masks on read, through a small window over the file. Pure C++, unit tested natively |
 | `render/`     | Draw 4bpp glyphs, 1bpp stroke masks and UTF-8 text from pack glyphs onto a GFX canvas |
 | `quiz/`       | Build a question (prompt + 4 options) from a card and its distractors. Pure C++ |
 | `catalog/`    | Parse the line-oriented deck catalog (`tangocho-pack catalog`): version check, per-record validation (safe file name, numbers, SHA-256, URL), bare-file-name URLs resolved against the catalog URL, entry cap. Pure C++, unit tested natively |
