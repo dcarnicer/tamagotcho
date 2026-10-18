@@ -72,9 +72,9 @@ is revealed, a tap advances: for a correct answer straight to the next card, for
 a wrong answer it first opens the mistake **detail card** (meanings, readings,
 stroke order), and the next tap starts the following question. The side button is
 a tap shortcut; **holding it opens the settings home** (Continue / Decks / Date /
-New per day / Speed / Statistics / Wi-Fi / Orientation / Language / Brightness),
-where a tap moves the selection, a hold activates the row, and the side button
-goes back.
+New per day / Speed / Statistics / Wi-Fi / Orientation / Language / Brightness /
+Sleep), where a tap moves the selection, a hold activates the row, and the side
+button goes back.
 
 ## Power
 
@@ -89,16 +89,39 @@ for flashing and logs); any press turns it back on, and unplugging lets it sleep
 To flash a sleeping device on battery, wake it first. The CPU runs at 80 MHz
 (240 MHz while the Wi-Fi portal is up).
 
-| button            | StickS3          | T-Display-S3 |
-|-------------------|------------------|--------------|
-| confirm (hold)    | front button (A) | GPIO0 (BOOT) |
-| next / tap        | side button (B)  | GPIO14       |
-| deck menu (hold)  | side button (B)  | GPIO14       |
+**Sleep on demand.** On the StickS3 a **click of the power button** (the M5PM1's
+button, which used to restart the device) saves and deep-sleeps right away, after
+a short "Sleeping" notice; the **Sleep** row in the settings does the same on
+both boards. Both sleep even on USB power. The front button wakes it, the power
+button does not. A **double click** still really powers the device off: it is
+the hardware way out if the app ever hangs, and the next start asks for the
+date. A **long press** still restarts into download mode for flashing; leave it
+with a double click (off), then a click (on). The firmware changes this in the
+PM1 at every boot and the PM1 keeps it, also for other firmware, until it loses
+power (battery disconnected or flat). Flash a build with
+`-DTGC_PM1_CLICK_SLEEP=0` (e.g.
+`PLATFORMIO_BUILD_FLAGS=-DTGC_PM1_CLICK_SLEEP=0 pio run -e sticks3 -t upload`)
+to put the factory click reset back. If the PM1 is not recognised, the button
+keeps its factory behaviour (see the `pm1:` lines in the serial log). The
+power-button handling is **not verified on hardware yet** (docs/decisions.md).
+
+**Critical battery.** On battery at 3 % (three readings 10 s apart) the device
+saves, shows "Battery low" and deep-sleeps, before the cell dies and takes the
+day clock with it. Woken while still below 6 % and unplugged, it shows the
+notice again and goes back to sleep. Plug in USB to use it.
+
+| button            | StickS3            | T-Display-S3 |
+|-------------------|--------------------|--------------|
+| confirm (hold)    | front button (A)   | GPIO0 (BOOT) |
+| next / tap        | side button (B)    | GPIO14       |
+| deck menu (hold)  | side button (B)    | GPIO14       |
+| sleep now (click) | power button (PM1) | --           |
 
 ## Layout
 
 `src/board` HAL (one impl per board), `src/pack` pack reader (pure C++),
-`src/quiz` question builder (pure C++), `src/render` glyph/text drawing,
+`src/quiz` question builder (pure C++), `src/power` critical-battery guard
+(pure C++), `src/render` glyph/text drawing,
 `src/platform` LittleFS-backed pack source and SRS file plus the on-device Wi-Fi
 portal (`WifiPortal`: open AP + HTTP upload/delete/download/stats),
 `src/main.cpp` Phase 0 app.

@@ -329,7 +329,11 @@ use a **persisted, day-granular clock**:
   and RTC memory, so the elapsed time is unknown. The app detects this boot
   (`RTC_NOINIT` magic) and **asks the user** on the date screen (0 / 1 / 2-7 /
   14+ days); the answer goes through `advanceDays(n)`. The same screen is in
-  the settings for manual corrections.
+  the settings for manual corrections. On the StickS3 a click of the power
+  button used to be such a cut: the M5PM1's "reset" cycles the chip's power. The
+  click now saves and deep-sleeps instead, and so does a critical battery
+  (docs/decisions.md, 2026-10-18). What is left is the deliberate double-click
+  power-off, a long press into download mode, and a cell left to go flat.
 - `beginSession()` only resets the tick base and the new-card counter on a day
   change; it never advances the day by itself. (An earlier "boot rule" advanced
   it on every boot that followed a session with answers; it inflated the

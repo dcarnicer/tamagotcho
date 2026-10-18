@@ -17,12 +17,25 @@ Scope for now: **kanji only** (no vocabulary decks).
       only a real power-off asks the user for the gap. `slow_ms`, the daily new
       cap and the "study more" override are all adjustable/working. Pending: tune
       the defaults with real use, and **better day detection**:
-      - [ ] Make real power-offs rare: the M5PM1 power button can have its
-        double-click shutdown and click reset disabled (`BTN_CFG_1/2`) and its
-        clicks read (`BTN_STATUS`), so a press saves and deep-sleeps instead; a
-        "Power off" settings row does the same; save and sleep at critical
-        battery (~3 %) before the cell dies. Check on hardware that the PM1
-        honours the registers.
+      - [~] Make real power-offs rare (docs/decisions.md, 2026-10-18).
+        - [x] The M5PM1's click reset is disabled (`BTN_CFG_1`) and its press
+          read from `BTN_STATUS`. A click saves and deep-sleeps instead of
+          power-cycling the chip. Any PM1 check or I2C failure keeps the
+          factory button.
+        - [x] A "Sleep"/"Suspender" settings row does the same (also on USB).
+        - [x] Save and sleep at critical battery (3 %, three readings, resume
+          only at 6 % or on USB).
+        - Deliberately **not** done: the double-click shutdown stays enabled.
+          A long press only enters download mode and the PM1 keeps its button
+          config through resets, so the double click is the only hardware
+          escape hatch.
+        - [ ] Hardware checks: the PM1 honours `SINGLE_RESET_DIS` and reports
+          the press; a click still powers on a device that is off; a double
+          click still leaves download mode; sleep notice layout; battery
+          thresholds on a real discharge.
+        - [ ] Maybe: wake from deep sleep with the power button through the
+          PM1 IRQ output (PM1 G1 is wired to ESP32 G13). Held back because the
+          datasheet says the PM1 LED then blinks while the click reset is off.
       - [ ] Real date from the phone: the portal page posts `Date.now()` and the
         browser's time zone (`POST /time`); store an absolute epoch day in the
         SRS header's reserved bytes (v1-compatible) and roll the day over at a
@@ -131,8 +144,9 @@ Scope for now: **kanji only** (no vocabulary decks).
 - [~] **Power management** (2026-10-18). Done: dim after 30 s, deep sleep
       after 2 min on battery (front button wakes; panel-off only on USB), 5 min
       Wi-Fi portal timeout, CPU at 80 MHz (240 while the portal runs), a
-      brightness setting. Pending: hardware checks (does the M5PM1 keep the rail
-      up through deep sleep, sleep current, battery life), and the **USB buzz**:
+      brightness setting, power button and "Sleep" row = save + deep sleep, a
+      critical-battery sleep. Pending: hardware checks (does the M5PM1 keep the
+      rail up through deep sleep, sleep current, battery life), and the **USB buzz**:
       still audible up close after moving the backlight PWM to 25 kHz, so the
       backlight was not (or not the only) cause; to investigate.
 - [ ] **UX refresh.** A review to give the device UI a more modern look and feel:
