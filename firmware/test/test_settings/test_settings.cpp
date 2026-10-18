@@ -279,7 +279,7 @@ void test_layout_stats() {
         for (int i = 0; i < 6; ++i) {
             TEST_ASSERT_TRUE(inside(s.tiles[i], p.w, kHeaderH, hintY));
             TEST_ASSERT_TRUE(s.tiles[i].h >= 32);
-            TEST_ASSERT_TRUE(s.tiles[i].w >= 56);  // "dominadas" at 6 px + padding
+            TEST_ASSERT_TRUE(s.tiles[i].w >= 62);  // "dominadas" (54 px) and 4 px a side
             for (int j = i + 1; j < 6; ++j) TEST_ASSERT_FALSE(overlap(s.tiles[i], s.tiles[j]));
             const layout::Rect ring =
                 layout::rect(s.cx - s.rOuter, s.cy - s.rOuter, 2 * s.rOuter, 2 * s.rOuter);
