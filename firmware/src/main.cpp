@@ -24,10 +24,14 @@
 #include "power/BatteryGuard.h"
 #include "quiz/Quiz.h"
 #include "render/Renderer.h"
+#include "render/Widgets.h"
 #include "srs/Queue.h"
 #include "srs/SrsStore.h"
 #include "srs/WallClock.h"
+#include "ui/Icons.h"
+#include "ui/ListView.h"
 #include "ui/TextLayout.h"
+#include "ui/Theme.h"
 #include "ui/UiLang.h"
 #include "Credits.h"
 #include "Version.h"
@@ -80,7 +84,9 @@ struct UiStrings {
     const char* settingsTitle;
     const char* decksTitle;
     // continue, decks, date (a submenu), new/day, speed, stats, wifi (a submenu),
-    // orientation, language, brightness, sleep, about
+    // orientation, language, brightness, sleep, about. Row labels are drawn in
+    // the UI font (accents are fine); a chevron marks the rows that open a
+    // screen, so the labels carry no "»".
     const char* menuRows[12];
     const char* newPerDayTitle;
     const char* speedTitle;
@@ -108,15 +114,15 @@ struct UiStrings {
     // Stepper status line when that failed. 1x font, two lines in portrait.
     const char* dateNoNetwork;   // could not join
     const char* dateNoTime;      // joined, but no (plausible) time came back
-    // Settings > Date: the submenu (rows by drawRow(), 1x when long) and the
-    // time zone list (1x rows: a city and its offsets, see drawTzList()).
-    const char* dateMenuRows[2];  // "Date: %s" (the date), "Zone: %s" (a city)
+    // Settings > Date: the submenu (row labels; the date and the zone's city
+    // are their values) and the time zone list (a city and its offsets, see
+    // drawTzList()).
+    const char* dateMenuRows[2];  // the date (the stepper), the zone (the list)
     const char* tzNone;           // the zone row's value when no zone is known
     const char* tzTitle;          // header (ASCII)
     const char* tzFromPhone;      // first row: the zone the portal page last sent
-    const char* tzSummerFmt;      // footer: "UTC+1, summer UTC+2"
-    const char* tzPhoneNone;      // footer of "From phone" when the page never sent one
-    const char* tzHoldHint;
+    const char* tzSummerFmt;      // a row's offsets: "UTC+1, summer UTC+2"
+    const char* tzPhoneNone;      // "From phone" when the page never sent a zone
     const char* tzSaved;          // Date submenu note after a choice
     const char* doneBadge;
     // Font0 is 6 px/char and each done-screen line is centred on the 135 px
@@ -126,7 +132,9 @@ struct UiStrings {
     const char* doneDueFmt;
     const char* doneStudyMore;
     const char* doneMenuHint;
-    const char* deckCountsFmt;
+    // The loaded deck's caption in the deck list (Font0 under the row, from
+    // its left padding: at most 19 characters in the 135 px portrait).
+    const char* deckCountsFmt;  // due, new
     const char* statsTitle;
     const char* statsSeenFmt;
     const char* statsDueNewFmt;
@@ -161,9 +169,8 @@ struct UiStrings {
     // table so a user can find their language whatever the current one is).
     const char* langTitle;
     const char* langRows[3];
-    // First-boot language picker (drawFirstLang()): its button hints, which the
-    // picker draws from the table of the highlighted row's language. 1x font;
-    // the two share a line when it fits.
+    // First-boot language picker (drawFirstLang()): the hint bar's words, which
+    // the picker takes from the table of the highlighted row's language.
     const char* firstLangTap;
     const char* firstLangHold;
     // Wi-Fi portal screen (the hints and status lines are 1x, see drawWifi()).
@@ -175,9 +182,10 @@ struct UiStrings {
     const char* sleepHint;
     const char* batteryTitle;
     const char* batteryHint;
-    // "Get decks" (last row of the deck list): download decks from the release
-    // catalog over the home Wi-Fi. Drawn with the 1x built-in font in the list
-    // footer and on the error screen, so keep each line short.
+    // "Get decks" (last row of the deck list, a UI-font label): download decks
+    // from the release catalog over the home Wi-Fi. The screen's strings below
+    // are drawn with the 1x built-in font in the list footer and on the error
+    // screen, so keep each line short.
     const char* getDecksRow;
     const char* getDecksTitle;
     const char* netConnecting;
@@ -208,9 +216,9 @@ struct UiStrings {
     const char* netFailed;
     const char* netCancelled;
     const char* wifiGetDecksHint;  // boot-time upload screen with a saved home Wi-Fi
-    // Settings > Wi-Fi: the submenu (rows drawn by drawRow(), so accents are
-    // fine; the titles are header text and stay ASCII).
-    const char* wifiMenuRows[4];  // web portal, home network ("%s" = name), setup mode, forget
+    // Settings > Wi-Fi: the submenu (UI-font row labels, so accents are fine;
+    // the titles are header text and stay ASCII).
+    const char* wifiMenuRows[4];  // web portal, home network (its name is the value), setup mode, forget
     const char* wifiHomeNone;     // the home-network row's value when none is saved
     const char* wifiNoNetwork;    // note: no home network saved
     const char* wifiForgotten;    // note: the network was forgotten
@@ -255,12 +263,22 @@ struct UiStrings {
     const char* aboutJlpt;      // + Jonathan Waller ...
     const char* aboutGlyphs;    // + Noto Sans JP ...
     const char* aboutMore;      // after "1/2" in the footer
+    // The menus' hint bar (widgets::drawHintBar(), Font0, 6 px a character):
+    // the front tap, the front hold (open a row / choose a value) and the side
+    // button. The side word needs 6 px clear of the front items, else only its
+    // icon shows: "• move ▬ open ◂ back" keeps it in the 135 px portrait,
+    // "• mover ▬ abrir ◂" does not (2 px short).
+    const char* hintMove;
+    const char* hintOpen;
+    const char* hintChoose;
+    const char* hintBack;
+    const char* getDecksCaption;  // the Get decks row's second line
 };
 
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS",
-    {"Continue", "Decks", "Date »", "New/day", "Speed", "Statistics", "Wi-Fi »", "Orientation",
+    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi", "Orientation",
      "Language", "Brightness", "Sleep", "About"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
@@ -269,11 +287,11 @@ const UiStrings kUiEn = {
     {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
     "Getting the date", "via %s...", "tap: set it by hand",
     "No network: set it by hand", "No network time: set it by hand",
-    {"Date: %s", "Zone: %s"}, "none", "TIME ZONE", "From phone", "%s, summer %s",
-    "open the web portal", "hold: choose", "Time zone saved",
+    {"Date", "Zone"}, "none", "TIME ZONE", "From phone", "%s, summer %s",
+    "open the web portal", "Time zone saved",
     "DONE", "All reviewed for now", "day %u  %u cards", "due %u  new %u", "tap/hold: +10 new",
     "side hold: menu",
-    "  %u/%u",
+    "%u due · %u new",
     "STATISTICS", "seen %u / %u", "due %u  new %u", "answers %u", "accuracy %u%%", "learned %u",
     "Storage damaged", "Hold the front button to erase it. Decks and progress are lost.",
     "Preparing storage...", "First start: this takes a few seconds.",
@@ -283,12 +301,12 @@ const UiStrings kUiEn = {
     "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
     "streak %u/%u", "time %s", "%uh %um", "%um %us", "%us",
     "LANGUAGE", {"Auto", "English", "Español"},
-    "tap: other", "hold: OK",
+    "other", "OK",
     "WI-FI",
     "BRIGHTNESS",
     "Sleeping", "Progress saved. The front button wakes me.",
     "Battery low", "Charge me, then press the front button.",
-    "+ Get decks", "GET DECKS", "Connecting...", "Reading catalog...", "Downloading %u%%",
+    "Get decks", "GET DECKS", "Connecting...", "Reading catalog...", "Downloading %u%%",
     "hold: download", "hold: update", "hold: study", "hold: retry", "Saved %s", "%s, %u cards, %s",
     "No decks in the catalog",
     "No home Wi-Fi saved", "Settings > Wi-Fi > Setup mode, then save your network on the page",
@@ -299,7 +317,7 @@ const UiStrings kUiEn = {
     "An update needs room for both copies. Delete the old one first: Settings > Wi-Fi > Web portal",
     "Not a valid deck", "Download failed", "Cancelled",
     "hold: get decks (home Wi-Fi)",
-    {"Web portal", "Home: %s", "Setup mode", "Forget network"}, "none", "No home network saved",
+    {"Web portal", "Home", "Setup mode", "Forget network"}, "none", "No home network saved",
     "Network forgotten", "FORGET WI-FI?", {"Cancel", "Forget"},
     "Scan to join", "Scan to open the page", "tap: other QR", "via %s", "Connecting to",
     "hold: setup mode", "tap: try again", "Connection lost...", "side: start studying", "%s %u%%",
@@ -309,12 +327,13 @@ const UiStrings kUiEn = {
     "network time: no answer", "hold: test again", "Wi-Fi > Setup mode: save it on the page",
     "ABOUT", "Firmware:", "Decks:", "Deck:", "none", "Kanji data:", "Stroke order:",
     "JLPT levels:", "Glyphs:", "tap: more",
+    "move", "open", "choose", "back", "home Wi-Fi",
 };
 
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS",
-    {"Seguir", "Mazos", "Fecha »", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi »", "Orientacion",
+    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadísticas", "Wi-Fi", "Orientación",
      "Idioma", "Brillo", "Suspender", "Acerca de"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
@@ -323,11 +342,11 @@ const UiStrings kUiEs = {
     {"dom", "lun", "mar", "mié", "jue", "vie", "sáb"},
     "Obteniendo la fecha", "de %s...", "toque: ponerla a mano",
     "Sin red: ajústala a mano", "Sin hora de red: ajústala a mano",
-    {"Fecha: %s", "Zona: %s"}, "ninguna", "ZONA HORARIA", "Del móvil", "%s, verano %s",
-    "abre el portal web", "larga: elegir", "Zona horaria guardada",
+    {"Fecha", "Zona"}, "ninguna", "ZONA HORARIA", "Del móvil", "%s, verano %s",
+    "abre el portal web", "Zona horaria guardada",
     "FIN", "Todo repasado", "dia %u  %u tarjetas", "vencen %u  nuevas %u",
     "toque/larga: +10", "lateral: menu",
-    "  %u/%u",
+    "%u hoy · %u nuevas",
     "ESTADISTICAS", "vistos %u / %u", "pendientes %u  nuevas %u", "respuestas %u",
     "precisión %u%%", "aprendidas %u",
     "Memoria dañada", "Mantén el botón frontal para borrarla. Se pierden mazos y progreso.",
@@ -338,12 +357,12 @@ const UiStrings kUiEs = {
     "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
     "racha %u/%u", "tiempo %s", "%uh %um", "%um %us", "%us",
     "IDIOMA", {"Auto", "English", "Español"},
-    "toque: otro", "larga: OK",
+    "otro", "OK",
     "WI-FI",
     "BRILLO",
     "Suspendido", "Progreso guardado. El botón frontal me despierta.",
     "Batería baja", "Cárgame y pulsa el botón frontal.",
-    "+ Descargar", "DESCARGAR", "Conectando...", "Leyendo catálogo...", "Descargando %u%%",
+    "Descargar", "DESCARGAR", "Conectando...", "Leyendo catálogo...", "Descargando %u%%",
     "larga: descargar", "larga: actualizar", "larga: estudiar", "larga: reintentar",
     "Guardado %s", "%s %u tarjetas %s",
     "El catálogo está vacío",
@@ -355,7 +374,7 @@ const UiStrings kUiEs = {
     "Hace falta sitio para las dos copias. Borra antes la vieja: Ajustes > Wi-Fi > Portal web",
     "Mazo no válido", "Descarga fallida", "Cancelado",
     "larga: bajar mazos (Wi-Fi de casa)",
-    {"Portal web", "Casa: %s", "Modo configuración", "Olvidar red"}, "ninguna",
+    {"Portal web", "Casa", "Modo configuración", "Olvidar red"}, "ninguna",
     "No hay red de casa guardada", "Red olvidada", "OLVIDAR WI-FI?", {"Cancelar", "Olvidar"},
     "Escanea para unirte", "Escanea para abrir la página", "toque: otro QR", "vía %s",
     "Conectando a", "larga: modo config.", "toque: reintentar", "Conexión perdida...",
@@ -365,6 +384,7 @@ const UiStrings kUiEs = {
     "hora de red: sin respuesta", "larga: repetir", "Wi-Fi > Modo configuración: guárdala en la página",
     "ACERCA DE", "Firmware:", "Mazos:", "Mazo:", "ninguno", "Datos de kanji:", "Orden de trazos:",
     "Niveles JLPT:", "Glifos:", "toque: más",
+    "mover", "abrir", "elegir", "atrás", "Wi-Fi de casa",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -467,15 +487,11 @@ constexpr uint32_t kNtpTimeoutMs = 3000;
 enum class DateSync : uint8_t { None, Joining, NoNetwork, NoTime };
 DateSync gDateSync = DateSync::None;
 std::vector<String> gPacks;  // paths of the *.tgc files in /packs
-int gMenuSel = 0;            // highlighted row on the settings home
-int gDeckSel = 0;            // highlighted row on the deck list
+// The list screens' focus and scroll position are tgc::ListViews next to
+// their draw functions (gMenuList, gDeckList, gChoiceList, ...).
 Choice gChoice = Choice::NewPerDay;
-int gChoiceSel = 0;
 int gChoiceCount = 0;
 uint16_t gChoiceValues[4] = {0, 0, 0, 0};
-// The first-boot language picker (Screen::FirstLang): highlighted row, see
-// ui/UiLang.h for the rows and when it is shown.
-int gFirstLangSel = tgc::kFirstBootLangDefaultRow;
 String gCurrentPack;
 Preferences gPrefs;
 
@@ -516,7 +532,7 @@ char gWifiNote[64] = "";              // setup mode after the boot-time home joi
 uint32_t gWifiEpoch = 0;
 
 // Settings > Wi-Fi (the submenu replacing the single settings row).
-int gWifiMenuSel = 0;
+tgc::ListView gWifiMenuList;
 String gWifiMenuSsid;          // the saved home network, read when the menu opens
 char gWifiMenuNote[48] = "";   // footer note (cleared when the selection moves)
 uint16_t gWifiMenuNoteColor = 0;
@@ -607,7 +623,28 @@ void smallText(lgfx::LovyanGFX& d, const char* s, int x, int y, uint16_t fg, uin
     d.drawString(s, x, y);
 }
 
-void present() { gCanvas->pushSprite(&tgc::board::display(), 0, 0); }
+void dropPartialPush();
+
+// Microseconds and rows of the last push, for the TGC_QUIZ_LOG frame trace
+// in drawScreen().
+uint32_t gPushUs = 0;
+int gPushRows = 0;
+
+void present() {
+    dropPartialPush();
+    const uint32_t t0 = micros();
+    gCanvas->pushSprite(&tgc::board::display(), 0, 0);
+    gPushUs = micros() - t0;
+    gPushRows = H;
+}
+
+// Pushes only (x, y, w, h) of the back buffer: a partial update.
+void presentRegion(int x, int y, int w, int h) {
+    const uint32_t t0 = micros();
+    tgc::widgets::presentRegion(*gCanvas, tgc::board::display(), x, y, w, h);
+    gPushUs = micros() - t0;
+    gPushRows = h;
+}
 
 // (Re)create the full-screen back buffer for the current W x H, PSRAM first with
 // an internal-RAM fallback. Used at boot and on an orientation change.
@@ -938,204 +975,253 @@ uint8_t labelFont(const char* label, int h, int minH, int w) {
     return tgc::Renderer::kTextBuiltin;
 }
 
-// One full-width highlighted row for the settings home and the choice screens,
-// labelled with the built-in GFX font so accented Spanish renders. `h` is the
-// box height; the 2x font is used when it fits, the 1x one otherwise (needed on
-// the short landscape settings/choice screens).
-void drawRow(lgfx::LovyanGFX& d, const char* label, int y, int h, bool sel) {
-    const uint16_t bg = sel ? kHighlight : kBlack;
-    d.fillRoundRect(2, y, W - 4, h, 5, bg);
-    if (sel) d.drawRoundRect(2, y, W - 4, h, 5, kWhite);
-    const uint8_t set = labelFont(label, h, 22, W - 10);
-    gRender.drawCentred(d, label, 4, y + 1, W - 8, h - 2, 1, kWhite, bg, set);
+// --- Menu screens (docs/ux-refresh.md §2.4) ---------------------------------
+// The list screens are built from render/Widgets: a header (title, battery,
+// hairline), rows of the layout's height that scroll instead of shrinking
+// (ui/ListView, a 2 px scroll bar and small markers when rows are hidden), and
+// the hint bar. Labels use the UI font, so they need no pack.
+
+namespace wg = tgc::widgets;
+using tgc::theme::kGutter;
+using tgc::theme::kHeaderH;
+using tgc::theme::kHintH;
+
+tgc::theme::Layout layout() { return tgc::theme::layoutFor(W, H); }
+
+void menuHeader(lgfx::LovyanGFX& d, const char* title) {
+    wg::Header h;
+    h.title = title;
+    h.battery = tgc::board::batteryPercent();
+    wg::drawHeader(d, gRender, W, h);
 }
 
-// Settings home (hold the side button from the quiz): tap moves the highlight,
-// hold activates the row. Each row is a full-width box with a label.
+// Tap moves the focus, a hold does `holdWord`, the side button goes back.
+void menuHints(lgfx::LovyanGFX& d, const char* holdWord) {
+    wg::Hints h;
+    h.tap = ui().hintMove;
+    h.hold = holdWord;
+    h.side = &tgc::kIconBack;
+    h.sideWord = ui().hintBack;
+    wg::drawHintBar(d, gRender, W, H, h);
+}
+
+// Fits `list` (rows of `rowH`) between y `top` and `bottom`, keeping a band
+// above and below for the scroll markers. Called on every draw: the window
+// follows the orientation.
+void layoutList(tgc::ListView& list, int top, int bottom, int rowH) {
+    using tgc::theme::kMarkerBand;
+    list.setGeometry(top + kMarkerBand, bottom - top - 2 * kMarkerBand, rowH, tgc::theme::kGap);
+}
+int listX() { return kGutter; }
+int listW() { return W - 2 * kGutter; }  // the scroll bar goes in the right gutter
+
+// Lists whose rows carry a second text (deck counts, zone offsets) put it on
+// a caption line under the label on narrow panels, and right of the label as
+// the row's value where a row is wide enough for both (landscape).
+bool wideRows() { return W >= 200; }
+
+// The menus' one-line note above the hint bar (what the last action did).
+constexpr int kNoteH = 12;
+void menuNote(lgfx::LovyanGFX& d, const char* text, uint16_t color) {
+    if (text && *text)
+        gRender.drawLabel(d, text, kGutter, H - kHintH - kNoteH + 1, W - 2 * kGutter, 7, color,
+                          kBlack, tgc::Renderer::kTextBuiltinSmall, tgc::Align::Centre);
+}
+
+// A focus move on a list whose other content does not depend on the focus
+// (settings home, decks, pickers, time zones): when the window did not scroll,
+// the next presentList() pushes only the rows from the old to the new focus
+// (widgets::presentRegion()). One-shot; any present() drops it.
+struct PartialPush {
+    bool armed = false;
+    const tgc::ListView* list = nullptr;
+    int oldFocus = 0;
+    int first = 0;
+};
+PartialPush gPartial;
+void dropPartialPush() { gPartial.armed = false; }
+
+void moveListFocus(tgc::ListView& list) {
+    const int oldFocus = list.focus();
+    const int oldFirst = list.first();
+    list.next();
+    gPartial.armed = list.first() == oldFirst;
+    gPartial.list = &list;
+    gPartial.oldFocus = oldFocus;
+    gPartial.first = oldFirst;
+}
+
+void presentList(const tgc::ListView& list) {
+    const PartialPush p = gPartial;
+    gPartial.armed = false;
+    if (p.armed && p.list == &list && list.first() == p.first && list.isVisible(p.oldFocus) &&
+        list.isVisible(list.focus())) {
+        const int a = std::min(p.oldFocus, list.focus());
+        const int b = std::max(p.oldFocus, list.focus());
+        const int y0 = list.rowY(a);
+        presentRegion(0, y0, W, list.rowY(b) + list.rowH() - y0);
+        return;
+    }
+    present();
+}
+
+// Settings home (hold the side button from the quiz): tap moves the focus,
+// hold activates the row. Twelve flat rows for now (the groups of
+// docs/ux-refresh.md §3 come later); the list scrolls in every orientation.
 constexpr int kSettingRows = 12;
+tgc::ListView gMenuList;
+
+// Rows that open another screen get a chevron; Continue and Sleep act at once.
+bool settingOpensScreen(int row) { return row != 0 && row != 10; }
 
 void drawMenu() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, ui().settingsTitle, 3, 3, kWhite, kGrey);
-
-    // Shrink the row step on the short landscape screen so all rows fit; in
-    // portrait (or when there is room) this keeps the original 36 px step.
-    const int top = 20;
-    int step = 36;
-    if (top + step * kSettingRows > H) {
-        step = (H - top - 2) / kSettingRows;
-        if (step < 10) step = 10;
-    }
-    // Tight landscape steps keep only a 1 px gap so the 1x font still fits; at
-    // the 10 px floor the gap goes, so the highlight's border still clears the
-    // 8 px font above and below.
-    const int pad = step >= 20 ? 4 : step > 10 ? 1 : 0;
-    const int rowH = step - pad < 32 ? step - pad : 32;
-    // Twelve rows do not fit the 135 px landscape height even at the floor
-    // (eleven do): the list then shows a window that follows the highlight, as
-    // the Get decks list does, with a 2 px scroll bar in the right margin.
-    int visible = (H - top) / step;
-    if (visible > kSettingRows) visible = kSettingRows;
-    if (visible < 1) visible = 1;
-    const int first = gMenuSel >= visible ? gMenuSel - visible + 1 : 0;
-    for (int i = first; i < first + visible; ++i)
-        drawRow(d, ui().menuRows[i], top + (i - first) * step, rowH, i == gMenuSel);
-    if (visible < kSettingRows) {
-        const int trackH = (visible - 1) * step + rowH;
-        int thumbH = trackH * visible / kSettingRows;
-        if (thumbH < 6) thumbH = 6;
-        const int thumbY = top + (trackH - thumbH) * first / (kSettingRows - visible);
-        d.fillRect(W - 2, top, 2, trackH, kGrey);
-        d.fillRect(W - 2, thumbY, 2, thumbH, kWhite);
-    }
-    present();
+    menuHeader(d, ui().settingsTitle);
+    gMenuList.setCount(kSettingRows);
+    layoutList(gMenuList, kHeaderH, H - kHintH, layout().row1H);
+    wg::drawList(d, gMenuList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
+        wg::Row row;
+        row.label = ui().menuRows[i];
+        row.chevron = settingOpensScreen(i);
+        row.focused = f;
+        wg::drawRow(d, gRender, x, y, w, h, row);
+    });
+    menuHints(d, ui().hintOpen);
+    presentList(gMenuList);
 }
 
-// Deck list (opened from "Mazos"): one row per pack; the loaded pack is marked
-// '*' and shows its due/new counts. Hold loads the highlighted pack; the side
-// button returns to the settings home. The date row lives in the settings home.
-// The last row, "+ Get decks", opens the download screen (drawGetDecks).
+// Deck list (opened from "Decks"): one row per pack, the file name and the
+// loaded pack's due/new counts (under it in portrait, right of it in
+// landscape); a radio marks the loaded pack. Hold loads the focused pack; the
+// side button returns to the settings home. The last row, "Get decks", opens
+// the download screen (drawGetDecks).
+tgc::ListView gDeckList;
+
 void drawDecks() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, ui().decksTitle, 3, 3, kWhite, kGrey);
-
+    menuHeader(d, ui().decksTitle);
     uint32_t due = 0, fresh = 0;
     packDueNew(&due, &fresh);  // only shown on the loaded pack's row
-    const int top = 18;
-    const int rows = static_cast<int>(gPacks.size()) + 1;  // + "Get decks"
-    int rowH = 20;
-    if (rows > 0) {
-        const int fit = (H - top - 2) / rows;  // shrink so the list fits landscape
-        if (fit < rowH) rowH = fit;
-    }
-    if (rowH < 10) rowH = 10;
-    for (int i = 0; i < rows; ++i) {
-        const int y = top + i * rowH;
-        if (y + rowH - 2 > H) break;  // no more room
-        const bool sel = i == gDeckSel;
-        const uint16_t bg = sel ? kHighlight : kBlack;
-        d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
-        if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
-        if (i == rows - 1) {
-            smallText(d, ui().getDecksRow, 4, y + (rowH - 2 - 8) / 2, kYellow, bg);
-            break;
+    char counts[48];
+    snprintf(counts, sizeof counts, ui().deckCountsFmt, (unsigned)due, (unsigned)fresh);
+    const int packs = static_cast<int>(gPacks.size());
+    gDeckList.setCount(packs + 1);  // + "Get decks"
+    const bool wide = wideRows();
+    layoutList(gDeckList, kHeaderH, H - kHintH, wide ? layout().row1H : layout().row2H);
+    wg::drawList(d, gDeckList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
+        wg::Row row;
+        row.focused = f;
+        String label;
+        if (i == packs) {
+            row.label = ui().getDecksRow;
+            row.icon = &tgc::kIconDown;
+            row.chevron = true;
+            (wide ? row.value : row.caption) = ui().getDecksCaption;
+            row.labelColor = tgc::theme::kAccentHi;
+        } else {
+            label = gPacks[i];
+            const int slash = label.lastIndexOf('/');
+            if (slash >= 0) label = label.substring(slash + 1);
+            if (label.endsWith(".tgc")) label = label.substring(0, label.length() - 4);
+            const bool loaded = gPacks[i] == gCurrentPack;
+            row.label = label.c_str();
+            row.radio = loaded ? wg::Radio::On : wg::Radio::Off;
+            if (wide)
+                row.value = loaded ? counts : nullptr;
+            else
+                row.caption = loaded ? counts : "";
         }
-        String label = gPacks[i];
-        const int slash = label.lastIndexOf('/');
-        if (slash >= 0) label = label.substring(slash + 1);
-        if (label.endsWith(".tgc")) label = label.substring(0, label.length() - 4);
-        if (gPacks[i] == gCurrentPack) {
-            char counts[24];
-            snprintf(counts, sizeof counts, ui().deckCountsFmt, (unsigned)due, (unsigned)fresh);
-            label = "* " + label + counts;
-        }
-        smallText(d, label.c_str(), 4, y + (rowH - 2 - 8) / 2, kWhite, bg);
-    }
-    present();
+        wg::drawRow(d, gRender, x, y, w, h, row);
+    });
+    menuHints(d, ui().hintOpen);
+    presentList(gDeckList);
 }
 
-// Generic choice screen: a title and the candidate values. Hold applies the
-// highlighted value; the side button cancels back to the settings home.
+// Generic choice screen: a title and the candidate values. A radio marks the
+// saved value and the accent fill the focus. Hold applies the focused value;
+// the side button cancels back to where the picker came from.
+tgc::ListView gChoiceList;
+int gChoiceSaved = -1;  // row of the saved value, -1 when none (Forget Wi-Fi)
+
+void choiceLabel(int i, char* out, size_t n) {
+    if (gChoice == Choice::Orientation) {
+        snprintf(out, n, "%s", ui().orientRows[gChoiceValues[i] % 3]);
+    } else if (gChoice == Choice::ForgetWifi) {
+        snprintf(out, n, "%s", ui().forgetRows[i % 2]);
+    } else if (gChoice == Choice::UiLang) {
+        snprintf(out, n, "%s", ui().langRows[i]);
+    } else if (gChoice == Choice::Brightness) {
+        snprintf(out, n, "%u%%", (unsigned)(gChoiceValues[i] * 100u / 255u));
+    } else if (gChoice == Choice::SlowMs) {
+        if (gChoiceValues[i] == 0xFFFF) snprintf(out, n, "%s", ui().speedOff);
+        else snprintf(out, n, ui().speedSecondsFmt, gChoiceValues[i] / 1000.0f);
+    } else {
+        snprintf(out, n, "%u", (unsigned)gChoiceValues[i]);
+    }
+}
+
 void drawChoice() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
     const char* title = gChoice == Choice::NewPerDay  ? ui().newPerDayTitle
                         : gChoice == Choice::SlowMs   ? ui().speedTitle
                         : gChoice == Choice::Orientation ? ui().orientTitle
                         : gChoice == Choice::Brightness  ? ui().brightTitle
                         : gChoice == Choice::ForgetWifi  ? ui().forgetTitle
                                                          : ui().langTitle;
-    smallText(d, title, 3, 3, kWhite, kGrey);
+    menuHeader(d, title);
+    int top = kHeaderH;
     // "Forget": which network, between the header and the rows.
-    if (gChoice == Choice::ForgetWifi)
-        gRender.drawCentred(d, gWifiMenuSsid.c_str(), 2, 20, W - 4, 16, 1, kYellow, kBlack,
-                            tgc::Renderer::kTextBuiltinSmall);
-
-    // Shrink the row step on the short landscape screen so all rows fit; portrait
-    // keeps the original 40 px step and 32 px box.
-    const int top = 40;
-    int step = 40;
-    if (top + step * gChoiceCount > H) {
-        step = (H - top - 2) / gChoiceCount;
-        if (step < 10) step = 10;
+    if (gChoice == Choice::ForgetWifi) {
+        gRender.drawLabel(d, gWifiMenuSsid.c_str(), kGutter, kHeaderH + 2, W - 2 * kGutter, 20,
+                          tgc::theme::kWarn, kBlack, tgc::Renderer::kTextUi, tgc::Align::Centre);
+        top += 22;
     }
-    const int rowH = step - 4 < 32 ? step - 4 : 32;
-    for (int i = 0; i < gChoiceCount; ++i) {
-        char label[16];
-        if (gChoice == Choice::Orientation) {
-            snprintf(label, sizeof label, "%s", ui().orientRows[gChoiceValues[i] % 3]);
-        } else if (gChoice == Choice::ForgetWifi) {
-            snprintf(label, sizeof label, "%s", ui().forgetRows[i % 2]);
-        } else if (gChoice == Choice::UiLang) {
-            snprintf(label, sizeof label, "%s", ui().langRows[i]);
-        } else if (gChoice == Choice::Brightness) {
-            snprintf(label, sizeof label, "%u%%", (unsigned)(gChoiceValues[i] * 100u / 255u));
-        } else if (gChoice == Choice::SlowMs) {
-            if (gChoiceValues[i] == 0xFFFF) snprintf(label, sizeof label, "%s", ui().speedOff);
-            else snprintf(label, sizeof label, ui().speedSecondsFmt, gChoiceValues[i] / 1000.0f);
-        } else {
-            snprintf(label, sizeof label, "%u", (unsigned)gChoiceValues[i]);
-        }
-        drawRow(d, label, top + i * step, rowH, i == gChoiceSel);
-    }
-    present();
+    gChoiceList.setCount(gChoiceCount);
+    layoutList(gChoiceList, top, H - kHintH, layout().row1H);
+    wg::drawList(d, gChoiceList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
+        char label[24];
+        choiceLabel(i, label, sizeof label);
+        wg::Row row;
+        row.label = label;
+        row.focused = f;
+        if (gChoiceSaved >= 0) row.radio = i == gChoiceSaved ? wg::Radio::On : wg::Radio::Off;
+        wg::drawRow(d, gRender, x, y, w, h, row);
+    });
+    menuHints(d, ui().hintChoose);
+    presentList(gChoiceList);
 }
 
 // First-boot language picker (setup(), docs/decisions.md): the choice-screen
 // look with a neutral header ("LANGUAGE / IDIOMA"), every row in its own
-// language and the button hints in the language of the highlighted row, so it
-// reads the same whatever table is active. The side button does nothing here:
-// there is nothing to go back to yet.
+// language and the hint bar in the language of the focused row, so it reads
+// the same whatever table is active. The side button does nothing here:
+// there is nothing to go back to yet, so the bar shows no side action.
+tgc::ListView gFirstLangList;
+
 void drawFirstLang() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
     char title[40];
     snprintf(title, sizeof title, "%s / %s", kUiEn.langTitle, kUiEs.langTitle);
-    smallText(d, title, 3, 3, kWhite, kGrey);
-
-    // Button hints along the bottom, in the highlighted row's language: tap and
-    // hold share a line when it fits, else two lines ("toque: otro  larga: OK"
-    // is 1 px too wide for the StickS3 portrait). The space is reserved for the
-    // longer language, so the rows do not move as the highlight does.
-    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
-    const int w = W - 4;
-    auto hintLine = [](const UiStrings& t, char* out, size_t n) {
-        snprintf(out, n, "%s  %s", t.firstLangTap, t.firstLangHold);
-    };
-    char line[48];
-    int hintLines = 1;
-    for (const UiStrings* t : {&kUiEn, &kUiEs}) {
-        hintLine(*t, line, sizeof line);
-        if (gRender.textWidth(line, kSmall) > w) hintLines = 2;
-    }
-    const int hintTop = H - 2 - hintLines * 10;
+    menuHeader(d, title);
+    gFirstLangList.setCount(tgc::kFirstBootLangRows);
+    layoutList(gFirstLangList, kHeaderH, H - kHintH, layout().row1H);
+    wg::drawList(d, gFirstLangList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
+        wg::Row row;
+        row.label = ui().langRows[tgc::firstBootLangPref(i)];
+        row.focused = f;
+        wg::drawRow(d, gRender, x, y, w, h, row);
+    });
     const UiStrings& hl =
-        tgc::firstBootLangPref(gFirstLangSel) == tgc::kUiLangSpanish ? kUiEs : kUiEn;
-    hintLine(hl, line, sizeof line);
-    if (gRender.textWidth(line, kSmall) <= w) {
-        gRender.drawCentred(d, line, 2, H - 12, w, 10, 1, kWhite, kBlack, kSmall);
-    } else {
-        gRender.drawCentred(d, hl.firstLangTap, 2, H - 22, w, 10, 1, kWhite, kBlack, kSmall);
-        gRender.drawCentred(d, hl.firstLangHold, 2, H - 12, w, 10, 1, kWhite, kBlack, kSmall);
-    }
-
-    // The rows as on the choice screens; the step shrinks to stay above the
-    // hints on the short landscape screen.
-    const int top = 40;
-    int step = 40;
-    if (top + step * tgc::kFirstBootLangRows > hintTop - 2)
-        step = (hintTop - 2 - top) / tgc::kFirstBootLangRows;
-    const int rowH = step - 4 < 32 ? step - 4 : 32;
-    for (int i = 0; i < tgc::kFirstBootLangRows; ++i)
-        drawRow(d, ui().langRows[tgc::firstBootLangPref(i)], top + i * step, rowH,
-                i == gFirstLangSel);
-    present();
+        tgc::firstBootLangPref(gFirstLangList.focus()) == tgc::kUiLangSpanish ? kUiEs : kUiEn;
+    wg::Hints hints;
+    hints.tap = hl.firstLangTap;
+    hints.hold = hl.firstLangHold;
+    wg::drawHintBar(d, gRender, W, H, hints);
+    present();  // the hints follow the focus: the whole frame
 }
 
 // "All done" screen: no card is due and no new card is left today. A tap, hold
@@ -1359,39 +1445,40 @@ void currentZoneLabel(char* out, size_t n) {
 }
 
 // Settings > Date: the date (the stepper) and the time zone (the list), in the
-// Wi-Fi submenu's look. The side button goes back to the settings home.
+// Wi-Fi submenu's look: the row's value is the date or the zone's city. The
+// side button goes back to the settings home.
 constexpr int kDateMenuRows = 2;
-int gDateMenuSel = 0;
+tgc::ListView gDateMenuList;
 char gDateMenuNote[48] = "";
 uint16_t gDateMenuNoteColor = 0;
 
 void drawDateMenu() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, ui().dateTitle, 3, 3, kWhite, kGrey);
-
-    const int top = 20;
-    const int noteH = 12;
-    int step = 36;
-    if (top + step * kDateMenuRows > H - noteH) step = (H - noteH - top - 2) / kDateMenuRows;
-    const int rowH = step - 4 < 32 ? step - 4 : 32;
-    char date[16], zone[48], rows[kDateMenuRows][64];
+    menuHeader(d, ui().dateTitle);
+    char date[16], zone[48];
     formatDate(gSrs.today(), date, sizeof date);
     currentZoneLabel(zone, sizeof zone);
-    snprintf(rows[0], sizeof rows[0], ui().dateMenuRows[0], date);
-    snprintf(rows[1], sizeof rows[1], ui().dateMenuRows[1], zone);
-    for (int i = 0; i < kDateMenuRows; ++i)
-        drawRow(d, rows[i], top + i * step, rowH, i == gDateMenuSel);
-    if (gDateMenuNote[0])
-        gRender.drawCentred(d, gDateMenuNote, 2, H - noteH + 1, W - 4, 10, 1, gDateMenuNoteColor,
-                            kBlack, tgc::Renderer::kTextBuiltinSmall);
-    present();
+    const char* values[kDateMenuRows] = {date, zone};
+    gDateMenuList.setCount(kDateMenuRows);
+    layoutList(gDateMenuList, kHeaderH, H - kHintH - kNoteH, layout().row1H);
+    wg::drawList(d, gDateMenuList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
+        wg::Row row;
+        row.label = ui().dateMenuRows[i];
+        row.value = values[i];
+        row.keepLabel = true;
+        row.chevron = true;
+        row.focused = f;
+        wg::drawRow(d, gRender, x, y, w, h, row);
+    });
+    menuNote(d, gDateMenuNote, gDateMenuNoteColor);
+    menuHints(d, ui().hintOpen);
+    present();  // a move clears the note: the whole frame
 }
 
 // Settings > Date > Time zone: "From phone" (the zone the portal page last
 // sent), then tgc::kTzZones. Row 0 is "From phone", row i is kTzZones[i - 1].
-int gTzSel = 0;
+tgc::ListView gTzListView;
 int tzListRows() { return 1 + static_cast<int>(tgc::kTzZoneCount); }
 
 // The row of the zone in use: the list entry chosen by hand, else "From phone".
@@ -1402,99 +1489,57 @@ int tzCurrentRow() {
     return 0;
 }
 
-// One 1x row: `left` and a right-aligned `right`, the zone in use in green.
-// "From phone" keeps its label and cuts the city; a zone keeps its offsets and
-// cuts the city.
-void drawTzRow(lgfx::LovyanGFX& d, int y, int rowH, bool sel, bool current, const char* left,
-               const char* right, bool cutRight) {
-    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
-    const uint16_t bg = sel ? kHighlight : kBlack;
-    d.fillRoundRect(1, y, W - 4, rowH - 2, 4, bg);
-    if (sel) d.drawRoundRect(1, y, W - 4, rowH - 2, 4, kWhite);
-    const uint16_t fg = current ? kGreen : kWhite;
-    const int ty = y + (rowH - 2 - 8) / 2;
-    const int room = (W - 7) - 4 - 6;  // from x = 4 to W - 7, a 6 px gap between the columns
-    String l = left, r = right;
-    auto cut = [](String& s, int maxW) {
-        if (gRender.textWidth(s.c_str(), kSmall) <= maxW) return;
-        while (s.length() > 1 && gRender.textWidth((s + "..").c_str(), kSmall) > maxW)
-            s.remove(s.length() - 1);
-        s += "..";
-    };
-    if (cutRight)
-        cut(r, room - gRender.textWidth(l.c_str(), kSmall));
-    else
-        cut(l, room - gRender.textWidth(r.c_str(), kSmall));
-    // The renderer's built-in font, so "Del móvil" keeps its accent.
-    gRender.drawText(d, l.c_str(), 4, ty, fg, bg, kSmall);
-    gRender.drawText(d, r.c_str(), W - 7 - gRender.textWidth(r.c_str(), kSmall), ty, fg, bg, kSmall);
-}
-
+// Each row: the city and its offsets ("UTC+1, summer UTC+2" under it in
+// portrait, or "+1/+2" when that does not fit; "+1/+2" right of it in
+// landscape); "From phone" with the page's city and offsets, or how to get
+// them. A radio marks the zone in use.
 void drawTzList() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, ui().tzTitle, 3, 3, kWhite, kGrey);
-    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
-
-    const int footY = H - 22;
-    const int top = 18;
-    const int rowH = H >= 200 ? 18 : 15;
-    const int n = tzListRows();
-    int visible = (footY - 2 - top) / rowH;
-    if (visible < 1) visible = 1;
-    if (visible > n) visible = n;
-    const int first = gTzSel >= visible ? gTzSel - visible + 1 : 0;
+    menuHeader(d, ui().tzTitle);
+    gTzListView.setCount(tzListRows());
+    const bool wide = wideRows();
+    layoutList(gTzListView, kHeaderH, H - kHintH, wide ? layout().row1H : layout().row2H);
     const int current = tzCurrentRow();
-    char right[48];
-    for (int i = first; i < first + visible; ++i) {
-        const int y = top + (i - first) * rowH;
+    wg::drawList(d, gTzListView, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
+        char label[40], caption[64];
         if (i == 0) {
-            if (gPhoneTzName[0])
-                tgc::tzZoneCity(gPhoneTzName, right, sizeof right);
-            else if (gPhoneTzKnown)
-                tgc::formatUtcOffset(gPhoneTz.stdOffsetSec / 60, right, sizeof right);
-            else
-                snprintf(right, sizeof right, "-");
-            drawTzRow(d, y, rowH, i == gTzSel, i == current, ui().tzFromPhone, right, true);
-            continue;
+            snprintf(label, sizeof label, "%s", ui().tzFromPhone);
+            if (gPhoneTzKnown && gPhoneTzName[0]) {
+                char city[40], offsets[24];
+                tgc::tzZoneCity(gPhoneTzName, city, sizeof city);
+                tzOffsets(gPhoneTz, false, offsets, sizeof offsets);
+                snprintf(caption, sizeof caption, "%s · %s", city, offsets);
+            } else if (gPhoneTzKnown) {
+                tzOffsets(gPhoneTz, !wide, caption, sizeof caption);
+            } else {
+                snprintf(caption, sizeof caption, "%s", ui().tzPhoneNone);
+            }
+        } else {
+            const tgc::TzZone& z = tgc::kTzZones[i - 1];
+            tgc::tzZoneCity(z.name, label, sizeof label);
+            tgc::TzRule r;
+            caption[0] = 0;
+            if (tgc::parseTzRule(z.rule, &r)) {
+                tzOffsets(r, !wide, caption, sizeof caption);
+                if (!wide && wg::captionWidth(caption) > w - 2 * tgc::theme::kRowPadX)
+                    tzOffsets(r, false, caption, sizeof caption);
+            }
         }
-        const tgc::TzZone& z = tgc::kTzZones[i - 1];
-        tgc::TzRule r;
-        right[0] = 0;
-        if (tgc::parseTzRule(z.rule, &r)) tzOffsets(r, false, right, sizeof right);
-        char city[40];
-        tgc::tzZoneCity(z.name, city, sizeof city);
-        drawTzRow(d, y, rowH, i == gTzSel, i == current, city, right, false);
-    }
-    // A scroll bar in the right margin, as on the settings home.
-    if (visible < n) {
-        const int trackH = visible * rowH - 2;
-        int thumbH = trackH * visible / n;
-        if (thumbH < 6) thumbH = 6;
-        const int thumbY = top + (trackH - thumbH) * first / (n - visible);
-        d.fillRect(W - 2, top, 2, trackH, kGrey);
-        d.fillRect(W - 2, thumbY, 2, thumbH, kWhite);
-    }
-
-    // Footer: the selection's offsets (or how to get the phone's zone), then
-    // what a hold does.
-    char line[64];
-    uint16_t color = kWhite;
-    tgc::TzRule r;
-    if (gTzSel == 0 && gPhoneTzKnown) {
-        tzOffsets(gPhoneTz, true, line, sizeof line);
-    } else if (gTzSel == 0) {
-        snprintf(line, sizeof line, "%s", ui().tzPhoneNone);
-        color = kYellow;
-    } else if (tgc::parseTzRule(tgc::kTzZones[gTzSel - 1].rule, &r)) {
-        tzOffsets(r, true, line, sizeof line);
-    } else {
-        line[0] = 0;
-    }
-    gRender.drawCentred(d, line, 2, footY + 1, W - 4, 10, 1, color, kBlack, kSmall);
-    gRender.drawCentred(d, ui().tzHoldHint, 2, footY + 11, W - 4, 10, 1, kWhite, kBlack, kSmall);
-    present();
+        wg::Row row;
+        row.label = label;
+        if (wide) {
+            row.value = caption;
+            row.keepLabel = i == 0;  // "From phone" stays whole, the city is cut
+        } else {
+            row.caption = caption;
+        }
+        row.radio = i == current ? wg::Radio::On : wg::Radio::Off;
+        row.focused = f;
+        wg::drawRow(d, gRender, x, y, w, h, row);
+    });
+    menuHints(d, ui().hintChoose);
+    presentList(gTzListView);
 }
 
 // "2h 5m", "5m 30s" or "30s" depending on the magnitude. The unit strings come
@@ -1829,32 +1874,32 @@ void drawWifi() {
 }
 
 // Settings > Wi-Fi: the web portal (home mode once a network is saved), the
-// home network with its test, setup mode (the access point, e.g. to change
-// networks) and "forget". Same rows as the settings home; a footer note says
-// what the last action did.
+// home network with its test (the network's name is the row's value), setup
+// mode (the access point, e.g. to change networks) and "forget". The menu
+// rows; a note above the hint bar says what the last action did.
 constexpr int kWifiMenuRows = 4;
 
 void drawWifiMenu() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, ui().wifiTitle, 3, 3, kWhite, kGrey);
-
-    const int top = 20;
-    const int noteH = 12;
-    int step = 36;
-    if (top + step * kWifiMenuRows > H - noteH) step = (H - noteH - top - 2) / kWifiMenuRows;
-    const int rowH = step - 4 < 32 ? step - 4 : 32;
-    char home[64];
-    snprintf(home, sizeof home, ui().wifiMenuRows[1],
-             gWifiMenuSsid.length() ? gWifiMenuSsid.c_str() : ui().wifiHomeNone);
-    const char* labels[kWifiMenuRows] = {ui().wifiMenuRows[0], home, ui().wifiMenuRows[2],
-                                         ui().wifiMenuRows[3]};
-    for (int i = 0; i < kWifiMenuRows; ++i) drawRow(d, labels[i], top + i * step, rowH, i == gWifiMenuSel);
-    if (gWifiMenuNote[0])
-        gRender.drawCentred(d, gWifiMenuNote, 2, H - noteH + 1, W - 4, 10, 1, gWifiMenuNoteColor,
-                            kBlack, tgc::Renderer::kTextBuiltinSmall);
-    present();
+    menuHeader(d, ui().wifiTitle);
+    gWifiMenuList.setCount(kWifiMenuRows);
+    layoutList(gWifiMenuList, kHeaderH, H - kHintH - kNoteH, layout().row1H);
+    const char* home = gWifiMenuSsid.length() ? gWifiMenuSsid.c_str() : ui().wifiHomeNone;
+    wg::drawList(d, gWifiMenuList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
+        wg::Row row;
+        row.label = ui().wifiMenuRows[i];
+        if (i == 1) {
+            row.value = home;
+            row.keepLabel = true;
+        }
+        row.chevron = true;
+        row.focused = f;
+        wg::drawRow(d, gRender, x, y, w, h, row);
+    });
+    menuNote(d, gWifiMenuNote, gWifiMenuNoteColor);
+    menuHints(d, ui().hintOpen);
+    present();  // a move clears the note: the whole frame
 }
 
 // Settings > Wi-Fi > Home network: joining, checking (NTP and the catalog),
@@ -2430,7 +2475,8 @@ void dateMenuNote(const char* text, uint16_t color) {
 // else back from the stepper or the zone list (selection and note kept).
 void openDateMenu(bool fresh) {
     if (fresh) {
-        gDateMenuSel = 0;
+        gDateMenuList.setCount(kDateMenuRows);
+        gDateMenuList.reset(0);
         gDateMenuNote[0] = 0;
     }
     gScreen = Screen::DateMenu;
@@ -2438,18 +2484,19 @@ void openDateMenu(bool fresh) {
 }
 
 void openTzList() {
-    gTzSel = tzCurrentRow();
+    gTzListView.setCount(tzListRows());
+    gTzListView.reset(tzCurrentRow());
     gScreen = Screen::TzList;
     drawScreen();
 }
 
 void dateMenuLoop(int a, int b) {
     if (a == 1) {
-        gDateMenuSel = (gDateMenuSel + 1) % kDateMenuRows;
+        gDateMenuList.next();
         gDateMenuNote[0] = 0;
         drawScreen();
     } else if (a == 2) {
-        if (gDateMenuSel == 0)
+        if (gDateMenuList.focus() == 0)
             openDate(Screen::DateMenu);
         else
             openTzList();
@@ -2465,22 +2512,23 @@ void dateMenuLoop(int a, int b) {
 // for the next real time (NTP or the page); the day and the rollover stay
 // where they are until then.
 void applyTzChoice() {
-    if (gTzSel == 0) {
+    const int sel = gTzListView.focus();
+    if (sel == 0) {
         if (gPrefs.isKey(kPrefTzManual)) gPrefs.remove(kPrefTzManual);
     } else {
-        gPrefs.putString(kPrefTzManual, tgc::kTzZones[gTzSel - 1].name);
+        gPrefs.putString(kPrefTzManual, tgc::kTzZones[sel - 1].name);
     }
     loadTimeZone();
     if (gTzKnown)
-        dateMenuNote(ui().tzSaved, kGreen);
+        dateMenuNote(ui().tzSaved, tgc::theme::kOkHi);
     else
-        dateMenuNote(ui().tzPhoneNone, kYellow);
+        dateMenuNote(ui().tzPhoneNone, tgc::theme::kWarn);
     openDateMenu(false);
 }
 
 void tzListLoop(int a, int b) {
     if (a == 1) {
-        gTzSel = (gTzSel + 1) % tzListRows();
+        moveListFocus(gTzListView);
         drawScreen();
     } else if (a == 2) {
         applyTzChoice();
@@ -2489,6 +2537,9 @@ void tzListLoop(int a, int b) {
 }
 
 void drawScreen() {
+#if defined(TGC_QUIZ_LOG)
+    const uint32_t t0 = micros();
+#endif
     if (gScreen == Screen::Menu) drawMenu();
     else if (gScreen == Screen::Decks) drawDecks();
     else if (gScreen == Screen::Choice) drawChoice();
@@ -2505,6 +2556,10 @@ void drawScreen() {
     else if (gScreen == Screen::About) drawAbout();
     else if (gScreen == Screen::FirstLang) drawFirstLang();
     else drawQuiz();
+    // Frame cost (docs/ux-refresh.md §4, phase 1): the whole redraw and, in
+    // it, the push to the panel (rows: H, or fewer for a partial push).
+    QLOG("F screen %d: %u us, push %u us (%d rows)\n", static_cast<int>(gScreen),
+         (unsigned)(micros() - t0), (unsigned)gPushUs, gPushRows);
 }
 
 // Rotate the panel (0-3, see board::setRotation), pick up the new width/height,
@@ -2956,7 +3011,8 @@ void openMenu() {
     }
     gBeforeMenu = gScreen;
     gScreen = Screen::Menu;
-    gMenuSel = 0;
+    gMenuList.setCount(kSettingRows);
+    gMenuList.reset(0);
     drawScreen();
 }
 
@@ -2976,20 +3032,32 @@ void closeMenu() {
     drawScreen();
 }
 
-// Opens the deck list with the loaded pack highlighted.
+// Opens the deck list with the loaded pack focused.
 void openDecks() {
-    gDeckSel = 0;
+    int sel = 0;
     for (size_t i = 0; i < gPacks.size(); ++i)
-        if (gPacks[i] == gCurrentPack) gDeckSel = static_cast<int>(i);
+        if (gPacks[i] == gCurrentPack) sel = static_cast<int>(i);
+    gDeckList.setCount(static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
+    gDeckList.reset(sel);
     gScreen = Screen::Decks;
     drawScreen();
 }
 
+// Shows the picker set up by openChoice(): the saved value's row (or none,
+// -1) is marked and focused.
+void showChoice(int saved) {
+    gChoiceSaved = saved;
+    gChoiceList.setCount(gChoiceCount);
+    gChoiceList.reset(saved >= 0 ? saved : 0);
+    gScreen = Screen::Choice;
+    drawScreen();
+}
+
 // Opens one of the Screen::Choice pickers (2/3/4 rows) with the saved value
-// highlighted when it is one of the candidates.
+// marked and focused when it is one of the candidates.
 void openChoice(Choice which) {
     gChoice = which;
-    gChoiceSel = 0;
+    int saved = -1;
     if (which == Choice::Orientation) {
         // Auto first, as in the language picker; only with an accelerometer.
         gChoiceCount = 0;
@@ -2997,18 +3065,17 @@ void openChoice(Choice which) {
         gChoiceValues[gChoiceCount++] = kOrientPortrait;
         gChoiceValues[gChoiceCount++] = kOrientLandscape;
         for (int i = 0; i < gChoiceCount; ++i)
-            if (gChoiceValues[i] == gOrientPref) gChoiceSel = i;
-        gScreen = Screen::Choice;
-        drawScreen();
+            if (gChoiceValues[i] == gOrientPref) saved = i;
+        showChoice(saved);
         return;
     }
     if (which == Choice::ForgetWifi) {
-        // Cancel first and selected: forgetting takes a tap and a hold.
+        // Cancel first and focused, no saved value: forgetting takes a tap and
+        // a hold.
         gChoiceCount = 2;
         gChoiceValues[0] = 0;
         gChoiceValues[1] = 1;
-        gScreen = Screen::Choice;
-        drawScreen();
+        showChoice(-1);
         return;
     }
     if (which == Choice::UiLang) {
@@ -3016,10 +3083,9 @@ void openChoice(Choice which) {
         gChoiceValues[0] = tgc::kUiLangAuto;
         gChoiceValues[1] = tgc::kUiLangEnglish;
         gChoiceValues[2] = tgc::kUiLangSpanish;
-        gChoiceSel = gUiLangPref;  // rows are in preference order
-        if (gChoiceSel < 0 || gChoiceSel >= gChoiceCount) gChoiceSel = 0;
-        gScreen = Screen::Choice;
-        drawScreen();
+        saved = gUiLangPref;  // rows are in preference order
+        if (saved < 0 || saved >= gChoiceCount) saved = -1;
+        showChoice(saved);
         return;
     }
     gChoiceCount = 4;
@@ -3029,30 +3095,30 @@ void openChoice(Choice which) {
         gChoiceValues[2] = 128;
         gChoiceValues[3] = 255;
         for (int i = 0; i < gChoiceCount; ++i)
-            if (gChoiceValues[i] == gBrightness) gChoiceSel = i;
+            if (gChoiceValues[i] == gBrightness) saved = i;
     } else if (which == Choice::NewPerDay) {
         gChoiceValues[0] = 3;
         gChoiceValues[1] = 5;
         gChoiceValues[2] = 10;
         gChoiceValues[3] = 20;
         for (int i = 0; i < gChoiceCount; ++i)
-            if (gChoiceValues[i] == gSrs.newPerDay()) gChoiceSel = i;
+            if (gChoiceValues[i] == gSrs.newPerDay()) saved = i;
     } else {
         gChoiceValues[0] = 1500;
         gChoiceValues[1] = 3000;
         gChoiceValues[2] = 5000;
         gChoiceValues[3] = 0xFFFF;  // disables Hard
         for (int i = 0; i < gChoiceCount; ++i)
-            if (gChoiceValues[i] == gSrs.slowMs()) gChoiceSel = i;
+            if (gChoiceValues[i] == gSrs.slowMs()) saved = i;
     }
-    gScreen = Screen::Choice;
-    drawScreen();
+    showChoice(saved);
 }
 
-// Applies the highlighted choice, persists it and returns to the settings home.
+// Applies the focused choice, persists it and returns to the settings home.
 void applyChoice() {
+    const int sel = gChoiceList.focus();
     if (gChoice == Choice::Orientation) {
-        gOrientPref = static_cast<uint8_t>(gChoiceValues[gChoiceSel]);
+        gOrientPref = static_cast<uint8_t>(gChoiceValues[sel]);
         gPrefs.putUChar("orient", gOrientPref);
         gScreen = Screen::Menu;
         if (orientAuto()) {
@@ -3066,15 +3132,15 @@ void applyChoice() {
         return;
     }
     if (gChoice == Choice::ForgetWifi) {
-        if (gChoiceValues[gChoiceSel] == 1) {
+        if (gChoiceValues[sel] == 1) {
             tgc::HomeWifi::forgetCredentials();
-            wifiMenuNote(ui().wifiForgotten, kGreen);
+            wifiMenuNote(ui().wifiForgotten, tgc::theme::kOkHi);
         }
         openWifiMenu(false);
         return;
     }
     if (gChoice == Choice::UiLang) {
-        gUiLangPref = static_cast<int>(gChoiceValues[gChoiceSel]);
+        gUiLangPref = static_cast<int>(gChoiceValues[sel]);
         gPrefs.putInt("ui", gUiLangPref);
         setUiForLang(gPack->header().lang);  // re-render in the chosen language
         gScreen = Screen::Menu;
@@ -3082,7 +3148,7 @@ void applyChoice() {
         return;
     }
     if (gChoice == Choice::Brightness) {
-        gBrightness = static_cast<uint8_t>(gChoiceValues[gChoiceSel]);
+        gBrightness = static_cast<uint8_t>(gChoiceValues[sel]);
         gPrefs.putUChar("bri", gBrightness);
         tgc::board::setBrightness(gBrightness);
         gDimmed = false;
@@ -3090,7 +3156,7 @@ void applyChoice() {
         drawScreen();
         return;
     }
-    const uint16_t v = gChoiceValues[gChoiceSel];
+    const uint16_t v = gChoiceValues[sel];
     if (gChoice == Choice::NewPerDay) {
         gSrs.setNewPerDay(v);
         gSrs.save(gSrsIo);
@@ -3105,9 +3171,9 @@ void applyChoice() {
     drawScreen();
 }
 
-// Activates the highlighted settings row.
+// Activates the focused settings row.
 void activateSetting() {
-    switch (gMenuSel) {
+    switch (gMenuList.focus()) {
         case 0:  // Seguir
             closeMenu();
             break;
@@ -3148,13 +3214,14 @@ void activateSetting() {
     }
 }
 
-// Loads the highlighted deck (replacing the live pack only after it validates),
+// Loads the focused deck (replacing the live pack only after it validates),
 // resets the "study more" override and starts the quiz.
 void selectPack() {
     bool loaded = false;
     gExtraNew = 0;
-    if (gDeckSel >= 0 && gDeckSel < static_cast<int>(gPacks.size())) {
-        const String path = gPacks[gDeckSel];
+    const int sel = gDeckList.focus();
+    if (sel >= 0 && sel < static_cast<int>(gPacks.size())) {
+        const String path = gPacks[sel];
         if (loadPack(path)) {
             gPrefs.putString("pack", path);
             loaded = true;
@@ -3541,7 +3608,8 @@ void wifiMenuNote(const char* text, uint16_t color) {
 // else back from one of its screens (selection and note kept).
 void openWifiMenu(bool fresh) {
     if (fresh) {
-        gWifiMenuSel = 0;
+        gWifiMenuList.setCount(kWifiMenuRows);
+        gWifiMenuList.reset(0);
         gWifiMenuNote[0] = 0;
     }
     gWifiMenuSsid = tgc::HomeWifi::savedSsid();
@@ -3550,7 +3618,7 @@ void openWifiMenu(bool fresh) {
 }
 
 void activateWifiMenu() {
-    switch (gWifiMenuSel) {
+    switch (gWifiMenuList.focus()) {
         case 0:  // Web portal: home mode once a network is saved, else setup mode
             openPortal(defaultPortalMode());
             break;
@@ -3562,7 +3630,7 @@ void activateWifiMenu() {
             break;
         case 3:  // Forget network: confirmed on a picker (Cancel first)
             if (gWifiMenuSsid.isEmpty()) {
-                wifiMenuNote(ui().wifiNoNetwork, kYellow);
+                wifiMenuNote(ui().wifiNoNetwork, tgc::theme::kWarn);
                 drawScreen();
             } else {
                 openChoice(Choice::ForgetWifi);
@@ -3573,7 +3641,7 @@ void activateWifiMenu() {
 
 void wifiMenuLoop(int a, int b) {
     if (a == 1) {
-        gWifiMenuSel = (gWifiMenuSel + 1) % kWifiMenuRows;
+        gWifiMenuList.next();
         gWifiMenuNote[0] = 0;
         drawScreen();
     } else if (a == 2) {
@@ -3950,7 +4018,8 @@ void openBootUploadScreen() {
 // timers, and a sleep while it is open leaves the preference unset: the wake
 // asks again.
 void openFirstLang() {
-    gFirstLangSel = tgc::kFirstBootLangDefaultRow;
+    gFirstLangList.setCount(tgc::kFirstBootLangRows);
+    gFirstLangList.reset(tgc::kFirstBootLangDefaultRow);
     gScreen = Screen::FirstLang;
     drawScreen();
 }
@@ -3959,18 +4028,18 @@ void openFirstLang() {
 // another language must not switch the screens), applies it and continues the
 // boot the picker interrupted, now in that language.
 void applyFirstLang() {
-    gUiLangPref = tgc::firstBootLangPref(gFirstLangSel);
+    gUiLangPref = tgc::firstBootLangPref(gFirstLangList.focus());
     gPrefs.putInt("ui", gUiLangPref);
     setUiForLang(nullptr);
     Serial.printf("ui: first boot, language %s\n", uiLangCode());
     openBootUploadScreen();
 }
 
-// loop() on the picker: a tap moves the highlight, a hold chooses. The side
+// loop() on the picker: a tap moves the focus, a hold chooses. The side
 // button does nothing, as on the boot-time upload screen that follows.
 void firstLangLoop(int a) {
     if (a == 1) {
-        gFirstLangSel = (gFirstLangSel + 1) % tgc::kFirstBootLangRows;
+        gFirstLangList.next();
         drawScreen();
     } else if (a == 2) {
         applyFirstLang();
@@ -4213,7 +4282,7 @@ void loop() {
     }
     if (gScreen == Screen::Menu) {
         if (a == 1) {
-            gMenuSel = (gMenuSel + 1) % kSettingRows;
+            moveListFocus(gMenuList);
             drawScreen();
         } else if (a == 2) {
             activateSetting();
@@ -4221,10 +4290,11 @@ void loop() {
         if (b) closeMenu();  // side button backs out to the previous screen
     } else if (gScreen == Screen::Decks) {
         if (a == 1) {
-            gDeckSel = (gDeckSel + 1) % (static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
+            gDeckList.setCount(static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
+            moveListFocus(gDeckList);
             drawScreen();
         } else if (a == 2) {
-            if (gDeckSel == static_cast<int>(gPacks.size()))
+            if (gDeckList.focus() == static_cast<int>(gPacks.size()))
                 openGetDecks(false);  // the "+ Get decks" row
             else
                 selectPack();
@@ -4235,7 +4305,7 @@ void loop() {
         }
     } else if (gScreen == Screen::Choice) {
         if (a == 1) {
-            gChoiceSel = (gChoiceSel + 1) % gChoiceCount;
+            moveListFocus(gChoiceList);
             drawScreen();
         } else if (a == 2) {
             applyChoice();
