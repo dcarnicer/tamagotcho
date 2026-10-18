@@ -26,8 +26,6 @@ namespace tgc {
 namespace {
 
 constexpr const char* kPacksDir = "/packs";
-// Hidden name, so the pack listers skip it.
-constexpr const char* kFetchTmp = "/packs/.fetch.tmp";
 constexpr uint16_t kHttpTimeoutMs = 8000;            // per read (HTTPClient)
 constexpr int32_t kTlsConnectTimeoutMs = 10000;      // TCP connect + TLS socket timeout
 constexpr unsigned long kTlsHandshakeTimeoutS = 15;  // whole handshake
@@ -176,6 +174,9 @@ FetchResult fetchPackFile(const PackFetchRequest& req) {
     }
     const String dst = String(kPacksDir) + "/" + req.fileName;
     LittleFS.mkdir(kPacksDir);
+    // Discard a temp left by an interrupted run before measuring the space, or
+    // its size would count against this download.
+    LittleFS.remove(kFetchTmp);
 
     // Space first, before any network traffic: the reserve must stay free, and
     // a catalog size that cannot fit is refused without downloading it.
@@ -221,7 +222,6 @@ FetchResult fetchPackFile(const PackFetchRequest& req) {
     }
     const size_t total = req.expectBytes ? req.expectBytes : (remaining > 0 ? remaining : 0);
 
-    LittleFS.remove(kFetchTmp);  // discard a temp left by an earlier run
     File f = LittleFS.open(kFetchTmp, "w");
     if (!f) {
         res.status = FetchStatus::WriteFailed;

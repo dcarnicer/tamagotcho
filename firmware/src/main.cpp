@@ -2500,6 +2500,11 @@ void setup() {
         showError(ui().errNoFilesystem, ui().errNoFilesystemHint);
         halt();
     }
+    // A power cut in the middle of a download or an upload leaves its temp
+    // behind (up to 5 MB), which would count against every later free-space
+    // check. Nothing can be in flight at boot.
+    for (const char* tmp : {tgc::kFetchTmp, tgc::WifiPortal::kUploadTmp})
+        if (LittleFS.remove(tmp)) Serial.printf("fs: removed stale %s\n", tmp);
     listPacks(gPacks);
 
     // No packs yet: do not halt. Start the Wi-Fi portal so a pack can be

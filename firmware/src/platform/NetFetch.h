@@ -24,6 +24,11 @@ namespace tgc {
 // fill it completely (the SRS state file and the temps need room too).
 constexpr size_t kPackFsReserveBytes = 96u * 1024u;
 
+// Where every pack download streams before it is checked and renamed. Hidden
+// name, so the pack listers skip it. One left by a power cut mid-download is
+// removed at boot (setup()) and before the next download.
+constexpr const char* kFetchTmp = "/packs/.fetch.tmp";
+
 enum class FetchStatus : uint8_t {
     Ok,
     BadUrl,        // not http(s)://, https:// where it is not allowed, or no file name

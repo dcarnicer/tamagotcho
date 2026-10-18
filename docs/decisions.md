@@ -1121,3 +1121,11 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   `/packs/x..tgc`, which the portal's delete refuses (it rejects any ".."), so
   the deck could never be removed again. `catalogNameIsSafe()` now refuses a
   trailing '.' too (native test).
+- **Stale download/upload temps are removed.** `fetchPackFile()` measured the
+  free space *before* removing a `/packs/.fetch.tmp` left by an interrupted
+  download, and nothing else removed it, so a power cut mid-download kept up to
+  5 MB occupied and every later download or upload failed "not enough space".
+  `setup()` now removes `/packs/.fetch.tmp` and `/packs/.upload.tmp` right after
+  mounting LittleFS (nothing can be in flight at boot), and the download and the
+  portal upload discard their temp before measuring the space. `kFetchTmp`
+  moved to `NetFetch.h` for that.
