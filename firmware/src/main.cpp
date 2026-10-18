@@ -121,7 +121,7 @@ struct UiStrings {
     const char* tzSaved;          // Date submenu note after a choice
     // The loaded deck's caption in the deck list (Font0 under the row, from
     // its left padding: at most 19 characters in the 135 px portrait).
-    const char* deckCountsFmt;  // due, new
+    const char* deckCountsFmt;  // cards, due
     const char* statsTitle;
     // Error screens (showError()): what happened as a label-face title (two
     // lines at most), then one action in a wrapped caption. End-user words.
@@ -335,6 +335,7 @@ struct UiStrings {
     const char* netListFmt;  // %s = home network, %u = decks
     const char* netOnDevice;
     const char* hintStop;    // hint bar: the side button stops the portal
+    const char* deckCardsFmt;  // the deck list's caption of a deck not loaded: %u cards
 };
 
 const UiStrings kUiEn = {
@@ -348,7 +349,7 @@ const UiStrings kUiEn = {
     "No network: set it by hand", "No network time: set it by hand",
     {"Date", "Zone"}, "none", "TIME ZONE", "From phone", "%s, summer %s",
     "open the web portal", "Time zone saved",
-    "%u due · %u new",
+    "%u kanji · %u due",
     "STATS",
     "Storage damaged", "Hold the front button to erase it. Decks and progress are lost.",
     "Preparing storage...", "First start: this takes a few seconds.",
@@ -418,6 +419,7 @@ const UiStrings kUiEn = {
     "Choose another deck in Settings > Decks.",
     "erase", "settings",
     "%s · %u decks", "on device", "stop",
+    "%u kanji",
 };
 
 const UiStrings kUiEs = {
@@ -431,7 +433,7 @@ const UiStrings kUiEs = {
     "Sin red: ajústala a mano", "Sin hora de red: ajústala a mano",
     {"Fecha", "Zona"}, "ninguna", "ZONA HORARIA", "Del móvil", "%s, verano %s",
     "abre el portal web", "Zona horaria guardada",
-    "%u hoy · %u nuevas",
+    "%u kanji · %u hoy",
     "PROGRESO",
     "Memoria dañada", "Mantén el botón frontal para borrarla. Se pierden mazos y progreso.",
     "Preparando memoria...", "Primer arranque: tarda unos segundos.",
@@ -502,6 +504,7 @@ const UiStrings kUiEs = {
     "Elige otro mazo en Ajustes > Mazos.",
     "borrar", "ajustes",
     "%s · %u mazos", "en el equipo", "parar",
+    "%u kanji",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -683,7 +686,7 @@ std::vector<tgc::DeckState> gCatalogState;  // per gCatalog entry
 int gNetSel = 0;
 bool gNetBusy = false;       // a download is running (footer shows the progress)
 int gNetPct = -1;            // last drawn download percentage
-char gNetDeck[48] = "";      // the deck being downloaded (the portal screen shows it)
+char gNetDeck[72] = "";      // the title of the deck being downloaded (the portal screen shows it)
 uint32_t gNetActivityAt = 0; // millis() of the last network progress (idle timers)
 uint32_t gNetInputAt = 0;    // last button poll during a blocking download
 char gNetErrTitle[48] = "";
@@ -813,15 +816,10 @@ const char* gradeName(tgc::Grade g) {
     return "?";
 }
 
-// The loaded deck's counts (ui/DeckSummary.h): one pass over the card table.
+// The loaded deck's counts (ui/DeckSummary.h): one pass over the card table,
+// for the boot log, the settings summary, the deck list, the statistics and
+// the done screen.
 tgc::DeckSummary deckCounts() { return tgc::deckSummary(*gPack, gSrs); }
-
-// The current pack's cards that are due or unseen, for the boot log.
-void packDueNew(uint32_t* due, uint32_t* fresh) {
-    const tgc::DeckSummary s = deckCounts();
-    if (due) *due = s.due;
-    if (fresh) *fresh = s.fresh;
-}
 
 // The "study more" override in force. It belongs to the day it was granted, so
 // any change of the day index (uptime rollover, sleep time, a manual date, a
@@ -1354,21 +1352,45 @@ void backToMenu() {
     drawScreen();
 }
 
-// Deck list (opened from "Decks"): one row per pack, the file name and the
-// loaded pack's due/new counts (under it in portrait, right of it in
-// landscape); a radio marks the loaded pack. Hold loads the focused pack; the
-// side button returns to the settings home. The last row, "Get decks", opens
-// the download screen (drawGetDecks).
+// Deck list (opened from "Decks"; docs/ux-refresh.md, decks mockup): one row
+// per pack with the deck name from its header, a language pill and "79 kanji"
+// ("79 kanji · 12 due" for the loaded one, whose radio is on); the caption
+// goes under the name in portrait, right of it in landscape. Hold loads the
+// focused pack; the side button returns to the settings home. The last row,
+// "Get decks", opens the download screen (drawGetDecks).
 tgc::ListView gDeckList;
+
+// The header of each pack in gPacks (peekPackInfo(): two small reads a file),
+// read when the deck list opens and again whenever /packs changed under it.
+std::vector<tgc::PackInfo> gPackInfo;
+std::vector<String> gPackInfoFor;  // the gPacks the infos were read for
+
+void refreshPackInfo() {
+    if (gPackInfoFor == gPacks) return;
+    gPackInfo.assign(gPacks.size(), tgc::PackInfo{});
+    for (size_t i = 0; i < gPacks.size(); ++i) {
+        tgc::FsPackSource src(LittleFS.open(gPacks[i], "r"));
+        if (src.ok()) tgc::peekPackInfo(src, &gPackInfo[i]);
+    }
+    gPackInfoFor = gPacks;
+}
+
+// A pack's file name without the folder and ".tgc", for a deck whose header
+// gives no name.
+String packFileStem(const String& path) {
+    String s = path;
+    const int slash = s.lastIndexOf('/');
+    if (slash >= 0) s = s.substring(slash + 1);
+    if (s.endsWith(".tgc")) s = s.substring(0, s.length() - 4);
+    return s;
+}
 
 void drawDecks() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     menuHeader(d, ui().decksTitle);
-    uint32_t due = 0, fresh = 0;
-    packDueNew(&due, &fresh);  // only shown on the loaded pack's row
-    char counts[48];
-    snprintf(counts, sizeof counts, ui().deckCountsFmt, (unsigned)due, (unsigned)fresh);
+    refreshPackInfo();
+    const uint32_t due = deckCounts().due;  // only shown on the loaded pack's row
     const int packs = static_cast<int>(gPacks.size());
     gDeckList.setCount(packs + 1);  // + "Get decks"
     const bool wide = wideRows();
@@ -1376,7 +1398,8 @@ void drawDecks() {
     wg::drawList(d, gDeckList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
         wg::Row row;
         row.focused = f;
-        String label;
+        String stem;
+        char caption[48], lang[8];
         if (i == packs) {
             row.label = ui().getDecksRow;
             row.icon = &tgc::kIconDown;
@@ -1384,17 +1407,32 @@ void drawDecks() {
             (wide ? row.value : row.caption) = ui().getDecksCaption;
             row.labelColor = tgc::theme::kAccentHi;
         } else {
-            label = gPacks[i];
-            const int slash = label.lastIndexOf('/');
-            if (slash >= 0) label = label.substring(slash + 1);
-            if (label.endsWith(".tgc")) label = label.substring(0, label.length() - 4);
+            const tgc::PackInfo& info = gPackInfo[i];
             const bool loaded = gPacks[i] == gCurrentPack;
-            row.label = label.c_str();
-            row.radio = loaded ? wg::Radio::On : wg::Radio::Off;
-            if (wide)
-                row.value = loaded ? counts : nullptr;
+            if (info.name[0]) {
+                row.label = info.name;
+            } else {
+                stem = packFileStem(gPacks[i]);
+                row.label = stem.c_str();
+            }
+            snprintf(lang, sizeof lang, "%s", info.lang);
+            for (char* p = lang; *p; ++p)
+                if (*p >= 'a' && *p <= 'z') *p = static_cast<char>(*p - 'a' + 'A');
+            if (lang[0]) row.tag = lang;
+            if (loaded)
+                snprintf(caption, sizeof caption, ui().deckCountsFmt, (unsigned)info.cards,
+                         (unsigned)due);
+            else if (info.cards)
+                snprintf(caption, sizeof caption, ui().deckCardsFmt, (unsigned)info.cards);
             else
-                row.caption = loaded ? counts : "";
+                caption[0] = 0;
+            row.radio = loaded ? wg::Radio::On : wg::Radio::Off;
+            if (wide) {
+                row.value = caption;
+                row.keepLabel = true;
+            } else {
+                row.caption = caption;
+            }
         }
         wg::drawRow(d, gRender, x, y, w, h, row);
     });
@@ -3989,7 +4027,7 @@ tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e) {
         gPack->close();
         gSource.reset();
     }
-    snprintf(gNetDeck, sizeof gNetDeck, "%s", e.name.c_str());
+    snprintf(gNetDeck, sizeof gNetDeck, "%s", tgc::catalogDisplayName(e).c_str());
     gNetBusy = true;
     gNetPct = -1;
     gNetInputAt = millis();
@@ -4042,7 +4080,7 @@ void netDownload(int i) {
     netRefreshStates();
     char buf[48];
     if (r.status == tgc::FetchStatus::Ok) {
-        snprintf(buf, sizeof buf, ui().netSavedFmt, e.name.c_str());
+        snprintf(buf, sizeof buf, ui().netSavedFmt, tgc::catalogDisplayName(e).c_str());
         netNote(buf, tgc::theme::kOkHi);
     } else if (r.status == tgc::FetchStatus::NoSpace && updating) {
         // The old copy stays until the new one validated, so an update needs
@@ -4675,14 +4713,13 @@ void setup() {
     applySleepTime();
     gExtraNew = 0;
     gQueue.rebuild(*gPack, gSrs, gRng);  // loadPack rebuilt with an empty store
-    uint32_t due = 0, fresh = 0;
-    packDueNew(&due, &fresh);
+    const tgc::DeckSummary counts = deckCounts();
 
     char today[16];
     formatDate(gSrs.today(), today, sizeof today);
     Serial.printf("srs: day %u (%s), records %u, due %u, new %u%s, powered_off=%d\n",
-                  (unsigned)gSrs.today(), today, (unsigned)gSrs.count(), (unsigned)due,
-                  (unsigned)fresh, srsLoaded ? "" : " (new)", gPoweredOff ? 1 : 0);
+                  (unsigned)gSrs.today(), today, (unsigned)gSrs.count(), (unsigned)counts.due,
+                  (unsigned)counts.fresh, srsLoaded ? "" : " (new)", gPoweredOff ? 1 : 0);
 
     // A wake from a sleep taken while the question was open asks it again.
     const bool datePending = tgc::board::wokeFromSleep() && gDatePending;
