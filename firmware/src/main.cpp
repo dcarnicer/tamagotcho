@@ -11,9 +11,12 @@
 #include <vector>
 
 #include "board/Board.h"
+#include "catalog/Catalog.h"
 #include "pack/PackReader.h"
 #include "platform/FsPackSource.h"
 #include "platform/FsSrsFile.h"
+#include "platform/HomeWifi.h"
+#include "platform/NetFetch.h"
 #include "platform/WifiPortal.h"
 #include "quiz/Quiz.h"
 #include "render/Renderer.h"
@@ -115,6 +118,38 @@ struct UiStrings {
     const char* wifiTitle;
     const char* wifiHint;
     const char* brightTitle;
+    // "Get decks" (last row of the deck list): download decks from the release
+    // catalog over the home Wi-Fi. Drawn with the 1x built-in font in the list
+    // footer and on the error screen, so keep each line short.
+    const char* getDecksRow;
+    const char* getDecksTitle;
+    const char* netConnecting;
+    const char* netCatalog;
+    const char* netDownloadingFmt;  // %u = percent
+    const char* netHoldDownload;
+    const char* netHoldUpdate;
+    const char* netHoldStudy;
+    const char* netHoldRetry;
+    const char* netSavedFmt;  // %s = deck name
+    const char* netCardsFmt;  // %s = language, %u = cards, %s = size
+    const char* netEmpty;
+    const char* netNoWifi;
+    const char* netNoWifiHint;
+    const char* netNotFound;
+    const char* netAuthFailed;
+    const char* netNoConnect;
+    const char* netNoServer;
+    const char* netTls;
+    const char* netHttpFmt;  // %d = HTTP status
+    const char* netNotPublished;
+    const char* netBadCatalog;
+    const char* netNewerCatalog;
+    const char* netCorrupt;
+    const char* netNoSpace;
+    const char* netInvalid;
+    const char* netFailed;
+    const char* netCancelled;
+    const char* wifiGetDecksHint;  // boot-time upload screen with a saved home Wi-Fi
 };
 
 const UiStrings kUiEn = {
@@ -138,6 +173,15 @@ const UiStrings kUiEn = {
     "LANGUAGE", {"Auto", "English", "Español"},
     "WI-FI", "Open the URL on your phone and upload a .tgc",
     "BRIGHTNESS",
+    "+ Get decks", "GET DECKS", "Connecting...", "Reading catalog...", "Downloading %u%%",
+    "hold: download", "hold: update", "hold: study", "hold: retry", "Saved %s", "%s, %u cards, %s",
+    "No decks in the catalog",
+    "No home Wi-Fi saved", "Settings > Wi-Fi: open 192.168.4.1 and save your network there",
+    "Network not found", "Wrong password?", "Could not connect", "Server unreachable",
+    "Secure connection failed", "Server error %d", "No catalog published at this URL yet",
+    "Bad catalog", "Newer catalog format: update the firmware", "Download corrupt",
+    "Not enough space", "Not a valid deck", "Download failed", "Cancelled",
+    "hold: get decks (home Wi-Fi)",
 };
 
 const UiStrings kUiEs = {
@@ -162,6 +206,16 @@ const UiStrings kUiEs = {
     "IDIOMA", {"Auto", "English", "Español"},
     "WI-FI", "Abre la URL en el móvil y sube un .tgc",
     "BRILLO",
+    "+ Descargar", "DESCARGAR", "Conectando...", "Leyendo catálogo...", "Descargando %u%%",
+    "larga: descargar", "larga: actualizar", "larga: estudiar", "larga: reintentar",
+    "Guardado %s", "%s %u tarjetas %s",
+    "El catálogo está vacío",
+    "Sin Wi-Fi de casa", "Ajustes > Wi-Fi: abre 192.168.4.1 y guarda allí tu red",
+    "Red no encontrada", "¿Contraseña incorrecta?", "No se pudo conectar", "Servidor inaccesible",
+    "Fallo de conexión segura", "Error del servidor %d", "Aún no hay catálogo en esta URL",
+    "Catálogo no válido", "Catálogo más nuevo: actualiza el firmware", "Descarga dañada",
+    "No hay espacio", "Mazo no válido", "Descarga fallida", "Cancelado",
+    "larga: bajar mazos (Wi-Fi de casa)",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -211,7 +265,7 @@ uint32_t gLastAnswerAt = 0;
 int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
 
-enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi };
+enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks };
 // Screen::Choice is shared by the row pickers (see openChoice()).
 enum class Choice { NewPerDay, SlowMs, Orientation, UiLang, Brightness };
 Screen gScreen = Screen::Quiz;
@@ -237,6 +291,38 @@ Preferences gPrefs;
 // leave for the settings home.
 tgc::WifiPortal gPortal;
 bool gWifiBootUpload = false;
+
+// "Get decks" (roadmap phase 4): the last row of the deck list. Joins the saved
+// home Wi-Fi on demand (HomeWifi), reads the release catalog over HTTPS and
+// downloads the chosen deck into /packs (NetFetch). The radio is on only while
+// this screen is, at kCpuWifiMhz. Connecting is polled from loop() so the side
+// button can cancel; the catalog read and the download block, the latter with a
+// progress callback that redraws, keeps the idle timers away and lets the side
+// button cancel.
+enum class NetStep { Connecting, Catalog, List, Error };
+// A catalog deck compared with /packs: absent, present with the catalog's size,
+// or present with another size (an older or newer build).
+enum DeckState : uint8_t { kDeckNew, kDeckOnDevice, kDeckUpdate };
+tgc::HomeWifi gHome;
+NetStep gNetStep = NetStep::Connecting;
+bool gNetFromBoot = false;   // opened from the boot-time upload screen
+std::vector<tgc::CatalogEntry> gCatalog;
+std::vector<uint8_t> gCatalogState;  // DeckState per gCatalog entry
+int gNetSel = 0;
+bool gNetBusy = false;       // a download is running (footer shows the progress)
+int gNetPct = -1;            // last drawn download percentage
+uint32_t gNetActivityAt = 0; // millis() of the last network progress (idle timers)
+uint32_t gNetInputAt = 0;    // last button poll during a blocking download
+char gNetErrTitle[48] = "";
+char gNetErrDetail[96] = "";
+char gNetNote[48] = "";      // footer status line (cleared when the selection moves)
+uint16_t gNetNoteColor = 0;
+// The catalog is a few KB; anything larger is not a catalog.
+constexpr size_t kCatalogMaxBytes = 32u * 1024u;
+constexpr uint32_t kCatalogTimeoutMs = 30000;
+// TLS stalls are longer than on the local portal; a big pack may take minutes.
+constexpr uint32_t kNetIdleMs = 15000;
+constexpr uint32_t kNetDownloadMs = 10u * 60u * 1000u;
 
 // Power management. After kDimAfterMs without input the backlight dims; after
 // kSleepAfterMs (kWifiIdleMs while the portal is up and no HTTP request came
@@ -396,6 +482,7 @@ bool newQuestion() {
 }
 
 void drawScreen();  // dispatches to the active screen
+void drawGetDecks();
 void applyOrientation(bool landscape);
 void formatDate(uint16_t days, char* out, size_t n);
 
@@ -589,6 +676,7 @@ void drawMenu() {
 // Deck list (opened from "Mazos"): one row per pack; the loaded pack is marked
 // '*' and shows its due/new counts. Hold loads the highlighted pack; the side
 // button returns to the settings home. The date row lives in the settings home.
+// The last row, "+ Get decks", opens the download screen (drawGetDecks).
 void drawDecks() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
@@ -599,7 +687,7 @@ void drawDecks() {
     uint32_t due = 0, fresh = 0;
     packDueNew(&due, &fresh);  // only shown on the loaded pack's row
     const int top = 18;
-    const int rows = static_cast<int>(gPacks.size());
+    const int rows = static_cast<int>(gPacks.size()) + 1;  // + "Get decks"
     int rowH = 20;
     if (rows > 0) {
         const int fit = (H - top - 2) / rows;  // shrink so the list fits landscape
@@ -613,6 +701,10 @@ void drawDecks() {
         const uint16_t bg = sel ? kHighlight : kBlack;
         d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
         if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
+        if (i == rows - 1) {
+            smallText(d, ui().getDecksRow, 4, y + (rowH - 2 - 8) / 2, kYellow, bg);
+            break;
+        }
         String label = gPacks[i];
         const int slash = label.lastIndexOf('/');
         if (slash >= 0) label = label.substring(slash + 1);
@@ -850,16 +942,141 @@ void drawWifi() {
     char upLine[40];
     snprintf(upLine, sizeof upLine, "uploaded: %u", (unsigned)gPortal.uploadedPacks());
 
+    // On the boot-time upload screen a saved home Wi-Fi also offers Get decks.
+    const bool offerGetDecks = gWifiBootUpload && tgc::HomeWifi::hasCredentials();
     const char* lines[] = {gPortal.ssid(), gPortal.url(), ui().wifiHint, freeLine, upLine,
-                           gPortal.lastMessage()};
-    constexpr int kN = 6;
+                           gPortal.lastMessage(), ui().wifiGetDecksHint};
+    const int kN = offerGetDecks ? 7 : 6;
     const int top = headerH + 4;
     int step = (H - top - 2) / kN;
     if (step > 22) step = 22;
     if (step < 10) step = 10;
     for (int i = 0; i < kN; ++i)
         gRender.drawCentred(d, lines[i], 2, top + i * step, W - 4, step - 2, 2,
-                            i == 1 ? kYellow : kWhite, kBlack, tgc::Renderer::kTextBuiltinSmall);
+                            i == 1 ? kYellow : (i == 6 ? kGreen : kWhite), kBlack,
+                            tgc::Renderer::kTextBuiltinSmall);
+    present();
+}
+
+// "704 KB" / "1.2 MB", or "704K" / "1.2M" when `compact`.
+void formatBytes(uint32_t bytes, char* out, size_t n, bool compact) {
+    if (bytes >= 1024u * 1024u) {
+        const unsigned tenths = static_cast<unsigned>(bytes / (1024u * 1024u / 10u));
+        snprintf(out, n, compact ? "%u.%uM" : "%u.%u MB", tenths / 10u, tenths % 10u);
+    } else {
+        snprintf(out, n, compact ? "%uK" : "%u KB", (unsigned)((bytes + 1023u) / 1024u));
+    }
+}
+
+// "Get decks" screen. Connecting / reading: a centred status and the network
+// name. List: one row per catalog deck ('+' new, '=' already here, '~' here
+// with another size), scrolled to keep the selection visible, and a two-line
+// footer (language, cards and size of the selection, or a status note, then the
+// hold hint; a progress bar while downloading). Error: a title and a wrapped
+// detail. Only the built-in font is used, so it works before any pack is open.
+void drawGetDecks() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, ui().getDecksTitle, 3, 3, kWhite, kGrey);
+    drawBackHint(d);
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+
+    if (gNetStep == NetStep::Connecting || gNetStep == NetStep::Catalog) {
+        const char* line = gNetStep == NetStep::Connecting ? ui().netConnecting : ui().netCatalog;
+        gRender.drawCentred(d, line, 2, H / 2 - 22, W - 4, 18, 1, kYellow, kBlack,
+                            labelFont(line, 18, 16, W - 8));
+        gRender.drawCentred(d, gHome.ssid(), 2, H / 2 + 2, W - 4, 20, 2, kWhite, kBlack, kSmall);
+        present();
+        return;
+    }
+    if (gNetStep == NetStep::Error) {
+        const int titleH = 36;
+        gRender.drawCentred(d, gNetErrTitle, 2, 20, W - 4, titleH, 2, kYellow, kBlack,
+                            labelFont(gNetErrTitle, titleH, 16, W - 8));
+        gRender.drawCentred(d, gNetErrDetail, 2, 20 + titleH + 4, W - 4, H - 20 - titleH - 20, 6,
+                            kWhite, kBlack, kSmall);
+        gRender.drawCentred(d, ui().netHoldRetry, 2, H - 12, W - 4, 10, 1, kWhite, kBlack, kSmall);
+        present();
+        return;
+    }
+
+    const int footerH = 22;
+    const int footY = H - footerH;
+    const int n = static_cast<int>(gCatalog.size());
+    if (n == 0) {
+        gRender.drawCentred(d, ui().netEmpty, 2, 20, W - 4, footY - 22, 3, kWhite, kBlack, kSmall);
+    } else {
+        const int top = 18;
+        const int rowH = H >= 200 ? 18 : 15;
+        int visible = (footY - 2 - top) / rowH;
+        if (visible < 1) visible = 1;
+        const int first = gNetSel >= visible ? gNetSel - visible + 1 : 0;
+        for (int i = first; i < n && i < first + visible; ++i) {
+            const int y = top + (i - first) * rowH;
+            const bool sel = i == gNetSel;
+            const uint16_t bg = sel ? kHighlight : kBlack;
+            d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
+            if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
+            const tgc::CatalogEntry& e = gCatalog[i];
+            const uint8_t st = gCatalogState[i];
+            const uint16_t fg = st == kDeckOnDevice ? kGreen : (st == kDeckUpdate ? kYellow : kWhite);
+            const int ty = y + (rowH - 2 - 8) / 2;
+            // Right column "en 704K"; when the name would not fit next to it
+            // (the 135 px portrait), only the size (the footer has the language).
+            const int nameX = 13;
+            String name = e.name.c_str();
+            char right[24], size[12];
+            formatBytes(e.bytes, size, sizeof size, true);
+            snprintf(right, sizeof right, "%s %s", e.lang.c_str(), size);
+            int maxW = W - 4 - gRender.textWidth(right, kSmall) - 6 - nameX;
+            if (gRender.textWidth(name.c_str(), kSmall) > maxW) {
+                snprintf(right, sizeof right, "%s", size);
+                maxW = W - 4 - gRender.textWidth(right, kSmall) - 6 - nameX;
+            }
+            smallText(d, right, W - 4, ty, kWhite, bg, lgfx::top_right);
+            smallText(d, st == kDeckOnDevice ? "=" : (st == kDeckUpdate ? "~" : "+"), 4, ty, fg, bg);
+            // The name gets what the size column leaves, cut with ".." if needed.
+            if (gRender.textWidth(name.c_str(), kSmall) > maxW) {
+                while (name.length() > 1 && gRender.textWidth((name + "..").c_str(), kSmall) > maxW)
+                    name.remove(name.length() - 1);
+                name += "..";
+            }
+            smallText(d, name.c_str(), nameX, ty, fg, bg);
+        }
+    }
+
+    // Footer: what the selection is (or a status note), then what a hold does.
+    char line1[64] = "";
+    uint16_t c1 = kWhite;
+    const char* line2 = "";
+    if (gNetBusy) {
+        snprintf(line1, sizeof line1, ui().netDownloadingFmt, (unsigned)(gNetPct < 0 ? 0 : gNetPct));
+        c1 = kYellow;
+    } else if (gNetNote[0]) {
+        snprintf(line1, sizeof line1, "%s", gNetNote);
+        c1 = gNetNoteColor;
+    } else if (n > 0) {
+        const tgc::CatalogEntry& e = gCatalog[gNetSel];
+        char size[16];
+        formatBytes(e.bytes, size, sizeof size, false);
+        snprintf(line1, sizeof line1, ui().netCardsFmt, e.lang.empty() ? "?" : e.lang.c_str(),
+                 (unsigned)e.cards, size);
+    }
+    if (!gNetBusy && n > 0) {
+        const uint8_t st = gCatalogState[gNetSel];
+        line2 = st == kDeckOnDevice ? ui().netHoldStudy
+                                    : (st == kDeckUpdate ? ui().netHoldUpdate : ui().netHoldDownload);
+    }
+    gRender.drawCentred(d, line1, 2, footY + 1, W - 4, 10, 1, c1, kBlack, kSmall);
+    if (gNetBusy) {
+        const int bw = W - 8;
+        d.drawRect(4, footY + 12, bw, 8, kWhite);
+        const int fill = gNetPct > 0 ? (bw - 2) * gNetPct / 100 : 0;
+        if (fill > 0) d.fillRect(5, footY + 13, fill, 6, kGreen);
+    } else {
+        gRender.drawCentred(d, line2, 2, footY + 11, W - 4, 10, 1, kWhite, kBlack, kSmall);
+    }
     present();
 }
 
@@ -1076,6 +1293,7 @@ void drawScreen() {
     else if (gScreen == Screen::Stats) drawStats();
     else if (gScreen == Screen::Detail) drawDetail();
     else if (gScreen == Screen::Wifi) drawWifi();
+    else if (gScreen == Screen::GetDecks) drawGetDecks();
     else drawQuiz();
 }
 
@@ -1388,6 +1606,304 @@ void selectPack() {
     drawScreen();
 }
 
+// --- Get decks (roadmap phase 4) -------------------------------------------
+
+// Radio off and the CPU back to its normal clock. Safe in any state.
+void netRadioOff() {
+    const bool wasOn = gHome.state() != tgc::HomeWifi::State::Off;
+    gHome.end();
+    if (wasOn) setCpuFrequencyMhz(kCpuMhz);
+}
+
+void netError(const char* title, const char* detail) {
+    netRadioOff();
+    gNetStep = NetStep::Error;
+    snprintf(gNetErrTitle, sizeof gNetErrTitle, "%s", title);
+    snprintf(gNetErrDetail, sizeof gNetErrDetail, "%s", detail ? detail : "");
+    QLOG("N error: %s | %s\n", title, gNetErrDetail);
+}
+
+void netNote(const char* text, uint16_t color) {
+    snprintf(gNetNote, sizeof gNetNote, "%s", text);
+    gNetNoteColor = color;
+}
+
+String catalogPath(const tgc::CatalogEntry& e) { return String("/packs/") + e.name.c_str() + ".tgc"; }
+
+// Compares the catalog with /packs (existence and size).
+void netRefreshStates() {
+    listPacks(gPacks);
+    gCatalogState.assign(gCatalog.size(), kDeckNew);
+    for (size_t i = 0; i < gCatalog.size(); ++i) {
+        const String path = catalogPath(gCatalog[i]);
+        if (!LittleFS.exists(path)) continue;
+        File f = LittleFS.open(path, "r");
+        if (!f) continue;
+        gCatalogState[i] = f.size() == gCatalog[i].bytes ? kDeckOnDevice : kDeckUpdate;
+        f.close();
+    }
+}
+
+// Opens the Get decks screen and starts joining the home Wi-Fi. `fromBoot`: from
+// the boot-time upload screen (whose portal the caller already stopped).
+void openGetDecks(bool fromBoot) {
+    gNetFromBoot = fromBoot;
+    gScreen = Screen::GetDecks;
+    gCatalog.clear();
+    gCatalogState.clear();
+    gNetSel = 0;
+    gNetBusy = false;
+    gNetNote[0] = 0;
+    gNetActivityAt = millis();
+    if (!tgc::HomeWifi::hasCredentials()) {
+        netError(ui().netNoWifi, ui().netNoWifiHint);
+        drawScreen();
+        return;
+    }
+    setCpuFrequencyMhz(kCpuWifiMhz);
+    if (!gHome.begin()) {
+        netError(ui().netNoConnect, gHome.ssid());
+        drawScreen();
+        return;
+    }
+    gNetStep = NetStep::Connecting;
+    QLOG("N get decks: joining %s\n", gHome.ssid());
+    drawScreen();
+}
+
+// Leaves the screen with the radio off: back to the deck list, or -- when it was
+// opened from the boot-time upload screen -- into the quiz if a deck is now
+// loaded, else back to that screen.
+void closeGetDecks() {
+    netRadioOff();
+    gCatalog.clear();
+    gCatalogState.clear();
+    QLOG("N get decks: closed\n");
+    if (gNetFromBoot) {
+        gNetFromBoot = false;
+        if (gPack->isOpen()) {
+            gWifiBootUpload = false;
+            startQuizFromPortal();
+        } else {
+            openWifi();
+        }
+        return;
+    }
+    listPacks(gPacks);
+    openDecks();
+}
+
+// Connected: read and parse the catalog (blocking), then show the list.
+void netLoadCatalog() {
+    const String url = tgc::HomeWifi::catalogUrl();
+    std::string text;
+    const tgc::FetchResult r = tgc::fetchText(url, kCatalogMaxBytes, kCatalogTimeoutMs, &text);
+    gNetActivityAt = millis();
+    gSwallowInput = true;  // presses made while blocked must not act now
+    Serial.printf("[net] catalog %s: %s (http %d, tls %d, %u bytes)\n", url.c_str(),
+                  tgc::fetchStatusString(r.status), r.httpCode, r.tlsError, (unsigned)r.bytes);
+    char detail[96];
+    switch (r.status) {
+        case tgc::FetchStatus::Ok:
+            break;
+        case tgc::FetchStatus::Connect:
+            netError(ui().netNoServer, url.c_str());
+            return;
+        case tgc::FetchStatus::Tls:
+            snprintf(detail, sizeof detail, "mbedTLS -0x%04X  %s", (unsigned)(-r.tlsError), url.c_str());
+            netError(ui().netTls, detail);
+            return;
+        case tgc::FetchStatus::Http: {
+            // 404 on the default URL: no release with a catalog exists yet.
+            char title[40];
+            snprintf(title, sizeof title, ui().netHttpFmt, r.httpCode);
+            netError(title, r.httpCode == 404 ? ui().netNotPublished : url.c_str());
+            return;
+        }
+        case tgc::FetchStatus::TooLarge:
+            netError(ui().netBadCatalog, url.c_str());
+            return;
+        default:
+            netError(ui().netFailed, url.c_str());
+            return;
+    }
+    tgc::CatalogParse parsed = tgc::parseCatalog(text.data(), text.size(), url.c_str());
+    Serial.printf("[net] catalog: %s, %u decks, %u skipped%s\n", tgc::catalogErrorString(parsed.error),
+                  (unsigned)parsed.entries.size(), (unsigned)parsed.skipped,
+                  parsed.truncated ? ", truncated" : "");
+    if (parsed.error != tgc::CatalogError::Ok) {
+        netError(ui().netBadCatalog, parsed.error == tgc::CatalogError::UnsupportedVersion
+                                         ? ui().netNewerCatalog
+                                         : url.c_str());
+        return;
+    }
+    gCatalog = std::move(parsed.entries);
+    netRefreshStates();
+    // Start on the first deck that is not here yet.
+    gNetSel = 0;
+    for (size_t i = 0; i < gCatalogState.size(); ++i)
+        if (gCatalogState[i] != kDeckOnDevice) {
+            gNetSel = static_cast<int>(i);
+            break;
+        }
+    gNetStep = NetStep::List;
+}
+
+// Download progress: redraw on a new percentage, keep the idle timers away and
+// let the side button cancel (its release is swallowed afterwards).
+bool netProgress(size_t done, size_t total, void*) {
+    const uint32_t now = millis();
+    gNetActivityAt = now;
+    if (now - gNetInputAt >= 50) {
+        gNetInputAt = now;
+        tgc::board::update();
+        if (tgc::board::isHeld(Button::Next)) return false;
+    }
+    const int pct = total ? static_cast<int>(static_cast<uint64_t>(done) * 100u / total) : 0;
+    if (pct != gNetPct) {
+        gNetPct = pct;
+        drawScreen();
+    }
+    return true;
+}
+
+const char* netDownloadError(const tgc::FetchResult& r, char* buf, size_t n) {
+    switch (r.status) {
+        case tgc::FetchStatus::Connect: return ui().netNoServer;
+        case tgc::FetchStatus::Tls: return ui().netTls;
+        case tgc::FetchStatus::Http:
+            snprintf(buf, n, ui().netHttpFmt, r.httpCode);
+            return buf;
+        case tgc::FetchStatus::NoSpace:
+        case tgc::FetchStatus::TooLarge: return ui().netNoSpace;
+        case tgc::FetchStatus::SizeMismatch:
+        case tgc::FetchStatus::HashMismatch: return ui().netCorrupt;
+        case tgc::FetchStatus::InvalidPack: return ui().netInvalid;
+        case tgc::FetchStatus::Cancelled: return ui().netCancelled;
+        default: return ui().netFailed;
+    }
+}
+
+// Downloads catalog deck `i` into /packs (atomic; size and SHA-256 checked),
+// then rescans /packs through the portal's path and marks the row.
+void netDownload(int i) {
+    const tgc::CatalogEntry& e = gCatalog[i];
+    const String path = catalogPath(e);
+    // Replacing the loaded deck: close it first so its file is not open while
+    // the new one is renamed over it; portalPacksChanged() reloads it below.
+    const bool replacingLive = gPack->isOpen() && path == gCurrentPack;
+    if (replacingLive) {
+        gRender.end();
+        gPack->close();
+        gSource.reset();
+    }
+    gNetBusy = true;
+    gNetPct = -1;
+    gNetNote[0] = 0;
+    gNetInputAt = millis();
+    drawScreen();
+
+    tgc::PackFetchRequest req;
+    req.url = e.url.c_str();
+    req.fileName = String(e.name.c_str()) + ".tgc";
+    req.allowHttps = true;
+    req.maxBytes = tgc::WifiPortal::kMaxPackBytes;
+    req.expectBytes = e.bytes;
+    req.expectSha256 = e.sha256;
+    req.idleTimeoutMs = kNetIdleMs;
+    req.totalTimeoutMs = kNetDownloadMs;
+    req.http10 = true;
+    req.progress = netProgress;
+    const uint32_t started = millis();
+    const tgc::FetchResult r = tgc::fetchPackFile(req);
+    gNetBusy = false;
+    gNetActivityAt = millis();
+    gSwallowInput = true;
+    Serial.printf("[net] get %s: %s (%u bytes in %u ms, http %d, tls %d)\n", req.fileName.c_str(),
+                  tgc::fetchStatusString(r.status), (unsigned)r.bytes,
+                  (unsigned)(millis() - started), r.httpCode, r.tlsError);
+
+    // Rescan /packs the portal's way; that also reopens the deck closed above, or
+    // loads the first one when none was open (the boot-time path).
+    const bool packOpen = gPack->isOpen();
+    if (r.packsChanged || !packOpen) portalPacksChanged();
+    // A deck that was (re)loaded invalidates the question the quiz was showing:
+    // prepare a fresh one for when the settings home's "Continue" returns there.
+    if (!packOpen && gPack->isOpen()) gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
+    netRefreshStates();
+    char buf[48];
+    if (r.status == tgc::FetchStatus::Ok) {
+        snprintf(buf, sizeof buf, ui().netSavedFmt, e.name.c_str());
+        netNote(buf, kGreen);
+    } else {
+        netNote(netDownloadError(r, buf, sizeof buf), kYellow);
+    }
+    drawScreen();
+}
+
+// Loads a deck that is already on the device and starts studying it.
+void netStudy(int i) {
+    const String path = catalogPath(gCatalog[i]);
+    if (!loadPack(path)) {
+        netNote(ui().netInvalid, kYellow);
+        drawScreen();
+        return;
+    }
+    gPrefs.putString("pack", path);
+    listPacks(gPacks);
+    netRadioOff();
+    gCatalog.clear();
+    gCatalogState.clear();
+    gNetFromBoot = false;
+    gWifiBootUpload = false;
+    startQuizFromPortal();
+}
+
+// Shows why joining the home Wi-Fi failed (the radio is already off).
+void netJoinFailed() {
+    using F = tgc::HomeWifi::Failure;
+    const F f = gHome.failure();
+    netError(f == F::NotFound ? ui().netNotFound
+                              : (f == F::AuthFailed ? ui().netAuthFailed : ui().netNoConnect),
+             gHome.ssid());
+}
+
+// loop() while on the Get decks screen.
+void getDecksLoop(int a, int b) {
+    if (b) {  // side button: back (or cancel the connection attempt)
+        closeGetDecks();
+        return;
+    }
+    if (gNetStep == NetStep::Connecting) {
+        const tgc::HomeWifi::State st = gHome.poll();
+        if (st == tgc::HomeWifi::State::Connected) {
+            gNetStep = NetStep::Catalog;
+            drawScreen();
+            netLoadCatalog();
+            drawScreen();
+        } else if (st == tgc::HomeWifi::State::Failed) {
+            netJoinFailed();
+            drawScreen();
+        }
+        return;
+    }
+    if (gNetStep == NetStep::Error) {
+        if (a == 2) openGetDecks(gNetFromBoot);  // retry from the start
+        return;
+    }
+    if (gNetStep != NetStep::List || gCatalog.empty()) return;
+    if (a == 1) {
+        gNetSel = (gNetSel + 1) % static_cast<int>(gCatalog.size());
+        gNetNote[0] = 0;
+        drawScreen();
+    } else if (a == 2) {
+        if (gCatalogState[gNetSel] == kDeckOnDevice)
+            netStudy(gNetSel);
+        else
+            netDownload(gNetSel);
+    }
+}
+
 // Tap/hold detection: 1 = tap (on release), 2 = hold (at the threshold).
 struct Key {
     bool down = false;
@@ -1440,6 +1956,10 @@ void goIdle() {
         setCpuFrequencyMhz(kCpuMhz);
         QLOG("W wifi: stopped (idle)\n");
     }
+    if (gHome.state() != tgc::HomeWifi::State::Off) {
+        netRadioOff();
+        QLOG("N home wifi: stopped (idle)\n");
+    }
     if (tgc::board::externalPower()) {
         tgc::board::setDisplayOn(false);
         gScreenOff = true;
@@ -1468,6 +1988,8 @@ void wakeScreen() {
         }
         if (gScreen == Screen::Wifi && !gPortal.active()) {
             openWifi();
+        } else if (gScreen == Screen::GetDecks && gNetStep != NetStep::Error && !gHome.active()) {
+            openGetDecks(gNetFromBoot);  // the idle timeout turned the radio off: join again
         } else {
             drawScreen();
         }
@@ -1494,6 +2016,10 @@ void powerTick(uint32_t now) {
     if (gPortal.active()) {
         const uint32_t http = now - gPortal.lastActivityMs();
         if (http < idle) idle = http;
+    }
+    if (gHome.active()) {  // a download or catalog read counts as activity
+        const uint32_t net = now - gNetActivityAt;
+        if (net < idle) idle = net;
     }
     if (!gDimmed && idle >= kDimAfterMs) {
         uint8_t dim = gBrightness / 4;
@@ -1715,10 +2241,13 @@ void loop() {
         if (b) closeMenu();  // side button backs out to the previous screen
     } else if (gScreen == Screen::Decks) {
         if (a == 1) {
-            if (!gPacks.empty()) gDeckSel = (gDeckSel + 1) % static_cast<int>(gPacks.size());
+            gDeckSel = (gDeckSel + 1) % (static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
             drawScreen();
         } else if (a == 2) {
-            selectPack();
+            if (gDeckSel == static_cast<int>(gPacks.size()))
+                openGetDecks(false);  // the "+ Get decks" row
+            else
+                selectPack();
         }
         if (b) {  // side button returns to the settings home
             gScreen = Screen::Menu;
@@ -1796,7 +2325,17 @@ void loop() {
         // On the boot-time upload screen, continue booting as soon as a pack has
         // been uploaded; otherwise the side button leaves for the settings home
         // (closeWifi itself ignores the button in the boot-time state).
-        if (!wifiUploadReadyToQuiz() && b) closeWifi();
+        if (!wifiUploadReadyToQuiz()) {
+            if (b) {
+                closeWifi();
+            } else if (a == 2 && gWifiBootUpload && tgc::HomeWifi::hasCredentials()) {
+                // Boot-time screen with a saved home Wi-Fi: fetch a deck instead.
+                gPortal.end();
+                openGetDecks(true);
+            }
+        }
+    } else if (gScreen == Screen::GetDecks) {
+        getDecksLoop(a, b);
     } else {
         if (a == 1) tapAction();
         else if (a == 2) holdAction(keyA.downAt);
