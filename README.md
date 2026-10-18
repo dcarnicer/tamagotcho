@@ -29,7 +29,8 @@ copy a pack onto the device without a computer running `uploadfs`:
 2. Join that access point from the phone (it is **open**, no password) and open
    `http://192.168.4.1` in a browser.
 3. Upload a `.tgc` with the file picker. The same page deletes a pack, downloads
-   one from a plain `http://` URL, and shows the SRS statistics; the counters
+   one from a plain `http://` URL, sends the device to **Get decks** once a
+   home Wi-Fi is saved (below), and shows the SRS statistics; the counters
    and the pack list are also available as JSON at `/api/stats`. Opening the
    page also sets the device's date from the phone's clock and time zone, so the
    review day rolls over at 04:00 local. Once the date has been set this way,
@@ -64,20 +65,28 @@ catalog by itself:
 
 1. Open the Wi-Fi portal as above and, on the `http://192.168.4.1` page, fill in
    **Home Wi-Fi** (network name -- nearby networks are suggested -- and
-   password; empty for an open network) and press **Save**. Stop the portal.
-2. On the device: hold the side button -> **Decks** -> the last row,
+   password; empty for an open network) and press **Save**. The page confirms
+   it and offers **Get decks now**: press it and the device stops the portal
+   and goes straight to step 3. The phone can go back to its own network; the
+   rest happens on the device screen.
+2. Later, without the phone: hold the side button -> **Decks** -> the last row,
    **+ Get decks** (**+ Descargar** in Spanish), and hold.
-3. It joins the home network, reads the catalog over HTTPS and lists the decks:
+3. It joins the home network, reads the catalog over HTTPS and lists the decks,
+   **those in the device's language first** (the Language setting, or the
+   loaded deck's language under Auto; the other languages follow):
    `+` not on the device yet, `=` already here, `~` here but a different size
    (another build). Tap moves, **hold downloads** (with a progress bar; the side
    button cancels), and a hold on a deck that is already here starts studying it.
-   The side button goes back.
+   The side button goes back (to the deck list; on a device without decks, to
+   the Wi-Fi upload screen).
 
 Notes and limits:
 
 - The radio is on **only while this screen is open**, and the device sleeps as
   usual when idle. A fresh device without packs also offers it on its boot
-  screen ("hold: get decks") once a home Wi-Fi is saved.
+  screen ("hold: get decks") once a home Wi-Fi is saved, besides the page's
+  **Get decks now**. A fresh device has no deck to take a language from, so
+  under Auto it lists the English decks first.
 - The home Wi-Fi also keeps the **date** right: Get decks sets it from the
   network time (NTP) once connected, and after a power-off the date question
   tries the same in the background ("Syncing via <network>...") and goes away
