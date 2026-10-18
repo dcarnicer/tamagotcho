@@ -148,12 +148,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       release `decks-v<pack format>` (never "latest", replaced in place), which
       is the firmware's default Get decks catalog; firmware releases no longer
       carry packs (docs/decisions.md, 2026-10-18 "Decks release").
-      Pending: **README photos**; hardware verification of the
-      merged-image/ESP Web Tools path (written, **not flashed on a real
-      device**); and the **first decks run**, which waits on pack format v2
-      (in v1 the N1 deck is 6.8 MB and the Jōyō deck 11.6 MB, over the device's
-      5 MiB per-pack cap) and on the maintainer's decision to publish (see
-      "Before publishing").
+      The **first decks run** published `decks-v2` on 2026-10-18 (12 packs,
+      105 KB to 3.0 MB in pack format v2; Get decks and the portal download them
+      on a real StickS3). Pending: **README photos**; hardware verification of
+      the merged-image/ESP Web Tools path (written, **not flashed on a real
+      device**); and the **first firmware release** (v0.1.0).
 
 ## Cross-cutting
 
@@ -210,17 +209,17 @@ Scope for now: **kanji only** (no vocabulary decks).
       not for sale under Creative Commons BY (credit the site), which may be
       included in our CC BY-SA packs with attribution. The site no longer
       resolves; the evidence is an archived copy (see docs/data-sources.md).
-- [~] Decide whether prebuilt packs are distributed (CC BY-SA 4.0 attribution in
-      README and on device). Progress: the mechanics are done. Packs built with
+- [x] Decide whether prebuilt packs are distributed (CC BY-SA 4.0 attribution in
+      README and on device). Decided and done: `decks-v2` was published on
+      2026-10-18 and is the device's default catalog. Packs built with
       KANJIDIC2/KanjiVG are licensed CC BY-SA; `.github/workflows/decks.yml`
       (manual dispatch only) builds the default set and publishes it, with the
       combined attribution in the notes, to the release `decks-v<pack format>`
       (`decks-v2`), which is never marked "latest" so firmware releases cannot
       hide it. The device's default Get decks catalog
       (`releases/download/decks-v2/catalog.txt` on `dcarnicer/tangocho`) answers
-      404 until that first run. Both former blockers are resolved (the JLPT
-      lists are CC BY, above; pack format v2 fits N1 and Jōyō), so running it
-      is now only the maintainer's call.
+      since that first run; the former blockers (the JLPT lists' licence, the
+      5 MiB cap in pack format v1) were resolved first.
 - [x] Attribution for redistributed data: README's "Releases" section,
       `docs/data-sources.md` and the release notes all carry the combined
       KANJIDIC2 / KanjiVG / Noto Sans JP credit. (Still open: an attribution line on
