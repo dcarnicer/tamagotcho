@@ -9,8 +9,10 @@ name: Decks
 #
 # Manual only: the packs redistribute CC BY-SA data (KANJIDIC2, KanjiVG), so
 # publishing them is a maintainer action. A run publishes the complete set it
-# built: `catalog.txt` lists exactly these packs, and `.tgc` files left in the
-# release by an earlier run that this run did not build are removed.
+# built: the catalog (`catalog-v2.txt`, named after the catalog format version,
+# not the pack format) lists exactly these packs, and `.tgc` files or catalogs
+# (e.g. the v1 `catalog.txt`) left in the release by an earlier run that this
+# run did not write are removed.
 on:
   workflow_dispatch:
     inputs:
@@ -48,6 +50,8 @@ jobs:
     outputs:
       tag: ${{ steps.check.outputs.tag }}
       version: ${{ steps.check.outputs.version }}
+      catalog: ${{ steps.catalog.outputs.catalog }}
+      catalog_json: ${{ steps.catalog.outputs.catalog_json }}
     defaults:
       run:
         working-directory: tools/pack-builder
@@ -167,8 +171,11 @@ jobs:
           echo "pack format v$version -> release decks-v$version"
 
       # The device lists decks in catalog order (its own language first), so the
-      # catalog follows the build order: per language N5 .. N1, then Joyo.
+      # catalog follows the build order: per language N5 .. N1, then Joyo. The
+      # file names come from the builder (`catalog-v<catalog format>.txt`/.json),
+      # the name the firmware's default catalog URL ends in.
       - name: Write the device catalog
+        id: catalog
         env:
           BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ steps.check.outputs.tag }}
           LEVELS: ${{ steps.inputs.outputs.levels }}
@@ -181,17 +188,26 @@ jobs:
             for n in $LEVELS; do order="$order n${n}-${lang}"; done
             if [ "$JOYO" = "true" ]; then order="$order joyo-${lang}"; fi
           done
+          names="$(uv run python -c \
+            'from tangocho_pack import catalog; print(catalog.FILE_NAME, catalog.JSON_FILE_NAME)')"
+          read -r catalog catalog_json <<< "$names"
+          case "$catalog $catalog_json" in
+            "catalog-v"[0-9]*".txt catalog-v"[0-9]*".json") ;;
+            *) echo "error: unexpected catalog file names: $names" >&2; exit 1 ;;
+          esac
           uv run tangocho-pack catalog out --base-url "$BASE_URL" --order "$order" \
-            --json out/catalog.json -o out/catalog.txt
-          cat out/catalog.txt
+            --json "out/$catalog_json" -o "out/$catalog"
+          cat "out/$catalog"
+          echo "catalog=$catalog" >> "$GITHUB_OUTPUT"
+          echo "catalog_json=$catalog_json" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
           name: decks
           path: |
             tools/pack-builder/out/*.tgc
-            tools/pack-builder/out/catalog.txt
-            tools/pack-builder/out/catalog.json
+            tools/pack-builder/out/${{ steps.catalog.outputs.catalog }}
+            tools/pack-builder/out/${{ steps.catalog.outputs.catalog_json }}
           if-no-files-found: error
 
   publish:
@@ -211,11 +227,15 @@ jobs:
         env:
           TAG: ${{ needs.build.outputs.tag }}
           VERSION: ${{ needs.build.outputs.version }}
+          CATALOG: ${{ needs.build.outputs.catalog }}
+          CATALOG_JSON: ${{ needs.build.outputs.catalog_json }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          url="https://github.com/${REPO}/releases/download/${TAG}/catalog.txt"
+          url="https://github.com/${REPO}/releases/download/${TAG}/${CATALOG}"
+          catalog_v="${CATALOG#catalog-}"   # catalog-v2.txt -> v2
+          catalog_v="${catalog_v%.txt}"
           {
           cat <<MD
           # Tangochō decks (pack format v${VERSION})
@@ -235,16 +255,19 @@ jobs:
           | file | deck | language | cards | size |
           |---|---|---|---:|---:|
           MD
-          # One row per catalog record (name, lang, cards, bytes, sha256, url),
-          # N5 first and the Jōyō deck last; LC_ALL=C keeps the decimal point.
+          # One row per catalog record (name, title, lang, cards, bytes, sha256,
+          # url), N5 first and the Jōyō deck last; the deck column is the
+          # record's title. LC_ALL=C keeps the decimal point.
           LC_ALL=C awk -F '\t' '
-            /^#/ || NF != 6 { next }
+            /^#/ || NF != 7 { next }
             {
-              deck = $1; key = 9
-              if ($1 ~ /^n[1-5]-/) { deck = "JLPT N" substr($1, 2, 1); key = 6 - substr($1, 2, 1) }
-              else if ($1 ~ /^joyo-/) { deck = "Jōyō (2,136 kanji), school order"; key = 6 }
-              printf "%d\t%s\t| `%s.tgc` | %s | %s | %s | %.1f MB |\n", key, $2, $1, deck, $2, $3, $4 / 1048576
-            }' dist/catalog.txt | LC_ALL=C sort -t "$(printf '\t')" -k1,1n -k2,2 | cut -f 3-
+              key = 9
+              if ($1 ~ /^n[1-5]-/) key = 6 - substr($1, 2, 1)
+              else if ($1 ~ /^joyo-/) key = 6
+              deck = ($2 == "") ? $1 : $2
+              gsub(/\|/, "\\|", deck)
+              printf "%d\t%s\t| `%s.tgc` | %s | %s | %s | %.1f MB |\n", key, $3, $1, deck, $3, $4, $5 / 1048576
+            }' "dist/$CATALOG" | LC_ALL=C sort -t "$(printf '\t')" -k1,1n -k2,2 | cut -f 3-
           cat <<MD
 
           JLPT decks introduce new kanji by school grade, then frequency; the Jōyō
@@ -255,12 +278,14 @@ jobs:
 
           - **Get decks:** on the device, Settings > Decks > **+ Get decks**, once a
             home Wi-Fi is saved on the portal page. Each download is checked against
-            the size and SHA-256 in \`catalog.txt\`.
+            the size and SHA-256 in \`${CATALOG}\`.
           - **By hand:** download a \`.tgc\` and upload it from the device's Wi-Fi
             portal page (Settings > Wi-Fi, \`http://192.168.4.1\`).
 
-          \`catalog.txt\` is the line-oriented catalog the device reads;
-          \`catalog.json\` is the same list for people. Built from ${SHA}.
+          \`${CATALOG}\` is the line-oriented catalog the device reads, with the
+          deck titles (the \`${catalog_v}\` in its name is the catalog format, the
+          one in the tag the pack format); \`${CATALOG_JSON}\` is the same list for
+          people. Built from ${SHA}.
           MD
           cat <<'MD'
 
@@ -282,13 +307,17 @@ jobs:
 
       # Packs first and the catalog last, so a device that reads the new
       # catalog finds the new packs. Then drop the packs an earlier run left
-      # behind that this run did not build (the new catalog no longer lists them).
+      # behind that this run did not build (the new catalog no longer lists them),
+      # and any other catalog file, such as the v1 `catalog.txt`/`catalog.json`:
+      # it would list stale sizes and digests for the rebuilt packs.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.build.outputs.tag }}
           VERSION: ${{ needs.build.outputs.version }}
+          CATALOG: ${{ needs.build.outputs.catalog }}
+          CATALOG_JSON: ${{ needs.build.outputs.catalog_json }}
         run: |
           set -euo pipefail
           title="Tangochō decks (pack format v${VERSION})"
@@ -297,11 +326,11 @@ jobs:
           packs=(*.tgc)
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${packs[@]}" --clobber
-            gh release upload "$TAG" catalog.txt catalog.json --clobber
+            gh release upload "$TAG" "$CATALOG" "$CATALOG_JSON" --clobber
             gh release edit "$TAG" --title "$title" --notes-file ../notes.md --latest=false
             gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r name; do
               case "$name" in
-                *.tgc)
+                *.tgc|catalog*.txt|catalog*.json)
                   if [ ! -f "$name" ]; then
                     echo "removing $name (not in this build)"
                     gh release delete-asset "$TAG" "$name" --yes
@@ -312,5 +341,5 @@ jobs:
           else
             gh release create "$TAG" --title "$title" --notes-file ../notes.md \
               --latest=false --target "$GITHUB_SHA" \
-              "${packs[@]}" catalog.txt catalog.json
+              "${packs[@]}" "$CATALOG" "$CATALOG_JSON"
           fi
