@@ -684,3 +684,146 @@ Short log of non-obvious choices. Newest last.
   `sticks3-dev` env turns it on.
 - The quiz header re-reads the battery every 30 s and redraws when it changed.
 - `docs/srs.md` §5 described a boot rule the code no longer had; rewritten.
+
+## 2026-10-18 – Home Wi-Fi: station mode on demand, credentials in NVS `net`
+
+- **Entered on the portal page, stored in NVS namespace `net`** (`ssid`,
+  `pass`, and `cat` for an optional catalog URL override), separate from the
+  app's `tangocho` namespace. The page has a "Home Wi-Fi" form (SSID with
+  suggestions from a scan, password, "forget") and a catalog URL field.
+- **The password is write-only.** It is never logged, never put in a page or in
+  `/api/stats`, and `HomeWifi` has no getter for it: the page shows only the
+  saved SSID. `WiFi.persistent(false)` keeps the driver from writing its own copy
+  into its NVS area. NVS is **not encrypted** (no flash encryption on this
+  device), so anyone holding it with a USB cable can read the flash -- the usual
+  trade-off for a stored Wi-Fi password. Because the portal's AP is open, anyone
+  in range while it runs can *replace* (not read) the home network or the catalog
+  URL; a pack fetched from a hostile catalog still has to pass the same checks as
+  an upload (size, SHA-256 from that catalog, magic, `PackReader` probe), so this
+  is the exposure the upload form already has.
+- **On demand, never left on.** `HomeWifi::begin()` joins only when the Get decks
+  screen opens; the join times out after 15 s with a reason from the driver's
+  disconnect event (`NO_AP_FOUND` -> "network not found"; `AUTH_FAIL`, 4-way or
+  handshake timeout, 802.1X, MIC -> "wrong password?"; else "could not
+  connect"). Leaving the screen, an error, or the idle timeout calls
+  `WiFi.disconnect(true)` + `WIFI_OFF`. The CPU runs at 240 MHz only while the
+  radio is up (the portal's rule). Download progress counts as activity for the
+  dim/sleep timers (as HTTP requests do for the portal); an idle list screen
+  still sleeps after 2 min, and a USB-powered panel that went dark rejoins on the
+  next press.
+- **SSID suggestions:** the portal scans once when it starts, in station mode
+  *before* the AP comes up (~1.5 s, 100 ms per channel), so no phone is
+  connected yet and the AP never shares the radio with a scan. Up to 12 names,
+  strongest first, go into a `<datalist>`.
+- **NTP helper only.** `HomeWifi::fetchUtcMs()` runs SNTP (`configTime`, UTC,
+  pool.ntp.org / time.google.com / time.cloudflare.com) until the first sync or
+  a timeout, stops SNTP again and refuses times before 2026-01-01. It is **not
+  wired into the SRS**: the wall-clock integration belongs with the separate
+  `applyWallClock()` change (roadmap phase 2, "real date from NTP").
+
+## 2026-10-18 – HTTPS for Get decks: embedded root CAs
+
+- **`WiFiClientSecure` + `HTTPClient`, redirects followed**
+  (`HTTPC_STRICT_FOLLOW_REDIRECTS`): `github.com/.../releases/latest/download/x`
+  answers 302 to `github.com/.../releases/download/<tag>/x`, which answers 302 to
+  `release-assets.githubusercontent.com` (signed, short-lived URL). Each hop is a
+  new handshake verified against the same roots. **No `setInsecure()`**
+  anywhere; plain `http://` still works (the portal's URL download, a LAN
+  catalog).
+- **Chains on 2026-10-18** (`openssl s_client -showcerts`): `github.com` ->
+  Sectigo DV E36 -> Sectigo Public Server Authentication Root E46, served
+  cross-signed by USERTrust ECC; `release-assets` / `objects` /
+  `raw.githubusercontent.com` -> Let's Encrypt YR1 -> ISRG Root YR, served
+  cross-signed by ISRG Root X1.
+- **The embedded set** (`firmware/src/platform/RootCerts.h`, 11 roots, 14.6 KB
+  of PEM, copied verbatim from Mozilla's root store via certifi 2026.07.22):
+
+  | root | key | expires | why |
+  |---|---|---|---|
+  | ISRG Root X1 | RSA 4096 | 2035-06-04 | today's anchor for the release-asset hosts |
+  | ISRG Root X2 | ECDSA P-384 | 2040-09-17 | Let's Encrypt ECDSA |
+  | USERTrust ECC Certification Authority | ECDSA P-384 | 2038-01-18 | today's anchor for github.com |
+  | USERTrust RSA Certification Authority | RSA 4096 | 2038-01-18 | Sectigo RSA |
+  | Sectigo Public Server Authentication Root E46 | ECDSA P-384 | 2046-03-21 | github.com once the cross-sign goes |
+  | Sectigo Public Server Authentication Root R46 | RSA 4096 | 2046-03-21 | Sectigo RSA, newer |
+  | DigiCert Global Root G2 | RSA 2048 | 2038-01-15 | earlier GitHub asset hosts, Azure |
+  | DigiCert Global Root G3 | ECDSA P-384 | 2038-01-15 | DigiCert ECC |
+  | GTS Root R1 | RSA 4096 | 2036-06-22 | Google, many Cloudflare sites |
+  | GTS Root R4 | ECDSA P-384 | 2036-06-22 | Cloudflare ECDSA |
+  | Amazon Root CA 1 | RSA 2048 | 2038-01-17 | S3 / CloudFront |
+
+  Checked with only these roots (`openssl s_client -CAfile roots.pem -no-CApath
+  -no-CAstore -verify_return_error`): github.com, release-assets / objects /
+  raw.githubusercontent.com, pages.github.com, www.cloudflare.com,
+  s3.amazonaws.com, gitlab.com, codeberg.org and storage.googleapis.com all
+  verify. A host under another CA needs its root added (below).
+- **No clock, no date check.** The device has no RTC and this mbedTLS build has
+  no `MBEDTLS_HAVE_TIME_DATE`, so certificate validity dates are not checked;
+  signatures, chain and host name are. A pack's integrity is anchored in the
+  catalog's SHA-256, and the catalog itself comes over this verified TLS.
+- **How to update the roots:** (1) look at the chains with `openssl s_client
+  -connect HOST:443 -servername HOST -showcerts`; (2) copy the root PEM blocks
+  verbatim from Mozilla's store (e.g. certifi's `cacert.pem`); (3) record
+  `openssl x509 -noout -subject -enddate -fingerprint -sha256` above each block
+  in `RootCerts.h` and in this table; (4) re-run the `-CAfile` check above.
+  Watch: Let's Encrypt's self-signed ISRG Root YR/YE (not in Mozilla's store yet)
+  once the X1 cross-sign stops; the USERTrust and DigiCert G2/G3 roots expire in
+  January 2038.
+- **Memory.** This mbedTLS build allocates from internal RAM only
+  (`CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC`): 16 KB in + 4 KB out record buffers plus
+  handshake state, and ~16 KB while the 11 roots are parsed (freed when the
+  handshake ends) -- roughly 40-60 KB of internal heap per connection, one at a
+  time. Static RAM is ~51 KB of 320 KB and the canvas and pack tables live in
+  PSRAM, so this fits; `[net] before/after TLS` lines log the free, largest and
+  minimum internal heap and the free PSRAM so it can be confirmed on hardware.
+  The handshake runs on the Arduino loop task, whose stack goes from 8 to 16 KB
+  (`SET_LOOP_TASK_STACK_SIZE` in `NetFetch.cpp`, +8 KB internal RAM).
+- **HTTP/1.0 for Get decks.** The body is read raw from the stream, so a chunked
+  answer would corrupt it; HTTP/1.0 rules chunking out. GitHub's whole redirect
+  chain answers HTTP/1.0 requests with a `Content-Length` (checked with
+  `curl --http1.0`). The portal's request is unchanged (HTTP/1.1).
+- **Flash:** the StickS3 build grows from 1,248,709 to 1,292,181 bytes (+43 KB,
+  61.6 % of the 2 MB app slot), TLS included.
+
+## 2026-10-18 – Get decks: the catalog, the download and where it lives
+
+- **The last row of the Decks screen** ("+ Get decks" / "+ Descargar"), not a
+  settings-home row: the home has 10 rows (another is on the way) and this is a
+  deck action. A fresh device on the boot-time upload screen also offers it (a
+  hold) once a home Wi-Fi is saved: the portal stops, Get decks runs, and the
+  side button returns to the upload screen -- or into the quiz if a deck is now
+  loaded.
+- **Default catalog URL**
+  `https://github.com/dcarnicer/tangocho/releases/latest/download/catalog.txt`.
+  It works only once the newest (non-pre-)release of a **public** repo carries
+  `catalog.txt` and the packs, which the release workflow attaches only on
+  request ("Before publishing"). A release without them makes "latest" answer
+  404, which the device reports as "no catalog published at this URL yet". The
+  portal's catalog field overrides it (e.g. a tag-pinned
+  `releases/download/vX.Y.Z/catalog.txt`, or any http(s) host).
+- **Catalog rules** (pure `catalog/` module, native-tested against the builder's
+  output): no `#tangocho-catalog<TAB>N` first line -> not a catalog (an HTML
+  error page, say); an unknown version -> refused ("update the firmware");
+  otherwise each record is validated on its own and a bad one is skipped and
+  counted, so one bad line does not hide the rest. A name must be safe as
+  `/packs/<name>.tgc` with the portal's character set and no hidden names; sizes
+  are 64 B..5 MB, cards 1..65535, `sha256` 64 hex digits. A bare-file-name `url`
+  resolves against the **configured** catalog URL, not the post-redirect one
+  (for GitHub that is a signed, expiring blob URL). At most 32 entries and a
+  32 KB catalog body.
+- **Download** (`NetFetch`, shared with the portal): free space is checked
+  against the catalog size plus the portal's 96 KB reserve *before* connecting;
+  the `Content-Length` must equal the catalog size; SHA-256 is computed while
+  streaming (mbedTLS, hardware SHA) and compared, with the byte count, before
+  the usual magic + `PackReader` probe and the rename of `/packs/.fetch.tmp` over
+  the destination. Any failure removes only the temp. Afterwards `/packs` is
+  rescanned through `portalPacksChanged()`, the portal's path.
+- **"Already here"** is decided by existence and size: the same size marks a
+  deck as on the device (a hold studies it), another size as an update (a hold
+  downloads it, replacing the file). Replacing the loaded deck closes it first
+  and reopens it afterwards, also when the download failed. A same-size file
+  with other content is not detected (hashing the local file is a follow-up).
+- **The portal's "download from a URL" now uses the same code.** Its messages
+  are unchanged; one behaviour changed: a body shorter than its announced
+  `Content-Length` is now "download failed" instead of being probed and possibly
+  kept as a truncated pack.

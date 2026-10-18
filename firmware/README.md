@@ -9,7 +9,7 @@ from persisted FSRS review state (`/state/srs.bin`).
 
 ```sh
 cd firmware
-pio test -e native            # unit tests for pack/, quiz/ and srs/ (host, no Arduino)
+pio test -e native            # unit tests for pack/, quiz/, srs/ and catalog/ (host, no Arduino)
 pio run -e sticks3            # build for StickS3
 pio run -e tdisplay-s3        # build for T-Display-S3
 ```
@@ -54,6 +54,16 @@ pack at all boots straight into this screen. The uploaded file is validated
 before it is kept, and the side button stops the portal. See the root README for
 the security trade-off (the AP is open).
 
+Or let the device fetch decks itself over your **home Wi-Fi**: save the network
+once in the **Home Wi-Fi** form on that same page, then pick **Decks -> + Get
+decks** on the device. It joins the network only while that screen is open,
+reads the release catalog over HTTPS (verified, redirects followed), lists the
+decks (`+` new, `=` here, `~` other size) and downloads the one you hold, checked
+against the catalog's size and SHA-256. A fresh device offers the same from its
+boot screen once a home network is saved. The default catalog only exists once
+a public release carries packs + `catalog.txt`; the page can set another URL.
+Serial `[net]` lines report each step and the free heap around TLS.
+
 ## Flash layout
 
 No OTA: one 2 MB app slot, everything else is LittleFS (partition label
@@ -74,7 +84,8 @@ stroke order), and the next tap starts the following question. The side button i
 a tap shortcut; **holding it opens the settings home** (Continue / Decks / Date /
 New per day / Speed / Statistics / Wi-Fi / Orientation / Language / Brightness),
 where a tap moves the selection, a hold activates the row, and the side button
-goes back.
+goes back. The deck list's last row, **+ Get decks**, downloads decks over the
+home Wi-Fi (tap moves, hold downloads or studies, side button cancels/back).
 
 ## Power
 
@@ -87,7 +98,8 @@ advances the SRS day, so the "how many days?" question only appears after a real
 power-off. **On USB power** it only turns the panel off (the serial port stays up
 for flashing and logs); any press turns it back on, and unplugging lets it sleep.
 To flash a sleeping device on battery, wake it first. The CPU runs at 80 MHz
-(240 MHz while the Wi-Fi portal is up).
+(240 MHz while the Wi-Fi portal or the home Wi-Fi is up; the home Wi-Fi only
+while Get decks is open, and a download counts as activity).
 
 | button            | StickS3          | T-Display-S3 |
 |-------------------|------------------|--------------|
@@ -98,7 +110,9 @@ To flash a sleeping device on battery, wake it first. The CPU runs at 80 MHz
 ## Layout
 
 `src/board` HAL (one impl per board), `src/pack` pack reader (pure C++),
-`src/quiz` question builder (pure C++), `src/render` glyph/text drawing,
-`src/platform` LittleFS-backed pack source and SRS file plus the on-device Wi-Fi
-portal (`WifiPortal`: open AP + HTTP upload/delete/download/stats),
-`src/main.cpp` Phase 0 app.
+`src/quiz` question builder (pure C++), `src/catalog` deck-catalog parser (pure
+C++), `src/render` glyph/text drawing, `src/platform` LittleFS-backed pack source
+and SRS file, the on-device Wi-Fi portal (`WifiPortal`: open AP + HTTP
+upload/delete/download/stats/home Wi-Fi), the home network (`HomeWifi`) and the
+shared HTTP(S) pack download (`NetFetch`, roots in `RootCerts.h`),
+`src/main.cpp` the app.

@@ -42,14 +42,53 @@ Notes and limits:
   to fit in RAM), then checked for the `TNGC` magic and a valid pack header. A
   file that is not a pack is deleted again, so a bad upload cannot strand the
   device, and there must be enough free space (the portal keeps a reserve).
-- **URL download is HTTP only.** TLS to arbitrary hosts is untested and may
-  fail on flash/memory, so `https://` is refused rather than silently tried; a
-  failed download leaves the existing packs untouched.
+- **The page's URL download is plain `http://` only**: on its own access point
+  the device has no internet, so this is for a server on the phone/laptop side.
+  For decks from the internet use **Get decks** below. A failed download leaves
+  the existing packs untouched.
 - On a fresh device (or one whose filesystem a launcher formatted) with no
   packs, the firmware boots straight into the Wi-Fi screen with instructions
   and continues into the quiz as soon as a pack arrives.
 - Everything works offline as before; the portal is only started on the Wi-Fi
   screen.
+
+## Getting decks with one button (home Wi-Fi)
+
+Once the device knows your home Wi-Fi it can download decks from the release
+catalog by itself:
+
+1. Open the Wi-Fi portal as above and, on the `http://192.168.4.1` page, fill in
+   **Home Wi-Fi** (network name -- nearby networks are suggested -- and
+   password; empty for an open network) and press **Save**. Stop the portal.
+2. On the device: hold the side button -> **Decks** -> the last row,
+   **+ Get decks** (**+ Descargar** in Spanish), and hold.
+3. It joins the home network, reads the catalog over HTTPS and lists the decks:
+   `+` not on the device yet, `=` already here, `~` here but a different size
+   (another build). Tap moves, **hold downloads** (with a progress bar; the side
+   button cancels), and a hold on a deck that is already here starts studying it.
+   The side button goes back.
+
+Notes and limits:
+
+- The radio is on **only while this screen is open**, and the device sleeps as
+  usual when idle. A fresh device without packs also offers it on its boot
+  screen ("hold: get decks") once a home Wi-Fi is saved.
+- Every download is checked against the catalog's **size and SHA-256** and must
+  be a valid pack before it replaces anything; a failure leaves `/packs` as it
+  was. HTTPS is verified against a small embedded set of root certificates
+  (Let's Encrypt, Sectigo/USERTrust, DigiCert, Google Trust Services, Amazon);
+  see `docs/decisions.md`.
+- The password is stored on the device (NVS, **not encrypted**) and is never
+  shown again; the page only shows the saved network name and a "forget"
+  button. While the portal runs, anyone in range could replace (not read) it.
+- The default catalog is
+  `https://github.com/dcarnicer/tangocho/releases/latest/download/catalog.txt`,
+  which only works once the newest release of a **public** repository carries
+  prebuilt packs and `catalog.txt` (a maintainer decision, see "Before
+  publishing" in the roadmap); until then the device says no catalog is
+  published. The portal page can point it at another catalog (any `http(s)://`
+  URL, e.g. a release pinned to a tag or your own server). **Not verified on
+  hardware yet.**
 
 ## M5Launcher and app-only `.bin`s
 
@@ -151,10 +190,9 @@ a pack can be dropped in over the air.
 When the maintainer asks for them (a release-workflow input), a release can
 attach `*.tgc` packs built with `--strokes` (for example JLPT N5 in English and
 Spanish) together with a line-oriented `catalog.txt` — the small catalog the
-device is meant to read; the on-device fetch/parse is not implemented yet (see
-`tools/pack-builder/README.md`). A pack contains **KANJIDIC2** data (CC BY-SA
-4.0) and, with `--strokes`, **KanjiVG** data (CC BY-SA 3.0), so prebuilt packs
-are licensed **CC BY-SA**. The combined attribution is in the release notes and
+device reads for **Get decks** (format: `tools/pack-builder/README.md`). A pack
+contains **KANJIDIC2** data (CC BY-SA 4.0) and, with `--strokes`, **KanjiVG**
+data (CC BY-SA 3.0), so prebuilt packs are licensed **CC BY-SA**. The combined attribution is in the release notes and
 in [docs/data-sources.md](docs/data-sources.md).
 
 ## Repository layout

@@ -16,8 +16,8 @@ fields, `#` comments and blank lines to be skipped.
   save the downloaded file as (`<name>.tgc`).
 - `lang` is the pack's meaning language, `cards` its card count and `bytes` its
   exact file size.
-- `sha256` is the lowercase hex digest of the whole file, so the device can check
-  integrity after download (the check itself is a follow-up, like the fetch).
+- `sha256` is the lowercase hex digest of the whole file; the device checks it
+  (and `bytes`) before it keeps a download (firmware/src/catalog/, Get decks).
 - `url` is either absolute (`--base-url`) or the bare file name, meaning
   "relative to the URL this catalog was fetched from".
 

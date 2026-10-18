@@ -29,7 +29,9 @@ Scope for now: **kanji only** (no vocabulary decks).
         fixed local hour (04:00, as Anki) instead of every 24 h from an arbitrary
         origin.
       - [ ] Real date from NTP over the home Wi-Fi (phase 4) after a power cut,
-        with a short timeout and the manual question as the fallback.
+        with a short timeout and the manual question as the fallback. The helper
+        exists (`HomeWifi::fetchUtcMs()`, SNTP with a timeout); wiring it into
+        the SRS day clock is still to do.
       - [ ] Better manual fallback: show the last-used date and step a proposed
         "today" (tap +1 day, hold confirms) instead of the 0/1/2-7/14+ buckets.
 - [~] **Phase 3 – Better cards.** Distractors done for visual similarity,
@@ -51,18 +53,25 @@ Scope for now: **kanji only** (no vocabulary decks).
       download packs and to read the SRS statistics (`/`, `/api/stats`); it also
       lets a fresh, pack-less device boot into an "upload a `.tgc`" state and
       continue into the quiz once a pack arrives. Pending:
-      - [ ] **Home Wi-Fi (station mode).** Enter the SSID/password once from the
-        portal page (stored in NVS, never logged or shown back); the device then
-        joins the home network on demand, not permanently, so the battery
-        policy still holds. Used for NTP time (phase 2) and the catalog below.
-      - [ ] **One-button deck download.** A "Get decks" screen fetches the
-        release catalog (`tangocho-pack catalog`, line-oriented, phase 5) over
-        the home Wi-Fi, lists the decks not yet on the device with their size,
-        and downloads the chosen one into `/packs` with the existing
-        temp-file + validate + rename path, checking the catalog's `sha256`.
-        Needs **HTTPS**: GitHub release assets are `https://` with redirects,
-        and the current fetch is plain `http://` only, so TLS (root CA bundle,
-        redirect following, memory on the StickS3) has to be added and tested.
+      - [x] **Home Wi-Fi (station mode).** The SSID/password are entered once on
+        the portal page (with nearby-network suggestions) and stored in NVS
+        `net`; the password is never logged or shown back. The device joins the
+        home network only while Get decks runs (15 s join timeout, radio off
+        afterwards, CPU at 240 MHz only meanwhile), so the battery policy holds.
+        Also carries an SNTP helper for the phase-2 date work.
+        **Not verified on hardware yet** (built and reviewed only).
+      - [x] **One-button deck download.** Decks -> "+ Get decks" joins the home
+        Wi-Fi, reads the release catalog over **HTTPS** (verified against a small
+        embedded root-CA set, redirects followed), lists its decks marked new /
+        already here / other size, and a hold downloads one into `/packs` through
+        the shared temp-file + validate + rename path, checking the catalog's
+        size and `sha256`, with a progress bar and cancel. A fresh device offers
+        it on the boot-time upload screen once a home Wi-Fi is saved. The default
+        catalog (`releases/latest/download/catalog.txt`) only works once a public
+        release carries packs + `catalog.txt` (see "Before publishing"); the URL
+        can be changed on the portal page. **Not verified on hardware yet**: TLS
+        heap use, download speed and the GitHub redirect chain on a real
+        StickS3 are to be confirmed (`[net]` serial lines log the heap).
       - [ ] **Auto-rotation from the IMU.** Use the StickS3's BMI270
         accelerometer to switch portrait/landscape as the device is turned, with
         hysteresis and a short settle time so it does not flicker; the
@@ -77,8 +86,9 @@ Scope for now: **kanji only** (no vocabulary decks).
         logged or cached; a WaniKani-derived pack is the user's own
         responsibility and is not redistributed (docs/data-sources.md).
       - [x] **Download packs over Wi-Fi** from a URL, so a fresh device gets
-        decks without `uploadfs` and without a computer. Plain `http://` only
-        (TLS to arbitrary hosts is untested); no resume yet.
+        decks without `uploadfs` and without a computer. Plain `http://` only on
+        the portal (its own AP has no internet; Get decks above does HTTPS over
+        the home Wi-Fi); no resume yet.
       - [~] **M5Launcher compatibility.** The app-only `.bin` that
         `pio run -e sticks3` produces can be installed as a launcher app, and
         the Wi-Fi upload is the intended way to populate `/packs` once it runs
@@ -93,12 +103,13 @@ Scope for now: **kanji only** (no vocabulary decks).
       board builds plus the pack-builder tests; a `tangocho-pack catalog` command
       that writes the small line-oriented catalog the device is meant to read;
       README with the licence/attribution and flashing instructions.
-      Pending: **README photos**; the **device-side catalog fetch/parse** (the
-      catalog format is defined and tested, the firmware does not read it yet);
-      and hardware verification of the merged-image/ESP Web Tools path (written,
-      **not flashed on a real device**). Prebuilt packs can be attached to a
-      release, but only on request — redistributing CC BY-SA data is a
-      maintainer decision (see "Before publishing").
+      The **device-side catalog fetch/parse** is done (`firmware/src/catalog/`,
+      native-tested against the builder's output; used by Get decks).
+      Pending: **README photos**; and hardware verification of the
+      merged-image/ESP Web Tools path (written, **not flashed on a real
+      device**). Prebuilt packs can be attached to a release, but only on
+      request — redistributing CC BY-SA data is a maintainer decision (see
+      "Before publishing"); the default Get decks catalog depends on it.
 
 ## Cross-cutting
 
@@ -130,11 +141,12 @@ Scope for now: **kanji only** (no vocabulary decks).
 
 - [~] **Power management** (2026-10-18). Done: dim after 30 s, deep sleep
       after 2 min on battery (front button wakes; panel-off only on USB), 5 min
-      Wi-Fi portal timeout, CPU at 80 MHz (240 while the portal runs), a
-      brightness setting. Pending: hardware checks (does the M5PM1 keep the rail
-      up through deep sleep, sleep current, battery life), and the **USB buzz**:
-      still audible up close after moving the backlight PWM to 25 kHz, so the
-      backlight was not (or not the only) cause; to investigate.
+      Wi-Fi portal timeout, CPU at 80 MHz (240 while the portal or the home
+      Wi-Fi runs), a brightness setting. Pending: hardware checks (does the
+      M5PM1 keep the rail up through deep sleep, sleep current, battery life),
+      and the **USB buzz**: still audible up close after moving the backlight
+      PWM to 25 kHz, so the backlight was not (or not the only) cause; to
+      investigate.
 - [ ] **UX refresh.** A review to give the device UI a more modern look and feel:
       typography and spacing, a consistent visual language across quiz, menus
       and detail card, clearer feedback and transitions on answers, a less
@@ -149,7 +161,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       README and on device). Progress: packs built with KANJIDIC2/KanjiVG are
       licensed CC BY-SA and the release workflow adds the combined attribution to
       the release notes automatically, but attaching them stays **opt-in** (a
-      dispatch input) until this is a standing decision.
+      dispatch input) until this is a standing decision. The device's default
+      Get decks catalog (`releases/latest/download/catalog.txt` on
+      `dcarnicer/tangocho`) depends on it: the repo must be public and every
+      release that becomes "latest" must carry the packs and `catalog.txt`
+      (a tag-push release without them makes the default URL answer 404).
 - [x] Attribution for redistributed data: README's "Releases" section,
       `docs/data-sources.md` and the release notes all carry the combined
       KANJIDIC2 / KanjiVG / Klee One credit. (Still open: an attribution line on
