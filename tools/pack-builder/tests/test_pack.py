@@ -150,6 +150,9 @@ def test_glcd_cp437_map():
     assert glcd.glcd_index(0x00E1) == 0xA0  # á
     assert glcd.glcd_index(0x00F1) == 0xA4  # ñ
     assert glcd.glcd_index(0x00BF) == 0xA8  # ¿
+    assert glcd.glcd_index(0x00B7) == 0xF9  # · (the 2x2 dot)
+    assert glcd.glcd_index(0x2022) == 0x07  # •
+    assert glcd.glcd_index(0x00B0) == 0xF8  # °
     assert glcd.glcd_index(0x00C1) == -1    # Á (not in Font0)
     assert glcd.can_draw("día") and not glcd.can_draw("Á")
 
