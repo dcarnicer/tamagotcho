@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "board/Board.h"
+#include "imu/OrientationFilter.h"
 #include "pack/PackReader.h"
 #include "platform/FsPackSource.h"
 #include "platform/FsSrsFile.h"
@@ -93,7 +94,7 @@ struct UiStrings {
     const char* errNoPackHint;
     const char* errOpenPack;
     const char* orientTitle;
-    const char* orientRows[2];  // portrait, landscape
+    const char* orientRows[3];  // indexed by OrientPref: portrait, landscape, auto
     // Detail card (shown after a wrong answer). `detailOn`/`detailKun` label the
     // on'yomi/kun'yomi lines; the meanings label reuses quizMeaning.
     const char* detailTitle;
@@ -132,7 +133,7 @@ const UiStrings kUiEn = {
     "Filesystem not found", "Run: pio run -t uploadfs",
     "No pack found", "Put a .tgc in data/packs/ then run uploadfs",
     "Cannot open pack",
-    "ORIENTATION", {"Portrait", "Landscape"},
+    "ORIENTATION", {"Portrait", "Landscape", "Auto"},
     "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
     "streak %u/%u", "time %s", "%uh %um", "%um %us", "%us",
     "LANGUAGE", {"Auto", "English", "Español"},
@@ -156,7 +157,7 @@ const UiStrings kUiEs = {
     "No se encuentra el sistema de archivos", "Ejecuta: pio run -t uploadfs",
     "No hay ningún mazo", "Pon un .tgc en data/packs/ y ejecuta uploadfs",
     "No se puede abrir el mazo",
-    "ORIENTACION", {"Vertical", "Horizontal"},
+    "ORIENTACION", {"Vertical", "Horizontal", "Auto"},
     "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
     "racha %u/%u", "tiempo %s", "%uh %um", "%um %us", "%us",
     "IDIOMA", {"Auto", "English", "Español"},
@@ -227,6 +228,17 @@ int gChoiceCount = 0;
 uint16_t gChoiceValues[4] = {0, 0, 0, 0};
 String gCurrentPack;
 Preferences gPrefs;
+
+// Orientation setting, NVS `tangocho`/`orient` (it replaced the bool `land`,
+// see loadOrientPref()). Auto is offered only on boards with an accelerometer:
+// the IMU then picks rotation 0, 1 or 3 (imu/OrientationFilter) and the picked
+// rotation is never persisted. Values double as orientRows indexes.
+enum OrientPref : uint8_t { kOrientPortrait = 0, kOrientLandscape = 1, kOrientAuto = 2 };
+uint8_t gOrientPref = kOrientPortrait;
+tgc::OrientationFilter gOrient;
+constexpr uint32_t kImuPollMs = 100;  // accelerometer poll while Auto is on
+uint32_t gImuPollAt = 0;
+float gAccel[3] = {0, 0, 0};          // last sample, for the rotation log
 
 // On-device Wi-Fi portal (roadmap phase 4). Started on the Wi-Fi screen and
 // stopped on exit. `gWifiBootUpload` marks the boot-time "no packs yet" state:
@@ -396,7 +408,7 @@ bool newQuestion() {
 }
 
 void drawScreen();  // dispatches to the active screen
-void applyOrientation(bool landscape);
+void applyRotation(uint8_t r);
 void formatDate(uint16_t days, char* out, size_t n);
 
 void drawQuiz() {
@@ -653,7 +665,7 @@ void drawChoice() {
     for (int i = 0; i < gChoiceCount; ++i) {
         char label[16];
         if (gChoice == Choice::Orientation) {
-            snprintf(label, sizeof label, "%s", ui().orientRows[i]);
+            snprintf(label, sizeof label, "%s", ui().orientRows[gChoiceValues[i] % 3]);
         } else if (gChoice == Choice::UiLang) {
             snprintf(label, sizeof label, "%s", ui().langRows[i]);
         } else if (gChoice == Choice::Brightness) {
@@ -1079,17 +1091,74 @@ void drawScreen() {
     else drawQuiz();
 }
 
-// Switch the panel between portrait (default) and landscape: rotate, pick up the
-// new width/height, recreate the back buffer for it, persist the choice in NVS
-// and redraw. The canvas is recreated here so a landscape change can never leave
-// the portrait default (or the previous orientation) mis-sized.
-void applyOrientation(bool landscape) {
-    tgc::board::setOrientation(landscape);
+// Rotate the panel (0-3, see board::setRotation), pick up the new width/height,
+// recreate the back buffer for it and redraw. The canvas is recreated here so a
+// rotation can never leave the previous orientation's buffer mis-sized.
+// Persisting the setting is the caller's job: Auto rotations are never stored.
+void applyRotation(uint8_t r) {
+    tgc::board::setRotation(r);
     W = tgc::board::width();
     H = tgc::board::height();
     createCanvas();
-    gPrefs.putBool("land", landscape);
     drawScreen();
+}
+
+bool orientAuto() { return gOrientPref == kOrientAuto && tgc::board::hasAccel(); }
+
+// The rotation a fixed setting asks for. Auto on a board whose accelerometer is
+// missing or failed to start behaves as portrait (the setting is kept).
+uint8_t fixedRotation() { return gOrientPref == kOrientLandscape ? 1 : 0; }
+
+// The orientation setting. Up to 2026-10-18 it was the bool `land`; that key
+// is read once, rewritten as `orient` and removed, so a landscape user keeps
+// landscape. New users get portrait.
+uint8_t loadOrientPref() {
+    if (gPrefs.isKey("orient")) {
+        const uint8_t v = gPrefs.getUChar("orient", kOrientPortrait);
+        return v <= kOrientAuto ? v : kOrientPortrait;
+    }
+    const uint8_t v = gPrefs.getBool("land", false) ? kOrientLandscape : kOrientPortrait;
+    gPrefs.putUChar("orient", v);
+    gPrefs.remove("land");
+    return v;
+}
+
+// First rotation at boot. In Auto mode one accelerometer sample decides at once
+// (no settle time: nothing is on screen yet); a flat or unclear pose falls back
+// to portrait. The filter then starts from what is shown.
+uint8_t bootRotation() {
+    if (!orientAuto()) return fixedRotation();
+    int r = tgc::OrientationFilter::kNone;
+    float x, y, z;
+    for (int tries = 0; tries < 10; ++tries) {  // the first sample needs ~10 ms
+        if (tgc::board::readAccel(&x, &y, &z)) {
+            r = gOrient.classify(x, y, z);
+            break;
+        }
+        delay(5);
+    }
+    if (r == tgc::OrientationFilter::kNone) r = 0;
+    gOrient.reset(r);
+    return static_cast<uint8_t>(r);
+}
+
+// Auto orientation, once per loop(): sample the accelerometer every kImuPollMs
+// while the panel is on and apply a settled rotation only while no button is
+// down, so the picture never turns in the middle of a press (the change waits
+// for the release). A rotation is not user activity: it neither brightens a
+// dimmed panel nor delays sleep, so a device turning in a bag still sleeps.
+void orientTick(uint32_t now, bool buttonDown) {
+    if (!orientAuto() || gScreenOff) return;
+    if (now - gImuPollAt >= kImuPollMs) {
+        gImuPollAt = now;
+        if (tgc::board::readAccel(&gAccel[0], &gAccel[1], &gAccel[2]))
+            gOrient.update(gAccel[0], gAccel[1], gAccel[2], now);
+    }
+    const int want = gOrient.current();
+    if (want == tgc::OrientationFilter::kNone || buttonDown) return;
+    if (want == tgc::board::rotation()) return;
+    QLOG("O rotation %d (a=%.2f %.2f %.2f)\n", want, gAccel[0], gAccel[1], gAccel[2]);
+    applyRotation(static_cast<uint8_t>(want));
 }
 
 // Opens `path`, replacing the live pack only after the new one validates.
@@ -1243,10 +1312,13 @@ void openChoice(Choice which) {
     gChoice = which;
     gChoiceSel = 0;
     if (which == Choice::Orientation) {
-        gChoiceCount = 2;
-        gChoiceValues[0] = 0;  // portrait
-        gChoiceValues[1] = 1;  // landscape
-        gChoiceSel = gPrefs.getBool("land", false) ? 1 : 0;
+        // Auto first, as in the language picker; only with an accelerometer.
+        gChoiceCount = 0;
+        if (tgc::board::hasAccel()) gChoiceValues[gChoiceCount++] = kOrientAuto;
+        gChoiceValues[gChoiceCount++] = kOrientPortrait;
+        gChoiceValues[gChoiceCount++] = kOrientLandscape;
+        for (int i = 0; i < gChoiceCount; ++i)
+            if (gChoiceValues[i] == gOrientPref) gChoiceSel = i;
         gScreen = Screen::Choice;
         drawScreen();
         return;
@@ -1292,8 +1364,17 @@ void openChoice(Choice which) {
 // Applies the highlighted choice, persists it and returns to the settings home.
 void applyChoice() {
     if (gChoice == Choice::Orientation) {
-        gScreen = Screen::Menu;  // applyOrientation redraws the active screen
-        applyOrientation(gChoiceValues[gChoiceSel] != 0);
+        gOrientPref = static_cast<uint8_t>(gChoiceValues[gChoiceSel]);
+        gPrefs.putUChar("orient", gOrientPref);
+        gScreen = Screen::Menu;
+        if (orientAuto()) {
+            // The hold is still down: keep the picture; orientTick() takes over
+            // from it after the release and the settle time.
+            gOrient.reset(tgc::board::rotation());
+            drawScreen();
+        } else {
+            applyRotation(fixedRotation());  // redraws the active screen
+        }
         return;
     }
     if (gChoice == Choice::UiLang) {
@@ -1542,7 +1623,8 @@ void setup() {
     gBrightness = gPrefs.getUChar("bri", gBrightness);
     tgc::board::setBrightness(gBrightness);
     setUiForLang(nullptr);  // localise the pre-pack error screens to the choice too
-    tgc::board::setOrientation(gPrefs.getBool("land", false));
+    gOrientPref = loadOrientPref();
+    tgc::board::setRotation(bootRotation());
     W = tgc::board::width();
     H = tgc::board::height();
     createCanvas();
@@ -1811,6 +1893,7 @@ void loop() {
         gBatteryCheckAt = t;
         if (tgc::board::batteryPercent() != gShownBattery) drawScreen();
     }
+    orientTick(t, downA || downB);
     powerTick(t);
     delay(10);
 }
