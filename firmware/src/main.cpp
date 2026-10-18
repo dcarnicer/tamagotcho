@@ -810,16 +810,31 @@ void drawQuiz() {
         const int rows = (gQ.count + cols - 1) / cols;
         const int cellW = (colW - 2 * margin - (cols - 1) * gap) / cols;
         const int cellH = (area - (rows - 1) * gap) / rows;
-        // Large kana if the whole question fits the cell, else the small text.
+        auto allFit = [&](uint8_t set, int w) {
+            for (int i = 0; i < gQ.count; ++i)
+                if (gRender.textWidth(gQ.options[i].c_str(), set) > w - 4) return false;
+            return true;
+        };
+        // The 2x2 grid when every option fits a cell (large kana, else the small
+        // text). A cell holds 3 kana, so longer kun readings (ちいさい, うけたまわる)
+        // get one full-width row each instead, which holds 6 large kana.
         uint8_t set = tgc::kGlyphSetOption;
-        for (int i = 0; i < gQ.count; ++i)
-            if (gRender.textWidth(gQ.options[i].c_str(), set) > cellW - 4) {
-                set = tgc::kGlyphSetText;
-                break;
-            }
-        for (int i = 0; i < gQ.count; ++i)
-            optionBox(i, colX + margin + (i % cols) * (cellW + gap), top + (i / cols) * (cellH + gap),
-                      cellW, cellH, set, 1);
+        bool grid = allFit(set, cellW);
+        if (!grid && allFit(tgc::kGlyphSetText, cellW)) {
+            set = tgc::kGlyphSetText;
+            grid = true;
+        }
+        if (grid) {
+            for (int i = 0; i < gQ.count; ++i)
+                optionBox(i, colX + margin + (i % cols) * (cellW + gap),
+                          top + (i / cols) * (cellH + gap), cellW, cellH, set, 1);
+        } else {
+            const int w = colW - 2 * margin;
+            if (!allFit(set, w)) set = tgc::kGlyphSetText;
+            const int rowH = area / gQ.count;
+            for (int i = 0; i < gQ.count; ++i)
+                optionBox(i, colX + margin, top + i * rowH, w, rowH - gap, set, 1);
+        }
     } else {
         // The built-in font has no glyph for some characters; then use the pack.
         uint8_t set = tgc::Renderer::kTextBuiltin;

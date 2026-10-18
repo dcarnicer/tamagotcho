@@ -1591,3 +1591,18 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   are themselves derived from the tanos lists. KANJIDIC2's own `jlpt` field is
   the pre-2010 four-level scale (old level 2 spans N3 and N2), so it stays the
   fallback only.
+
+## 2026-10-18 – Long readings: one row per option instead of the 2x2 grid
+
+- **Found on hardware:** 「ちいさい」 was cut with an ellipsis. A portrait grid
+  cell leaves 61 px for text, i.e. 3 kana at either kana size (18 or 20 px,
+  full-width advances), and 406 of the 1,777 kun readings the Jōyō deck asks
+  are 4-6 kana. Not a regression of the font change: Klee One has the same
+  advances.
+- **Rule:** the grid stays when every option fits a cell (large kana, else the
+  small text, as before); otherwise all four options become full-width rows
+  (the meaning layout), in large kana when they fit the row, which holds 6 (the
+  longest first reading in Jōyō, e.g. うけたまわる). A row is 24 px tall in
+  portrait; the 20 px kana ink fits it although its 30 px line box does not.
+  `tangocho-pack preview` mirrors the rule.
+
