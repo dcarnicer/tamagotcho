@@ -63,6 +63,8 @@ struct PortalText {
     const char* catalogNotPublished = "No catalog is published at this URL yet.";
     const char* catalogBad = "This is not a deck catalog.";
     const char* catalogNewer = "Newer catalog format: update the firmware.";
+    const char* catalogOlder =
+        "Old catalog format: point the catalog URL (under Advanced) at a catalog-v2.txt.";
     const char* catalogFailed = "Could not read the catalog.";
     const char* deckInfoFmt = "%s &middot; %u cards &middot; %s";
     const char* download = "Download";

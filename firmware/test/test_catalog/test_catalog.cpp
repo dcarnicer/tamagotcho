@@ -1,7 +1,7 @@
 // Native tests for the deck catalog parser (src/catalog). The first two
-// fixtures are verbatim `tangocho-pack catalog` output for two copies of the
-// builder's v1 mini.tgc (now kept as fixtures/mini_v1.tgc), without and with
-// --base-url.
+// fixtures are verbatim `tangocho-pack catalog` output (catalog format v2) for
+// two copies of the builder's fixtures/mini.tgc (deck name "JLPT N5"), without
+// and with --base-url.
 #include <unity.h>
 
 #include <cstring>
@@ -14,22 +14,30 @@ using namespace tgc;
 namespace {
 
 const char* kDefaultUrl =
-    "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt";
+    "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog-v2.txt";
 
 const char* kBuilderBare =
-    "#tangocho-catalog\t1\n"
-    "# name\tlang\tcards\tbytes\tsha256\turl\n"
-    "n5-en\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75\tn5-en.tgc\n"
-    "n5-es-strokes\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75"
-    "\tn5-es-strokes.tgc\n";
+    "#tangocho-catalog\t2\n"
+    "# name\ttitle\tlang\tcards\tbytes\tsha256\turl\n"
+    "n5-en\tJLPT N5\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75"
+    "\tn5-en.tgc\n"
+    "n5-es-strokes\tJLPT N5\ten\t3\t6732"
+    "\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75\tn5-es-strokes.tgc\n";
 
 const char* kBuilderAbsolute =
+    "#tangocho-catalog\t2\n"
+    "# name\ttitle\tlang\tcards\tbytes\tsha256\turl\n"
+    "n5-en\tJLPT N5\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75"
+    "\thttps://github.com/dcarnicer/tangocho/releases/download/v0.3.0/n5-en.tgc\n"
+    "n5-es-strokes\tJLPT N5\ten\t3\t6732"
+    "\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75"
+    "\thttps://github.com/dcarnicer/tangocho/releases/download/v0.3.0/n5-es-strokes.tgc\n";
+
+// What the decks release published before catalog v2 (`catalog.txt`, no title).
+const char* kCatalogV1 =
     "#tangocho-catalog\t1\n"
     "# name\tlang\tcards\tbytes\tsha256\turl\n"
-    "n5-en\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75"
-    "\thttps://github.com/dcarnicer/tangocho/releases/download/v0.3.0/n5-en.tgc\n"
-    "n5-es-strokes\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75"
-    "\thttps://github.com/dcarnicer/tangocho/releases/download/v0.3.0/n5-es-strokes.tgc\n";
+    "n5-en\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75\tn5-en.tgc\n";
 
 const char* kSha = "dc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75";
 
@@ -37,15 +45,22 @@ CatalogParse parse(const std::string& text, const char* url = kDefaultUrl) {
     return parseCatalog(text.data(), text.size(), url);
 }
 
+const char* kTag = "#tangocho-catalog\t2\n";
+
 // A header plus one record built from the given fields.
-std::string withRecord(const std::string& record) {
-    return std::string("#tangocho-catalog\t1\n") + record + "\n";
-}
+std::string withRecord(const std::string& record) { return std::string(kTag) + record + "\n"; }
 
 std::string record(const std::string& name, const std::string& lang = "en",
                    const std::string& cards = "79", const std::string& bytes = "703123",
-                   const std::string& sha = kSha, const std::string& url = "x.tgc") {
-    return name + "\t" + lang + "\t" + cards + "\t" + bytes + "\t" + sha + "\t" + url;
+                   const std::string& sha = kSha, const std::string& url = "x.tgc",
+                   const std::string& title = "JLPT N5") {
+    return name + "\t" + title + "\t" + lang + "\t" + cards + "\t" + bytes + "\t" + sha + "\t" +
+           url;
+}
+
+// A record with the given title and valid other fields.
+std::string titled(const std::string& title) {
+    return record("a", "en", "79", "703123", kSha, "x.tgc", title);
 }
 
 }  // namespace
@@ -56,12 +71,14 @@ void tearDown() {}
 void test_builder_output_bare_urls() {
     const CatalogParse r = parse(kBuilderBare);
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::Ok), static_cast<int>(r.error));
-    TEST_ASSERT_EQUAL(1, r.version);
+    TEST_ASSERT_EQUAL(2, r.version);
     TEST_ASSERT_EQUAL(0u, r.skipped);
     TEST_ASSERT_FALSE(r.truncated);
     TEST_ASSERT_EQUAL(2u, r.entries.size());
     const CatalogEntry& a = r.entries[0];
     TEST_ASSERT_EQUAL_STRING("n5-en", a.name.c_str());
+    TEST_ASSERT_EQUAL_STRING("JLPT N5", a.title.c_str());
+    TEST_ASSERT_EQUAL_STRING("JLPT N5", catalogDisplayName(a).c_str());
     TEST_ASSERT_EQUAL_STRING("en", a.lang.c_str());
     TEST_ASSERT_EQUAL_UINT32(3, a.cards);
     TEST_ASSERT_EQUAL_UINT32(6732, a.bytes);
@@ -86,7 +103,7 @@ void test_builder_output_absolute_urls() {
 }
 
 void test_comments_blank_lines_crlf_and_bom() {
-    const std::string text = std::string("\xEF\xBB\xBF") + "#tangocho-catalog\t1\r\n" + "\r\n" +
+    const std::string text = std::string("\xEF\xBB\xBF") + "#tangocho-catalog\t2\r\n" + "\r\n" +
                              "# a comment\r\n" + "   \r\n" + record("a") + "\r\n" + "#another\r\n" +
                              record("b") + "   ";  // no final newline, trailing spaces
     const CatalogParse r = parse(text);
@@ -100,7 +117,7 @@ void test_comments_blank_lines_crlf_and_bom() {
 }
 
 void test_leading_blank_lines_before_tag() {
-    const CatalogParse r = parse("\n\n#tangocho-catalog\t1\n" + record("a") + "\n");
+    const CatalogParse r = parse("\n\n#tangocho-catalog\t2\n" + record("a") + "\n");
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::Ok), static_cast<int>(r.error));
     TEST_ASSERT_EQUAL(1u, r.entries.size());
 }
@@ -114,11 +131,11 @@ void test_rejects_non_catalogs() {
                       static_cast<int>(parse("<!DOCTYPE html><html>Not Found</html>").error));
     // The tag must be the first non-blank line, TAB-separated, with a number.
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::NotACatalog),
-                      static_cast<int>(parse("# hello\n#tangocho-catalog\t1\n").error));
+                      static_cast<int>(parse("# hello\n#tangocho-catalog\t2\n").error));
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::NotACatalog),
-                      static_cast<int>(parse("#tangocho-catalog 1\n").error));
+                      static_cast<int>(parse("#tangocho-catalog 2\n").error));
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::NotACatalog),
-                      static_cast<int>(parse("#tangocho-catalog\tv1\n").error));
+                      static_cast<int>(parse("#tangocho-catalog\tv2\n").error));
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::NotACatalog),
                       static_cast<int>(parse("#tangocho-catalog\t\n").error));
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::NotACatalog),
@@ -126,16 +143,35 @@ void test_rejects_non_catalogs() {
 }
 
 void test_rejects_unknown_versions() {
-    CatalogParse r = parse("#tangocho-catalog\t2\n" + record("a") + "\n");
+    TEST_ASSERT_EQUAL(2, kCatalogVersion);
+    CatalogParse r = parse("#tangocho-catalog\t3\n" + record("a") + "\n");
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::UnsupportedVersion), static_cast<int>(r.error));
-    TEST_ASSERT_EQUAL(2, r.version);
+    TEST_ASSERT_EQUAL(3, r.version);
     TEST_ASSERT_EQUAL(0u, r.entries.size());
     r = parse("#tangocho-catalog\t0\n");
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::UnsupportedVersion), static_cast<int>(r.error));
 }
 
+// No backward compatibility: a v1 catalog (no title column) is refused as a
+// whole, with its version so the caller can say "old format".
+void test_rejects_catalog_v1() {
+    CatalogParse r = parse(kCatalogV1);
+    TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::UnsupportedVersion), static_cast<int>(r.error));
+    TEST_ASSERT_EQUAL(1, r.version);
+    TEST_ASSERT_TRUE(r.version < kCatalogVersion);
+    TEST_ASSERT_EQUAL(0u, r.entries.size());
+    TEST_ASSERT_EQUAL(0u, r.skipped);
+    // A v1 record under a v2 tag has one field too few: skipped.
+    const std::string v1Record =
+        "n5-en\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75\tn5-en.tgc";
+    r = parse(withRecord(v1Record));
+    TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::NoValidEntries), static_cast<int>(r.error));
+    TEST_ASSERT_EQUAL(1u, r.skipped);
+}
+
 void test_empty_catalog_is_ok() {
-    const CatalogParse r = parse("#tangocho-catalog\t1\n# name\tlang\tcards\tbytes\tsha256\turl\n");
+    const CatalogParse r =
+        parse("#tangocho-catalog\t2\n# name\ttitle\tlang\tcards\tbytes\tsha256\turl\n");
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::Ok), static_cast<int>(r.error));
     TEST_ASSERT_EQUAL(0u, r.entries.size());
     TEST_ASSERT_EQUAL(0u, r.skipped);
@@ -144,9 +180,24 @@ void test_empty_catalog_is_ok() {
 void test_skips_invalid_records() {
     const std::string bad[] = {
         // field count
-        "a\ten\t79\t703123\t" + std::string(kSha),
+        "a\tJLPT N5\ten\t79\t703123\t" + std::string(kSha),
         record("a") + "\textra",
         record("a") + "\t",
+        // title: over 64 bytes (65 ASCII; 22 three-byte kanji = 66), controls, bad UTF-8
+        titled(std::string(65, 't')),
+        titled([] {
+            std::string k;
+            for (int i = 0; i < 22; ++i) k += "\xE6\xBC\xA2";  // U+6F22
+            return k;
+        }()),
+        titled("JLPT\x01N5"), titled("JLPT\x7FN5"), titled("JLPT\rN5"),
+        titled("caf\xC3"),              // cut-off sequence
+        titled("caf\xA9"),              // lone continuation byte
+        titled("\xC0\xAF"),             // overlong '/'
+        titled("\xE0\x80\xAF"),         // overlong '/'
+        titled("\xED\xA0\x80"),         // surrogate U+D800
+        titled("\xF4\x90\x80\x80"),     // past U+10FFFF
+        titled("\xF5\x80\x80\x80"), titled("\xFF"),
         // unsafe names
         record(""), record("../evil"), record(".hidden"), record("a/b"), record("a\\b"),
         record("a b"), record("a..b"), record("a."), record(std::string(44, 'n')),
@@ -185,7 +236,7 @@ void test_skips_invalid_records() {
 }
 
 void test_one_bad_record_does_not_hide_the_rest() {
-    const std::string text = "#tangocho-catalog\t1\n" + record("../evil") + "\n" + record("good") +
+    const std::string text = std::string(kTag) + record("../evil") + "\n" + record("good") +
                              "\n" + record("good") + "\n";  // duplicate name skipped too
     const CatalogParse r = parse(text);
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::Ok), static_cast<int>(r.error));
@@ -197,9 +248,11 @@ void test_one_bad_record_does_not_hide_the_rest() {
 void test_accepts_edge_values() {
     const std::string upper = "DC4B83C07F8CDCA6CCCBE77306936D340A4404DD6DFF57AD38FEBFADF83EEE75";
     const CatalogParse r = parse(withRecord(record(std::string(43, 'n'), "", "65535", "5242880", upper,
-                                                   "http://192.168.1.10:8000/packs/n.tgc")));
+                                                   "http://192.168.1.10:8000/packs/n.tgc",
+                                                   std::string(64, 't'))));
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::Ok), static_cast<int>(r.error));
     TEST_ASSERT_EQUAL(1u, r.entries.size());
+    TEST_ASSERT_EQUAL_STRING(std::string(64, 't').c_str(), r.entries[0].title.c_str());
     TEST_ASSERT_EQUAL_STRING("", r.entries[0].lang.c_str());
     TEST_ASSERT_EQUAL_UINT32(65535, r.entries[0].cards);
     TEST_ASSERT_EQUAL_UINT32(5242880, r.entries[0].bytes);
@@ -207,8 +260,43 @@ void test_accepts_edge_values() {
     TEST_ASSERT_EQUAL_STRING("http://192.168.1.10:8000/packs/n.tgc", r.entries[0].url.c_str());
 }
 
+// Titles: spaces, UTF-8 (2-, 3- and 4-byte sequences) and empty are kept as
+// they are; an empty title shows the file name.
+void test_titles() {
+    const std::string utf8 = "J\xC5\x8Dy\xC5\x8D \xE6\xBC\xA2\xE5\xAD\x97 \xF0\x9F\x80\x84";
+    const std::string text = std::string(kTag) +
+                             record("a", "en", "79", "703123", kSha, "x.tgc", "Joyo kanji") + "\n" +
+                             record("b", "en", "79", "703123", kSha, "x.tgc", utf8) + "\n" +
+                             record("c", "en", "79", "703123", kSha, "x.tgc", "") + "\n" +
+                             record("d", "en", "79", "703123", kSha, "x.tgc", " #1 ") + "\n";
+    const CatalogParse r = parse(text);
+    TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::Ok), static_cast<int>(r.error));
+    TEST_ASSERT_EQUAL(0u, r.skipped);
+    TEST_ASSERT_EQUAL(4u, r.entries.size());
+    TEST_ASSERT_EQUAL_STRING("Joyo kanji", r.entries[0].title.c_str());
+    TEST_ASSERT_EQUAL_STRING(utf8.c_str(), r.entries[1].title.c_str());
+    TEST_ASSERT_EQUAL_STRING("", r.entries[2].title.c_str());
+    TEST_ASSERT_EQUAL_STRING("c", catalogDisplayName(r.entries[2]).c_str());
+    TEST_ASSERT_EQUAL_STRING(" #1 ", r.entries[3].title.c_str());
+    TEST_ASSERT_EQUAL_STRING(" #1 ", catalogDisplayName(r.entries[3]).c_str());
+
+    TEST_ASSERT_TRUE(catalogTitleIsValid("", 0));
+    TEST_ASSERT_TRUE(catalogTitleIsValid(nullptr, 0));
+    TEST_ASSERT_FALSE(catalogTitleIsValid(nullptr, 3));
+    TEST_ASSERT_TRUE(catalogTitleIsValid("JLPT N5", 7));
+    TEST_ASSERT_FALSE(catalogTitleIsValid("JLPT\tN5", 8));
+    // The cap counts bytes: 21 kanji are 63 bytes, 22 are 66.
+    std::string k;
+    for (int i = 0; i < 21; ++i) k += "\xE6\xBC\xA2";
+    TEST_ASSERT_TRUE(catalogTitleIsValid(k.data(), k.size()));
+    k += "\xE6\xBC\xA2";
+    TEST_ASSERT_FALSE(catalogTitleIsValid(k.data(), k.size()));
+    // A length that cuts a sequence is refused even if the bytes go on.
+    TEST_ASSERT_FALSE(catalogTitleIsValid("\xE6\xBC\xA2", 2));
+}
+
 void test_caps_the_entry_count() {
-    std::string text = "#tangocho-catalog\t1\n";
+    std::string text = kTag;
     for (int i = 0; i < 40; ++i) text += record("deck" + std::to_string(i)) + "\n";
     const CatalogParse r = parse(text);
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::Ok), static_cast<int>(r.error));
@@ -286,7 +374,7 @@ static std::string names(const std::vector<CatalogEntry>& v) {
 }
 
 void test_order_for_lang() {
-    const std::string text = "#tangocho-catalog\t1\n" + record("n5-en", "en") + "\n" +
+    const std::string text = std::string(kTag) + record("n5-en", "en") + "\n" +
                              record("n5-es", "es") + "\n" + record("n4-en", "en") + "\n" +
                              record("n5-fr", "fr") + "\n" + record("n4-es", "ES") + "\n" +
                              record("misc", "") + "\n" + record("n3-es", "es-MX") + "\n";
@@ -343,10 +431,12 @@ int main() {
     RUN_TEST(test_leading_blank_lines_before_tag);
     RUN_TEST(test_rejects_non_catalogs);
     RUN_TEST(test_rejects_unknown_versions);
+    RUN_TEST(test_rejects_catalog_v1);
     RUN_TEST(test_empty_catalog_is_ok);
     RUN_TEST(test_skips_invalid_records);
     RUN_TEST(test_one_bad_record_does_not_hide_the_rest);
     RUN_TEST(test_accepts_edge_values);
+    RUN_TEST(test_titles);
     RUN_TEST(test_caps_the_entry_count);
     RUN_TEST(test_resolve_urls);
     RUN_TEST(test_helpers);

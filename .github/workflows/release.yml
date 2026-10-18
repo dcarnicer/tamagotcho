@@ -40,7 +40,7 @@ jobs:
 
       - id: decks
         run: |
-          url="$(grep -oE 'https://github\.com/[^"]+/releases/download/decks-v[0-9]+/catalog\.txt' \
+          url="$(grep -oE 'https://github\.com/[^"]+/releases/download/decks-v[0-9]+/catalog-v[0-9]+\.txt' \
             firmware/src/platform/HomeWifi.h | head -n 1 || true)"
           if [ -z "$url" ]; then
             echo "::warning::no decks-v<N> catalog URL in firmware/src/platform/HomeWifi.h"
@@ -231,7 +231,7 @@ jobs:
           Kanji decks are not attached to firmware releases.
           MD
           if [ -n "$DECKS_CATALOG" ]; then
-            decks_tag="${DECKS_CATALOG%/catalog.txt}"
+            decks_tag="${DECKS_CATALOG%/*}"  # drop the catalog file name
             decks_tag="${decks_tag##*/}"
             decks_page="${DECKS_CATALOG%/download/*}/tag/${decks_tag}"
             cat <<MD

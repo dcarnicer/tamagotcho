@@ -815,6 +815,11 @@ void test_glcd_cp437_map() {
     TEST_ASSERT_EQUAL(0xA5, glcdIndex(0x00D1));  // Ñ
     TEST_ASSERT_EQUAL(0xA8, glcdIndex(0x00BF));  // ¿
     TEST_ASSERT_EQUAL(0xAD, glcdIndex(0x00A1));  // ¡
+    // Separators for captions: the 2x2 middle dot, the bullet, the degree sign.
+    TEST_ASSERT_EQUAL(0xF9, glcdIndex(0x00B7));  // ·
+    TEST_ASSERT_EQUAL(0x07, glcdIndex(0x2022));  // •
+    TEST_ASSERT_EQUAL(0xF8, glcdIndex(0x00B0));  // °
+    TEST_ASSERT_EQUAL(-1, glcdIndex(0x2219));    // ∙ (CP437 0xF9's own code point is not mapped)
     // Font0 has no glyph for these (meaning text falls back to the pack font).
     TEST_ASSERT_EQUAL(-1, glcdIndex(0x00C1));  // Á
     TEST_ASSERT_EQUAL(-1, glcdIndex(0x6F22));  // 漢

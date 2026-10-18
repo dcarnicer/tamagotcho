@@ -10,7 +10,7 @@ namespace {
 
 constexpr char kTag[] = "#tangocho-catalog";
 constexpr size_t kTagLen = sizeof(kTag) - 1;
-constexpr size_t kFields = 6;  // name, lang, cards, bytes, sha256, url
+constexpr size_t kFields = 7;  // name, title, lang, cards, bytes, sha256, url
 
 struct Field {
     const char* p;
@@ -70,26 +70,28 @@ bool parseRecord(const char* line, size_t n, const std::string& base, CatalogEnt
     size_t nf = 0, start = 0;
     for (size_t i = 0; i <= n; ++i) {
         if (i < n && line[i] != '\t') continue;
-        if (nf == kFields) return false;  // a seventh field
+        if (nf == kFields) return false;  // an eighth field
         f[nf++] = {line + start, i - start};
         start = i + 1;
     }
     if (nf != kFields) return false;
 
     if (!catalogNameIsSafe(f[0].p, f[0].n)) return false;
-    if (!langIsSafe(f[1].p, f[1].n)) return false;
+    if (!catalogTitleIsValid(f[1].p, f[1].n)) return false;
+    if (!langIsSafe(f[2].p, f[2].n)) return false;
     uint32_t cards = 0, bytes = 0;
-    if (!parseU32(f[2].p, f[2].n, &cards) || cards == 0 || cards > 65535u) return false;
-    if (!parseU32(f[3].p, f[3].n, &bytes) || bytes < kCatalogMinPackBytes ||
+    if (!parseU32(f[3].p, f[3].n, &cards) || cards == 0 || cards > 65535u) return false;
+    if (!parseU32(f[4].p, f[4].n, &bytes) || bytes < kCatalogMinPackBytes ||
         bytes > kCatalogMaxPackBytes)
         return false;
     uint8_t digest[32];
-    if (!parseSha256Hex(f[4].p, f[4].n, digest)) return false;
+    if (!parseSha256Hex(f[5].p, f[5].n, digest)) return false;
     std::string url;
-    if (!resolveCatalogUrl(base, std::string(f[5].p, f[5].n), &url)) return false;
+    if (!resolveCatalogUrl(base, std::string(f[6].p, f[6].n), &url)) return false;
 
     e->name.assign(f[0].p, f[0].n);
-    e->lang.assign(f[1].p, f[1].n);
+    e->title.assign(f[1].p, f[1].n);
+    e->lang.assign(f[2].p, f[2].n);
     e->cards = cards;
     e->bytes = bytes;
     std::memcpy(e->sha256, digest, sizeof digest);
@@ -119,6 +121,52 @@ bool catalogNameIsSafe(const char* name, size_t len) {
         if (c == '.' && i + 1 < len && name[i + 1] == '.') return false;
     }
     return true;
+}
+
+bool catalogTitleIsValid(const char* title, size_t len) {
+    if (len == 0) return true;
+    if (!title || len > kCatalogMaxTitleLen) return false;
+    const auto* s = reinterpret_cast<const uint8_t*>(title);
+    size_t i = 0;
+    while (i < len) {
+        const uint8_t c = s[i];
+        if (c < 0x80) {
+            if (c < 0x20 || c == 0x7F) return false;  // TAB and other controls
+            ++i;
+            continue;
+        }
+        // Sequence length and the smallest code point it may encode (no
+        // overlong forms); 0x80..0xC1 and 0xF5..0xFF never start a sequence.
+        size_t n = 0;
+        uint32_t cp = 0, min = 0;
+        if (c >= 0xC2 && c <= 0xDF) {
+            n = 2;
+            cp = c & 0x1Fu;
+            min = 0x80;
+        } else if (c >= 0xE0 && c <= 0xEF) {
+            n = 3;
+            cp = c & 0x0Fu;
+            min = 0x800;
+        } else if (c >= 0xF0 && c <= 0xF4) {
+            n = 4;
+            cp = c & 0x07u;
+            min = 0x10000;
+        } else {
+            return false;
+        }
+        if (len - i < n) return false;
+        for (size_t k = 1; k < n; ++k) {
+            if ((s[i + k] & 0xC0) != 0x80) return false;
+            cp = (cp << 6) | (s[i + k] & 0x3Fu);
+        }
+        if (cp < min || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) return false;
+        i += n;
+    }
+    return true;
+}
+
+const std::string& catalogDisplayName(const CatalogEntry& e) {
+    return e.title.empty() ? e.name : e.title;
 }
 
 bool parseSha256Hex(const char* hex, size_t len, uint8_t out[32]) {

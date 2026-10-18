@@ -2,7 +2,9 @@
 // Draws pack glyphs (4bpp) and UTF-8 text onto any LovyanGFX target
 // (display, LGFX_Sprite). Bitmaps come decoded from PackReader (v2 packs store
 // them compressed): sets 1..3 are cached per glyph, set 0 and stroke masks use
-// one scratch buffer. Arduino/ESP32 only.
+// one scratch buffer. Text in the built-in font (Font0) or the firmware's UI
+// font (ui/UiFont.h) needs no pack, so it also works before begin() and
+// after end(). Arduino/ESP32 only.
 #include <cstdint>
 
 #include "board/Board.h"
@@ -19,6 +21,9 @@ void drawBitmap4bpp(lgfx::LovyanGFX& dst, int x, int y, const uint8_t* bits, int
 // `ink`; zero bits are skipped (used for stroke masks).
 void drawBitmap1bpp(lgfx::LovyanGFX& dst, int x, int y, const uint8_t* bits, int w, int h,
                     uint16_t ink);
+
+// Horizontal placement of a one-line label in its box.
+enum class Align : uint8_t { Left, Centre, Right };
 
 class Renderer {
 public:
@@ -50,10 +55,22 @@ public:
     static constexpr uint8_t kTextBuiltinSmall = 0xFE;
     static bool builtinCanDraw(const char* s);
 
-    // Text metrics per set. `set` is 2 (small text), 3 (large option text) or
-    // kTextBuiltin. Set 3 falls back to set 2 when the pack has no set 3.
+    // The firmware's UI font (docs/ux-refresh.md §2.3): kTextUi is the Label
+    // face (Noto Sans JP 18 px: ASCII, Latin-1, UI punctuation), kTextUiNumeral
+    // the Numeral face (32 px digits). Their line box is the compact UI pitch
+    // (20 / 36 px) with the cap height centred in it. A character the face
+    // lacks comes from the loaded pack's text set when it has it (a kanji in a
+    // network name), else it is a box.
+    static constexpr uint8_t kTextUi = 0xFD;
+    static constexpr uint8_t kTextUiNumeral = 0xFC;
+
+    // Text metrics per set. `set` is 2 (small text), 3 (large option text),
+    // kTextBuiltin(Small) or kTextUi(Numeral). Set 3 falls back to set 2 when
+    // the pack has no set 3.
     int lineHeight(uint8_t set = kGlyphSetText) const;
     int ascent(uint8_t set = kGlyphSetText) const;
+    // Ink height of a capital above the baseline (what drawLabel() centres).
+    int capHeight(uint8_t set = kGlyphSetText) const;
 
     // ASCII missing from the pack uses the built-in font; any other missing
     // character (or a missing set-3 glyph) is drawn as a '?' box.
@@ -71,6 +88,12 @@ public:
     // horizontally in `w`. Returns lines drawn.
     int drawCentred(lgfx::LovyanGFX& dst, const char* s, int x, int y, int w, int h, int maxLines,
                     uint16_t fg, uint16_t bg, uint8_t set = kGlyphSetText);
+    // One line in the box (x, y, w, h): placed by `align`, vertically centred
+    // on the cap height (not on the font's taller line box), cut with "..."
+    // when it does not fit `w`. Returns the width drawn. Ink below the
+    // baseline may reach past the box; clip if that matters.
+    int drawLabel(lgfx::LovyanGFX& dst, const char* s, int x, int y, int w, int h, uint16_t fg,
+                  uint16_t bg, uint8_t set = kTextUi, Align align = Align::Left);
 
 private:
     struct Line {
@@ -82,6 +105,8 @@ private:
 
     // Set-3 lookups fall back to set 2; anything else is returned as-is.
     const Glyph* glyphFor(uint8_t set, uint32_t cp) const;
+    // A UI-font character's stand-in from the pack's text set (null if none).
+    const Glyph* uiFallback(uint32_t cp) const;
     const uint8_t* bitmapFor(const Glyph& g);
     int textRangeWidth(const char* b, const char* e, uint8_t set) const;
     int wrap(const char* s, int maxW, int maxLines, uint8_t set, Line* out, int cap) const;

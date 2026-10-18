@@ -74,15 +74,17 @@ open).
 
 Or fetch decks on the device itself: **Decks -> + Get decks** joins the home
 Wi-Fi only while that screen is open, reads the release catalog over HTTPS
-(verified, redirects followed), lists the decks (`+` new, `=` here, `~` other
-size) and downloads the one you hold, checked against the catalog's size and
-SHA-256. The page's downloads use the same code. The side button cancels a
-download; a click of the power button or a critical battery cancels it and
-sleeps, and on battery below 6 % it does not start. A fresh device offers the
-same from its boot screen once a home network is saved. The default catalog
-only exists once a public release carries packs + `catalog.txt`; the page can
-set another URL. Serial `[wifi]` and `[net]` lines report each step and the free
-heap around TLS and around a download from the page.
+(verified, redirects followed), lists the decks by title (`+` new, `=` here,
+`~` other size) and downloads the one you hold, checked against the catalog's
+size and SHA-256. The page's downloads use the same code. The side button
+cancels a download; a click of the power button or a critical battery cancels
+it and sleeps, and on battery below 6 % it does not start. A fresh device
+offers the same from its boot screen once a home network is saved. The default
+catalog (`releases/download/decks-v2/catalog-v2.txt`, catalog format v2) only
+answers once the decks release carries it; the page can set another URL. A v1
+`catalog.txt` is refused as an old format. Serial `[wifi]` and `[net]` lines
+report each step and the free heap around TLS and around a download from the
+page.
 
 ## Flash layout
 
@@ -221,7 +223,9 @@ the sync without one.
 Auto rotation (pure C++), `src/power` critical-battery guard (pure C++),
 `src/catalog` deck-catalog parser (pure C++), `src/portal` the portal's pure
 helpers (Wi-Fi QR text, QR size, page language) and its page strings in en/es,
-`src/render` glyph/text drawing, `src/platform` LittleFS-backed pack source and
+`src/ui` the UX design tokens, icons, list state and the generated UI font
+(pure C++), `src/render` glyph/text drawing and the flat widgets (header, hint
+bar, tiles, rows, lists), `src/platform` LittleFS-backed pack source and
 SRS file, the on-device Wi-Fi portal (`WifiPortal`: setup mode = open AP, home
 mode = the home network; one HTTP page for the catalog, upload/delete/download,
 stats, home Wi-Fi and the phone clock), the home network (`HomeWifi`) and the

@@ -101,11 +101,11 @@ Scope for now: **kanji only** (no vocabulary decks).
         the shared temp-file + validate + rename path, checking the catalog's
         size and `sha256`, with a progress bar and cancel. A fresh device offers
         it on the boot-time upload screen once a home Wi-Fi is saved. The default
-        catalog is the dedicated decks release
-        (`releases/download/decks-v2/catalog.txt`, never marked "latest"), which
-        only answers once `decks.yml` has published it (see "Before
-        publishing"); the URL can be changed on the portal page. **Not verified
-        on hardware yet**: TLS
+        catalog is in the dedicated decks release
+        (`releases/download/decks-v2/catalog-v2.txt`, never marked "latest";
+        catalog format v2 with deck titles since 2026-10-18), which only answers
+        once `decks.yml` has published it; the URL can be changed on the portal
+        page. **Not verified on hardware yet**: TLS
         heap use, download speed and the GitHub redirect chain on a real
         StickS3 are to be confirmed (`[net]` serial lines log the heap).
       - [x] **Portal over the home Wi-Fi** (2026-10-18). With a home network
@@ -155,7 +155,7 @@ Scope for now: **kanji only** (no vocabulary decks).
       native-tested against the builder's output; used by Get decks).
       **Prebuilt decks** have their own workflow, `.github/workflows/decks.yml`
       (manual dispatch): JLPT N5-N1 and the full Jōyō deck (school order), in
-      es and en, with stroke order, published with `catalog.txt` to the fixed
+      es and en, with stroke order, published with the catalog to the fixed
       release `decks-v<pack format>` (never "latest", replaced in place), which
       is the firmware's default Get decks catalog; firmware releases no longer
       carry packs (docs/decisions.md, 2026-10-18 "Decks release").
@@ -218,7 +218,13 @@ Scope for now: **kanji only** (no vocabulary decks).
       firmware UI font from Noto Sans JP, auto-advance after a correct answer,
       a mode pill in the quiz header, five settings groups, a hold-duration
       setting, side tap = previous option, catalog v2 with deck titles.
-      No firmware change yet.
+      **Phase 1 implemented** (`feature/ui-foundation`, not yet verified on
+      hardware): design tokens, icons, the Noto Sans JP UI font
+      (`tools/ui-font/`), flat widgets and the menu screens as scrolling lists
+      with a hint bar (ux-refresh §4). **Catalog v2 done** (`feature/catalog-v2`):
+      a `title` column (the pack's deck name) in `catalog-v2.txt`, shown by Get
+      decks and the portal page; v1 is no longer written or read. Next: the
+      quiz, feedback and detail card (phase 2).
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
       (picking an option on the device takes longer than in Anki).
 - [ ] **Learning mode** (idea, 2026-10-18). A mode for learning kanji, not
@@ -240,10 +246,12 @@ Scope for now: **kanji only** (no vocabulary decks).
       (manual dispatch only) builds the default set and publishes it, with the
       combined attribution in the notes, to the release `decks-v<pack format>`
       (`decks-v2`), which is never marked "latest" so firmware releases cannot
-      hide it. The device's default Get decks catalog
-      (`releases/download/decks-v2/catalog.txt` on `dcarnicer/tangocho`) answers
-      since that first run; the former blockers (the JLPT lists' licence, the
-      5 MiB cap in pack format v1) were resolved first.
+      hide it. The device's default Get decks catalog is now
+      `releases/download/decks-v2/catalog-v2.txt` on `dcarnicer/tangocho`
+      (catalog format v2, 2026-10-18); the first run published the v1
+      `catalog.txt`, so the workflow has to run again for the new default to
+      answer (that run also deletes `catalog.txt`). The former blockers (the
+      JLPT lists' licence, the 5 MiB cap in pack format v1) were resolved first.
 - [x] Attribution for redistributed data: README's "Releases" section,
       `docs/data-sources.md` and the release notes all carry the combined
       KANJIDIC2 / KanjiVG / Noto Sans JP credit. (On the device too since

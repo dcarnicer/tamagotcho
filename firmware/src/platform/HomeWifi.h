@@ -22,10 +22,12 @@ public:
     // The decks release for the pack format this firmware reads: a fixed tag
     // `decks-v<format version>`, never marked "latest" and refreshed in place by
     // .github/workflows/decks.yml. A format bump publishes `decks-v<N+1>` and
-    // changes this URL, so older firmware keeps the decks it can open. Answers
-    // 404 until that release exists.
+    // changes this URL, so older firmware keeps the decks it can open. The file
+    // is named after the catalog format this firmware reads (catalog-v2.txt,
+    // kCatalogVersion), independently of the pack format in the tag. Answers
+    // 404 until that release carries it.
     static constexpr const char* kDefaultCatalogUrl =
-        "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt";
+        "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog-v2.txt";
     static constexpr uint32_t kConnectTimeoutMs = 15000;
     static constexpr size_t kMaxSsidLen = 32;   // 802.11 limit, in bytes
     static constexpr size_t kMaxUrlLen = 256;

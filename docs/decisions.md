@@ -1918,3 +1918,107 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   the firmware, so v1 is dropped rather than published next to v2. Until
   there are other users, compatibility with released firmware or packs is
   not a constraint.
+
+## 2026-10-18 – UX refresh phase 1: UI font, widgets, scrolling menus
+
+- **What.** `feature/ui-foundation` delivers phase 1 of `docs/ux-refresh.md`
+  (§4, with its status list) plus the UI font of phase 4: `ui/Theme.h`,
+  `ui/Icons.h`, `ui/ListView.h`, `ui/UiFace.h` + the generated `ui/UiFont.h`,
+  `render/Widgets`, `Renderer::drawLabel()`, and the menu screens redrawn with
+  them. The quiz, the detail card and Get decks are unchanged, and so is the
+  input model.
+- **UI font: Noto Sans JP Regular**, the weight the packs use. Medium reads a
+  little bolder at 18 px in a preview, but the earlier hardware observation
+  (light ink on the dark panel looks heavier than in a preview) and the
+  wish that UI labels match a pack's set-2 text both point to Regular, and it
+  needs no new download (`fetch` gets only Regular). `--font` switches the
+  generator for a later comparison on the device.
+- **How it is stored.** A committed, generated header (`tools/ui-font/
+  gen_ui_font.py`, run in the pack builder's uv environment like the mockup
+  script) with `inline constexpr` tables: per face a sorted glyph table (10
+  bytes a glyph: code point, 16-bit offset, size, offsets, advance; binary
+  search) and one bitmap array in the pack 4bpp format, rendered by the
+  builder's own `FontRenderer`, so placement and quantisation are a pack's.
+  The firmware build needs no Python; `--check` tells whether the header is
+  current. Output depends only on the font file and the locked Pillow /
+  FreeType (named in the header). Label 18 px: ASCII, Latin-1, `· … › ‹ « »
+  – —` and ✓ ▲ ▼ (Noto Sans JP has no ✗; widgets draw all four as icons);
+  Numeral 32 px: digits, space, `%:/+-.`. 216 glyphs: 15,423 bytes of bitmaps
+  + 2,160 bytes of tables.
+- **Text metrics.** The UI faces get a compact line pitch (20 px Label, 36 px
+  Numeral; the font's line box is 27 / 48 px) with the cap height (14 / 24 px)
+  centred in it, which is what `drawLabel()` and `drawCentred()` use. The
+  ellipsis stays "..." (three periods): Noto Sans JP's U+2026 is the CJK form,
+  an em wide with the dots at mid-height. A character the UI face lacks (a
+  kanji in a network name) comes from the loaded pack's text set, else a box.
+- **Widgets on the Arduino side** (`render/Widgets`), not in `ui/`: they draw
+  into a LovyanGFX target, and `ui/` must build natively. Their pure parts
+  (list window, layout, icons, font lookup) are in `ui/` and tested there.
+- **Lists.** Rows keep the layout's height (26 / 22 / 30 px; 36 / 32 / 40 for
+  two lines) and scroll; the window moves as little as possible to keep the
+  focus visible. The 2 px scroll bar sits in the right gutter (rows keep their
+  width whether or not the list overflows), and the ▲/▼ markers sit in 4 px
+  bands above and below the rows. Lists with a second text (the loaded deck's
+  "12 due · 10 new", a zone's offsets) put it on a caption line under the
+  label on panels narrower than 200 px and as the row's value otherwise, so
+  the landscape lists show four rows instead of two.
+- **Hint bar.** "• move ▬ open ◂ back". The side word needs 6 px clear of the
+  front items, else only the icon shows: the Spanish "• mover ▬ abrir ◂ atrás"
+  fits the 135 px portrait with 2 px between the sides (ux-refresh §2.4), which
+  read as one word in a preview, so Spanish portrait shows the icon alone.
+- **Strings.** Row labels lose "»" (a chevron marks rows that open a screen)
+  and Spanish labels get their accents (Estadísticas, Orientación); headers
+  stay Font0 and ASCII. "Date: %s", "Zone: %s" and "Home: %s" became labels
+  with the date, the zone and the network as row values (the label is kept,
+  the value cut). The deck caption is "%u due · %u new" / "%u hoy · %u
+  nuevas" (19 characters fit the portrait caption line; "pend." did not).
+  The zone list's footer went: each row now shows its offsets. Settings ›
+  About lists "UI font: Noto Sans JP, SIL OFL 1.1" with the firmware.
+- **Partial pushes, tried early.** A focus move on a list that does not scroll
+  (settings home, decks, pickers, zones) pushes only the rows between the old
+  and the new focus with `presentRegion()`, so the clipped push phase 2 relies
+  on is exercised on hardware now. It is one-shot and any full `present()`
+  cancels it, so rotations, notes and screen changes always push the whole
+  frame. Under `TGC_QUIZ_LOG`, `drawScreen()` logs its time and the push's.
+- **Flash** (both with `TGC_VERSION=dev`): StickS3 1,407,837 → 1,430,457 bytes
+  (+22.6 KB: the font 17.6 KB, the rest widgets and strings), static RAM
+  54,508 → 54,692; T-Display-S3 1,248,517 → 1,271,097 bytes, static RAM
+  52,496 → 52,696. **Not verified on hardware.**
+
+## 2026-10-18 – Catalog v2: deck titles
+
+- **Why.** Get decks and the portal page listed catalog decks by file name
+  (`n3-es`): the catalog had no human-readable name (`docs/ux-refresh.md` §6,
+  item 8). Supersedes the column list of "Device catalog format: line-oriented
+  text" (2026-10-17) and the default URL of "Decks release".
+- **Format v2** (`tools/pack-builder/README.md`, "Catalog format"): a `title`
+  column, the pack header's `deck_name`, **second**, after `name`, so a person
+  reading the file sees file and deck side by side and `url`, the longest
+  field, stays last. UTF-8, at most **64 bytes** (a 135 px row shows about 20
+  built-in characters and cuts with ".."; 64 bounds the 32-entry list in RAM),
+  spaces allowed, no TAB or other control character. The device also requires
+  well-formed UTF-8 and skips a record that is not. Empty is allowed and shows
+  `name`.
+- **The builder refuses rather than truncates**: `catalog` exits 1 on a deck
+  name over 64 bytes or with a control character (the device would skip that
+  record), like its other "a broken build does not enter a release" checks;
+  `build` warns about such a name.
+- **File names follow the catalog format**: `catalog-v2.txt`, and
+  `catalog-v2.json` for people (renamed too, so the pair stays together). The
+  `decks-v2` tag stays the pack format; either version can change alone.
+  Default URL: `releases/download/decks-v2/catalog-v2.txt`.
+- **No backward compatibility**: the builder writes only v2 and the firmware
+  reads only v2. A v1 file gets the unsupported-version path, but the message
+  now tells an older format ("Old catalog format: set a catalog-v2.txt URL",
+  since a v1 file can only come from a saved URL override) from a newer one
+  ("update the firmware").
+- **`decks.yml`** takes the file names from the builder and, on a rebuild,
+  deletes every catalog asset it did not write (`catalog*.txt`/`.json`, i.e.
+  the v1 `catalog.txt` and `catalog.json`): an old catalog in the same release
+  would list stale sizes and digests for the rebuilt packs. The notes' deck
+  column is the title. `release.yml` finds the decks release in the new URL.
+- **Shown where a deck is chosen**: Get decks rows (same layout, the title in
+  place of the file name; the ".." cut keeps whole UTF-8 characters) and the
+  portal list (bold title, then `<name>.tgc · lang · cards · size`). The
+  "Saved <name>" note and the page's download progress keep the file name,
+  which is what the installed-deck list shows for now.
