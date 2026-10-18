@@ -69,7 +69,7 @@ bool HomeWifi::hasCredentials() { return savedSsid().length() > 0; }
 String HomeWifi::savedSsid() {
     Preferences p;
     if (!p.begin(kNs, false)) return String();
-    const String s = p.getString(kKeySsid, "");
+    const String s = p.isKey(kKeySsid) ? p.getString(kKeySsid, "") : String();
     p.end();
     return s;
 }
@@ -97,7 +97,7 @@ void HomeWifi::forgetCredentials() {
 String HomeWifi::catalogUrlOverride() {
     Preferences p;
     if (!p.begin(kNs, false)) return String();
-    const String s = p.getString(kKeyCatalog, "");
+    const String s = p.isKey(kKeyCatalog) ? p.getString(kKeyCatalog, "") : String();
     p.end();
     return s;
 }
@@ -132,8 +132,8 @@ bool HomeWifi::begin() {
     {
         Preferences p;
         if (p.begin(kNs, false)) {
-            ssid = p.getString(kKeySsid, "");
-            pass = p.getString(kKeyPass, "");
+            if (p.isKey(kKeySsid)) ssid = p.getString(kKeySsid, "");
+            if (p.isKey(kKeyPass)) pass = p.getString(kKeyPass, "");
             p.end();
         }
     }
