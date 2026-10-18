@@ -12,10 +12,26 @@ Scope for now: **kanji only** (no vocabulary decks).
 - [~] **Phase 2 – SRS.** FSRS-5 on device (`firmware/src/srs/`, pure and
       native-tested), `/state/srs.bin` persisted per-codepoint state, review/
       learn queues, grade from correctness + response time. Validated on the
-      StickS3. The device has no clock, so days come from a user-reported gap on
-      each power-on plus a manual date (NTP in phase 4). `slow_ms`, the daily new
+      StickS3. The device has no RTC chip: days come from uptime plus the time
+      spent in deep sleep (measured by the ESP32's RTC timer, 2026-10-18), and
+      only a real power-off asks the user for the gap. `slow_ms`, the daily new
       cap and the "study more" override are all adjustable/working. Pending: tune
-      the defaults with real use.
+      the defaults with real use, and **better day detection**:
+      - [ ] Make real power-offs rare: the M5PM1 power button can have its
+        double-click shutdown and click reset disabled (`BTN_CFG_1/2`) and its
+        clicks read (`BTN_STATUS`), so a press saves and deep-sleeps instead; a
+        "Power off" settings row does the same; save and sleep at critical
+        battery (~3 %) before the cell dies. Check on hardware that the PM1
+        honours the registers.
+      - [ ] Real date from the phone: the portal page posts `Date.now()` and the
+        browser's time zone (`POST /time`); store an absolute epoch day in the
+        SRS header's reserved bytes (v1-compatible) and roll the day over at a
+        fixed local hour (04:00, as Anki) instead of every 24 h from an arbitrary
+        origin.
+      - [ ] Real date from NTP over the home Wi-Fi (phase 4) after a power cut,
+        with a short timeout and the manual question as the fallback.
+      - [ ] Better manual fallback: show the last-used date and step a proposed
+        "today" (tap +1 day, hold confirms) instead of the 0/1/2-7/14+ buckets.
 - [~] **Phase 3 – Better cards.** Distractors done for visual similarity,
       shared classical radicals and confusable readings; meaning→kanji questions
       done; the mistake detail card is done (a tap after a wrong answer opens a
@@ -34,9 +50,25 @@ Scope for now: **kanji only** (no vocabulary decks).
       access point (`Tangocho-XXXX`, `http://192.168.4.1`) to upload, delete and
       download packs and to read the SRS statistics (`/`, `/api/stats`); it also
       lets a fresh, pack-less device boot into an "upload a `.tgc`" state and
-      continue into the quiz once a pack arrives. Pending: IMU input (tilt to
-      choose), and NTP time (store an epoch in the SRS state so the scheduler
-      finally has real days; the StickS3 has no RTC, see docs/decisions.md).
+      continue into the quiz once a pack arrives. Pending:
+      - [ ] **Home Wi-Fi (station mode).** Enter the SSID/password once from the
+        portal page (stored in NVS, never logged or shown back); the device then
+        joins the home network on demand, not permanently, so the battery
+        policy still holds. Used for NTP time (phase 2) and the catalog below.
+      - [ ] **One-button deck download.** A "Get decks" screen fetches the
+        release catalog (`tangocho-pack catalog`, line-oriented, phase 5) over
+        the home Wi-Fi, lists the decks not yet on the device with their size,
+        and downloads the chosen one into `/packs` with the existing
+        temp-file + validate + rename path, checking the catalog's `sha256`.
+        Needs **HTTPS**: GitHub release assets are `https://` with redirects,
+        and the current fetch is plain `http://` only, so TLS (root CA bundle,
+        redirect following, memory on the StickS3) has to be added and tested.
+      - [ ] **Auto-rotation from the IMU.** Use the StickS3's BMI270
+        accelerometer to switch portrait/landscape as the device is turned, with
+        hysteresis and a short settle time so it does not flicker; the
+        Orientation setting gains "Auto" next to the fixed choices. The
+        T-Display-S3 has no IMU and keeps the fixed setting.
+      - [ ] IMU input (tilt to choose).
       - [x] **WaniKani importer** (user's own token, unlocked kanji only). The
         builder can build a pack from the kanji a user has unlocked on their own
         WaniKani account instead of (or as well as) KANJIDIC2, via
@@ -95,6 +127,19 @@ Scope for now: **kanji only** (no vocabulary decks).
       (portrait is the default and is unchanged). Landscape puts the quiz prompt
       in a left column and the options on the right, and shrinks the list rows to
       fit the shorter screen.
+
+- [~] **Power management** (2026-10-18). Done: dim after 30 s, deep sleep
+      after 2 min on battery (front button wakes; panel-off only on USB), 5 min
+      Wi-Fi portal timeout, CPU at 80 MHz (240 while the portal runs), a
+      brightness setting. Pending: hardware checks (does the M5PM1 keep the rail
+      up through deep sleep, sleep current, battery life), and the **USB buzz**:
+      still audible up close after moving the backlight PWM to 25 kHz, so the
+      backlight was not (or not the only) cause; to investigate.
+- [ ] **UX refresh.** A review to give the device UI a more modern look and feel:
+      typography and spacing, a consistent visual language across quiz, menus
+      and detail card, clearer feedback and transitions on answers, a less
+      text-heavy settings home (fewer rows or grouping), and an on-screen hint of
+      what tap/hold do. Start with an audit and mockups before code.
 
 ## Before publishing
 
