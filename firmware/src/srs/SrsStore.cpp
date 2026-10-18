@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "srs/WallClock.h"
+
 namespace tgc {
 namespace {
 
@@ -31,6 +33,7 @@ constexpr size_t kOffFlags = 30;
 constexpr size_t kOffStreakCurrent = 32;
 constexpr size_t kOffStreakBest = 34;
 constexpr size_t kOffLastStudyDay = 36;
+constexpr size_t kOffEpochAnchor = 38;  // 0 = never synced (section 5.1)
 constexpr size_t kOffReviewMs = 40;
 
 inline uint16_t rd16(const uint8_t* p) {
@@ -117,6 +120,7 @@ void SrsStore::reset() {
     streakBest_ = 0;
     lastStudyDay_ = 0;
     reviewMs_ = 0;
+    epochAnchor_ = 0;
     tickStarted_ = false;
     lastTickMs_ = 0;
 }
@@ -148,6 +152,57 @@ void SrsStore::advanceDays(uint16_t n) {
     const uint32_t day = static_cast<uint32_t>(nowDay_) + n;
     nowDay_ = day > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(day);
     resetNewIfNewDay();
+}
+
+void SrsStore::advanceDaysManual(uint16_t n) {
+    if (n == 0) return;
+    advanceDays(n);
+    msCarry_ = 0;
+}
+
+ClockSyncResult SrsStore::syncWallClock(int64_t utcMs, int tzOffsetMin) {
+    ClockSyncResult res;
+    int32_t real = 0;
+    uint32_t intoDay = 0;
+    if (!studyDayOf(utcMs, tzOffsetMin, &real, &intoDay)) return res;
+
+    // The index after the sync: forward to the real study day when it is ahead
+    // (saturating like advanceDays), never back.
+    uint16_t day = nowDay_;
+    if (epochAnchor_ != 0) {
+        const int32_t target = real - static_cast<int32_t>(epochAnchor_);
+        if (target > static_cast<int32_t>(nowDay_))
+            day = target > 0xFFFF ? 0xFFFF : static_cast<uint16_t>(target);
+    }
+    // The anchor that shows that index as the real date. Unchanged for Advanced
+    // and Same; it can only fall out of range for an index tens of thousands of
+    // days old, which no real use reaches -- refuse rather than wrap.
+    const int32_t anchor = real - static_cast<int32_t>(day);
+    if (anchor < 1 || anchor > 0xFFFF) return res;
+
+    if (epochAnchor_ == 0)
+        res.kind = ClockSync::Anchored;
+    else if (day > nowDay_)
+        res.kind = ClockSync::Advanced;
+    else if (anchor == static_cast<int32_t>(epochAnchor_))
+        res.kind = ClockSync::Same;
+    else
+        res.kind = ClockSync::Reanchored;
+
+    if (day > nowDay_) {
+        res.daysAdvanced = static_cast<uint16_t>(day - nowDay_);
+        advanceDays(res.daysAdvanced);  // also starts the new day's new-card budget
+    }
+    epochAnchor_ = static_cast<uint16_t>(anchor);
+    // The next uptime/sleep rollover falls at the next local 04:00.
+    msCarry_ = intoDay;
+    return res;
+}
+
+int32_t SrsStore::epochDayOf(uint16_t day) const {
+    const int32_t base =
+        epochAnchor_ != 0 ? static_cast<int32_t>(epochAnchor_) : kSrsLegacyEpochDay;
+    return base + static_cast<int32_t>(day);
 }
 
 void SrsStore::tick(uint32_t nowMs) {
@@ -330,6 +385,7 @@ bool SrsStore::serialize(std::vector<uint8_t>& out) const {
     wr16(out.data() + kOffStreakCurrent, streakCurrent_);
     wr16(out.data() + kOffStreakBest, streakBest_);
     wr16(out.data() + kOffLastStudyDay, lastStudyDay_);
+    wr16(out.data() + kOffEpochAnchor, epochAnchor_);
     wr32(out.data() + kOffReviewMs, reviewMs_);
 
     uint8_t* p = out.data() + kSrsHeaderSize;
@@ -378,6 +434,7 @@ bool SrsStore::deserialize(const uint8_t* data, size_t len) {
     streakCurrent_ = rd16(data + kOffStreakCurrent);
     streakBest_ = rd16(data + kOffStreakBest);
     lastStudyDay_ = rd16(data + kOffLastStudyDay);
+    epochAnchor_ = rd16(data + kOffEpochAnchor);  // 0 (old file): never synced
     reviewMs_ = rd32(data + kOffReviewMs);
     // A file written before the "has studied" flag existed still records a
     // non-zero last study day whenever the streak logic ran, so recover the flag

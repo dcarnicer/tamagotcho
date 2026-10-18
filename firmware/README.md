@@ -93,7 +93,7 @@ it and acts as usual). After 2 min (5 min on the Wi-Fi screen, counting phone
 requests as activity) progress is saved and, **on battery, the device
 deep-sleeps**; the **front button wakes it** into a fresh question. The wake press
 itself is ignored. Time spent asleep is measured by the ESP32's RTC timer and
-advances the SRS day, so the "how many days?" question only appears after a real
+advances the SRS day, so the date question (below) only appears after a real
 power-off. **On USB power** it only turns the panel off (the serial port stays up
 for flashing and logs); any press turns it back on, and unplugging lets it sleep.
 To flash a sleeping device on battery, wake it first. The CPU runs at 80 MHz
@@ -126,6 +126,18 @@ notice again and goes back to sleep. Plug in USB to use it.
 | next / tap        | side button (B)    | GPIO14       |
 | deck menu (hold)  | side button (B)    | GPIO14       |
 | sleep now (click) | power button (PM1) | --           |
+
+## Date
+
+There is no RTC chip: the SRS day advances with uptime and deep sleep. Opening
+the Wi-Fi portal page from a phone (**Settings → Wi-Fi**, then
+`http://192.168.4.1`) sets the real date from the phone's clock and time zone;
+from then on the day rolls over at 04:00 local and the statistics show the real
+date (docs/srs.md §5.1). After a real power-off the device asks on the **date
+screen**: it shows the last-used date and a proposed "today" with its weekday. A
+tap adds a day, a hold confirms, a side-button hold takes a day back (never
+before the current day) and a side tap skips the question. The same screen is
+**Settings → Date** for manual corrections.
 
 ## Layout
 

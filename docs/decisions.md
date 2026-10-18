@@ -843,3 +843,62 @@ Short log of non-obvious choices. Newest last.
   datasheet treats "reset" and power-on as separate wake sources but does not
   say); that a double click still works from download mode; the sleep notice
   layout; the battery thresholds against a real discharge.
+
+## 2026-10-18 – Real date from the phone, 04:00 rollover, stepped manual date
+
+- **An anchor, not a clock.** The SRS keeps its monotonic day index and due days
+  stay in index space; the real date is an **anchor**: header byte 38 (u16,
+  unused and zero in every existing file) holds the days since 1970-01-01 of SRS
+  day 0, `0` = never synced. Display = anchor + `now_day`, else the old fixed
+  2026-10-17 base, so v1 files load unchanged with no version bump
+  (docs/srs.md §4.1). The anchor only moves on a sync, so every date the device
+  shows (last used, today, statistics) derives from one number. Bytes 44..47
+  stay unused.
+- **The phone's browser is the source.** Opening `http://192.168.4.1` posts
+  `Date.now()` and the offset (`POST /time`, form-encoded: the portal has no
+  JSON parser). The offset travels as **minutes east of UTC**
+  (`-getTimezoneOffset()`), the ISO sign, everywhere in the code. The portal only
+  parses; the pure `srs/WallClock` decides plausibility (2026-01-01 <= t < 2100,
+  offset -12..+14 h). The new hook is `bool onTime(int64_t utcMs, int16_t
+  tzOffsetMin)` -- a `bool` rather than `void` so the page can say whether the
+  device accepted the clock.
+- **`applyWallClock(int64_t utcMs, int tzOffsetMin)` in `main.cpp`** is the one
+  entry point for a real time; the NTP item will call it too. It stores the
+  offset in NVS (`tangocho`/`tz`, int16, minutes east, absent until the first
+  sync) because NTP only yields UTC. It saves the SRS only when the anchor or
+  the day changed, so reloading the page (every upload/delete redirects to it)
+  does not rewrite the 40 KB state file. A real time applied before `setup()`
+  decides on the power-cut question (`gWallClockSynced`) skips the question.
+- **Rollover at 04:00 local**, as in Anki, so a late session still counts for
+  the evening's day. A sync sets `ms_carry` to the time since the last local
+  04:00 and the existing uptime/sleep rules do the rest, unchanged. The offset is
+  a snapshot: DST or travel shifts the rollover until the next sync.
+- **Never rewind the index.** Real day ahead -> `advanceDays` (the new-card
+  counter resets as on any day change; the streak follows the index). Real day
+  behind (an overshot manual answer, or the RC oscillator running fast through
+  a long sleep) -> re-anchor the display, keep the index; rewinding would put
+  past reviews in the future. Re-anchoring was chosen over "freeze the index
+  until real time catches up" because the uptime/sleep rules cannot know when
+  that happens after a power cut.
+- **First sync of a never-synced store** anchors the current index as today: it
+  cannot measure a power-off gap that happened before it. This can only lose one
+  gap once per device, and a sync dismisses the boot-time question (the user
+  should not have to answer a question the device can answer itself).
+- **Manual fallback: a stepped date.** The bucket rows are gone: the screen
+  shows the last-used date (the persisted day at boot) and a proposed today with
+  its weekday. Tap +1 day, hold confirms, **side hold -1 day** (never below the
+  current day), side tap cancels. Stepping back was chosen over wrapping after
+  +N: a wrap either caps how long an absence can be entered or makes an overshoot
+  cost a full cycle of taps. On the other sub-screens any side press is "back";
+  here the side hold is the minus key, and the bottom hint line says so.
+- **A manual advance restarts the carry** (`advanceDaysManual`): after a power
+  cut the time of day is unknown, and carry 0 rolls over a full day after the
+  answer -- late, never early. An early rollover would hand out a day the index
+  can never give back; a late one is fixed by the next answer or sync. "Same
+  day" (+0) leaves the carry alone.
+- **A sync while the quiz is up.** Today the portal only runs on the Wi-Fi
+  screen, so a sync there just rebuilds the queue when the day changed. For a
+  sync on other screens (NTP later): an unanswered question gives way to the new
+  queue, an answered one or the detail card continues into it, the done screen
+  re-checks. As with a date set from the settings, the question left behind the
+  menu is still shown on return and may come up once more.

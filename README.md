@@ -30,7 +30,11 @@ copy a pack onto the device without a computer running `uploadfs`:
    `http://192.168.4.1` in a browser.
 3. Upload a `.tgc` with the file picker. The same page deletes a pack, downloads
    one from a plain `http://` URL, and shows the SRS statistics; the counters
-   and the pack list are also available as JSON at `/api/stats`.
+   and the pack list are also available as JSON at `/api/stats`. Opening the
+   page also sets the device's date from the phone's clock and time zone, so the
+   review day rolls over at 04:00 local. Once the date has been set this way,
+   a power-off can be handled by skipping the on-device date question (side tap)
+   and opening this page again.
 4. Tap the side button to leave the screen and stop the portal.
 
 Notes and limits:

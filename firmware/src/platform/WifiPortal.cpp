@@ -102,6 +102,51 @@ String htmlEscape(const String& in) {
     return out;
 }
 
+// Strict decimal: an optional '-' and 1..15 digits (Date.now() has 13). Anything
+// else, including an empty field, is refused rather than read as 0.
+bool parseDecimal(const String& in, int64_t* out) {
+    const size_t n = in.length();
+    const bool neg = n > 0 && in[0] == '-';
+    size_t i = neg ? 1 : 0;
+    if (i >= n || n - i > 15) return false;
+    int64_t v = 0;
+    for (; i < n; ++i) {
+        const char c = in[i];
+        if (c < '0' || c > '9') return false;
+        v = v * 10 + (c - '0');
+    }
+    *out = neg ? -v : v;
+    return true;
+}
+
+// An IANA zone name for the status message only ("Europe/Madrid"): a short
+// run of letters, digits and / _ + -; anything else is dropped.
+String sanitizeZone(const String& in) {
+    if (in.length() > 40) return String();
+    for (size_t i = 0; i < in.length(); ++i) {
+        const char c = in[i];
+        const bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                        (c >= '0' && c <= '9') || c == '/' || c == '_' || c == '+' || c == '-';
+        if (!ok) return String();
+    }
+    return in;
+}
+
+// Posts the browser's clock to /time once per page load (docs/srs.md section
+// 5.1) and shows the device's answer in #clk and the stats date (#dt).
+const char kTimeScript[] = R"JS(<script>
+(function(){var d=new Date(),z='',e=document.getElementById('clk');
+try{z=Intl.DateTimeFormat().resolvedOptions().timeZone||''}catch(_){}
+var x=new XMLHttpRequest();x.open('POST','/time');
+x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+x.onload=function(){if(x.status!=200){e.textContent='The device did not accept this browser\'s clock.';return}
+e.textContent='Device date set from this browser: '+x.responseText+(z?' ('+z+')':'');
+var t=document.getElementById('dt'),n=document.getElementById('dtn');
+if(t)t.textContent=x.responseText;if(n)n.textContent=''};
+x.onerror=function(){e.textContent='Could not send the clock to the device.'};
+x.send('ms='+d.getTime()+'&tz='+(-d.getTimezoneOffset())+'&zone='+encodeURIComponent(z))})();
+</script>)JS";
+
 // Escape a string for a JSON value (quotes, backslashes and control chars).
 String jsonEscape(const String& in) {
     String out;
@@ -202,6 +247,7 @@ void WifiPortal::registerRoutes() {
     server_->on("/fetch", HTTP_POST, [this]() { touch(); handleFetchRequest(); });
     server_->on("/upload", HTTP_POST, [this]() { touch(); handleUploadDone(); },
                 [this]() { touch(); handleUploadChunk(); });
+    server_->on("/time", HTTP_POST, [this]() { touch(); handleTime(); });
     server_->onNotFound([this]() { touch(); handleNotFound(); });
 }
 
@@ -268,6 +314,8 @@ void WifiPortal::handleRoot() {
 
     String h = pageHeader("Packs");
     h += "<p>No computer needed: upload a <code>.tgc</code> pack straight from this page.</p>";
+    h += "<p id=\"clk\" class=\"muted\">Opening this page sets the device date from this "
+         "browser's clock.</p>";
 
     h += "<h2>Packs in <code>/packs</code></h2><table><tr><th>name</th><th>size</th><th></th></tr>";
     uint32_t count = 0;
@@ -303,7 +351,11 @@ void WifiPortal::handleRoot() {
     h += "<p class=\"muted\">Plain <code>http://</code> only; TLS to arbitrary hosts is untested.</p>";
 
     h += "<h2>Statistics</h2><ul>";
-    h += "<li>day ";
+    h += "<li>date <span id=\"dt\">";
+    h += st.date;
+    h += "</span> <span id=\"dtn\" class=\"muted\">";
+    if (!st.dateSynced) h += "(estimated: not set from a clock yet)";
+    h += "</span> &middot; day ";
     h += String((unsigned)st.day);
     h += "</li><li>streak ";
     h += String((unsigned)st.streakCurrent);
@@ -334,6 +386,7 @@ void WifiPortal::handleRoot() {
     h += "<p class=\"muted\">JSON: <a href=\"/api/stats\">/api/stats</a></p>";
     h += "<p class=\"muted\">The access point is <b>open</b>: anyone in range can read or ";
     h += "delete your packs and see these statistics. Stop the portal when you are done.</p>";
+    h += kTimeScript;
     h += "</body></html>";
 
     server_->send(200, "text/html", h);
@@ -351,6 +404,10 @@ void WifiPortal::handleApiStats() {
     String j;
     j += "{\"day\":";
     j += String((unsigned)st.day);
+    j += ",\"date\":\"";
+    j += jsonEscape(st.date);
+    j += "\",\"dateSynced\":";
+    j += st.dateSynced ? "true" : "false";
     j += ",\"streak\":{\"current\":";
     j += String((unsigned)st.streakCurrent);
     j += ",\"best\":";
@@ -393,6 +450,32 @@ void WifiPortal::handleApiStats() {
     }
     j += "]}";
     server_->send(200, "application/json", j);
+}
+
+// POST /time, form fields `ms` (the browser's Date.now()), `tz` (minutes east of
+// UTC, -getTimezoneOffset()) and an optional `zone` (IANA name, message only).
+// The page posts it on every load; posting the same clock again is harmless.
+// The portal only checks the syntax: whether the time is plausible, and what it
+// means for the SRS day, is the app's call (hooks_.onTime, docs/srs.md 5.1).
+void WifiPortal::handleTime() {
+    int64_t ms = 0, tz = 0;
+    if (!parseDecimal(server_->arg("ms"), &ms) || !parseDecimal(server_->arg("tz"), &tz) ||
+        tz < -24 * 60 || tz > 24 * 60) {
+        server_->send(400, "text/plain", "bad time");
+        return;
+    }
+    if (!hooks_.onTime || !hooks_.onTime(ms, static_cast<int16_t>(tz))) {
+        setMsg("browser clock rejected");
+        server_->send(400, "text/plain", "time rejected");
+        return;
+    }
+    PortalStats st;
+    if (hooks_.fillStats) hooks_.fillStats(st);
+    const String zone = sanitizeZone(server_->arg("zone"));
+    setMsg("date set %s%s%s", st.date, zone.length() ? " " : "", zone.c_str());
+    Serial.printf("[wifi] date from browser: %s (tz %+d min %s)\n", st.date, (int)tz,
+                  zone.c_str());
+    server_->send(200, "text/plain", st.date);
 }
 
 void WifiPortal::handleNotFound() {
