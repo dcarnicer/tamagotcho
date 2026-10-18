@@ -99,7 +99,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--partitions", required=True, help="firmware/partitions/*.csv")
     ap.add_argument("--out", required=True, help="merged image to write")
     ap.add_argument("--chip", default="esp32s3")
-    ap.add_argument("--flash-mode", default="qio")
+    # DIO, as `pio run -t upload` writes it (`-v` shows `--flash_mode dio` for
+    # these qio boards): the bootloader header stays at the safe mode and the
+    # app's own flash config switches to QIO.
+    ap.add_argument("--flash-mode", default="dio")
     ap.add_argument("--flash-freq", default="80m")
     ap.add_argument("--flash-size", default="8MB")
     ap.add_argument("--boot-app0", help="only used when the table has an OTA data partition")
