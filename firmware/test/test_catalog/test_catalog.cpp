@@ -18,19 +18,19 @@ const char* kDefaultUrl =
 const char* kBuilderBare =
     "#tangocho-catalog\t1\n"
     "# name\tlang\tcards\tbytes\tsha256\turl\n"
-    "n5-en\ten\t3\t8288\t89b3ae7646d896e6b80c264fe99263ad3bc6b3a673c4e5d37cfa17c30c7344a8\tn5-en.tgc\n"
-    "n5-es-strokes\ten\t3\t8288\t89b3ae7646d896e6b80c264fe99263ad3bc6b3a673c4e5d37cfa17c30c7344a8"
+    "n5-en\ten\t3\t9244\t13385cc18a10ba05adc77a578653c8312dcd11ccc76f600cec2110ea6ae0c6be\tn5-en.tgc\n"
+    "n5-es-strokes\ten\t3\t9244\t13385cc18a10ba05adc77a578653c8312dcd11ccc76f600cec2110ea6ae0c6be"
     "\tn5-es-strokes.tgc\n";
 
 const char* kBuilderAbsolute =
     "#tangocho-catalog\t1\n"
     "# name\tlang\tcards\tbytes\tsha256\turl\n"
-    "n5-en\ten\t3\t8288\t89b3ae7646d896e6b80c264fe99263ad3bc6b3a673c4e5d37cfa17c30c7344a8"
+    "n5-en\ten\t3\t9244\t13385cc18a10ba05adc77a578653c8312dcd11ccc76f600cec2110ea6ae0c6be"
     "\thttps://github.com/dcarnicer/tangocho/releases/download/v0.3.0/n5-en.tgc\n"
-    "n5-es-strokes\ten\t3\t8288\t89b3ae7646d896e6b80c264fe99263ad3bc6b3a673c4e5d37cfa17c30c7344a8"
+    "n5-es-strokes\ten\t3\t9244\t13385cc18a10ba05adc77a578653c8312dcd11ccc76f600cec2110ea6ae0c6be"
     "\thttps://github.com/dcarnicer/tangocho/releases/download/v0.3.0/n5-es-strokes.tgc\n";
 
-const char* kSha = "89b3ae7646d896e6b80c264fe99263ad3bc6b3a673c4e5d37cfa17c30c7344a8";
+const char* kSha = "13385cc18a10ba05adc77a578653c8312dcd11ccc76f600cec2110ea6ae0c6be";
 
 CatalogParse parse(const std::string& text, const char* url = kDefaultUrl) {
     return parseCatalog(text.data(), text.size(), url);
@@ -63,10 +63,10 @@ void test_builder_output_bare_urls() {
     TEST_ASSERT_EQUAL_STRING("n5-en", a.name.c_str());
     TEST_ASSERT_EQUAL_STRING("en", a.lang.c_str());
     TEST_ASSERT_EQUAL_UINT32(3, a.cards);
-    TEST_ASSERT_EQUAL_UINT32(8288, a.bytes);
-    TEST_ASSERT_EQUAL_HEX8(0x89, a.sha256[0]);
-    TEST_ASSERT_EQUAL_HEX8(0xb3, a.sha256[1]);
-    TEST_ASSERT_EQUAL_HEX8(0xa8, a.sha256[31]);
+    TEST_ASSERT_EQUAL_UINT32(9244, a.bytes);
+    TEST_ASSERT_EQUAL_HEX8(0x13, a.sha256[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x38, a.sha256[1]);
+    TEST_ASSERT_EQUAL_HEX8(0xbe, a.sha256[31]);
     // A bare file name is resolved next to the catalog itself.
     TEST_ASSERT_EQUAL_STRING(
         "https://github.com/dcarnicer/tangocho/releases/latest/download/n5-en.tgc", a.url.c_str());
@@ -194,7 +194,7 @@ void test_one_bad_record_does_not_hide_the_rest() {
 }
 
 void test_accepts_edge_values() {
-    const std::string upper = "89B3AE7646D896E6B80C264FE99263AD3BC6B3A673C4E5D37CFA17C30C7344A8";
+    const std::string upper = "13385CC18A10BA05ADC77A578653C8312DCD11CCC76F600CEC2110EA6AE0C6BE";
     const CatalogParse r = parse(withRecord(record(std::string(43, 'n'), "", "65535", "5242880", upper,
                                                    "http://192.168.1.10:8000/packs/n.tgc")));
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::Ok), static_cast<int>(r.error));
@@ -202,7 +202,7 @@ void test_accepts_edge_values() {
     TEST_ASSERT_EQUAL_STRING("", r.entries[0].lang.c_str());
     TEST_ASSERT_EQUAL_UINT32(65535, r.entries[0].cards);
     TEST_ASSERT_EQUAL_UINT32(5242880, r.entries[0].bytes);
-    TEST_ASSERT_EQUAL_HEX8(0x89, r.entries[0].sha256[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x13, r.entries[0].sha256[0]);
     TEST_ASSERT_EQUAL_STRING("http://192.168.1.10:8000/packs/n.tgc", r.entries[0].url.c_str());
 }
 
@@ -252,7 +252,7 @@ void test_helpers() {
     TEST_ASSERT_TRUE(catalogNameIsSafe("x.v2", 4));
     uint8_t d[32];
     TEST_ASSERT_TRUE(parseSha256Hex(kSha, 64, d));
-    TEST_ASSERT_EQUAL_HEX8(0x7c, d[24]);
+    TEST_ASSERT_EQUAL_HEX8(0xec, d[24]);
     TEST_ASSERT_FALSE(parseSha256Hex(kSha, 63, d));
     TEST_ASSERT_TRUE(isHttpUrl("http://a"));
     TEST_ASSERT_TRUE(isHttpUrl("https://a:1/b?c#d"));

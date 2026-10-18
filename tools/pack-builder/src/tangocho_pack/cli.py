@@ -13,7 +13,7 @@ from . import paths
 
 def cmd_fetch(a) -> int:
     from .fetch import fetch_all
-    fetch_all(force=a.force)
+    fetch_all(force=a.force, klee_one=a.klee_one)
     return 0
 
 
@@ -21,6 +21,12 @@ def cmd_build(a) -> int:
     from .build import build_pack, default_deck_name
     from .kanjivg import KanjiVGError
     from .pack import read_pack
+
+    # A cache filled before Noto Sans JP became the default has only Klee One.
+    if not Path(a.font).is_file():
+        print(f"error: font {a.font} not found (run `tangocho-pack fetch`, or pass --font)",
+              file=sys.stderr)
+        return 2
 
     # The WaniKani path is opt-in: it needs the user's own token (flag or env)
     # instead of the cached KANJIDIC2 file. The token is never printed, logged
@@ -188,8 +194,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="tangocho-pack")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("fetch", help="download KANJIDIC2, JLPT levels, Klee One and KanjiVG into cache/")
-    s.add_argument("--force", action="store_true")
+    s = sub.add_parser("fetch", help="download KANJIDIC2, JLPT levels, Noto Sans JP and KanjiVG "
+                                     "into cache/")
+    s.add_argument("--force", action="store_true", help="download again even if present")
+    s.add_argument("--klee-one", action="store_true",
+                   help="also download Klee One (textbook-style font, the default before "
+                        "2026-10-18) into cache/fonts/; build with it via "
+                        "--font cache/fonts/KleeOne-SemiBold.ttf")
     s.set_defaults(fn=cmd_fetch)
 
     s = sub.add_parser("build", help="build a .tgc pack (KANJIDIC2 or your own WaniKani account)")
@@ -203,7 +214,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="limit the WaniKani import to this level (repeatable); "
                         "default: every unlocked level")
     s.add_argument("--lang", default="en", choices=["en", "es", "fr", "pt"])
-    s.add_argument("--font", default=str(paths.DEFAULT_FONT))
+    s.add_argument("--font", default=str(paths.DEFAULT_FONT),
+                   help="TTF/OTF to render the glyphs from (default: Noto Sans JP Regular, "
+                        "from `fetch`)")
     s.add_argument("--large-px", type=int, default=96)
     s.add_argument("--small-px", type=int, default=40)
     s.add_argument("--text-px", type=int, default=18)
