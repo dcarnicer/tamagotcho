@@ -72,7 +72,14 @@ struct UiStrings {
     const char* quizReading;
     const char* quizKanji;
     const char* dateTitle;
-    const char* dateRows[4];
+    // Date screen: the last-used day and a proposed "today" the user steps.
+    const char* dateLastUsed;  // label of the last-used date
+    const char* dateToday;     // label of the proposed date
+    const char* dateOneDay;    // "+1 day"
+    const char* dateDaysFmt;   // "+%u days" (0 and 2 and up)
+    const char* dateHintTap;   // what a tap / hold of the front button does
+    const char* dateHintSide;  // what a side-button hold does
+    const char* weekdays[7];   // short names, Sunday first
     const char* doneBadge;
     // Font0 is 6 px/char and each done-screen line is centred on the 135 px
     // portrait width, so every done line must stay short (about 21 chars).
@@ -125,7 +132,8 @@ const UiStrings kUiEn = {
      "Brightness"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
-    "DATE", {"today (0)", "1 day", "2-7 days", "more (14)"},
+    "DATE", "last used", "today", "+1 day", "+%u days", "tap +1  hold: OK", "side hold: -1",
+    {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
     "DONE", "All reviewed for now", "day %u  %u cards", "due %u  new %u", "tap/hold: +10 new",
     "side hold: menu",
     "  %u/%u",
@@ -148,7 +156,8 @@ const UiStrings kUiEs = {
      "Brillo"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
-    "FECHA", {"hoy (0)", "1 día", "2-7 días", "más (14)"},
+    "FECHA", "último uso", "hoy", "+1 día", "+%u días", "toque +1  larga: OK", "lateral larga: -1",
+    {"dom", "lun", "mar", "mié", "jue", "vie", "sáb"},
     "FIN", "Todo repasado", "dia %u  %u tarjetas", "vencen %u  nuevas %u",
     "toque/larga: +10", "lateral: menu",
     "  %u/%u",
@@ -218,7 +227,8 @@ enum class Choice { NewPerDay, SlowMs, Orientation, UiLang, Brightness };
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
-int gDateSel = 0;
+uint16_t gDateSteps = 0;  // days the proposed "today" is past the current day
+uint16_t gBootDay = 0;    // persisted day index at boot: "last used" on the date screen
 // A real wall-clock time was applied since boot (applyWallClock), so the
 // power-cut date question is not needed.
 bool gWallClockSynced = false;
@@ -714,37 +724,88 @@ void formatDate(uint16_t day, char* out, size_t n) {
     snprintf(out, n, "%04d-%02d-%02d", y, m, d);
 }
 
-// Date screen: shows today and offers to add days (the user's gap since the
-// last session, asked on a power-on boot, or a manual correction from the menu).
-constexpr int kDateRows = 4;
-const uint16_t kDateAdd[kDateRows] = {0, 1, 4, 14};
+// Date screen (docs/srs.md section 5, power-cut rule): the last-used date and a
+// proposed "today" that starts at the current day. A tap adds a day, a side
+// hold takes one back (never below the current day: the index does not
+// rewind), a hold confirms. Asked on a power-on boot (the side tap skips it) and
+// opened from the settings home for manual corrections.
+uint16_t dateTarget() {
+    const uint32_t t = static_cast<uint32_t>(gSrs.today()) + gDateSteps;
+    return t > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(t);
+}
 
+const char* weekdayName(uint16_t day) {
+    return ui().weekdays[tgc::weekdayFromDays(gSrs.epochDayOf(day))];
+}
+
+void openDate(Screen after) {
+    gAfterDate = after;
+    gDateSteps = 0;
+    gScreen = Screen::Date;
+    drawScreen();
+}
+
+// Labels share a line with their value when it fits (landscape), else sit above
+// it; the proposed date is one 2x line when it fits, else weekday over date.
+// All text uses the built-in font so accented Spanish renders.
 void drawDate() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, ui().dateTitle, 3, 3, kWhite, kGrey);
     drawBackHint(d);
-    char date[16];
-    formatDate(gSrs.today(), date, sizeof date);
-    gRender.drawCentred(d, date, 2, 18, W - 4, 18, 1, kYellow, kBlack, tgc::Renderer::kTextBuiltin);
 
-    // Shrink the rows on the short landscape screen; portrait keeps 44/32.
-    int top = 44, rowH = 32;
-    if (top + rowH * kDateRows > H - 2) {
-        top = 38;
-        rowH = (H - top - 2) / kDateRows;
-        if (rowH < 12) rowH = 12;
+    constexpr uint8_t kBig = tgc::Renderer::kTextBuiltin;
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    const int w = W - 4;
+    const int gap = H > W ? 10 : 3;  // portrait has room to breathe
+    char date[16], value[32], line[64];
+
+    // Last used: the day the device last ran.
+    formatDate(gBootDay, date, sizeof date);
+    snprintf(value, sizeof value, "%s %s", weekdayName(gBootDay), date);
+    snprintf(line, sizeof line, "%s: %s", ui().dateLastUsed, value);
+    int y = 19;
+    if (gRender.textWidth(line, kSmall) <= w) {
+        gRender.drawCentred(d, line, 2, y, w, 10, 1, kWhite, kBlack, kSmall);
+        y += 10;
+    } else {
+        gRender.drawCentred(d, ui().dateLastUsed, 2, y, w, 10, 1, kWhite, kBlack, kSmall);
+        gRender.drawCentred(d, value, 2, y + 10, w, 10, 1, kWhite, kBlack, kSmall);
+        y += 20;
     }
-    for (int i = 0; i < kDateRows; ++i) {
-        const int y = top + i * rowH;
-        const bool sel = i == gDateSel;
-        const uint16_t bg = sel ? kHighlight : kBlack;
-        d.fillRoundRect(2, y, W - 4, rowH - 4, 5, bg);
-        if (sel) d.drawRoundRect(2, y, W - 4, rowH - 4, 5, kWhite);
-        const uint8_t set = labelFont(ui().dateRows[i], rowH - 4, 22, W - 10);
-        gRender.drawCentred(d, ui().dateRows[i], 4, y + 2, W - 8, rowH - 8, 1, kWhite, bg, set);
+    y += gap;
+
+    // The proposed "today", highlighted: this is what the buttons change.
+    const uint16_t target = dateTarget();
+    formatDate(target, date, sizeof date);
+    snprintf(value, sizeof value, "%s %s", weekdayName(target), date);
+    gRender.drawCentred(d, ui().dateToday, 2, y, w, 10, 1, kYellow, kBlack, kSmall);
+    y += 11;
+    const bool oneLine = gRender.textWidth(value, kBig) <= w - 8;
+    const int boxH = oneLine ? 24 : 42;
+    d.fillRoundRect(2, y, w, boxH, 5, kHighlight);
+    d.drawRoundRect(2, y, w, boxH, 5, kWhite);
+    if (oneLine) {
+        gRender.drawCentred(d, value, 4, y + 2, w - 4, boxH - 4, 1, kWhite, kHighlight, kBig);
+    } else {
+        gRender.drawCentred(d, weekdayName(target), 4, y + 3, w - 4, 17, 1, kWhite, kHighlight,
+                            kBig);
+        gRender.drawCentred(d, date, 4, y + 21, w - 4, 17, 1, kWhite, kHighlight, kBig);
     }
+    y += boxH + gap;
+
+    // How far that is from the current day.
+    if (gDateSteps == 1)
+        snprintf(line, sizeof line, "%s", ui().dateOneDay);
+    else
+        snprintf(line, sizeof line, ui().dateDaysFmt, (unsigned)gDateSteps);
+    gRender.drawCentred(d, line, 2, y, w, 18, 1, kYellow, kBlack,
+                        gRender.textWidth(line, kBig) <= w ? kBig : kSmall);
+
+    // Button hints along the bottom.
+    gRender.drawCentred(d, ui().dateHintTap, 2, H - 22, w, 10, 1, kWhite, kBlack, kSmall);
+    gRender.drawCentred(d, ui().dateHintSide, 2, H - 11, w, 10, 1, kWhite, kBlack, kSmall);
     present();
 }
 
@@ -1031,11 +1092,12 @@ void leaveDate() {
     drawScreen();
 }
 
-// Applies the chosen number of days, persists it, rebuilds the queue (cards may
-// now be due) and goes back to where the date screen was opened from: the
-// settings home, or the quiz on a power-off boot.
+// Applies the stepped days (advanceDaysManual also restarts the day carry, see
+// docs/srs.md section 5), persists them, rebuilds the queue (cards may now be
+// due) and goes back to where the date screen was opened from: the settings
+// home, or the quiz on a power-off boot.
 void applyDate() {
-    gSrs.advanceDays(kDateAdd[gDateSel]);
+    gSrs.advanceDaysManual(gDateSteps);
     gSrs.save(gSrsIo);
     gDirty = 0;
     gQueue.rebuild(*gPack, gSrs, gRng);
@@ -1099,6 +1161,8 @@ bool applyWallClock(int64_t utcMs, int tzOffsetMin) {
         leaveDate();
         return true;
     }
+    // A manual correction in progress restarts from the new (real) today.
+    if (gScreen == Screen::Date) gDateSteps = 0;
     if (gSrs.today() != before && gPack->isOpen()) {
         // A new day: cards may have come due. An unanswered question (or the
         // done screen) gives way to the new queue; after an answer, the next
@@ -1389,10 +1453,7 @@ void activateSetting() {
             openDecks();
             break;
         case 2:  // Fecha
-            gAfterDate = Screen::Menu;
-            gDateSel = 0;
-            gScreen = Screen::Date;
-            drawScreen();
+            openDate(Screen::Menu);
             break;
         case 3:  // Nuevas/dia
             openChoice(Choice::NewPerDay);
@@ -1613,6 +1674,7 @@ void setup() {
     // error screen.
     if (gPacks.empty()) {
         gSrsLoaded = gSrs.begin(gSrsIo);
+        gBootDay = gSrs.today();
         gSrs.beginSession();
         applySleepTime();
         setCpuFrequencyMhz(kCpuWifiMhz);
@@ -1637,6 +1699,7 @@ void setup() {
 
     const bool srsLoaded = gSrs.begin(gSrsIo);
     gSrsLoaded = srsLoaded;
+    gBootDay = gSrs.today();  // the persisted day, before any slept time is added
     gSrs.beginSession();
     applySleepTime();
     gExtraNew = 0;
@@ -1654,10 +1717,7 @@ void setup() {
         // Power cut: the elapsed days are unknown. Ask *before* deciding "done",
         // because advancing the day can make reviews due. A real time applied
         // earlier in this boot (applyWallClock) already answered it.
-        gAfterDate = Screen::Quiz;
-        gDateSel = 0;
-        gScreen = Screen::Date;
-        drawScreen();
+        openDate(Screen::Quiz);
         return;
     }
     if (!newQuestion()) {
@@ -1788,13 +1848,19 @@ void loop() {
             drawScreen();
         }
     } else if (gScreen == Screen::Date) {
+        // Tap: one more day. Hold: confirm. Side hold: one day back, never below
+        // the current day (undoes an overshoot). Side tap: cancel.
         if (a == 1) {
-            gDateSel = (gDateSel + 1) % kDateRows;
+            if (dateTarget() < 0xFFFF) ++gDateSteps;
             drawScreen();
         } else if (a == 2) {
             applyDate();
-        }
-        if (b) {  // cancel: back to the menu, or straight into the quiz
+        } else if (b == 2) {
+            if (gDateSteps > 0) {
+                --gDateSteps;
+                drawScreen();
+            }
+        } else if (b == 1) {  // cancel: back to the menu, or straight into the quiz
             if (gAfterDate == Screen::Menu) {
                 gScreen = Screen::Menu;
                 drawScreen();
