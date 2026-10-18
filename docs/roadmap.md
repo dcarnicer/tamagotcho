@@ -223,8 +223,14 @@ Scope for now: **kanji only** (no vocabulary decks).
       (`tools/ui-font/`), flat widgets and the menu screens as scrolling lists
       with a hint bar (ux-refresh §4). **Catalog v2 done** (`feature/catalog-v2`):
       a `title` column (the pack's deck name) in `catalog-v2.txt`, shown by Get
-      decks and the portal page; v1 is no longer written or read. Next: the
-      quiz, feedback and detail card (phase 2).
+      decks and the portal page; v1 is no longer written or read.
+      **Phase 2 implemented** (`feature/ux-quiz`, not yet verified on
+      hardware): quiz header with mode/result pill, cards left and session
+      bar; flat answer tiles in the UI font / option kana / kanji grid; reveal
+      with ✓/✗ and `GOOD · 4d`-style grades; the hint bar policy; side tap =
+      previous option; hold progress on quiz tiles and list rows; auto-advance
+      after a correct answer; the detail card with the pick, ON/KUN pills and
+      ghost strokes (ux-refresh §4).
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
       (picking an option on the device takes longer than in Anki).
 - [ ] **Learning mode** (idea, 2026-10-18). A mode for learning kanji, not
