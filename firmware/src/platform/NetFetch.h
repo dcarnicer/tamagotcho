@@ -18,6 +18,8 @@
 #include <cstdint>
 #include <string>
 
+#include "catalog/Catalog.h"
+
 namespace tgc {
 
 // Free space every pack writer leaves on the filesystem, so a pack can never
@@ -85,8 +87,26 @@ FetchResult fetchPackFile(const PackFetchRequest& req);
 // `maxBytes`; http:// or https://, HTTP/1.0, redirects followed.
 FetchResult fetchText(const String& url, size_t maxBytes, uint32_t timeoutMs, std::string* out);
 
+// The deck catalog is a few KB; anything larger is not a catalog.
+constexpr size_t kCatalogMaxBytes = 32u * 1024u;
+constexpr uint32_t kCatalogTimeoutMs = 30000;
+
+struct CatalogFetch {
+    FetchResult fetch;   // status Ok: the body arrived and `parse` holds the result
+    CatalogParse parse;  // only meaningful when fetch.status == Ok
+};
+
+// Blocking GET (fetchText) and parse of the deck catalog at `url`, logged over
+// serial. Shared by the device's Get decks screen, its network test and the
+// portal page in home mode; each maps the failures to its own words.
+CatalogFetch fetchCatalog(const String& url);
+
 // First 4 bytes are "TNGC" and a cheap PackReader probe (PSRAM-backed) opens it.
 bool validatePackFile(const String& path);
+
+// One "[net] <what>: internal heap ..." line (free, largest block, minimum since
+// boot; free PSRAM), as around every TLS connection.
+void logNetHeap(const char* what);
 
 const char* fetchStatusString(FetchStatus s);
 

@@ -94,4 +94,11 @@ bool catalogLangMatches(const std::string& lang, const char* uiLang);
 // language first and still lists every other one.
 void orderCatalogForLang(std::vector<CatalogEntry>& entries, const char* uiLang);
 
+// A catalog deck compared with the file of the same name in /packs: not there
+// (New), there with the catalog's exact size (OnDevice), or there with another
+// size, i.e. an older or newer build (Update). Size only: a same-size file with
+// other content is not detected (hashing the local file is a follow-up).
+enum class DeckState : uint8_t { New, OnDevice, Update };
+DeckState catalogDeckState(bool present, uint32_t localBytes, uint32_t catalogBytes);
+
 }  // namespace tgc

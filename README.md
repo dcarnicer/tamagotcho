@@ -18,98 +18,111 @@ with **multiple-choice reviews** and spaced repetition, fully offline.
    opens a detail card that shows all meanings and readings — and animates the
    kanji's stroke order from KanjiVG, if the pack was built with `--strokes`.
 
-## Loading packs over Wi-Fi
+## Getting decks onto the device (Wi-Fi portal)
 
-The firmware includes an **on-device Wi-Fi portal**, so a phone or laptop can
-copy a pack onto the device without a computer running `uploadfs`:
+The firmware has an **on-device web portal**: one page, opened from a phone or
+laptop, to download decks, upload or delete them and read the statistics -- no
+computer running `uploadfs`. **Wi-Fi is off by default**: the radio runs only
+while the device's Wi-Fi screen is open (it stops after 5 min without use),
+during Get decks, and for one network-time sync after a power cut.
 
-1. On the device, hold the side button to open **Settings** and pick
-   **Wi-Fi** (the portal also starts by itself when the device boots with no
-   pack at all). The screen shows the access point name (`Tangocho-XXXX`, the
-   last bytes of the device MAC) and `http://192.168.4.1`.
-2. Join that access point from the phone (it is **open**, no password) and open
-   `http://192.168.4.1` in a browser.
-3. Upload a `.tgc` with the file picker. The same page deletes a pack, downloads
-   one from a plain `http://` URL, sends the device to **Get decks** once a
-   home Wi-Fi is saved (below), and shows the SRS statistics; the counters
-   and the pack list are also available as JSON at `/api/stats`. Opening the
-   page also sets the device's date from the phone's clock and time zone, so the
-   review day rolls over at 04:00 local. Once the date has been set this way,
-   a power-off can be handled by skipping the on-device date question (side tap)
-   and opening this page again -- or, with a home Wi-Fi saved (below), the
-   device answers that question itself from the network time.
-4. Tap the side button to leave the screen and stop the portal.
+The portal has two modes:
 
-Notes and limits:
+- **Home mode** (the usual one): the device joins **your Wi-Fi** and serves the
+  page there, so the phone stays on its normal network. The device screen
+  shows the network, the address (`http://<ip>/`) and a **QR code** of it;
+  `http://tangocho.local/` usually works too.
+- **Setup mode**: the device's own **open** network `Tangocho-XXXX` (the last
+  bytes of its MAC) at `http://192.168.4.1/`, for the first setup or to change
+  networks. The screen shows a QR code that joins it; a tap of the front button
+  swaps it for one that opens the page.
 
-- The access point is **intentionally open**: anyone in radio range can list,
-  upload or delete packs and read the statistics. Start the portal when you
-  need it and stop it afterwards; do not leave it running untrusted.
-- An uploaded file is streamed straight to `/packs` (a multi-MB pack never has
-  to fit in RAM), then checked for the `TNGC` magic and a valid pack header. A
-  file that is not a pack is deleted again, so a bad upload cannot strand the
-  device, and there must be enough free space (the portal keeps a reserve).
-- **The page's URL download is plain `http://` only**: on its own access point
-  the device has no internet, so this is for a server on the phone/laptop side.
-  For decks from the internet use **Get decks** below. A failed download leaves
-  the existing packs untouched.
-- On a fresh device (or one whose filesystem a launcher formatted) with no
-  packs, the firmware boots straight into the Wi-Fi screen with instructions
-  and continues into the quiz as soon as a pack arrives.
-- Everything works offline as before; the portal is only started on the Wi-Fi
-  screen.
+### First setup
 
-## Getting decks with one button (home Wi-Fi)
+1. A device with no decks starts the portal by itself (later: hold the side
+   button for **Settings → Wi-Fi » → Setup mode**). Scan the QR code on the
+   screen with the phone camera to join `Tangocho-XXXX`, then open
+   `http://192.168.4.1` (or tap the device's front button and scan the second
+   QR code).
+2. The page's first step is **Connect the device to your Wi-Fi**: pick the
+   network (nearby ones are suggested), type its password (empty for an open
+   network) and press **Save**.
+3. Press **Switch to my Wi-Fi**. The device leaves its own network and joins
+   yours. Put the phone back on your Wi-Fi and scan the new QR code on the
+   device screen (or type the address it shows).
+4. The page now lists the decks of the catalog, **your language first**: press
+   **Download** (or **Update** for a deck that is on the device in another
+   build). The page and the device screen show the progress; the device's side
+   button cancels. When you are done, the device's side button starts studying.
 
-Once the device knows your home Wi-Fi it can download decks from the release
-catalog by itself:
+If the device cannot join your Wi-Fi, its screen says why ("Network not
+found", "Wrong password?", "Could not connect"); on a device without decks it
+goes back to setup mode by itself, otherwise a hold of the front button opens
+setup mode and a tap tries again.
 
-1. Open the Wi-Fi portal as above and, on the `http://192.168.4.1` page, fill in
-   **Home Wi-Fi** (network name -- nearby networks are suggested -- and
-   password; empty for an open network) and press **Save**. The page confirms
-   it and offers **Get decks now**: press it and the device stops the portal
-   and goes straight to step 3. The phone can go back to its own network; the
-   rest happens on the device screen.
-2. Later, without the phone: hold the side button -> **Decks** -> the last row,
-   **+ Get decks** (**+ Descargar** in Spanish), and hold.
-3. It joins the home network, reads the catalog over HTTPS and lists the decks,
-   **those in the device's language first** (the Language setting, or the
-   loaded deck's language under Auto; the other languages follow):
-   `+` not on the device yet, `=` already here, `~` here but a different size
-   (another build). Tap moves, **hold downloads** (with a progress bar; the side
-   button cancels), and a hold on a deck that is already here starts studying it.
-   The side button goes back (to the deck list; on a device without decks, to
-   the Wi-Fi upload screen).
+### Daily use
 
-Notes and limits:
+- **Settings → Wi-Fi » → Web portal** joins your Wi-Fi and shows the address
+  and QR code; open it from any phone or laptop on that network. The page has
+  **Get decks** (download or update), **Your decks** (the one being studied is
+  marked; delete) and, folded under **Advanced**: upload a `.tgc` file,
+  download one from a plain `http://` URL, the deck catalog URL, the home Wi-Fi
+  (change, forget, reconnect), the statistics and the JSON at `/api/stats` and
+  `/api/status`. The side button on the device stops the portal.
+- Without the phone: **Decks → + Get decks** joins the home Wi-Fi and lists the
+  catalog on the device screen (`+` new, `=` here, `~` here in another build;
+  tap moves, **hold downloads** or, on a deck that is here, studies it; the side
+  button goes back). In setup mode the page also offers **Get decks on the
+  device screen**, and a fresh device's boot screen offers it with a hold.
+- **Settings → Wi-Fi » → Home: <network>** tests the saved network: it joins,
+  shows the IP address, the signal, whether the deck catalog answers and
+  whether the network time works, then turns the radio off again.
+- Opening the page sets the device's **date** from the phone's clock and time
+  zone, so the review day rolls over at 04:00 local. With a home Wi-Fi saved
+  the device also takes the time from NTP whenever it joins, and after a
+  power-off the date question tries the same in the background ("Syncing via
+  <network>..."); you can still answer it by hand meanwhile. Both use the time
+  zone the page last sent and skip the sync until the page has been opened once.
 
-- The radio is on **only while this screen is open**, and the device sleeps as
-  usual when idle. A fresh device without packs also offers it on its boot
-  screen ("hold: get decks") once a home Wi-Fi is saved, besides the page's
-  **Get decks now**. A fresh device has no deck to take a language from, so
-  under Auto it lists the English decks first.
-- The home Wi-Fi also keeps the **date** right: Get decks sets it from the
-  network time (NTP) once connected, and after a power-off the date question
-  tries the same in the background ("Syncing via <network>...") and goes away
-  by itself when it works; you can still answer it by hand meanwhile, which
-  turns the radio off. Both use the time zone the portal page last sent, and
-  skip the sync until the page has been opened once.
-- Every download is checked against the catalog's **size and SHA-256** and must
-  be a valid pack before it replaces anything; a failure leaves `/packs` as it
-  was. HTTPS is verified against a small embedded set of root certificates
-  (Let's Encrypt, Sectigo/USERTrust, DigiCert, Google Trust Services, Amazon);
-  see `docs/decisions.md`.
-- The password is stored on the device (NVS, **not encrypted**) and is never
-  shown again; the page only shows the saved network name and a "forget"
-  button. While the portal runs, anyone in range could replace (not read) it.
+### Changing networks
+
+- Still at home: **Web portal → Advanced → Home Wi-Fi**, save the new network,
+  then **Reconnect**.
+- Elsewhere: **Settings → Wi-Fi » → Setup mode**, join `Tangocho-XXXX`, save the
+  new network on the page and press **Switch to my Wi-Fi**.
+- **Settings → Wi-Fi » → Forget network** asks first (Cancel is selected; tap to
+  Forget, then hold).
+
+### Notes and limits
+
+- **Neither mode has a password.** In setup mode anyone in radio range, in home
+  mode anyone on your home network, can list, upload or delete decks, read the
+  statistics and replace the saved network or catalog URL **while the Wi-Fi
+  screen is open** on the device. Open it when you need it and leave it
+  afterwards (it also stops by itself after 5 min without use).
+- The home Wi-Fi password is stored on the device (NVS, **not encrypted**) and
+  is never shown again, logged or sent back to a page.
+- Every catalog download is checked against the catalog's **size and SHA-256**
+  and must be a valid pack before it replaces anything; a failure leaves
+  `/packs` as it was. HTTPS is verified against a small embedded set of root
+  certificates (Let's Encrypt, Sectigo/USERTrust, DigiCert, Google Trust
+  Services, Amazon); see `docs/decisions.md`. A download is refused on battery
+  below 6 %, and an update needs room for the old and the new copy at once.
+- An uploaded file streams straight to the filesystem (a multi-MB pack never has
+  to fit in RAM) and is kept only if it is a valid pack, with room to spare.
+  The URL download is **plain `http://` only** (e.g. a server on your computer).
+- The page is in the device's language (the Language setting, or the loaded
+  deck's under Auto); a device with no deck yet follows the browser's language,
+  and the page offers English / Español links.
 - The default catalog is
   `https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt`,
   the dedicated **decks release** for the pack format this firmware reads (see
   [Prebuilt decks](#prebuilt-decks-and-their-licence) below). It works once that
   release has been published (a maintainer decision, see "Before publishing" in
-  the roadmap); until then the device says no catalog is published. The portal
-  page can point it at another catalog (any `http(s)://` URL, e.g. your own
-  server). **Not verified on hardware yet.**
+  the roadmap); until then the device says no catalog is published. The page
+  can point it at another catalog (any `http(s)://` URL, e.g. your own server).
+- Everything else works offline as before. **Home mode, the QR codes and the
+  Wi-Fi menu are not verified on hardware yet.**
 
 ## M5Launcher and app-only `.bin`s
 
@@ -142,7 +155,7 @@ Honest status — **not verified on hardware**:
   mounts and is large enough to hold packs is an **open question** to settle on
   hardware.
 - Because of that, the reliable way to populate `/packs` under a
-  launcher-installed app is the **Wi-Fi upload above**, once the firmware is
+  launcher-installed app is the **Wi-Fi portal above**, once the firmware is
   running — it does not depend on who owns the filesystem.
 - On the StickS3 the firmware turns the power button's **click into "save and
   sleep"** by switching off the M5PM1's click reset (see
@@ -204,7 +217,8 @@ For a **browser flash**, open an ESP Web Tools page (e.g.
 `tangocho-sticks3-manifest.json`. A merged image carries **no filesystem**:
 on the first boot the firmware finds no LittleFS on the data partition (erased,
 or left by another firmware), formats it ("Preparing storage...") and boots
-into the Wi-Fi upload screen, where a pack can be dropped in over the air.
+into the Wi-Fi portal's setup mode, where decks can be fetched or uploaded over
+the air.
 
 > Honest status — **not verified on hardware.** We have not flashed a merged
 > image through ESP Web Tools or `esptool write_flash` on a real StickS3. The
@@ -234,9 +248,9 @@ packs' format version and fails if the packs disagree on it or if any pack is
 over the device's 5 MiB per-pack limit.
 
 To install a deck by hand, download a `.tgc` from that release and upload it
-from the Wi-Fi portal page. A pack contains **KANJIDIC2** data (CC BY-SA 4.0)
-and, with `--strokes`, **KanjiVG** data (CC BY-SA 3.0), so prebuilt packs are
-licensed **CC BY-SA**. The combined attribution is in the decks release notes
+from the Wi-Fi portal page (Advanced). A pack contains **KANJIDIC2** data (CC
+BY-SA 4.0) and, with `--strokes`, **KanjiVG** data (CC BY-SA 3.0), so prebuilt
+packs are licensed **CC BY-SA**. The combined attribution is in the decks release notes
 and in [docs/data-sources.md](docs/data-sources.md).
 
 ## Repository layout

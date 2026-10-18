@@ -471,6 +471,20 @@ Settings                     header: "SETTINGS" · date · battery
   one-level group stack. The four in-flight branches all edit
   `activateSetting()`/`menuRows`, so this lands **after** them or is
   coordinated (§4, Phase 3).
+- **Status of `Wi-Fi ›` (2026-10-18, `feature/portal-home-wifi`).** Implemented
+  ahead of the rest of Phase 3, because the portal needed it: the single
+  settings row became **"Wi-Fi »"** (Font0 has `»`, not `›`), a submenu with
+  **Web portal** (home mode over the saved home network, else setup mode),
+  **Home: <network>** (a connection test), **Setup mode** (the open access
+  point) and **Forget network** (a Cancel/Forget picker). The settings home
+  keeps its 11 flat rows; the submenu is the first group. The portal screen has
+  the **QR codes**: in setup mode one that joins the access point
+  (`WIFI:T:nopass;S:<ssid>;;`, escaped) and, on a tap, one that opens the page;
+  in home mode one of `http://<ip>/`; free space in MB. Not done yet: the
+  row's "off" value, the "time synced" line, the group-table refactor and the
+  design-system styling (it uses today's `drawRow()` and 1x text). See
+  docs/decisions.md, "Portal over the home Wi-Fi; task-oriented page; Wi-Fi
+  menu".
 
 ---
 
@@ -515,7 +529,8 @@ conflicts).**
 - Stats tiles + ring (`fillArc`), done screen, error screens rewritten for end
   users.
 - Wi-Fi: QR codes (`qrcode()`; join = `WIFI:T:nopass;S:<ssid>;;`), a fixed
-  instruction text and MB units.
+  instruction text and MB units. *(QR codes, MB units and the Wi-Fi submenu
+  done on `feature/portal-home-wifi`, see §3.)*
 - New `UiStrings` entries in en/es, and `menuRows[10]` removed.
 
 **Phase 4 – Typography (M, 1–2 d; needs decision 6.2).**
@@ -587,4 +602,5 @@ conflicts).**
    Adding a column is a catalog-format change (spec first).
 9. **Landing order.** After the four in-flight branches (power button, day
    detection, home Wi-Fi decks, IMU rotation), or coordinated with them?
-10. **QR codes** on the Wi-Fi screen (Wi-Fi join + URL).
+10. **QR codes** on the Wi-Fi screen (Wi-Fi join + URL). *(Done on
+    `feature/portal-home-wifi`: join + URL in setup mode, URL in home mode.)*

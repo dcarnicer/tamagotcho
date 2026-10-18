@@ -1,7 +1,8 @@
 """Off-device mock of the quiz screen, drawn from a pack's own glyphs.
 
 Mirrors `firmware/src/main.cpp`: reading answers are a 2x2 grid using the large
-text set (3) when the whole question fits; meaning answers are one per row in
+text set (3) when the whole question fits, or one full-width row each when an
+option is too long for a cell (4+ kana); meaning answers are one per row in
 the built-in GLCD font (drawn at 2x, shrunk to 1x) and use only each card's
 first gloss. The selected reading kind (on/kun) is explicit.
 """
@@ -339,12 +340,25 @@ def render_preview(pack: Pack, cp: int, mode: str, width: int = 135, height: int
         cols, rows = 2, (len(opts) + 1) // 2
         cell_w = (width - 2 * MARGIN - (cols - 1) * GAP) // cols
         cell_h = (area - (rows - 1) * GAP) // rows
-        gset = 3
-        if any(pack_width(pack, t, 3) > cell_w - 4 for t in texts):
-            gset = 2
+
+        def all_fit(gs: int, w: int) -> bool:
+            return all(pack_width(pack, t, gs) <= w - 4 for t in texts)
+
+        # The grid when every option fits a cell, else one full-width row each.
+        gset, grid = 3, all_fit(3, cell_w)
+        if not grid and all_fit(2, cell_w):
+            gset, grid = 2, True
+        if not grid:
+            row_h = area // len(texts)
+            cell_w, cell_h = width - 2 * MARGIN, row_h - GAP
+            if not all_fit(3, cell_w):
+                gset = 2
         for i, t in enumerate(texts):
-            x = MARGIN + (i % cols) * (cell_w + GAP)
-            y = top + (i // cols) * (cell_h + GAP)
+            if grid:
+                x = MARGIN + (i % cols) * (cell_w + GAP)
+                y = top + (i // cols) * (cell_h + GAP)
+            else:
+                x, y = MARGIN, top + i * row_h
             box = BOX_OK if (reveal and i == correct) else BOX
             fill_rect(img, x, y, x + cell_w, y + cell_h, box)
             for ch in t:

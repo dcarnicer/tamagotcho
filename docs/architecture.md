@@ -8,8 +8,8 @@
  WaniKani* ─┤                                            ├─► .tgc ──► upload ──►├─ state/srs.bin ──► SRS (FSRS)
  CSV/Anki* ─┘             font (Noto Sans JP) ─► glyphs ─┘      └─ config         Quiz engine ─► UI
                                                                                   Board HAL (StickS3 / T-Display-S3)
-        phone/laptop ──(open AP 192.168.4.1)──► Wi-Fi portal (HTTP) ──► /packs
-        decks-v<format> release: catalog.txt + packs ──(home Wi-Fi, HTTPS, on demand)──► Get decks ──► /packs
+        phone/laptop ──(setup mode: open AP 192.168.4.1 | home mode: home Wi-Fi, http://<ip>/)──► Wi-Fi portal (HTTP) ──► /packs
+        decks-v<format> release: catalog.txt + packs ──(home Wi-Fi, HTTPS, on demand)──► Get decks / portal page ──► /packs
  * later phases
 ```
 
@@ -35,14 +35,15 @@
 | `pack/`       | `PackReader`: parse header/tables (pack v1 and v2), glyph lookup, string access, stroke masks; `Rle` decodes v2's compressed glyph bitmaps and stroke masks on read, through a small window over the file. Pure C++, unit tested natively |
 | `render/`     | Draw 4bpp glyphs, 1bpp stroke masks and UTF-8 text from pack glyphs onto a GFX canvas |
 | `quiz/`       | Build a question (prompt + 4 options) from a card and its distractors. Pure C++ |
-| `catalog/`    | Parse the line-oriented deck catalog (`tangocho-pack catalog`): version check, per-record validation (safe file name, numbers, SHA-256, URL), bare-file-name URLs resolved against the catalog URL, entry cap. Pure C++, unit tested natively |
+| `catalog/`    | Parse the line-oriented deck catalog (`tangocho-pack catalog`): version check, per-record validation (safe file name, numbers, SHA-256, URL), bare-file-name URLs resolved against the catalog URL, entry cap; own-language ordering and a deck's state against `/packs` (new / on device / update). Pure C++, unit tested natively |
+| `portal/`     | The Wi-Fi portal's pure helpers: the `WIFI:` QR text for the open access point (escaping), the QR version for a text, the page language (device UI language, else the browser's Accept-Language) and the deck-list language, RSSI quality words; and every page string in English and Spanish (`PortalText`). Pure C++, unit tested natively |
 | `srs/`        | Scheduling (FSRS, phase 2) and persisted review state         |
 | `imu/`        | `OrientationFilter`: accelerometer samples to a stable display rotation for the Auto orientation (hysteresis, settle time, flat and motion rejection). Pure C++, unit tested natively |
 | `power/`      | Critical-battery guard (`BatteryGuard.h`, header-only). Pure C++, unit tested natively |
-| `platform/`   | LittleFS-backed pack source and SRS state file; the on-device **Wi-Fi portal** (access point + HTTP server) for uploading, deleting and downloading packs, reading the statistics and saving the home Wi-Fi (its page also posts the phone's clock, `POST /time`, which anchors the SRS date); `HomeWifi` (home network in NVS, station mode on demand, SNTP time for the SRS date); `NetFetch` (atomic HTTP(S) pack download with size/SHA-256 checks, shared by the portal and Get decks) with the embedded root CAs in `RootCerts.h`. Arduino only |
+| `platform/`   | LittleFS-backed pack source and SRS state file; the on-device **Wi-Fi portal** (`WifiPortal`: an HTTP server in *setup mode* on its own open access point, or in *home mode* on the home network the app joined) with one task-oriented page: the deck catalog and its downloads (home mode, through the app), the decks on the device, and under Advanced uploading, URL downloads, the catalog URL, the home Wi-Fi and the statistics (the page also posts the phone's clock, `POST /time`, which anchors the SRS date); `HomeWifi` (home network in NVS, station mode on demand, link/IP/RSSI, SNTP time for the SRS date); `NetFetch` (atomic HTTP(S) pack download with size/SHA-256 checks and the catalog read, shared by the portal, Get decks and the network test) with the embedded root CAs in `RootCerts.h`. Arduino only |
 | `ui/`         | Screens and input state machine                              |
 
-Pure-logic modules (`pack`, `quiz`, `srs`, `imu`, `power`, `catalog`) must build
+Pure-logic modules (`pack`, `quiz`, `srs`, `imu`, `power`, `catalog`, `portal`) must build
 in the `native` PlatformIO env with no Arduino headers.
 
 ## Target hardware
