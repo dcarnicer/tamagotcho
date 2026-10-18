@@ -59,7 +59,9 @@ once in the **Home Wi-Fi** form on that same page, then pick **Decks -> + Get
 decks** on the device. It joins the network only while that screen is open,
 reads the release catalog over HTTPS (verified, redirects followed), lists the
 decks (`+` new, `=` here, `~` other size) and downloads the one you hold, checked
-against the catalog's size and SHA-256. A fresh device offers the same from its
+against the catalog's size and SHA-256. The side button cancels a download; a
+click of the power button or a critical battery cancels it and sleeps, and on
+battery below 6 % it does not start. A fresh device offers the same from its
 boot screen once a home network is saved. The default catalog only exists once
 a public release carries packs + `catalog.txt`; the page can set another URL.
 Serial `[net]` lines report each step and the free heap around TLS.

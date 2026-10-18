@@ -384,6 +384,11 @@ char gNetErrTitle[48] = "";
 char gNetErrDetail[96] = "";
 char gNetNote[48] = "";      // footer status line (cleared when the selection moves)
 uint16_t gNetNoteColor = 0;
+// A sleep asked for during a blocking download (power button, critical
+// battery): netProgress() cancels the download, and netDownload() sleeps once
+// fetchPackFile() has cleaned up after it.
+enum class NetSleep : uint8_t { None, User, Critical };
+NetSleep gNetSleep = NetSleep::None;
 // The catalog is a few KB; anything larger is not a catalog.
 constexpr size_t kCatalogMaxBytes = 32u * 1024u;
 constexpr uint32_t kCatalogTimeoutMs = 30000;
@@ -2143,8 +2148,20 @@ void netLoadCatalog() {
     gNetStep = NetStep::List;
 }
 
+// Critical-battery guard (power/BatteryGuard.h): one reading every
+// kBatteryGuardMs, from loop() and during a download. True when the device must
+// save and sleep now.
+bool batteryCritical(uint32_t now) {
+    if (now - gBatteryGuardAt < kBatteryGuardMs) return false;
+    gBatteryGuardAt = now;
+    const bool external = tgc::board::externalPower() || tgc::board::isCharging();
+    return gBatteryGuard.update(tgc::board::batteryPercent(), external);
+}
+
 // Download progress: redraw on a new percentage, keep the idle timers away and
-// let the side button cancel (its release is swallowed afterwards).
+// let the side button cancel (its release is swallowed afterwards). The power
+// button and a critical battery cancel too and ask netDownload() to sleep: a
+// download may run for minutes at 240 MHz, and neither can wait that long.
 bool netProgress(size_t done, size_t total, void*) {
     const uint32_t now = millis();
     gNetActivityAt = now;
@@ -2152,6 +2169,14 @@ bool netProgress(size_t done, size_t total, void*) {
         gNetInputAt = now;
         tgc::board::update();
         if (tgc::board::isHeld(Button::Next)) return false;
+        if (tgc::board::powerButtonClicked()) {
+            gNetSleep = NetSleep::User;
+            return false;
+        }
+    }
+    if (batteryCritical(now)) {
+        gNetSleep = NetSleep::Critical;
+        return false;
     }
     const int pct = total ? static_cast<int>(static_cast<uint64_t>(done) * 100u / total) : 0;
     if (pct != gNetPct) {
@@ -2183,6 +2208,14 @@ const char* netDownloadError(const tgc::FetchResult& r, char* buf, size_t n) {
 void netDownload(int i) {
     const tgc::CatalogEntry& e = gCatalog[i];
     const String path = catalogPath(e);
+    // On battery below the level a critical sleep resumes at, the download
+    // would likely be cut by the guard: refuse it up front.
+    const bool external = tgc::board::externalPower() || tgc::board::isCharging();
+    if (!tgc::BatteryGuard::canResume(tgc::board::batteryPercent(), external)) {
+        netNote(ui().batteryTitle, kYellow);
+        drawScreen();
+        return;
+    }
     // Replacing the loaded deck: close it first so its file is not open while
     // the new one is renamed over it; portalPacksChanged() reloads it below.
     const bool replacingLive = gPack->isOpen() && path == gCurrentPack;
@@ -2195,6 +2228,7 @@ void netDownload(int i) {
     gNetPct = -1;
     gNetNote[0] = 0;
     gNetInputAt = millis();
+    gNetSleep = NetSleep::None;
     drawScreen();
 
     tgc::PackFetchRequest req;
@@ -2216,6 +2250,9 @@ void netDownload(int i) {
     Serial.printf("[net] get %s: %s (%u bytes in %u ms, http %d, tls %d)\n", req.fileName.c_str(),
                   tgc::fetchStatusString(r.status), (unsigned)r.bytes,
                   (unsigned)(millis() - started), r.httpCode, r.tlsError);
+    // Cancelled for a sleep: the temp is gone and the old deck untouched, so
+    // sleep now (sleepNow() saves); the wake reopens the deck closed above.
+    if (gNetSleep != NetSleep::None) sleepNow(gNetSleep == NetSleep::Critical);
 
     // Rescan /packs the portal's way; that also reopens the deck closed above, or
     // loads the first one when none was open (the boot-time path), and gives
@@ -2859,11 +2896,7 @@ void loop() {
     orientTick(t, downA || downB);
     // Save and sleep before a nearly flat cell browns out and takes the RTC
     // timer (the SRS day clock) with it.
-    if (t - gBatteryGuardAt >= kBatteryGuardMs) {
-        gBatteryGuardAt = t;
-        const bool external = tgc::board::externalPower() || tgc::board::isCharging();
-        if (gBatteryGuard.update(tgc::board::batteryPercent(), external)) sleepNow(true);
-    }
+    if (batteryCritical(t)) sleepNow(true);
     powerTick(t);
     delay(10);
 }

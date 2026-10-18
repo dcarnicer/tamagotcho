@@ -1162,3 +1162,14 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   built, its card readable) and otherwise draw "Cannot open pack / side hold:
   menu" or do nothing, so nothing is ever graded for a card that is not on
   screen.
+- **A download no longer blocks the power button and the battery guard.** Get
+  decks downloads block `loop()` for up to 10 min at 240 MHz, and the progress
+  callback only watched the side button. It now also feeds the critical-battery
+  guard every 10 s (`batteryCritical()`, shared with `loop()`) and polls the
+  power button; either one cancels the download and records the sleep request,
+  and `netDownload()` calls `sleepNow()` only after `fetchPackFile()` returned,
+  so the temp is already removed and the old deck untouched (the wake reopens
+  a deck that was closed to be replaced). A download is also refused on battery
+  below the guard's resume level (6 %, `BatteryGuard::canResume()`), with
+  "Battery low" in the footer. The portal's URL download has no progress
+  callback and is unchanged (it is capped at 60 s).
