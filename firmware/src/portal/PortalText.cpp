@@ -61,6 +61,9 @@ PortalText makeSpanish() {
     t.catalogNotPublished = "Aún no hay catálogo publicado en esta URL.";
     t.catalogBad = "Esto no es un catálogo de mazos.";
     t.catalogNewer = "Formato de catálogo más nuevo: actualiza el firmware.";
+    t.catalogOlder =
+        "Formato de catálogo antiguo: apunta la URL del catálogo (en Avanzado) a un "
+        "catalog-v2.txt.";
     t.catalogFailed = "No se pudo leer el catálogo.";
     t.deckInfoFmt = "%s &middot; %u tarjetas &middot; %s";
     t.download = "Descargar";
