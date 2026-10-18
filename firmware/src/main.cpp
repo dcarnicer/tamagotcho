@@ -29,6 +29,7 @@
 #include "srs/SrsStore.h"
 #include "srs/WallClock.h"
 #include "ui/Icons.h"
+#include "ui/InputPrefs.h"
 #include "ui/ListView.h"
 #include "ui/TextLayout.h"
 #include "ui/Theme.h"
@@ -599,6 +600,8 @@ constexpr uint32_t kPowerCheckMs = 5000;  // VBUS poll while the panel is off
 constexpr uint32_t kCpuMhz = 80;
 constexpr uint32_t kCpuWifiMhz = 240;
 uint8_t gBrightness = 128;      // NVS `tangocho`/`bri`
+uint8_t gAdvancePref = tgc::kAdvanceDefault;  // NVS `tangocho`/`adv` (ui/InputPrefs.h)
+uint8_t gHoldPref = tgc::kHoldDefault;        // NVS `tangocho`/`hold`
 uint32_t gLastInputAt = 0;      // millis() of the last button activity
 uint32_t gLastPowerCheck = 0;
 bool gDimmed = false;
@@ -4088,6 +4091,8 @@ void setup() {
     const bool uiPrefStored = gPrefs.isKey("ui");
     gUiLangPref = gPrefs.getInt("ui", tgc::kUiLangAuto);
     gBrightness = gPrefs.getUChar("bri", gBrightness);
+    gAdvancePref = gPrefs.getUChar(tgc::kPrefAdvance, tgc::kAdvanceDefault);
+    gHoldPref = gPrefs.getUChar(tgc::kPrefHold, tgc::kHoldDefault);
     tgc::board::setBrightness(gBrightness);
     setUiForLang(nullptr);  // localise the pre-pack error screens to the choice too
     gOrientPref = loadOrientPref();
@@ -4275,8 +4280,9 @@ void loop() {
     static Key keyA, keyB;
     const bool downA = tgc::board::isHeld(Button::Select);
     const bool downB = tgc::board::isHeld(Button::Next);
-    int a = keyA.poll(downA, t, tgc::board::kHoldMs);
-    int b = keyB.poll(downB, t, tgc::board::kHoldMs);
+    const uint32_t holdMs = tgc::holdMsFor(gHoldPref);
+    int a = keyA.poll(downA, t, holdMs);
+    int b = keyB.poll(downB, t, holdMs);
     if (downA || downB || a || b) {
         gLastInputAt = t;
         // A dark panel only wakes up: that press (through its release) is

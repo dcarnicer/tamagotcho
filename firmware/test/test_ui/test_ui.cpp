@@ -6,6 +6,7 @@
 #include <initializer_list>
 
 #include "ui/Icons.h"
+#include "ui/InputPrefs.h"
 #include "ui/ListView.h"
 #include "ui/Theme.h"
 #include "ui/UiFace.h"
@@ -305,6 +306,21 @@ void test_ui_font_numeral() {
     TEST_ASSERT_TRUE(f.capHeight > uifont::kLabel.capHeight);
 }
 
+// ---------------------------------------------------------------- InputPrefs
+
+static void test_input_prefs() {
+    TEST_ASSERT_EQUAL_UINT32(0, advanceMsFor(kAdvanceOff));
+    TEST_ASSERT_EQUAL_UINT32(600, advanceMsFor(kAdvanceShort));
+    TEST_ASSERT_EQUAL_UINT32(1000, advanceMsFor(kAdvanceNormal));
+    TEST_ASSERT_EQUAL_UINT32(1000, advanceMsFor(kAdvanceDefault));
+    TEST_ASSERT_EQUAL_UINT32(advanceMsFor(kAdvanceDefault), advanceMsFor(kAdvanceChoices));
+    TEST_ASSERT_EQUAL_UINT32(400, holdMsFor(kHoldShort));
+    TEST_ASSERT_EQUAL_UINT32(600, holdMsFor(kHoldNormal));
+    TEST_ASSERT_EQUAL_UINT32(900, holdMsFor(kHoldLong));
+    TEST_ASSERT_EQUAL_UINT32(600, holdMsFor(kHoldDefault));
+    TEST_ASSERT_EQUAL_UINT32(holdMsFor(kHoldDefault), holdMsFor(0xFF));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_list_fit_and_rows);
@@ -318,5 +334,6 @@ int main() {
     RUN_TEST(test_icons_packing);
     RUN_TEST(test_ui_font_label);
     RUN_TEST(test_ui_font_numeral);
+    RUN_TEST(test_input_prefs);
     return UNITY_END();
 }
