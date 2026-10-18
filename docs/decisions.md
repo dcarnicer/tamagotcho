@@ -1183,3 +1183,9 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   portal or Get decks swaps the live deck. Verified on the way: the NTP merge's
   `applyWallClock()` already gives the settings home's "Continue" a fresh
   question when a sync on the Wi-Fi or Get decks screen starts a new day.
+- **An update that does not fit says what to do.** A download keeps the old
+  copy until the new one validated, so updating a big deck needs room for both,
+  and the footer only said "Not enough space". For an update (`~` row) that
+  fails that way, Get decks now shows its error screen: "Not enough space" and
+  "An update needs room for both copies. Delete the old one first: Settings >
+  Wi-Fi, 192.168.4.1" (es: "Hace falta sitio para las dos copias...").

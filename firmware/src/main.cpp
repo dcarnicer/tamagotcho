@@ -176,6 +176,7 @@ struct UiStrings {
     const char* netNewerCatalog;
     const char* netCorrupt;
     const char* netNoSpace;
+    const char* netNoSpaceUpdate;  // detail: an update needs room for the old and the new copy
     const char* netInvalid;
     const char* netFailed;
     const char* netCancelled;
@@ -214,7 +215,9 @@ const UiStrings kUiEn = {
     "Network not found", "Wrong password?", "Could not connect", "Server unreachable",
     "Secure connection failed", "Server error %d", "No catalog published at this URL yet",
     "Bad catalog", "Newer catalog format: update the firmware", "Download corrupt",
-    "Not enough space", "Not a valid deck", "Download failed", "Cancelled",
+    "Not enough space",
+    "An update needs room for both copies. Delete the old one first: Settings > Wi-Fi, 192.168.4.1",
+    "Not a valid deck", "Download failed", "Cancelled",
     "hold: get decks (home Wi-Fi)",
 };
 
@@ -252,7 +255,9 @@ const UiStrings kUiEs = {
     "Red no encontrada", "¿Contraseña incorrecta?", "No se pudo conectar", "Servidor inaccesible",
     "Fallo de conexión segura", "Error del servidor %d", "Aún no hay catálogo en esta URL",
     "Catálogo no válido", "Catálogo más nuevo: actualiza el firmware", "Descarga dañada",
-    "No hay espacio", "Mazo no válido", "Descarga fallida", "Cancelado",
+    "No hay espacio",
+    "Hace falta sitio para las dos copias. Borra antes la vieja: Ajustes > Wi-Fi, 192.168.4.1",
+    "Mazo no válido", "Descarga fallida", "Cancelado",
     "larga: bajar mazos (Wi-Fi de casa)",
 };
 
@@ -2219,6 +2224,7 @@ const char* netDownloadError(const tgc::FetchResult& r, char* buf, size_t n) {
 void netDownload(int i) {
     const tgc::CatalogEntry& e = gCatalog[i];
     const String path = catalogPath(e);
+    const bool updating = gCatalogState[i] == kDeckUpdate;
     // On battery below the level a critical sleep resumes at, the download
     // would likely be cut by the guard: refuse it up front.
     const bool external = tgc::board::externalPower() || tgc::board::isCharging();
@@ -2274,6 +2280,10 @@ void netDownload(int i) {
     if (r.status == tgc::FetchStatus::Ok) {
         snprintf(buf, sizeof buf, ui().netSavedFmt, e.name.c_str());
         netNote(buf, kGreen);
+    } else if (r.status == tgc::FetchStatus::NoSpace && updating) {
+        // The old copy stays until the new one validated, so an update needs
+        // room for both: say how to make it.
+        netError(ui().netNoSpace, ui().netNoSpaceUpdate);
     } else {
         netNote(netDownloadError(r, buf, sizeof buf), kYellow);
     }
