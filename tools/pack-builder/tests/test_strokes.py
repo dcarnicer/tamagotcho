@@ -17,7 +17,7 @@ def mini_src() -> KanjiVGDir:
     return KanjiVGDir(KANJIVG)
 
 
-# ------------------------------------------------------------ ftixture SVGs
+# ------------------------------------------------------------ fixture SVGs
 
 def test_fixture_svgs_parse_in_document_order():
     src = mini_src()
@@ -83,9 +83,12 @@ def test_stroke_section_roundtrip():
     assert so != 0 and so % 4 == 0
     st = p.strokes_of(0)
     assert [(s.x_off, s.y_off, s.w, s.h) for s in st] == [(2, 3, 9, 4), (1, 0, 1, 1)]
-    assert st[0].data == masks[0].data
-    assert st[0].data_off % 4 == 0
-    # Same inputs without strokes: no section, and byte-identical to the v1 writer.
+    assert st[0].data == masks[0].data and st[1].data == masks[1].data
+    # v2: a card's masks are stored back to back from the block's data_off.
+    blk = struct.unpack_from("<I", raw, so)[0]
+    first = struct.unpack_from("<I", raw, blk + 4)[0]
+    assert st[0].data_off == first and st[1].data_off == first + st[0].size
+    # Same inputs without strokes: no section, and a deterministic writer.
     plain = write_pack([_card()], _glyphs(), "mini", "en", 32, 16, 12, 12, 10, build_time=1)
     p2 = read_pack(plain)
     assert p2.errors == []
@@ -141,11 +144,23 @@ def test_read_pack_rejects_bad_stroke_offsets():
     bad = bytearray(base)
     struct.pack_into("<I", bad, 60, 0x7FFFFFFF)
     assert any("stroke" in e for e in read_pack(bytes(bad)).errors)
-    # a mask data_off past the end
+    # the card's mask data_off (v2 block bytes 4..7) past the end
     bad = bytearray(base)
     blk = struct.unpack_from("<I", bad, so)[0]
-    struct.pack_into("<I", bad, blk + 8 + 4, 0x7FFFFFFF)
+    struct.pack_into("<I", bad, blk + 4, 0x7FFFFFFF)
     assert any("out of range" in e for e in read_pack(bytes(bad)).errors)
+    # a mask size that runs past the end of the file
+    bad = bytearray(base)
+    struct.pack_into("<H", bad, blk + 8 + 6, 0xFFFF)
+    assert any("out of range" in e or "larger than raw" in e for e in read_pack(bytes(bad)).errors)
+    # an unknown mask encoding
+    bad = bytearray(base)
+    bad[blk + 8 + 4] = 7
+    assert any("unknown mask encoding" in e for e in read_pack(bytes(bad)).errors)
+    # a raw mask whose size disagrees with w x h
+    bad = bytearray(base)
+    bad[blk + 8 + 4] = 0
+    assert any("raw mask size" in e for e in read_pack(bytes(bad)).errors)
     # a block px that disagrees with the header
     bad = bytearray(base)
     struct.pack_into("<H", bad, blk + 2, 99)
@@ -161,8 +176,10 @@ def test_build_rejects_strokes_px_mismatch():
 
 
 @needs_font
-def test_no_strokes_build_is_byte_identical_to_v1():
-    baseline = (Path(__file__).parent / "data" / "mini_v1_baseline.tgc").read_bytes()
+def test_no_strokes_build_is_byte_identical_to_baseline():
+    # Regenerate with fixture.build_mini(paths.DEFAULT_FONT, strokes=False) only
+    # when a change of the writer or the default font is intended.
+    baseline = (Path(__file__).parent / "data" / "mini_v2_baseline.tgc").read_bytes()
     assert fixture.build_mini(paths.DEFAULT_FONT, strokes=False) == baseline
 
 

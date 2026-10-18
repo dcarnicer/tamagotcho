@@ -83,15 +83,19 @@ def cmd_build(a) -> int:
 
 def cmd_inspect(a) -> int:
     from .pack import CARD_SIZE, GLYPH_SIZE, read_pack
+    from .rle import raw1_size, raw4_size
     raw = Path(a.file).read_bytes()
     try:
-        p = read_pack(raw)
+        p = read_pack(raw)  # decodes and checks every glyph and stroke mask
     except ValueError as e:
         print(f"INVALID: {e}")
         return 1
     h = p.header
     sets = [sum(1 for g in p.glyphs if g.set == s) for s in (0, 1, 2, 3)]
-    data_bytes = sum(((g.width + 1) // 2) * g.height for g in p.glyphs)
+
+    def ratio(stored: int, plain: int) -> str:
+        return f"{stored / plain * 100:5.1f} %" if plain else "    - "
+
     print(f"file        {a.file}")
     print(f"sha256      {hashlib.sha256(raw).hexdigest()}")
     print(f"version     {h['version']}   lang {h['lang']}   deck {p.deck_name!r}")
@@ -100,19 +104,38 @@ def cmd_inspect(a) -> int:
     print(f"px          large {h['large_px']}  small {h['small_px']}  text {h['text_px']} "
           f"(line {h['text_line_height']}, ascent {h['text_ascent']})  option {h['option_px']} "
           f"(line {h['option_line_height']}, ascent {h['option_ascent']})")
+    glyph_raw = sum(raw4_size(g.width, g.height) for g in p.glyphs)
+    glyph_stored = sum(g.size for g in p.glyphs)
     print("sections    bytes")
     print(f"  header          {h['header_size']:>9,}")
     print(f"  cards           {h['card_count'] * CARD_SIZE:>9,}")
     print(f"  glyph table     {h['glyph_count'] * GLYPH_SIZE:>9,}")
     print(f"  distractors     {h['strings_off'] - h['distract_off']:>9,}")
     print(f"  strings         {h['strings_size']:>9,}")
-    print(f"  glyph bitmaps   {data_bytes:>9,}")
+    print(f"  glyph bitmaps   {glyph_stored:>9,}")
     if h["stroke_off"]:
         stroked = sum(1 for s in p.strokes if s)
         strokes = sum(len(s) for s in p.strokes)
         print(f"  strokes         {len(raw) - h['stroke_off']:>9,} "
               f"({stroked} cards, {strokes} masks)")
     print(f"  total           {len(raw):>9,}")
+    print("compression       raw    stored   ratio  (encoded)")
+    for s, name in enumerate(("set 0", "set 1", "set 2", "set 3")):
+        gl = [g for g in p.glyphs if g.set == s]
+        if not gl:
+            continue
+        r = sum(raw4_size(g.width, g.height) for g in gl)
+        st = sum(g.size for g in gl)
+        print(f"  {name:<9} {r:>9,} {st:>9,} {ratio(st, r)}  ({sum(1 for g in gl if g.encoding)}"
+              f"/{len(gl)} RLE)")
+    print(f"  {'glyphs':<9} {glyph_raw:>9,} {glyph_stored:>9,} {ratio(glyph_stored, glyph_raw)}")
+    masks = [m for s in p.strokes for m in s]
+    if masks:
+        r = sum(raw1_size(m.w, m.h) for m in masks)
+        st = sum(m.size for m in masks)
+        by = [sum(1 for m in masks if m.encoding == e) for e in (0, 1, 2)]
+        print(f"  {'masks':<9} {r:>9,} {st:>9,} {ratio(st, r)}  "
+              f"(raw {by[0]}, runs {by[1]}, row-xor runs {by[2]})")
     if p.errors:
         print(f"INVALID: {len(p.errors)} problem(s)")
         for e in p.errors[:50]:
@@ -217,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(fn=cmd_build)
 
-    s = sub.add_parser("inspect", help="validate a pack and print a summary")
+    s = sub.add_parser("inspect", help="validate a pack (decoding every bitmap) and print a summary")
     s.add_argument("file")
     s.set_defaults(fn=cmd_inspect)
 
@@ -237,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(fn=cmd_preview)
 
-    s = sub.add_parser("fixture", help="regenerate fixtures/mini.tgc and mini.json")
+    s = sub.add_parser("fixture", help="regenerate fixtures/mini.tgc, mini.json and rle_vectors.bin")
     s.add_argument("--font")
     s.set_defaults(fn=cmd_fixture)
 

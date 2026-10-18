@@ -1,11 +1,32 @@
-"""Regenerate the tiny deterministic firmware test fixture (mini.tgc + mini.json)."""
+"""Regenerate the deterministic firmware test fixtures.
+
+- ``mini.tgc``: a 3-card v2 pack (with strokes); ``mini.json`` lists its
+  expected decoded fields.
+- ``rle_vectors.bin``: decoder test vectors from this package's encoders, read
+  by the firmware's native tests (``firmware/test/test_native``). Little endian::
+
+      "TRLV"  u16 format (1)  u16 record_count
+      record: u8 source   0 = synthetic edge case, 1 = mini.tgc glyph (glyph
+                          table order), 2 = mini.tgc stroke mask (card order,
+                          then stroke order), 3 = malformed (decoding must fail)
+              u8 kind     0 = glyph (4bpp), 1 = stroke mask (1bpp)
+              u8 encoding glyph 0/1, mask 0/1/2 (docs/pack-format.md)
+              u8 w, u8 h, u8 reserved (0)
+              u16 stored_len, u16 raw_len
+              stored bytes, then raw bytes (the decoded bitmap; empty for source 3)
+
+``mini_v1.tgc`` (the last v1 fixture, kept to test that v1 packs stay readable)
+is a frozen copy and is not regenerated.
+"""
 
 from __future__ import annotations
 
 import json
+import random
+import struct
 from pathlib import Path
 
-from . import paths
+from . import paths, rle
 from .build import build_pack
 from .kanjidic import make_cards, parse_kanjidic
 from .kanjivg import KanjiVGDir
@@ -47,29 +68,147 @@ def expected_json(raw: bytes) -> dict:
             "jlpt": c.jlpt, "grade": c.grade, "strokes": c.strokes, "flags": c.flags,
             "freq": c.freq, "level": c.level,
         } for c in p.cards],
-        "glyph_table_first": [g.__dict__ for g in p.glyphs[:3]],
+        "glyph_table_first": [_glyph_fields(g) for g in p.glyphs[:3]],
         "glyph_table_samples": [
-            {**g.__dict__, "bitmap_hex": p.raw[g.data_off:g.data_off + ((g.width + 1) // 2) * g.height].hex()}
+            {**_glyph_fields(g), "bitmap_hex": g.bits.hex(),
+             "stored_hex": p.raw[g.data_off:g.data_off + g.size].hex()}
             for g in (p.find_glyph(0, 0x65E5), p.find_glyph(1, 0x65E5), p.find_glyph(2, ord("A")),
                       p.find_glyph(2, ord(" ")), p.find_glyph(2, 0x30CB))
             if g is not None
         ],
+        "glyph_encodings": {str(e): sum(1 for g in p.glyphs if g.encoding == e) for e in (0, 1)},
         "glyph_counts_per_set": {str(s): sum(1 for g in p.glyphs if g.set == s) for s in (0, 1, 2, 3)},
         "strokes": [{
             "codepoint": c.codepoint, "char": chr(c.codepoint), "px": h["large_px"],
             "count": len(s),
             "masks": [{"x_off": m.x_off, "y_off": m.y_off, "w": m.w, "h": m.h,
-                       "data_off": m.data_off, "bits": m.data.hex()} for m in s],
+                       "encoding": m.encoding, "size": m.size, "data_off": m.data_off,
+                       "bits": m.data.hex()} for m in s],
         } for c, s in zip(p.cards, p.strokes)],
     }
 
 
-def write_fixture(font_path: Path | None = None, out_dir: Path | None = None) -> tuple[Path, Path]:
+def _glyph_fields(g) -> dict:
+    return {k: getattr(g, k) for k in ("codepoint", "set", "encoding", "width", "height",
+                                        "x_off", "y_off", "advance", "data_off", "size")}
+
+
+# --------------------------------------------------------- decoder vectors
+
+SRC_SYNTHETIC, SRC_MINI_GLYPH, SRC_MINI_MASK, SRC_MALFORMED = 0, 1, 2, 3
+KIND_GLYPH, KIND_MASK = 0, 1
+
+
+def _g(pix: list[int], w: int, h: int) -> bytes:
+    return rle.pack_4bpp_nibbles(pix, w, h)
+
+
+def _m(rows: list[str]) -> tuple[bytes, int, int]:
+    """1bpp mask from rows of '#' (ink) and '.' (empty)."""
+    w, h = len(rows[0]), len(rows)
+    stride = (w + 7) // 8
+    out = bytearray(stride * h)
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            if ch == "#":
+                out[y * stride + (x >> 3)] |= 0x80 >> (x & 7)
+    return bytes(out), w, h
+
+
+def synthetic_glyphs() -> list[tuple[str, bytes, int, int]]:
+    """(name, raw 4bpp, w, h) edge cases for glyph encoding 1."""
+    rng = random.Random(1234)
+    bar_row = [0, 0, 3, 15, 15, 15, 9, 0, 0, 0, 7, 15, 15, 1, 0, 0, 0, 0, 0, 0] * 2  # 40 px
+    return [
+        ("1x1 literal", _g([7], 1, 1), 1, 1),
+        ("1x1 zero", _g([0], 1, 1), 1, 1),
+        ("1x1 ink", _g([15], 1, 1), 1, 1),
+        ("spec example 5x3", _g([0, 0, 7, 15, 15, 0, 0, 7, 15, 15, 15, 15, 15, 15, 3], 5, 3), 5, 3),
+        ("all zero 9x5 (2-code length)", _g([0] * 45, 9, 5), 9, 5),
+        ("all ink 16x16 (3-code length)", _g([15] * 256, 16, 16), 16, 16),
+        ("zero runs past 330, 255x4", _g([0] * 1019 + [5], 255, 4), 255, 4),
+        ("random 7x7 odd width", _g([rng.randrange(16) for _ in range(49)], 7, 7), 7, 7),
+        ("odd width edges 3x5", _g([0, 8, 15, 15, 8, 0, 0, 0, 1, 14, 15, 15, 15, 2, 0], 3, 5), 3, 5),
+        ("copy across rows 4x3", _g([1, 15, 15, 0] * 3, 4, 3), 4, 3),
+        ("copy past 330, 40x12", _g(bar_row * 12, 40, 12), 40, 12),
+        ("width 0", b"", 0, 5),
+        ("height 0", b"", 6, 0),
+    ]
+
+
+def synthetic_masks() -> list[tuple[str, int, bytes, int, int]]:
+    """(name, encoding, raw 1bpp, w, h) edge cases for mask encodings 1 and 2."""
+    rng = random.Random(4321)
+    spec1 = _m(["...##########...", "....##########.."])
+    spec2 = _m([".##."] * 6)
+    rnd = _m(["".join(rng.choice(".#") for _ in range(9)) for _ in range(4)])
+    long_gap = _m(["#" + "." * 127, "." * 128, "." * 127 + "#"])
+    first_ink = _m(["##.", "##.", ".##", "..#"] * 5 + ["###"])
+    return [
+        ("spec example runs 16x2", rle.MASK_RUNS, *spec1),
+        ("spec example row-xor 4x6", rle.MASK_XOR_RUNS, *spec2),
+        ("spec example 4x6 as runs", rle.MASK_RUNS, *spec2),
+        ("1x1 ink", rle.MASK_RUNS, *_m(["#"])),
+        ("1x1 empty", rle.MASK_RUNS, *_m(["."])),
+        ("full ink 8x8", rle.MASK_RUNS, *_m(["########"] * 8)),
+        ("full ink 8x8 row-xor", rle.MASK_XOR_RUNS, *_m(["########"] * 8)),
+        ("starts with ink 3x21", rle.MASK_RUNS, *first_ink),
+        ("starts with ink 3x21 row-xor", rle.MASK_XOR_RUNS, *first_ink),
+        ("run past 285, 128x3", rle.MASK_RUNS, *long_gap),
+        ("random 9x4", rle.MASK_RUNS, *rnd),
+        ("random 9x4 row-xor", rle.MASK_XOR_RUNS, *rnd),
+    ]
+
+
+# (name, kind, encoding, w, h, stream) that every decoder must reject.
+MALFORMED = [
+    ("reserved F 0", KIND_GLYPH, rle.GLYPH_RLE, 2, 2, bytes([0xF0])),
+    ("copy in the first row", KIND_GLYPH, rle.GLYPH_RLE, 4, 2, bytes([0x00, 0x20])),
+    ("copy length code 0", KIND_GLYPH, rle.GLYPH_RLE, 4, 2, bytes([0x11, 0x11, 0x00, 0x04])),
+    ("run past the end", KIND_GLYPH, rle.GLYPH_RLE, 2, 1, bytes([0x03])),
+    ("copy past the end", KIND_GLYPH, rle.GLYPH_RLE, 2, 2, bytes([0x12, 0x00, 0x30])),
+    ("truncated length code", KIND_GLYPH, rle.GLYPH_RLE, 20, 20, bytes([0x0F])),
+    ("stream ends early", KIND_GLYPH, rle.GLYPH_RLE, 4, 4, bytes([0x05])),
+    ("mask run past the end", KIND_MASK, rle.MASK_RUNS, 4, 2, bytes([0x09])),
+    ("mask truncated length code", KIND_MASK, rle.MASK_RUNS, 16, 16, bytes([0xF1])),
+]
+
+
+def _record(src: int, kind: int, enc: int, w: int, h: int, stored: bytes, plain: bytes) -> bytes:
+    return struct.pack("<BBBBBBHH", src, kind, enc, w, h, 0, len(stored), len(plain)) + stored + plain
+
+
+def rle_vectors(mini: bytes) -> bytes:
+    recs: list[bytes] = []
+    for _name, raw, w, h in synthetic_glyphs():
+        stored = rle.encode_glyph(raw, w, h) if w and h else b""
+        assert rle.decode_glyph(stored, w, h)[0] == raw
+        recs.append(_record(SRC_SYNTHETIC, KIND_GLYPH, rle.GLYPH_RLE, w, h, stored, raw))
+    for _name, enc, raw, w, h in synthetic_masks():
+        stored = rle.encode_mask(raw, w, h, enc == rle.MASK_XOR_RUNS)
+        assert rle.decode_mask_any(enc, stored, w, h) == raw
+        recs.append(_record(SRC_SYNTHETIC, KIND_MASK, enc, w, h, stored, raw))
+    p = read_pack(mini)
+    assert not p.errors, p.errors
+    for g in p.glyphs:
+        recs.append(_record(SRC_MINI_GLYPH, KIND_GLYPH, g.encoding, g.width, g.height,
+                            p.raw[g.data_off:g.data_off + g.size], g.bits))
+    for s in p.strokes:
+        for m in s:
+            recs.append(_record(SRC_MINI_MASK, KIND_MASK, m.encoding, m.w, m.h,
+                                p.raw[m.data_off:m.data_off + m.size], m.data))
+    for _name, kind, enc, w, h, stored in MALFORMED:
+        recs.append(_record(SRC_MALFORMED, kind, enc, w, h, stored, b""))
+    return b"TRLV" + struct.pack("<HH", 1, len(recs)) + b"".join(recs)
+
+
+def write_fixture(font_path: Path | None = None, out_dir: Path | None = None) -> tuple[Path, ...]:
     font_path = font_path or paths.DEFAULT_FONT
     out_dir = out_dir or paths.FIXTURES
     out_dir.mkdir(parents=True, exist_ok=True)
     raw = build_mini(font_path)
-    tgc, js = out_dir / "mini.tgc", out_dir / "mini.json"
+    tgc, js, vec = out_dir / "mini.tgc", out_dir / "mini.json", out_dir / "rle_vectors.bin"
     tgc.write_bytes(raw)
     js.write_text(json.dumps(expected_json(raw), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return tgc, js
+    vec.write_bytes(rle_vectors(raw))
+    return tgc, js, vec
