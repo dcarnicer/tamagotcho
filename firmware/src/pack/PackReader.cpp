@@ -44,11 +44,12 @@ void PackReader::close() {
     hdr_ = PackHeader{};
 }
 
-PackError PackReader::open(PackSource& src, Allocator alloc) {
-    close();
-    alloc_ = alloc;
+namespace {
+// Reads and checks the 64-byte header: magic, version, sizes, and that every
+// table and the deck name lie inside the file. Shared by PackReader::open()
+// and peekPackInfo().
+PackError readHeader(PackSource& src, PackHeader* out) {
     const uint32_t total = src.size();
-
     uint8_t h[kPackHeaderSize];
     if (total < kPackHeaderSize) return PackError::BadHeader;
     if (!src.read(0, h, sizeof h)) return PackError::Io;
@@ -57,7 +58,6 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
     PackHeader hd{};
     hd.version = rd16(h + 4);
     if (hd.version < kPackVersionMin || hd.version > kPackVersionMax) return PackError::BadVersion;
-    const bool v2 = hd.version >= 2;
     hd.headerSize = rd16(h + 6);
     if (hd.headerSize < kPackHeaderSize || hd.headerSize > total) return PackError::BadHeader;
     hd.cardCount = rd32(h + 8);
@@ -90,6 +90,47 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
     if (hd.distractOff > total || hd.glyphDataOff > total) return PackError::BadHeader;
     if (!inBounds(hd.stringsOff, hd.stringsSize, total) || hd.stringsSize == 0) return PackError::BadHeader;
     if (hd.deckNameOff < hd.stringsOff || hd.deckNameOff - hd.stringsOff >= hd.stringsSize) return PackError::BadHeader;
+    *out = hd;
+    return PackError::Ok;
+}
+}  // namespace
+
+PackError peekPackInfo(PackSource& src, PackInfo* out) {
+    *out = PackInfo{};
+    PackHeader hd;
+    const PackError e = readHeader(src, &hd);
+    if (e != PackError::Ok) return e;
+    // The name ends at its NUL, the end of the string pool or the buffer.
+    const uint32_t poolLeft = hd.stringsOff + hd.stringsSize - hd.deckNameOff;
+    const size_t n = poolLeft < sizeof out->name - 1 ? poolLeft : sizeof out->name - 1;
+    if (!src.read(hd.deckNameOff, out->name, n)) return PackError::Io;
+    out->name[n] = 0;
+    // A name cut at the buffer drops a character it split.
+    const size_t len = std::strlen(out->name);
+    if (len == n) {
+        size_t lead = len;
+        while (lead > 0 && (static_cast<uint8_t>(out->name[lead - 1]) & 0xC0) == 0x80) --lead;
+        if (lead > 0 && static_cast<uint8_t>(out->name[lead - 1]) >= 0xC0) {
+            const uint8_t b = static_cast<uint8_t>(out->name[lead - 1]);
+            const size_t need = b >= 0xF0 ? 4 : (b >= 0xE0 ? 3 : 2);
+            if (len - (lead - 1) < need) out->name[lead - 1] = 0;
+        }
+    }
+    std::memcpy(out->lang, hd.lang, sizeof out->lang);
+    out->cards = hd.cardCount;
+    out->version = hd.version;
+    return PackError::Ok;
+}
+
+PackError PackReader::open(PackSource& src, Allocator alloc) {
+    close();
+    alloc_ = alloc;
+    const uint32_t total = src.size();
+    PackHeader hd;
+    const PackError he = readHeader(src, &hd);
+    if (he != PackError::Ok) return he;
+    const bool v2 = hd.version >= 2;
+    const uint64_t cardBytes = static_cast<uint64_t>(hd.cardCount) * kCardSize;
 
     // --- load tables -------------------------------------------------------
     cards_ = static_cast<uint8_t*>(alloc.alloc(static_cast<size_t>(cardBytes)));
