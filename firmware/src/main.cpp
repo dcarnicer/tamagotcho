@@ -15,6 +15,7 @@
 #include "platform/FsPackSource.h"
 #include "platform/FsSrsFile.h"
 #include "platform/WifiPortal.h"
+#include "power/BatteryGuard.h"
 #include "quiz/Quiz.h"
 #include "render/Renderer.h"
 #include "srs/Queue.h"
@@ -45,6 +46,11 @@ bool gPoweredOff = false;
 RTC_DATA_ATTR uint64_t gSleptAtUs = 0;
 RTC_DATA_ATTR uint32_t gSleepMagic = 0;
 constexpr uint32_t kSleepMagic = 0x51EE9A7Eu;
+// Set when the last sleep was forced by a critical battery, so the wake can
+// check the cell before anything else; plus the UI language of the moment, for
+// the "battery low" notice shown before a pack (and its language) is loaded.
+RTC_DATA_ATTR bool gSleptCritical = false;
+RTC_DATA_ATTR bool gSleepUiEs = false;
 
 namespace {
 
@@ -61,8 +67,9 @@ struct UiStrings {
     const char* settingsTitle;
     const char* decksTitle;
     const char* backHint;
-    // continue, decks, date, new/day, speed, stats, wifi, orientation, language, brightness
-    const char* menuRows[10];
+    // continue, decks, date, new/day, speed, stats, wifi, orientation, language,
+    // brightness, sleep
+    const char* menuRows[11];
     const char* newPerDayTitle;
     const char* speedTitle;
     const char* speedOff;
@@ -115,13 +122,19 @@ struct UiStrings {
     const char* wifiTitle;
     const char* wifiHint;
     const char* brightTitle;
+    // Full-screen notices before a deep sleep: a short title (2x font, wrapped
+    // at spaces, so no word longer than 10 characters) and a hint (1x font).
+    const char* sleepTitle;
+    const char* sleepHint;
+    const char* batteryTitle;
+    const char* batteryHint;
 };
 
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS", "side: back",
     {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi", "Orientation", "Language",
-     "Brightness"},
+     "Brightness", "Sleep"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
     "DATE", {"today (0)", "1 day", "2-7 days", "more (14)"},
@@ -138,13 +151,15 @@ const UiStrings kUiEn = {
     "LANGUAGE", {"Auto", "English", "Español"},
     "WI-FI", "Open the URL on your phone and upload a .tgc",
     "BRIGHTNESS",
+    "Sleeping", "Progress saved. The front button wakes me.",
+    "Battery low", "Charge me, then press the front button.",
 };
 
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS", "lateral: atrás",
     {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi", "Orientacion", "Idioma",
-     "Brillo"},
+     "Brillo", "Suspender"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", {"hoy (0)", "1 día", "2-7 días", "más (14)"},
@@ -162,6 +177,8 @@ const UiStrings kUiEs = {
     "IDIOMA", {"Auto", "English", "Español"},
     "WI-FI", "Abre la URL en el móvil y sube un .tgc",
     "BRILLO",
+    "Suspendido", "Progreso guardado. El botón frontal me despierta.",
+    "Batería baja", "Cárgame y pulsa el botón frontal.",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -261,6 +278,14 @@ bool gSrsLoaded = false;        // the state file loaded at boot
 constexpr uint32_t kBatteryCheckMs = 30000;
 int gShownBattery = -2;
 uint32_t gBatteryCheckAt = 0;
+// Critical battery (power/BatteryGuard.h): one reading every kBatteryGuardMs on
+// every screen, so three low readings put the device to sleep within ~30 s.
+constexpr uint32_t kBatteryGuardMs = 10000;
+tgc::BatteryGuard gBatteryGuard;
+uint32_t gBatteryGuardAt = 0;
+// How long the notice before an explicit sleep stays up.
+constexpr uint32_t kSleepNoticeMs = 1500;
+constexpr uint32_t kBatteryNoticeMs = 2500;
 
 int W, H;
 
@@ -398,6 +423,7 @@ bool newQuestion() {
 void drawScreen();  // dispatches to the active screen
 void applyOrientation(bool landscape);
 void formatDate(uint16_t days, char* out, size_t n);
+[[noreturn]] void sleepNow(bool critical);
 
 void drawQuiz() {
     auto& d = *gCanvas;
@@ -561,7 +587,7 @@ void drawRow(lgfx::LovyanGFX& d, const char* label, int y, int h, bool sel) {
 
 // Settings home (hold the side button from the quiz): tap moves the highlight,
 // hold activates the row. Each row is a full-width box with a label.
-constexpr int kSettingRows = 10;
+constexpr int kSettingRows = 11;
 
 void drawMenu() {
     auto& d = *gCanvas;
@@ -578,8 +604,10 @@ void drawMenu() {
         step = (H - top - 2) / kSettingRows;
         if (step < 10) step = 10;
     }
-    // Tight landscape steps keep only a 1 px gap so the 1x font still fits.
-    const int pad = step >= 20 ? 4 : 1;
+    // Tight landscape steps keep only a 1 px gap so the 1x font still fits; at
+    // the 10 px floor (eleven rows on the 135 px landscape height) the gap goes,
+    // so the highlight's border still clears the 8 px font above and below.
+    const int pad = step >= 20 ? 4 : step > 10 ? 1 : 0;
     const int rowH = step - pad < 32 ? step - pad : 32;
     for (int i = 0; i < kSettingRows; ++i)
         drawRow(d, ui().menuRows[i], top + i * step, rowH, i == gMenuSel);
@@ -1365,6 +1393,9 @@ void activateSetting() {
         case 9:  // Brillo / Brightness
             openChoice(Choice::Brightness);
             break;
+        case 10:  // Suspender / Sleep
+            sleepNow(false);
+            break;
     }
 }
 
@@ -1476,6 +1507,47 @@ void wakeScreen() {
     gDimmed = false;
 }
 
+// Full-screen notice: `title` in the 2x built-in font, `hint` below in the 1x
+// one. Built-in fonts only, so it works before a pack is open.
+void showNotice(const char* title, const char* hint, uint16_t titleColor) {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    const int mid = H / 2;
+    gRender.drawCentred(d, title, 4, mid - 44, W - 8, 40, 2, titleColor, kBlack,
+                        tgc::Renderer::kTextBuiltin);
+    gRender.drawCentred(d, hint, 4, mid + 2, W - 8, 40, 4, kWhite, kBlack,
+                        tgc::Renderer::kTextBuiltinSmall);
+    present();
+}
+
+// Explicit sleep: the power button, the "Sleep" settings row, or a critical
+// battery. Saves like goIdle(), but deep-sleeps even on USB power -- the user
+// asked for it (or the cell is about to die) -- after a short notice that says
+// how to wake up. The RTC timestamp keeps the day clock running through it.
+void sleepNow(bool critical) {
+    if (gDirty || gSrsLoaded) {
+        gSrs.save(gSrsIo);
+        gDirty = 0;
+    }
+    if (gPortal.active()) {
+        gPortal.end();
+        setCpuFrequencyMhz(kCpuMhz);
+    }
+    QLOG("P deep sleep (%s)\n", critical ? "battery" : "user");
+    if (gScreenOff) tgc::board::setDisplayOn(true);
+    tgc::board::setBrightness(gBrightness);
+    if (critical)
+        showNotice(ui().batteryTitle, ui().batteryHint, kYellow);
+    else
+        showNotice(ui().sleepTitle, ui().sleepHint, kWhite);
+    delay(critical ? kBatteryNoticeMs : kSleepNoticeMs);
+    gSleptCritical = critical;
+    gSleepUiEs = gUi == &kUiEs;
+    gSleptAtUs = tgc::board::rtcMicros();
+    gSleepMagic = kSleepMagic;
+    tgc::board::deepSleep();
+}
+
 // Called once per loop() with the current time: dims, then idles.
 void powerTick(uint32_t now) {
     if (gScreenOff) {
@@ -1512,6 +1584,7 @@ void halt() {
         tgc::board::update();
         if (millis() - start >= kSleepAfterMs && !tgc::board::externalPower())
             tgc::board::deepSleep();
+        if (tgc::board::powerButtonClicked()) tgc::board::deepSleep();  // no click reset now
         delay(50);
     }
 }
@@ -1547,6 +1620,27 @@ void setup() {
     H = tgc::board::height();
     createCanvas();
     gRng = tgc::XorShiftRng(tgc::board::randomSeed());
+
+    // Woken after a critical-battery sleep: unless the cell recovered (with
+    // hysteresis) or USB is in, say so and sleep again before anything runs.
+    // The RTC timestamp of the first sleep is left alone, so the next real
+    // wake adds the whole span to the day clock.
+    if (tgc::board::wokeFromSleep() && gSleptCritical) {
+        int pct = -1;  // the best of a few readings: the gauge is noisy
+        for (int i = 0; i < 3; ++i) {
+            pct = std::max(pct, tgc::board::batteryPercent());
+            delay(20);
+        }
+        const bool external = tgc::board::externalPower() || tgc::board::isCharging();
+        Serial.printf("power: critical wake, battery %d%%%s\n", pct, external ? " (usb)" : "");
+        if (!tgc::BatteryGuard::canResume(pct, external)) {
+            gUi = gSleepUiEs ? &kUiEs : &kUiEn;
+            showNotice(ui().batteryTitle, ui().batteryHint, kYellow);
+            delay(kBatteryNoticeMs);
+            tgc::board::deepSleep();
+        }
+    }
+    gSleptCritical = false;
 
     if (!LittleFS.begin(false)) {
         showError(ui().errNoFilesystem, ui().errNoFilesystemHint);
@@ -1705,6 +1799,13 @@ void loop() {
         a = b = 0;
         if (!downA && !downB) gSwallowInput = false;
     }
+    // The power button (StickS3 M5PM1, click reset disabled) means "sleep now";
+    // on a dark panel (idle on USB) it only wakes the panel, like the others.
+    if (tgc::board::powerButtonClicked()) {
+        gLastInputAt = t;
+        if (!gScreenOff) sleepNow(false);
+        wakeScreen();
+    }
     if (gScreen == Screen::Menu) {
         if (a == 1) {
             gMenuSel = (gMenuSel + 1) % kSettingRows;
@@ -1810,6 +1911,13 @@ void loop() {
     if (gScreen == Screen::Quiz && !gScreenOff && t - gBatteryCheckAt >= kBatteryCheckMs) {
         gBatteryCheckAt = t;
         if (tgc::board::batteryPercent() != gShownBattery) drawScreen();
+    }
+    // Save and sleep before a nearly flat cell browns out and takes the RTC
+    // timer (the SRS day clock) with it.
+    if (t - gBatteryGuardAt >= kBatteryGuardMs) {
+        gBatteryGuardAt = t;
+        const bool external = tgc::board::externalPower() || tgc::board::isCharging();
+        if (gBatteryGuard.update(tgc::board::batteryPercent(), external)) sleepNow(true);
     }
     powerTick(t);
     delay(10);
