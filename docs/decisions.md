@@ -1761,7 +1761,7 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   hardware.**
 
 
-## 2026-10-18 – No back hint in the screen headers
+## 2026-10-18 – No back hint in the headers; first-boot hints follow the highlight
 
 - **Why.** Hardware test of the v0.1.0 candidate: in Spanish the right-aligned
   "lateral: atrás" overlapped header titles in the 135 px portrait (DESCARGAR,
@@ -1775,3 +1775,10 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   freed line goes to the content. Screens where the side button does something
   else keep saying so in their own hints (the Wi-Fi screen's "side: start
   studying", and its "side: cancel" during a download from the page).
+- **First-boot language picker: one language of hints.** The picker showed
+  its button hints in both languages (two or four lines). It now shows only
+  the hints of the **highlighted** row's language ("tap: other  hold: OK"
+  under English, "toque: otro  larga: OK" under Español), redrawn as the
+  highlight moves; the header stays "LANGUAGE / IDIOMA". The hint area is sized
+  for the longer language (two lines in the StickS3 portrait, where the
+  Spanish line is 1 px too wide), so the rows do not jump.

@@ -147,8 +147,8 @@ struct UiStrings {
     const char* langTitle;
     const char* langRows[3];
     // First-boot language picker (drawFirstLang()): its button hints, which the
-    // picker draws from both tables, each in its own language. 1x font; the two
-    // share a line when it fits.
+    // picker draws from the table of the highlighted row's language. 1x font;
+    // the two share a line when it fits.
     const char* firstLangTap;
     const char* firstLangHold;
     // Wi-Fi portal screen (the hints and status lines are 1x, see drawWifi()).
@@ -1046,8 +1046,9 @@ void drawChoice() {
 }
 
 // First-boot language picker (setup(), docs/decisions.md): the choice-screen
-// look with a neutral header ("LANGUAGE / IDIOMA") and every row and hint in its
-// own language, so it reads the same whatever table is active. No back hint:
+// look with a neutral header ("LANGUAGE / IDIOMA"), every row in its own
+// language and the button hints in the language of the highlighted row, so it
+// reads the same whatever table is active. The side button does nothing here:
 // there is nothing to go back to yet.
 void drawFirstLang() {
     auto& d = *gCanvas;
@@ -1057,31 +1058,30 @@ void drawFirstLang() {
     snprintf(title, sizeof title, "%s / %s", kUiEn.langTitle, kUiEs.langTitle);
     smallText(d, title, 3, 3, kWhite, kGrey);
 
-    // Button hints along the bottom, English then Spanish: tap and hold share a
-    // line when both languages fit (landscape, T-Display), else each language
-    // takes two lines (StickS3 portrait).
+    // Button hints along the bottom, in the highlighted row's language: tap and
+    // hold share a line when it fits, else two lines ("toque: otro  larga: OK"
+    // is 1 px too wide for the StickS3 portrait). The space is reserved for the
+    // longer language, so the rows do not move as the highlight does.
     constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
     const int w = W - 4;
-    const UiStrings* const langs[2] = {&kUiEn, &kUiEs};
-    char line[2][48];
-    bool split = false;
-    for (int i = 0; i < 2; ++i) {
-        snprintf(line[i], sizeof line[i], "%s  %s", langs[i]->firstLangTap,
-                 langs[i]->firstLangHold);
-        if (gRender.textWidth(line[i], kSmall) > w) split = true;
+    auto hintLine = [](const UiStrings& t, char* out, size_t n) {
+        snprintf(out, n, "%s  %s", t.firstLangTap, t.firstLangHold);
+    };
+    char line[48];
+    int hintLines = 1;
+    for (const UiStrings* t : {&kUiEn, &kUiEs}) {
+        hintLine(*t, line, sizeof line);
+        if (gRender.textWidth(line, kSmall) > w) hintLines = 2;
     }
-    const int hintTop = H - 2 - (split ? 2 * 20 + 4 : 2 * 10);
-    int y = hintTop;
-    for (int i = 0; i < 2; ++i) {
-        if (split) {
-            gRender.drawCentred(d, langs[i]->firstLangTap, 2, y, w, 10, 1, kWhite, kBlack, kSmall);
-            gRender.drawCentred(d, langs[i]->firstLangHold, 2, y + 10, w, 10, 1, kWhite, kBlack,
-                                kSmall);
-            y += 24;
-        } else {
-            gRender.drawCentred(d, line[i], 2, y, w, 10, 1, kWhite, kBlack, kSmall);
-            y += 10;
-        }
+    const int hintTop = H - 2 - hintLines * 10;
+    const UiStrings& hl =
+        tgc::firstBootLangPref(gFirstLangSel) == tgc::kUiLangSpanish ? kUiEs : kUiEn;
+    hintLine(hl, line, sizeof line);
+    if (gRender.textWidth(line, kSmall) <= w) {
+        gRender.drawCentred(d, line, 2, H - 12, w, 10, 1, kWhite, kBlack, kSmall);
+    } else {
+        gRender.drawCentred(d, hl.firstLangTap, 2, H - 22, w, 10, 1, kWhite, kBlack, kSmall);
+        gRender.drawCentred(d, hl.firstLangHold, 2, H - 12, w, 10, 1, kWhite, kBlack, kSmall);
     }
 
     // The rows as on the choice screens; the step shrinks to stay above the
