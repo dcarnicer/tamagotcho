@@ -978,7 +978,7 @@ QuizGeom quizGeom(bool hints) {
     return g;
 }
 
-bool quizHintsShown() { return gQuizHints.shown(gSrs.answeredTotal(), !gRevealed); }
+bool quizHintsShown() { return gQuizHints.shown(gSrs.answeredTotal()); }
 
 // Hold progress on the quiz (see holdTick()): a fill frame is on screen, and
 // its share, so a full redraw during the hold keeps it.
@@ -2362,7 +2362,7 @@ void drawDetail() {
     using namespace tgc::theme;
     auto& d = *gCanvas;
     d.fillScreen(kBg);
-    gQuizG = quizGeom(gQuizHints.shown(gSrs.answeredTotal(), false));
+    gQuizG = quizGeom(quizHintsShown());
     const QuizGeom& g = gQuizG;
     drawDetailHeader(d, card);
     drawDetailKanji(d, card.codepoint);

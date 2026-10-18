@@ -80,9 +80,9 @@ inline int prevOption(int sel, int count) {
 // §6.5: the menus always show the hint bar. The quiz shows it while the user
 // has fewer than kHintLearnAnswers lifetime answers (SrsStore's answer count);
 // afterwards only once an unanswered question has gone kHintIdleMs without
-// input, and from then on until that question is answered, so the tiles do not
-// jump back while the user reads the hints and moves. Without the bar the tiles
-// take its space.
+// input, and from then on for the rest of that question -- its answer and
+// detail card included -- so the tiles do not jump while the user reads the
+// hints, moves and answers. Without the bar the tiles take its space.
 constexpr uint32_t kHintLearnAnswers = 50;
 constexpr uint32_t kHintIdleMs = 8000;
 
@@ -95,17 +95,14 @@ public:
     }
     // Button activity: the idle clock starts again (a bar already shown stays).
     void input(uint32_t now) { quietSince_ = now; }
-    // Whether the quiz shows the bar for `answers` lifetime answers; `open` is
-    // an unanswered question (a revealed answer or the detail card is not).
-    bool shown(uint32_t answers, bool open) const {
-        return answers < kHintLearnAnswers || (open && idle_);
-    }
-    // Advances the idle clock to `now`. True when shown() changed, i.e. the
-    // screen needs a redraw with the bar.
+    // Whether the quiz shows the bar for `answers` lifetime answers.
+    bool shown(uint32_t answers) const { return answers < kHintLearnAnswers || idle_; }
+    // Advances the idle clock to `now`; only an unanswered (`open`) question
+    // can go idle. True when shown() changed: a redraw with the bar is due.
     bool tick(uint32_t now, uint32_t answers, bool open) {
-        const bool before = shown(answers, open);
+        const bool before = shown(answers);
         if (open && !idle_ && now - quietSince_ >= kHintIdleMs) idle_ = true;
-        return shown(answers, open) != before;
+        return shown(answers) != before;
     }
 
 private:

@@ -2055,10 +2055,11 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   `GOOD` `ok-hi` on `ok-bg`, `AGAIN` `err-hi` on `err-bg`. The detail card's
   `ON`/`KUN` tags use `mode-reading`, as the quiz's reading pill does.
 - **Hint bar idle rule.** After 50 lifetime answers the bar appears once an
-  unanswered question has had 8 s without input, and then stays until that
-  question is answered, so the tiles do not jump back and forth while the
-  user reads it and moves. The detail card and revealed answers show it only
-  under 50 answers.
+  unanswered question has had 8 s without input, and then stays for the rest
+  of that question -- its answer and detail card included -- so the tiles do
+  not jump while the user reads it, moves and answers (and a stuck user also
+  sees "• details"). The next question starts without it. Revealed answers
+  and detail cards never start the idle clock.
 - **Session progress.** The question on screen counts as left until it is
   answered, so the counter drops on a correct answer and stays on a wrong one
   (the card is queued again). The answer count lives in `Queue` and resets
@@ -2092,6 +2093,6 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   strokes cover it exactly (Noto Sans JP and KanjiVG shapes differ); every
   frame reads all the card's masks, which is the old worst case. The
   animation pauses while the panel is dim or dark (§2.6).
-- **Flash** (with `TGC_VERSION=dev`): StickS3 1,431,789 → 1,437,649 bytes
-  (+5.9 KB), static RAM 54,700 → 54,844; T-Display-S3 1,272,453 → 1,278,445
+- **Flash** (with `TGC_VERSION=dev`): StickS3 1,431,789 → 1,437,625 bytes
+  (+5.9 KB), static RAM 54,700 → 54,844; T-Display-S3 1,272,453 → 1,278,425
   bytes, static RAM 52,704 → 52,848. **Not verified on hardware.**

@@ -582,9 +582,8 @@ Delivered:
   (`ui/QuizUi.h`, every word × interval × panel tested in `test_quizui`).
 - Hint bar policy (`QuizHints`): on while the lifetime answers are under 50;
   afterwards it appears after 8 s without input on an unanswered question and
-  stays until that question is answered; without it the tiles grow
-  (24 → 27 px portrait, 24 → 26 px landscape). The detail card follows the
-  same rule.
+  stays for the rest of that question (its answer and detail card too);
+  without it the tiles grow (24 → 27 px portrait, 24 → 26 px landscape).
 - Input: front tap = next option, side tap = previous (both wrap), front
   hold = answer, side hold = settings; revealed, detail and done screens as
   before. A focus move redraws and pushes only the two tiles.

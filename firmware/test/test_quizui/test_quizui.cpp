@@ -71,37 +71,38 @@ void test_option_navigation_wraps_both_ways() {
 void test_hints_always_while_learning() {
     QuizHints h;
     h.question(1000);
-    TEST_ASSERT_TRUE(h.shown(0, true));
-    TEST_ASSERT_TRUE(h.shown(49, true));
-    TEST_ASSERT_TRUE(h.shown(49, false));  // revealed answers and the detail card too
+    TEST_ASSERT_TRUE(h.shown(0));
+    TEST_ASSERT_TRUE(h.shown(49));  // the question, its answer and the detail card
     TEST_ASSERT_FALSE(h.tick(60000, 49, true));  // already shown: no change
 }
 
 void test_hints_after_idle_on_open_question() {
     QuizHints h;
     h.question(1000);
-    TEST_ASSERT_FALSE(h.shown(50, true));
+    TEST_ASSERT_FALSE(h.shown(50));
     TEST_ASSERT_FALSE(h.tick(1000 + kHintIdleMs - 1, 50, true));
     h.input(5000);  // a tap restarts the idle clock
     TEST_ASSERT_FALSE(h.tick(1000 + kHintIdleMs, 50, true));
-    TEST_ASSERT_FALSE(h.shown(50, true));
+    TEST_ASSERT_FALSE(h.shown(50));
     TEST_ASSERT_TRUE(h.tick(5000 + kHintIdleMs, 50, true));  // appears: redraw
-    TEST_ASSERT_TRUE(h.shown(50, true));
-    // It stays while the user moves through the options.
+    TEST_ASSERT_TRUE(h.shown(50));
+    // It stays while the user moves through the options...
     h.input(20000);
     TEST_ASSERT_FALSE(h.tick(20001, 50, true));
-    TEST_ASSERT_TRUE(h.shown(50, true));
-    // Answered: gone; the next question starts hidden again.
-    TEST_ASSERT_FALSE(h.shown(51, false));
+    TEST_ASSERT_TRUE(h.shown(50));
+    // ... and for the answer (no tile jump at the reveal) and its detail card.
+    TEST_ASSERT_FALSE(h.tick(20002, 51, false));
+    TEST_ASSERT_TRUE(h.shown(51));
+    // The next question starts hidden again.
     h.question(30000);
-    TEST_ASSERT_FALSE(h.shown(51, true));
+    TEST_ASSERT_FALSE(h.shown(51));
 }
 
 void test_hints_never_idle_on_a_revealed_answer() {
     QuizHints h;
     h.question(0);
     TEST_ASSERT_FALSE(h.tick(60000, 80, false));
-    TEST_ASSERT_FALSE(h.shown(80, false));
+    TEST_ASSERT_FALSE(h.shown(80));
 }
 
 // ---------------------------------------------------------------- hold progress
