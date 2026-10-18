@@ -28,6 +28,7 @@ void Queue::rebuild(const PackReader& pack, const SrsStore& srs, XorShiftRng& rn
     srs_ = &srs;
     items_.clear();
     pos_ = 0;
+    answered_ = 0;
     prevMode_ = -1;
 
     const uint32_t n = pack.cardCount();
@@ -37,10 +38,12 @@ void Queue::rebuild(const PackReader& pack, const SrsStore& srs, XorShiftRng& rn
     const uint16_t today = srs.today();
     std::vector<DueEntry> due;
     std::vector<NewEntry> fresh;
+    uint16_t introduced = 0;  // this deck's cards introduced today
     for (uint32_t i = 0; i < n; ++i) {
         Card c;
         if (!pack.card(i, &c)) continue;
         const Record* r = srs.find(c.codepoint);
+        if (r && introducedOn(*r, today) && introduced < 0xFFFF) ++introduced;
         if (!r || r->dueDay == 0) {
             fresh.push_back({i, c.level, c.codepoint});
         } else if (r->dueDay <= today) {
@@ -67,9 +70,8 @@ void Queue::rebuild(const PackReader& pack, const SrsStore& srs, XorShiftRng& rn
         items_.push_back(Item{e.idx});
     }
 
-    // New cap: new_per_day minus what was introduced today. The store resets
-    // the counter on a day change; the day check here is belt and braces.
-    const uint16_t introduced = srs.newIntroducedDay() == today ? srs.newIntroducedCount() : 0;
+    // New cap, per deck: new_per_day minus this deck's cards introduced today
+    // (docs/srs.md section 6.3). Another deck's new cards do not use it up.
     const uint16_t perDay = static_cast<uint16_t>(srs.newPerDay() + extraNew);
     uint16_t allowed = perDay > introduced ? static_cast<uint16_t>(perDay - introduced) : 0;
     for (const NewEntry& e : fresh) {
@@ -132,6 +134,7 @@ bool Queue::next(QueueItem* out) {
 }
 
 void Queue::answered(uint32_t cardIndex, Grade g) {
+    ++answered_;
     if (g != Grade::Again) return;
     if (cardIndex >= relearned_.size()) return;
     if (relearned_[cardIndex] >= kMaxRelearnPushes) return;

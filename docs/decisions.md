@@ -2022,3 +2022,155 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   portal list (bold title, then `<name>.tgc · lang · cards · size`). The
   "Saved <name>" note and the page's download progress keep the file name,
   which is what the installed-deck list shows for now.
+
+## 2026-10-18 – UX refresh phase 2: quiz, feedback, detail card, input
+
+- **What.** `feature/ux-quiz` delivers phase 2 of `docs/ux-refresh.md` (§4,
+  with its status list): the quiz header, tiles, reveal and result pill, the
+  hint bar policy, the two-way option navigation, hold progress (quiz and
+  every list screen), auto-advance and the restyled detail card. Pure logic in
+  `ui/QuizUi.h` (`test_quizui`); `Queue::answeredCount()` for the session bar.
+- **Strings (en / es).** Pills are Font0 captions, uppercase ASCII like the
+  header titles (Font0 has no `Í`): `GOOD`/`BIEN`, `HARD`/`DIFICIL`,
+  `AGAIN`/`OTRA VEZ`, the unit `d` in both, and the mode pills `MEANING`/
+  `SIGNIFICADO`, `ON`, `KUN`, `KANJI`. The result pill takes the longest of
+  "WORD · Nd", "WORD·Nd" and "WORD" that fits next to the cards left: English
+  always gets the full form (worst case `HARD · 365d`, 84 of 85 px with three
+  digits of cards left); Spanish `DIFICIL` drops the spaces in portrait
+  (`DIFICIL·12d`) and, with a 3-digit interval and 3 digits of cards left,
+  the interval. Hint bar: `• move ▬ answer` / `• mover ▬ responder` on a
+  question (the menus' tap word, which covers both directions now; Spanish
+  leaves 8 px to the settings icon, `siguiente` would not fit), `• next` /
+  `• siguiente` after a correct answer and on the detail card, `• details` /
+  `• detalles` after a wrong one; the side button shows only the settings
+  icon. Caption over a meaning → kanji prompt: "which kanji means" / "qué
+  kanji significa" (a fragment completed by the prompt, so no ¿?), in
+  `text-dim`, not the mockup's `text-faint`: it says what is asked. Detail:
+  `stroke 4/6` / `trazo 4/6`, the bare `4/13` when the worded counter of the
+  card's last stroke does not fit (decided per card, so the word does not
+  vanish at stroke 10; a 135 px header fits it up to 9 strokes); the accuracy
+  reuses `correct 3/5` / `aciertos 3/5`, bare `3/5` when the pick needs the
+  room. New `UiStrings` entries are appended at the end of the struct.
+- **Colours.** `HARD` is `warn` on `surface-hi` (the token's documented role),
+  `GOOD` `ok-hi` on `ok-bg`, `AGAIN` `err-hi` on `err-bg`. The detail card's
+  `ON`/`KUN` tags use `mode-reading`, as the quiz's reading pill does.
+- **Hint bar idle rule.** After 50 lifetime answers the bar appears once an
+  unanswered question has had 8 s without input, and then stays for the rest
+  of that question -- its answer and detail card included -- so the tiles do
+  not jump while the user reads it, moves and answers (and a stuck user also
+  sees "• details"). The next question starts without it. Revealed answers
+  and detail cards never start the idle clock.
+- **Session progress.** The question on screen counts as left until it is
+  answered, so the counter drops on a correct answer and stays on a wrong one
+  (the card is queued again). The answer count lives in `Queue` and resets
+  with every rebuild (new day, another deck, "+10 new"): each is a new bar.
+- **Tiles.** A row tile keeps 20 px for the check/cross only once it has one
+  (6 px otherwise), so options are 14 px less cut while choosing. Grids keep
+  2 px to the panel edges instead of the 4 px gutter: a portrait cell is then
+  64 px, room for three option kana (`キュウ`), which the 4 px gutter missed by
+  2 px; their mark goes in the top-right corner, where it clears a centred
+  label. Kanji options use a grid cell and set 1 like before.
+- **Hold progress.** The fill starts at 0 at 120 ms and is full at the hold
+  time (`holdMsFor()`), so Short/Normal/Long all show the whole sweep; ~40 ms
+  a frame. The quiz redraws its tile directly. A list screen is redrawn by its
+  own draw function with the canvas clipped to the focused row and only that
+  row pushed: every `drawList()` screen, including ones not written yet, gets
+  the fill with no code of its own. For that, widgets now nest their clip
+  rects (they used to clear them) and skip rows outside the clip; `drawList()`
+  notes the focused row and `present()` hands it to the hold code, so it
+  always describes the frame on the panel. The first frame is pushed whole so
+  the hint bar's ▬ lights; a fill that ends gets a frame without it (the
+  handler's, plus the hint bar after a partial push, or a redraw).
+- **Auto-advance.** The countdown is a 2 px bar along the bottom edge (it
+  fits under the tiles and in the hint bar's empty bottom rows, so it shows
+  whether or not the bar is up), pushed alone. The wait never ends while a
+  button is down: that press advances by itself, so a press at the end of the
+  wait cannot skip two cards.
+- **Detail card.** What was picked is the option's text; for meaning → kanji
+  it is the picked kanji's first meaning (the option string the quiz already
+  keeps), since a 40 px kanji does not fit the line. The ghost is drawn from
+  the remaining KanjiVG strokes, not from the pack's glyph, so the written
+  strokes cover it exactly (Noto Sans JP and KanjiVG shapes differ); every
+  frame reads all the card's masks, which is the old worst case. The
+  animation pauses while the panel is dim or dark (§2.6).
+- **Flash** (with `TGC_VERSION=dev`): StickS3 1,431,789 → 1,437,625 bytes
+  (+5.9 KB), static RAM 54,700 → 54,844; T-Display-S3 1,272,453 → 1,278,425
+  bytes, static RAM 52,704 → 52,848. **Not verified on hardware.**
+
+## 2026-10-18 – UX refresh phase 3: settings tree and secondary screens
+
+- **What.** `feature/ux-settings` delivers phase 3 of `docs/ux-refresh.md`
+  (§3 as amended by §6.6, status in §4): the settings tree, the deck list from
+  pack headers, and the date, stats, done, Get decks, Wi-Fi portal, network
+  test, About, error and notice screens in the flat style. The quiz and the
+  detail card (phase 2) are not touched; Auto-advance and Hold time only get
+  their pickers here.
+- **The tree in code.** `ui/SettingsTree.h` lists each page's items, the
+  chevrons and the home's icons; `main.cpp` has one `MenuItem` (label, value,
+  action) per item, found by id, so a new setting is an item, a place on a
+  page and a table entry. One `ListView` per page; a page variable is the
+  one-level stack. Every screen opened from a page returns to it because the
+  page stays put; opening the settings resets to the home; the side button
+  goes page → home → out.
+- **Labels by pixel budget** (UI font 18 px, captions 6 px a character, both
+  orientations checked on a host render of the screens):
+  - A home row leaves 93 px for label, 5 px gap and value in the 135 px
+    portrait (icon and chevron take the rest). The value shows only when both
+    fit whole (`Row::valueIfFits`; the Wi-Fi value is cut instead). Spanish
+    "Estudio" + "10/día" (105 px) goes without in portrait; "Estadísticas"
+    (99 px) did not fit at all, so the group is **"Progreso"** (screen title
+    too). Landscape rows have 110 px and show every value but Progreso's.
+  - Study / Device rows put the value on a caption line in portrait (label
+    ≤ 107 px with the chevron) and right of the label in landscape. English
+    "Auto-advance" is 116 px: the row and its picker are **"Auto next"**;
+    Spanish **"Pasar solo"** (No / Rápido / Normal). Hold time is
+    **"Pulsación"** (Corta / Normal / Larga; "Pulsación larga" is 127 px).
+    "Nuevas/día" stays ("Nuevas por día" is 124 px). "Speed" is now "Hard
+    after" / "Difícil tras".
+  - Stats tiles keep nine caption characters (62 px, 4 px padding): Spanish
+    "learned" is "dominadas". Spanish QR captions became "Escanea y únete" /
+    "Escanea y abre la web" (the old 28-character one was cut).
+- **Values.** Wi-Fi shows the radio state; the home only ever sees "off"
+  (the radio runs on the Wi-Fi screens only), kept as in the mockup. Stats is
+  the accuracy over every grade, none before the first answer. Date is "18
+  Oct" (the header too). Hard after reads "1.5 s" / "3 s" / "off" with the
+  language's decimal point. Picker rows show the duration of a timing choice,
+  or "default" on the default of New per day, Hard after and Brightness.
+  Picker descriptions wrap in captions and show in landscape only where every
+  row still fits (the four-row pickers would scroll).
+- **Counts.** `ui/DeckSummary.h` replaces `packDueNew()`. Seen is now the
+  loaded deck's (total − new); the old stats screen divided the global record
+  count by the deck size, which passes 100 % with two decks. Learned stays
+  global. The streak reads 0 once a study day was skipped (`liveStreak()`):
+  the stored value only resets on the next answer.
+- **Deck list.** Names, language and card count from each pack header
+  (`peekPackInfo()`, two small reads a file, redone each time the list opens:
+  an update keeps the file name); the file name when a header does not read. Get decks' "Saved ..." note and
+  the portal screen's download line use the catalog title, which is what the
+  list shows now.
+- **Errors.** One line of what happened and one action, no developer
+  commands. At boot every deck is tried before "Cannot open the deck"
+  ("Update the firmware from the release page": a newer pack format is the
+  likeliest cause). "No decks yet" (the access point did not start) says to
+  turn the device off and on.
+- **Not done:** the Wi-Fi screen's "time synced" line of the mockup.
+- **Flash** (`git describe` versions): StickS3 1,431,805 → 1,442,773 bytes
+  (+10.7 KB), static RAM 54,700 → 54,828; T-Display-S3 1,272,469 → 1,283,561,
+  RAM 52,704 → 52,832. **Not verified on hardware.**
+
+## 2026-10-18 – New-card cap per deck; "+10 new" always adds ten
+
+- **Found on the StickS3:** after finishing JLPT N5 (cap and one "+10 new"
+  spent), switching to N4 showed the done screen, and the first press on
+  "+10 new" did nothing, the second worked (it looked like "hold fails, tap
+  works"). Both came from the cap being global: the header's
+  `new_introduced_count` counted every deck's new cards, while the "+10"
+  extra resets on a deck change.
+- **Per deck now.** The record's former reserved byte is `flags`; bit0 marks
+  a card whose first review was on `last_day` (set by its first grade,
+  cleared by a grade on a later day). `Queue::rebuild()` counts the loaded
+  deck's cards introduced today against `new_per_day`. No file format bump:
+  old files have 0 there, which only under-counts the day of the update.
+- **"+10 new" adds ten beyond today's introductions** of the loaded deck
+  (`studyMoreExtra()` in `ui/DeckSummary.h`), whatever extra was in force, so
+  the first press always brings cards when the deck has any left.

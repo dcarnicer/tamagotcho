@@ -67,7 +67,7 @@ byte) without a format break, because the record has reserved bytes.
 | 12  | u8   | lapses         | saturating Again count                                       |
 | 13  | u8   | mode_seen      | bit0 meaning, bit1 reading, bit2 meaning→kanji               |
 | 14  | u8   | last_grade     | 0 Again, 1 Hard, 2 Good, 0xFF never                          |
-| 15  | u8   | reserved       | 0                                                            |
+| 15  | u8   | flags          | bit0 = introduced on `last_day` (first review that day); 0 in older files |
 
 S in centidays: resolution 14.4 min, which is far below the day resolution of
 intervals, and enough range for the 365-day interval cap (§3). A record with
@@ -532,8 +532,11 @@ list. Rebuilt on boot and on every pack change.
    builder's "learn earlier" order, which for the N5 deck means frequency-ish
    and for the Jōyō deck is school order (grade 1..6, then 8, each by
    frequency; `tangocho-pack build --order`, tools/pack-builder/README.md).
-   Take at most `new_per_day - new_introduced_count` (and reset the counter when
-   `new_introduced_day != now_day`), then append. Reviews are not capped in a
+   Take at most `new_per_day` minus **this deck's** cards introduced today
+   (records with flags bit0 set and `last_day == now_day`), then append. The
+   cap is per deck, as in Anki: another deck's new cards do not use it up, and
+   a card two decks share counts in both. (The header's `new_introduced_*`
+   counter is still kept but no longer drives the queue.) Reviews are not capped in a
    day; the session as a whole has a soft `session_cap = 200`.
 4. **Interleaving the three question types.** State is per card, so the mode is
    chosen when the item is served, not scheduled. For each item pick, among the

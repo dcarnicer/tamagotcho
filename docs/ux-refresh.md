@@ -1,10 +1,12 @@
 # UX refresh: audit, design system and plan
 
 > **Status: approved with changes (2026-10-18).** Phase 1 (foundations, with
-> the UI font of Phase 4) is implemented on `feature/ui-foundation`, see §4;
-> the later phases are not. Section 6 records the maintainer's answers; where
-> they differ from §2–§4 (flat corners, the UI font, the side tap, the date's
-> group), §6 wins.
+> the UI font of Phase 4) is on `main` and verified on the StickS3; Phase 2
+> (quiz, feedback, detail card) and Phase 3 (the settings tree and the
+> secondary screens) are implemented and integrated on `integrate/ux-round2`,
+> not yet verified on hardware. See §4. Section 6 records the maintainer's
+> answers; where they differ from §2–§4 (flat corners, the UI font, the side
+> tap, the date's group), §6 wins.
 
 The roadmap item "UX refresh" asks for a more modern look and feel, a
 consistent visual language, clearer answer feedback, a lighter settings home
@@ -495,6 +497,19 @@ Settings                     header: "SETTINGS" · date · battery
   drawn, instead of Klee One), paged by a tap. It moves under `Device ›` with
   the group refactor. See docs/decisions.md, "About screen and firmware
   version".
+- **Status of the tree (2026-10-18, `feature/ux-settings`; not yet verified
+  on hardware).** Implemented as amended by §6.6: the summary card and Decks ›
+  (count), Study › (`10/day`: New per day, Hard after, Auto-advance), Stats ›
+  (accuracy), Wi-Fi › (`off`: the existing submenu) and Device › (Orientation,
+  Brightness, Language, Hold time, Date ›, Sleep, About ›); "Continue" is gone.
+  `ui/SettingsTree.h` holds the item tables, `main.cpp` one `MenuItem` (label,
+  value, action) per item and a one-level page stack. The header shows the
+  date. Labels that did not fit their pixel budget changed: the English row is
+  **"Auto next"** ("Auto-advance" is 116 px, a portrait page row leaves 107),
+  the Spanish Stats group is **"Progreso"** ("Estadísticas" is 99 px, a home
+  row leaves 93), and a home row shows its value only when label and value fit
+  whole (Spanish "Estudio" and "Progreso" go without in portrait). See
+  docs/decisions.md, "UX refresh phase 3: settings tree and secondary screens".
 
 ---
 
@@ -559,6 +574,53 @@ docs/decisions.md, "UX refresh phase 1: UI font, widgets, scrolling menus".
 - `drawDetail`: picked option, ghost kanji + stroke counter, `ON`/`KUN` pills,
   and an animation redraw limited to the kanji box.
 
+*Status (2026-10-18, `feature/ux-quiz`; not yet verified on hardware).*
+Delivered:
+- Quiz header: the mode pill (`MEANING`/`SIGNIFICADO` in `accent-hi`, `ON` or
+  `KUN` in `mode-reading`, `KANJI` in `mode-kanji`), the cards left
+  (`Queue::remaining()`, plus the open question), the battery icon and the
+  2 px session bar (answered / (answered + left); `Queue::answeredCount()`
+  counts since the last rebuild). The deck name and the in-body mode label
+  are gone. Meaning → kanji gets a `text-dim` caption ("which kanji means" /
+  "qué kanji significa") over the prompt.
+- Tiles (`drawTile`, new `drawKanjiTile`): meanings one per row in the UI
+  font (two lines where a tile is tall enough, T-Display portrait); readings
+  in a 2x2 grid of set-3 kana when every option fits a cell (the grid keeps
+  2 px to the panel edges, so a portrait cell holds three kana), else rows;
+  kanji options in a 2x2 grid of set-1 glyphs. Nothing uses Font0 for an
+  option any more.
+- Reveal: correct `ok` + ✓, the wrong pick `err-bg` + 2 px `err` + ✗, the rest
+  dimmed; grid cells put the mark in the top-right corner. The header pill
+  becomes `✓ GOOD · 4d` / `✓ HARD · 2d` (`warn`) / `✗ AGAIN`, in the longest of
+  "WORD · Nd", "WORD·Nd", "WORD" that fits next to the cards left
+  (`ui/QuizUi.h`, every word × interval × panel tested in `test_quizui`).
+- Hint bar policy (`QuizHints`): on while the lifetime answers are under 50;
+  afterwards it appears after 8 s without input on an unanswered question and
+  stays for the rest of that question (its answer and detail card too);
+  without it the tiles grow (24 → 27 px portrait, 24 → 26 px landscape).
+- Input: front tap = next option, side tap = previous (both wrap), front
+  hold = answer, side hold = settings; revealed, detail and done screens as
+  before. A focus move redraws and pushes only the two tiles.
+- Hold progress on the focused quiz tile and on the focused row of every
+  `drawList()` screen: from 120 ms the target fills with `accent-press`, full
+  at `holdMsFor()`; a frame every 40 ms pushes only the tile/row, and the
+  hint bar's ▬ lights. Under `TGC_QUIZ_LOG` each frame logs `H hold ...`.
+- Auto-advance after a correct answer (`advanceMsFor()`): a 2 px bar along
+  the bottom edge drains, then the next card; any press skips it, and the
+  wait never ends while a button is down (one advance per answer).
+- Detail card: `✗` and what was picked (for meaning → kanji the picked
+  kanji's meaning) with "correct 3/5" (or "3/5"), the meanings in the UI font
+  (up to three lines), the readings behind `ON`/`KUN` pills, strokes written
+  so far in `text`, the current one in `warn`, the remaining ones in `ghost`
+  (KanjiVG strokes, so they line up), `stroke 4/6` in the header (the bare
+  `4/13` when the worded counter of the last stroke does not fit), and the
+  animation pushes only the header and the em square; it pauses while the
+  panel is dim. Hint "• next".
+
+Not done in phase 2: the settings rows that change the auto-advance and hold
+time (`feature/ux-settings`), the kanji fade-in (Phase 5). Decisions:
+docs/decisions.md, "UX refresh phase 2: quiz, feedback, detail card, input".
+
 **Phase 3 – Settings and secondary screens (M, ~2–3 d, medium risk: merge
 conflicts).**
 - The §3 tree with group tables, row values, the summary card, picker radios
@@ -573,6 +635,32 @@ conflicts).**
   instruction text and MB units. *(QR codes, MB units and the Wi-Fi submenu
   done on `feature/portal-home-wifi`, see §3.)*
 - New `UiStrings` entries in en/es, and `menuRows[10]` removed.
+
+*Status (2026-10-18, `feature/ux-settings`; not yet verified on hardware).*
+Delivered:
+- The §3 tree as amended by §6.6 (see §3's status): summary card, five groups
+  with values, the Study and Device pages, the Auto-advance and Hold time
+  pickers (they write `gAdvancePref` / `gHoldPref` and NVS; their behaviour is
+  phase 2's), picker descriptions, radios, the default marked and the timing
+  choices' durations. Landscape: the card in a left column.
+- Deck list from pack headers (`peekPackInfo()`): deck name, `EN`/`ES` pill,
+  `79 kanji · 12 due`.
+- Get decks: two-line rows (title; `ES · 367 kanji`, size), on device /
+  update / new with a check, a download mark or the size, the download bar in
+  the row, cancel in the hint bar.
+- Date stepper: calendar tile, `+N days` pill, the notice and the network
+  status, hints in the hint bar; input unchanged.
+- Stats: accuracy ring (`fillArc`), six tiles, seen/total bar. Done: check,
+  "All caught up", tomorrow's due count, streak, "+10 new". About: label-face
+  headings, paging kept. Wi-Fi portal screen: the QR codes as before, the
+  address in the label face, the free space as a bar in MB, hint-bar words.
+  Errors and notices: a label-face title and one end-user action.
+- Pure parts in `ui/SettingsTree.h`, `ui/ScreenLayout.h`, `ui/DeckSummary.h`,
+  native suite `test_settings`.
+
+Not done in phase 3: the "time synced" line on the Wi-Fi screen (the portal
+has no such state to show yet). Decisions: docs/decisions.md, "UX refresh
+phase 3: settings tree and secondary screens".
 
 **Phase 4 – Typography (M, 1–2 d; needs decision 6.2).**
 - U3: `tools/ui-font/` generator → `ui/UiFont.h`, and the Renderer gains a font

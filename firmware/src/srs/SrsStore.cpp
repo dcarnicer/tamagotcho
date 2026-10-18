@@ -78,7 +78,7 @@ inline void writeRecord(uint8_t* p, const Record& r) {
     p[12] = r.lapses;
     p[13] = r.modeSeen;
     p[14] = r.lastGrade;
-    p[15] = r.reserved;
+    p[15] = r.flags;
 }
 
 inline Record readRecord(const uint8_t* p) {
@@ -92,7 +92,7 @@ inline Record readRecord(const uint8_t* p) {
     r.lapses = p[12];
     r.modeSeen = p[13];
     r.lastGrade = p[14];
-    r.reserved = p[15];
+    r.flags = p[15];
     return r;
 }
 
@@ -379,6 +379,10 @@ void SrsStore::grade(uint32_t codepoint, Grade g, uint16_t day, uint8_t mode, fl
 
     const uint32_t due = static_cast<uint32_t>(day) + static_cast<uint32_t>(intervalDays(mem.s, uniform01));
     r->dueDay = due > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(due);
+    if (first)
+        r->flags = static_cast<uint8_t>(r->flags | kRecordFlagIntroducedOnLastDay);
+    else if (r->lastDay != day)
+        r->flags = static_cast<uint8_t>(r->flags & ~kRecordFlagIntroducedOnLastDay);
     r->lastDay = day;
 
     if (r->reps < 255) ++r->reps;

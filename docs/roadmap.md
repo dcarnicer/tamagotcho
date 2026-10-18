@@ -189,6 +189,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       Nuevas/día / Velocidad) replaces the single deck list, with a shared
       four-row choice screen for the new/day cap and the Hard threshold. The deck
       list moved to its own screen and shows `due/new` for the loaded pack.
+      Since the UX refresh's phase 3 (`feature/ux-settings`) the home is a
+      summary card and five groups -- Decks, Study, Stats, Wi-Fi, Device --
+      with their values; new settings go into a group, never onto the home.
 - [x] **Landscape orientation.** The panel is natively portrait (135x240); a
       horizontal layout (240x135) gives much more room, especially for menus and
       the four options. Selectable from the settings home and persisted in NVS
@@ -218,13 +221,24 @@ Scope for now: **kanji only** (no vocabulary decks).
       firmware UI font from Noto Sans JP, auto-advance after a correct answer,
       a mode pill in the quiz header, five settings groups, a hold-duration
       setting, side tap = previous option, catalog v2 with deck titles.
-      **Phase 1 implemented** (`feature/ui-foundation`, not yet verified on
-      hardware): design tokens, icons, the Noto Sans JP UI font
+      **Phase 1 implemented** (`feature/ui-foundation`, verified on the
+      StickS3): design tokens, icons, the Noto Sans JP UI font
       (`tools/ui-font/`), flat widgets and the menu screens as scrolling lists
       with a hint bar (ux-refresh §4). **Catalog v2 done** (`feature/catalog-v2`):
       a `title` column (the pack's deck name) in `catalog-v2.txt`, shown by Get
-      decks and the portal page; v1 is no longer written or read. Next: the
-      quiz, feedback and detail card (phase 2).
+      decks and the portal page; v1 is no longer written or read.
+      **Phase 2 implemented** (`feature/ux-quiz`): quiz header with
+      mode/result pill, cards left and session bar; flat answer tiles in the
+      UI font / option kana / kanji grid; reveal with ✓/✗ and `GOOD · 4d`-style
+      grades; the hint bar policy; side tap = previous option; hold progress on
+      quiz tiles and list rows; auto-advance after a correct answer; the detail
+      card with the pick, ON/KUN pills and ghost strokes. **Phase 3
+      implemented** (`feature/ux-settings`): the settings tree (summary card,
+      five groups, Study and Device pages with the Auto-advance and Hold time
+      pickers), the deck list from pack headers, and the date, stats, done,
+      Get decks, Wi-Fi portal, About and error screens in the flat style.
+      Phases 2 and 3 are integrated on `integrate/ux-round2`, not yet verified
+      on hardware.
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
       (picking an option on the device takes longer than in Anki).
 - [ ] **Learning mode** (idea, 2026-10-18). A mode for learning kanji, not

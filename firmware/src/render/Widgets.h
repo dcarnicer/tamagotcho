@@ -52,8 +52,8 @@ void drawBattery(lgfx::LovyanGFX& d, int x, int y, int pct);
 // ---------------------------------------------------------------- hint bar
 // The 12 px bar at the bottom: the front button's actions on the left as a
 // mark and a word (• tap, ▬ hold), the side button's on the right as an icon,
-// with its word only when that fits. `holding` lights the hold item while a
-// hold is in progress.
+// with its word only when that fits. `holding` (or a press fill under way, see
+// setPressFill()) lights the hold item while a hold is in progress.
 struct Hints {
     const char* tap = nullptr;
     const char* hold = nullptr;
@@ -67,19 +67,31 @@ void drawHintBar(lgfx::LovyanGFX& d, Renderer& r, int w, int h, const Hints& hin
 // An answer tile. Idle: `surface`. Focus: `accent`. Holding: `accent-press`
 // filling from the left by `fill` (0..1), the rest `accent`. Correct: `ok` and
 // a check. Wrong: `err-bg`, a 2 px `err` outline and a cross. Dimmed: no fill,
-// `text-faint`. The label is left-aligned 8 px in (or centred) and keeps clear
-// of the right 20 px, where the check/cross goes.
+// `text-faint`.
+// Left-aligned (a row of options): the label starts 8 px in and keeps 6 px
+// clear of the right edge, 20 px on a correct or wrong tile, where the check or
+// cross goes, vertically centred; a label that does not fit takes two lines
+// when the tile is tall enough for them, else it is cut with "...". Centred (a
+// 2x2 grid cell): the label is centred in the whole cell, 2 px in, and the mark
+// goes in the top-right corner.
 enum class TileState : uint8_t { Idle, Focus, Holding, Correct, Wrong, Dimmed };
 void drawTile(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, TileState state,
               const char* label, float fill = 0.0f, uint8_t set = Renderer::kTextUi,
               Align align = Align::Left);
+// The same tile with kanji `cp` from pack set `set` (0 or 1) centred in it
+// instead of a label; the mark goes in the top-right corner.
+void drawKanjiTile(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, TileState state,
+                   uint32_t cp, uint8_t set, float fill = 0.0f);
 
 // ---------------------------------------------------------------- row
 // A list row: `surface`, or `accent` when focused. From the left an optional
 // radio (the saved / loaded choice) or 9 x 9 icon, the label (UI font); on the
 // right an optional value (caption) and a chevron when the row opens another
 // screen. With a `caption` it is a two-line row: the caption goes under the
-// label, from the row's left padding.
+// label, from the row's left padding. While a press fill is set
+// (setPressFill()), the focused row is the holding tile: `accent-press` from
+// the left by the fill, its content drawn once per part. A row outside the
+// target's clip rect is skipped.
 enum class Radio : uint8_t { None, Off, On };
 struct Row {
     const char* label = "";
@@ -91,6 +103,18 @@ struct Row {
     bool focused = false;
     bool keepLabel = false;  // cut the value rather than the label
     uint16_t labelColor = theme::kText;  // while not focused
+    // The value only when the label and the whole value fit (else none), for
+    // values that are a nicety (the settings home's "10/day", "87%").
+    bool valueIfFits = false;
+    const char* tag = nullptr;  // a caption pill right after the label ("EN")
+    // Not focused: no fill, a 1 px `line` outline and faint text (a catalog
+    // deck already on the device).
+    bool muted = false;
+    const Icon* mark = nullptr;  // an icon at the right end, in place of the chevron
+    uint16_t markColor = theme::kTextDim;
+    // 0..100: a progress bar in place of the caption (a two-line row) or along
+    // the row's bottom; < 0 for none.
+    int progress = -1;
 };
 void drawRow(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, const Row& row);
 
@@ -107,9 +131,25 @@ void drawProgress(lgfx::LovyanGFX& d, int x, int y, int w, int h, int num, int d
 // Draws the visible rows of `list` (its geometry set) in [x, x + w) through
 // `row`; when the list overflows, a 2 px scroll bar 1 px right of the rows,
 // and a small up / down marker centred in the band above / below the rows
-// while rows are hidden there.
+// while rows are hidden there. Notes the focused row for takeFocusRow().
 using RowDrawer = std::function<void(int index, int x, int y, int w, int h, bool focused)>;
 void drawList(lgfx::LovyanGFX& d, const ListView& list, int x, int w, const RowDrawer& row);
+
+// ---------------------------------------------------------------- hold progress
+// docs/ux-refresh.md §2.5. While the front button is held on a list screen,
+// the app sets the press fill (0..1; negative = no hold under way) around its
+// redraws: drawRow() then fills the focused row from the left and
+// drawHintBar() lights its hold item.
+void setPressFill(float fill);
+float pressFill();
+
+// The focused row of the last drawList() since the previous call: true and
+// its rectangle, or false when no list with a focused row was drawn. The app
+// reads it once per pushed frame, so it always describes the frame on screen.
+struct Rect {
+    int16_t x, y, w, h;
+};
+bool takeFocusRow(Rect* out);
 
 // ---------------------------------------------------------------- frame
 // Pushes only the rectangle (x, y, w, h) of the full-screen `canvas` to the

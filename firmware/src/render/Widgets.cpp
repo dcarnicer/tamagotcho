@@ -16,7 +16,57 @@ constexpr int kCaptionCap = 7;  // Font0: cap height, the 8th row is the descend
 
 // Top of an icon / caption vertically centred in a band of height `h` at y.
 inline int centreY(int y, int h, int inkH) { return y + (h - inkH + 1) / 2; }
+
+// Clips `d` to (x, y, w, h) within its current clip rect and puts that one
+// back on exit, so a widget drawn under an outer clip (a hold-progress frame
+// redraws its screen clipped to one row) stays inside it. empty(): nothing of
+// the widget is inside the outer clip.
+class ClipScope {
+public:
+    ClipScope(lgfx::LovyanGFX& d, int x, int y, int w, int h) : d_(d) {
+        d_.getClipRect(&ox_, &oy_, &ow_, &oh_);
+        const int32_t x0 = std::max<int32_t>(x, ox_);
+        const int32_t y0 = std::max<int32_t>(y, oy_);
+        const int32_t x1 = std::min<int32_t>(x + w, ox_ + ow_);
+        const int32_t y1 = std::min<int32_t>(y + h, oy_ + oh_);
+        empty_ = x1 <= x0 || y1 <= y0;
+        if (empty_)
+            d_.setClipRect(0, 0, 0, 0);
+        else
+            d_.setClipRect(x0, y0, x1 - x0, y1 - y0);
+    }
+    ~ClipScope() { d_.setClipRect(ox_, oy_, ow_, oh_); }
+    ClipScope(const ClipScope&) = delete;
+    ClipScope& operator=(const ClipScope&) = delete;
+    bool empty() const { return empty_; }
+
+private:
+    lgfx::LovyanGFX& d_;
+    int32_t ox_ = 0, oy_ = 0, ow_ = 0, oh_ = 0;
+    bool empty_ = false;
+};
+
+float gPress = -1.0f;      // setPressFill()
+bool gFocusNoted = false;  // takeFocusRow()
+Rect gFocusRow{};
+
+// Width of the holding part of a `w` px tile or row filled by `fill`.
+inline int pressSplit(int w, float fill) {
+    if (fill < 0.0f) fill = 0.0f;
+    if (fill > 1.0f) fill = 1.0f;
+    return static_cast<int>(std::lround(w * fill));
+}
 }  // namespace
+
+void setPressFill(float fill) { gPress = fill; }
+float pressFill() { return gPress; }
+
+bool takeFocusRow(Rect* out) {
+    const bool had = gFocusNoted;
+    if (had && out) *out = gFocusRow;
+    gFocusNoted = false;
+    return had;
+}
 
 int drawIcon(lgfx::LovyanGFX& d, const Icon& icon, int x, int y, uint16_t ink) {
     drawBitmap1bpp(d, x, y, icon.bits, icon.w, icon.h, ink);
@@ -108,7 +158,7 @@ void drawHintBar(lgfx::LovyanGFX& d, Renderer& r, int w, int h, const Hints& hin
         x += drawCaption(d, r, word, x, y + 2, lit ? kText : kTextDim, kBg) + 6;
     };
     if (hints.tap) item(kIconTap, hints.tap, false);
-    if (hints.hold) item(kIconHold, hints.hold, hints.holding);
+    if (hints.hold) item(kIconHold, hints.hold, hints.holding || gPress >= 0.0f);
     if (!hints.side) return;
     const Icon& ic = *hints.side;
     const int iy = y + 2 + (7 - ic.h) / 2;
@@ -126,8 +176,14 @@ void drawHintBar(lgfx::LovyanGFX& d, Renderer& r, int w, int h, const Hints& hin
 
 // ---------------------------------------------------------------- tile
 
-void drawTile(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, TileState state,
-              const char* label, float fill, uint8_t set, Align align) {
+namespace {
+// The tile's background and ink for `state`, its fill (and the wrong tile's
+// outline), then `content(fg, bg)` once per colour part, clipped to it, so the
+// anti-aliased ink blends against the colour under it. The holding tile is
+// `accent-press` from the left by `fill`, `accent` after it.
+template <typename Content>
+void tileBody(lgfx::LovyanGFX& d, int x, int y, int w, int h, TileState state, float fill,
+              Content&& content) {
     uint16_t bg = kSurface;
     uint16_t fg = kText;
     switch (state) {
@@ -146,39 +202,76 @@ void drawTile(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, TileS
         d.drawRect(x, y, w, h, kErr);
         d.drawRect(x + 1, y + 1, w - 2, h - 2, kErr);
     }
-    const int lx = x + kTilePadX;
-    const int lw = w - kTilePadX - kTileMarkW;
-    auto drawText = [&](uint16_t on, int cx, int cw) {
-        d.setClipRect(cx, y, cw, h);
-        r.drawLabel(d, label, lx, y, lw, h, fg, on, set, align);
-        d.clearClipRect();
-    };
-    if (state == TileState::Holding) {
-        // The press fills from the left; the label is drawn once per part,
-        // clipped to it, so its anti-aliasing blends against each colour.
-        if (fill < 0.0f) fill = 0.0f;
-        if (fill > 1.0f) fill = 1.0f;
-        const int split = static_cast<int>(std::lround(w * fill));
-        if (split > 0) d.fillRect(x, y, split, h, kAccentPress);
-        if (label && *label) {
-            if (split > 0) drawText(kAccentPress, x, split);
-            if (split < w) drawText(bg, x + split, w - split);
-        }
-    } else if (label && *label) {
-        drawText(bg, x, w);
+    if (state != TileState::Holding) {
+        ClipScope clip(d, x, y, w, h);
+        content(fg, bg);
+        return;
     }
-    if (state == TileState::Correct)
-        drawIcon(d, kIconCheck, x + w - kIconCheck.w - 6, centreY(y, h, kIconCheck.h), kText);
-    else if (state == TileState::Wrong)
-        drawIcon(d, kIconCross, x + w - kIconCross.w - 7, centreY(y, h, kIconCross.h), kErrHi);
+    const int split = pressSplit(w, fill);
+    if (split > 0) {
+        d.fillRect(x, y, split, h, kAccentPress);
+        ClipScope clip(d, x, y, split, h);
+        content(fg, kAccentPress);
+    }
+    if (split < w) {
+        ClipScope clip(d, x + split, y, w - split, h);
+        content(fg, bg);
+    }
+}
+
+// The check or cross of a correct or wrong tile: right of the label,
+// vertically centred, or (`corner`, grid cells) in the top-right corner.
+void tileMark(lgfx::LovyanGFX& d, int x, int y, int w, int h, TileState state, bool corner) {
+    if (state == TileState::Correct) {
+        const Icon& ic = kIconCheck;
+        drawIcon(d, ic, x + w - ic.w - (corner ? 4 : 6), corner ? y + 4 : centreY(y, h, ic.h), kText);
+    } else if (state == TileState::Wrong) {
+        const Icon& ic = kIconCross;
+        drawIcon(d, ic, x + w - ic.w - (corner ? 5 : 7), corner ? y + 5 : centreY(y, h, ic.h),
+                 kErrHi);
+    }
+}
+}  // namespace
+
+void drawTile(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, TileState state,
+              const char* label, float fill, uint8_t set, Align align) {
+    ClipScope outer(d, x, y, w, h);
+    if (outer.empty()) return;
+    const bool marked = state == TileState::Correct || state == TileState::Wrong;
+    const bool grid = align == Align::Centre;
+    // Label box: a grid cell centres in the whole cell; a row starts 8 px in
+    // and keeps clear of the mark only when there is one.
+    const int lx = grid ? x + 2 : x + kTilePadX;
+    const int lw = grid ? w - 4 : w - kTilePadX - (marked ? kTileMarkW : 6);
+    const int lh = r.lineHeight(set);
+    const bool twoLines = !grid && label && h >= 2 * lh + 4 && r.textWidth(label, set) > lw;
+    tileBody(d, x, y, w, h, state, fill, [&](uint16_t fg, uint16_t bg) {
+        if (!label || !*label) return;
+        if (twoLines)
+            r.drawWrapped(d, label, lx, y + (h - 2 * lh) / 2, lw, 2, fg, bg, set);
+        else
+            r.drawLabel(d, label, lx, y, lw, h, fg, bg, set, align);
+    });
+    tileMark(d, x, y, w, h, state, grid);
+}
+
+void drawKanjiTile(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, TileState state,
+                   uint32_t cp, uint8_t set, float fill) {
+    ClipScope outer(d, x, y, w, h);
+    if (outer.empty()) return;
+    tileBody(d, x, y, w, h, state, fill,
+             [&](uint16_t fg, uint16_t bg) { r.drawKanji(d, set, cp, x, y, w, h, fg, bg); });
+    tileMark(d, x, y, w, h, state, true);
 }
 
 // ---------------------------------------------------------------- row
 
-void drawRow(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, const Row& row) {
+namespace {
+// A row's content on `bg` (drawRow() fills the row first).
+void rowContent(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, const Row& row,
+                uint16_t bg) {
     const bool f = row.focused;
-    const uint16_t bg = f ? kAccent : kSurface;
-    d.fillRect(x, y, w, h, bg);
+    const bool muted = row.muted && !f;
     // A two-line row keeps its last 13 px for the caption.
     const bool twoLines = row.caption != nullptr;
     const int lineH = twoLines ? h - 13 : h;
@@ -194,7 +287,11 @@ void drawRow(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, const 
         lx += row.icon->w + 5;
     }
     int rx = x + w - kRowPadX;
-    if (row.chevron) {
+    if (row.mark) {
+        drawIcon(d, *row.mark, rx - row.mark->w, centreY(y, lineH, row.mark->h),
+                 f ? kText : row.markColor);
+        rx -= row.mark->w + 4;
+    } else if (row.chevron) {
         drawIcon(d, kIconChevron, rx - kIconChevron.w, centreY(y, lineH, kIconChevron.h),
                  f ? kText : kTextFaint);
         rx -= kIconChevron.w + 4;
@@ -202,26 +299,69 @@ void drawRow(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, const 
     const uint16_t valueFg = f ? kText : kTextDim;
     const int valueY = centreY(y, lineH, kCaptionCap);
     const bool hasValue = row.value && *row.value;
+    // A tag pill follows the label, 4 px after it.
+    const int tagW = row.tag ? pillWidth(row.tag) + 4 : 0;
     int labelRoom = rx - lx;
-    d.setClipRect(x, y, w, h);
     if (hasValue && row.keepLabel) {
         // The label as it is; the value gets what is left, cut if needed.
-        const int labelW = std::min(r.textWidth(row.label, Renderer::kTextUi), labelRoom);
+        const int labelW =
+            std::min(r.textWidth(row.label, Renderer::kTextUi) + tagW, labelRoom);
         const int room = rx - lx - labelW - 5;
         if (room >= 12)
             r.drawLabel(d, row.value, rx - room, valueY, room, kCaptionCap, valueFg, bg, kCaption,
                         Align::Right);
+    } else if (hasValue && row.valueIfFits) {
+        const int vw = captionWidth(row.value);
+        if (r.textWidth(row.label, Renderer::kTextUi) + tagW + 5 + vw <= labelRoom) {
+            drawCaption(d, r, row.value, rx - vw, valueY, valueFg, bg);
+            labelRoom -= vw + 5;
+        }
     } else if (hasValue) {
         const int vw = captionWidth(row.value);
         drawCaption(d, r, row.value, rx - vw, valueY, valueFg, bg);
         labelRoom -= vw + 5;
     }
-    r.drawLabel(d, row.label, lx, y, labelRoom, lineH, f ? kText : row.labelColor, bg,
-                Renderer::kTextUi);
-    if (twoLines)
-        r.drawLabel(d, row.caption, x + kRowPadX, y + h - 11, w - 2 * kRowPadX, kCaptionCap,
-                    f ? kText : kTextDim, bg, kCaption);
-    d.clearClipRect();
+    const int labelW = r.drawLabel(d, row.label, lx, y, labelRoom - tagW, lineH,
+                                   f ? kText : (muted ? kTextFaint : row.labelColor), bg,
+                                   Renderer::kTextUi);
+    if (row.tag)
+        drawPill(d, r, lx + labelW + 4, centreY(y, lineH, kPillH), row.tag, f ? kText : kTextDim,
+                 kSurfaceHi);
+    const int barX = x + kRowPadX;
+    const int barW = w - 2 * kRowPadX;
+    const uint16_t barFill = f ? kText : kAccent;
+    if (twoLines && row.progress >= 0)
+        drawProgress(d, barX, y + h - 9, barW, 4, row.progress, 100, barFill, kSurfaceHi);
+    else if (twoLines)
+        r.drawLabel(d, row.caption, barX, y + h - 11, barW, kCaptionCap,
+                    f ? kText : (muted ? kTextFaint : kTextDim), bg, kCaption);
+    else if (row.progress >= 0)
+        drawProgress(d, barX, y + h - 4, barW, 2, row.progress, 100, barFill, kSurfaceHi);
+}
+}  // namespace
+
+void drawRow(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, const Row& row) {
+    ClipScope clip(d, x, y, w, h);
+    if (clip.empty()) return;
+    const bool muted = row.muted && !row.focused;
+    const uint16_t bg = row.focused ? kAccent : (muted ? kBg : kSurface);
+    d.fillRect(x, y, w, h, bg);
+    if (muted) d.drawRect(x, y, w, h, kLine);
+    if (!row.focused || gPress < 0.0f) {
+        rowContent(d, r, x, y, w, h, row, bg);
+        return;
+    }
+    // Holding: accent-press from the left, the content drawn once per part.
+    const int split = pressSplit(w, gPress);
+    if (split > 0) {
+        d.fillRect(x, y, split, h, kAccentPress);
+        ClipScope part(d, x, y, split, h);
+        rowContent(d, r, x, y, w, h, row, kAccentPress);
+    }
+    if (split < w) {
+        ClipScope part(d, x + split, y, w - split, h);
+        rowContent(d, r, x, y, w, h, row, bg);
+    }
 }
 
 // ---------------------------------------------------------------- progress
@@ -240,8 +380,15 @@ void drawProgress(lgfx::LovyanGFX& d, int x, int y, int w, int h, int num, int d
 void drawList(lgfx::LovyanGFX& d, const ListView& list, int x, int w, const RowDrawer& row) {
     const int first = list.first();
     const int n = list.visible();
-    for (int i = first; i < first + n; ++i)
-        row(i, x, list.rowY(i), w, list.rowH(), i == list.focus());
+    for (int i = first; i < first + n; ++i) {
+        const bool focused = i == list.focus();
+        row(i, x, list.rowY(i), w, list.rowH(), focused);
+        if (focused) {
+            gFocusRow = Rect{static_cast<int16_t>(x), static_cast<int16_t>(list.rowY(i)),
+                             static_cast<int16_t>(w), static_cast<int16_t>(list.rowH())};
+            gFocusNoted = true;
+        }
+    }
     if (list.overflows()) {
         const ListView::Thumb t = list.thumb();
         d.fillRect(x + w + 1, t.trackY, kScrollW, t.trackH, kSurface);

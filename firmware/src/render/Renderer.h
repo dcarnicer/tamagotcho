@@ -84,6 +84,8 @@ public:
     // maxLines lines; the last line is ellipsised on overflow. Returns lines drawn.
     int drawWrapped(lgfx::LovyanGFX& dst, const char* s, int x, int y, int maxW, int maxLines,
                     uint16_t fg, uint16_t bg, uint8_t set = kGlyphSetText);
+    // Lines drawWrapped() would take for `s` (0 for an empty text).
+    int lineCount(const char* s, int maxW, int maxLines, uint8_t set = kGlyphSetText) const;
     // As drawWrapped, but centres the block vertically in `h` and each line
     // horizontally in `w`. Returns lines drawn.
     int drawCentred(lgfx::LovyanGFX& dst, const char* s, int x, int y, int w, int h, int maxLines,
