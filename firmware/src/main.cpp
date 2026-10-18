@@ -94,6 +94,11 @@ struct UiStrings {
     const char* dateHintTap;   // what a tap / hold of the front button does
     const char* dateHintSide;  // what a side-button hold does
     const char* weekdays[7];   // short names, Sunday first
+    // Date screen status line while (or after) the boot-time question tries the
+    // network time over the home Wi-Fi. 1x font, two lines in portrait.
+    const char* dateSyncingFmt;  // %s = home Wi-Fi name
+    const char* dateNoNetwork;   // could not join
+    const char* dateNoTime;      // joined, but no (plausible) time came back
     const char* doneBadge;
     // Font0 is 6 px/char and each done-screen line is centred on the 135 px
     // portrait width, so every done line must stay short (about 21 chars).
@@ -186,6 +191,7 @@ const UiStrings kUiEn = {
     "MEANING", "READING", "KANJI",
     "DATE", "last used", "today", "+1 day", "+%u days", "tap +1  hold: OK", "side hold: -1",
     {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
+    "Syncing via %s...", "No network: set it by hand", "No network time: set it by hand",
     "DONE", "All reviewed for now", "day %u  %u cards", "due %u  new %u", "tap/hold: +10 new",
     "side hold: menu",
     "  %u/%u",
@@ -221,6 +227,7 @@ const UiStrings kUiEs = {
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", "último uso", "hoy", "+1 día", "+%u días", "toque +1  larga: OK", "lateral larga: -1",
     {"dom", "lun", "mar", "mié", "jue", "vie", "sáb"},
+    "Sincronizando vía %s...", "Sin red: ajústala a mano", "Sin hora de red: ajústala a mano",
     "FIN", "Todo repasado", "dia %u  %u tarjetas", "vencen %u  nuevas %u",
     "toque/larga: +10", "lateral: menu",
     "  %u/%u",
@@ -308,9 +315,19 @@ uint16_t gBootDay = 0;    // persisted day index at boot: "last used" on the dat
 // power-cut date question is not needed.
 bool gWallClockSynced = false;
 // NVS `tangocho`/`tz`: the UTC offset of the last wall-clock sync, in minutes
-// east of UTC (int16). Absent until the first sync; kept for a later NTP sync,
+// east of UTC (int16). Absent until the first sync; reused by the NTP sync,
 // which only yields UTC (docs/srs.md section 5.1).
 constexpr const char* kPrefTz = "tz";
+// NTP over the home Wi-Fi gets this long once the network is up.
+constexpr uint32_t kNtpTimeoutMs = 3000;
+// Network time for the boot-time date question (docs/srs.md section 5.1): with a
+// home Wi-Fi and an offset saved, the date screen joins in the background and
+// asks NTP; the manual answer works meanwhile and is the fallback. Tried once
+// per boot. The radio (gHome, shared with Get decks, which cannot be opened from
+// this screen) is on only while Joining; the other states are the status line.
+enum class DateSync : uint8_t { None, Joining, NoNetwork, NoTime };
+DateSync gDateSync = DateSync::None;
+int16_t gDateSyncTz = 0;  // the saved offset the sync will apply
 std::vector<String> gPacks;  // paths of the *.tgc files in /packs
 int gMenuSel = 0;            // highlighted row on the settings home
 int gDeckSel = 0;            // highlighted row on the deck list
@@ -544,6 +561,7 @@ void applyRotation(uint8_t r);
 void drawGetDecks();
 void formatDate(uint16_t days, char* out, size_t n);
 [[noreturn]] void sleepNow(bool critical);
+void netRadioOff();
 
 void drawQuiz() {
     auto& d = *gCanvas;
@@ -937,6 +955,22 @@ void drawDate() {
         snprintf(line, sizeof line, ui().dateDaysFmt, (unsigned)gDateSteps);
     gRender.drawCentred(d, line, 2, y, w, 18, 1, kYellow, kBlack,
                         gRender.textWidth(line, kBig) <= w ? kBig : kSmall);
+
+    // The network-time sync of the boot-time question, right above the hints
+    // (one line in landscape, where the space above is taken).
+    if (gDateSync != DateSync::None) {
+        const char* status = line;
+        uint16_t color = kGreen;
+        if (gDateSync == DateSync::Joining) {
+            snprintf(line, sizeof line, ui().dateSyncingFmt, gHome.ssid());
+        } else {
+            status = gDateSync == DateSync::NoNetwork ? ui().dateNoNetwork : ui().dateNoTime;
+            color = kYellow;
+        }
+        const int lines = H > W ? 2 : 1;
+        gRender.drawCentred(d, status, 2, H - 24 - lines * 10, w, lines * 10, lines, color, kBlack,
+                            kSmall);
+    }
 
     // Button hints along the bottom.
     gRender.drawCentred(d, ui().dateHintTap, 2, H - 22, w, 10, 1, kWhite, kBlack, kSmall);
@@ -1340,9 +1374,20 @@ void showDetail() {
     drawDetail();
 }
 
+// The boot-time question has its answer (from the user or from the network
+// time): a join still in progress stops, radio off, and the status line goes.
+void dateSyncCancel() {
+    if (gDateSync == DateSync::Joining) {
+        netRadioOff();
+        Serial.printf("clock: network time cancelled, answered by hand\n");
+    }
+    gDateSync = DateSync::None;
+}
+
 // Rebuilds the queue and shows the quiz (or the done screen if nothing is due).
 // Used after the date screen so newly due cards appear.
 void leaveDate() {
+    dateSyncCancel();
     gQueue.rebuild(*gPack, gSrs, gRng);
     if (!newQuestion()) {
         showDone();
@@ -1357,6 +1402,7 @@ void leaveDate() {
 // due) and goes back to where the date screen was opened from: the settings
 // home, or the quiz on a power-off boot.
 void applyDate() {
+    dateSyncCancel();
     gSrs.advanceDaysManual(gDateSteps);
     gSrs.save(gSrsIo);
     gDirty = 0;
@@ -1386,12 +1432,12 @@ const char* clockSyncName(tgc::ClockSync k) {
 }
 
 // Applies a real wall-clock time to the SRS day clock (docs/srs.md section 5.1):
-// the phone's browser through the portal's POST /time today, an NTP client
-// later. Anchors or advances the day, aligns the 04:00 rollover, remembers the
-// UTC offset and brings the screen up to date: a pending power-cut date
-// question is answered, and a new day rebuilds the queue. `tzOffsetMin` is local
-// time minus UTC in minutes. False when the time was rejected as implausible;
-// nothing changes then.
+// the phone's browser through the portal's POST /time, or NTP over the home
+// Wi-Fi (Get decks, the boot-time date question). Anchors or advances the day,
+// aligns the 04:00 rollover, remembers the UTC offset and brings the screen up
+// to date: a pending power-cut date question is answered, and a new day
+// rebuilds the queue. `tzOffsetMin` is local time minus UTC in minutes. False
+// when the time was rejected as implausible; nothing changes then.
 bool applyWallClock(int64_t utcMs, int tzOffsetMin) {
     const uint16_t before = gSrs.today();
     const tgc::ClockSyncResult r = gSrs.syncWallClock(utcMs, tzOffsetMin);
@@ -1426,13 +1472,74 @@ bool applyWallClock(int64_t utcMs, int tzOffsetMin) {
     if (gSrs.today() != before && gPack->isOpen()) {
         // A new day: cards may have come due. An unanswered question (or the
         // done screen) gives way to the new queue; after an answer, the next
-        // question comes from it.
+        // question comes from it. On the portal or Get decks screen the same
+        // goes for the quiz screen that the settings home's "Continue" shows.
         gQueue.rebuild(*gPack, gSrs, gRng);
-        if ((gScreen == Screen::Quiz && !gRevealed) || gScreen == Screen::Done)
-            gScreen = newQuestion() ? Screen::Quiz : Screen::Done;
+        auto refresh = [](Screen& s) {
+            if ((s == Screen::Quiz && !gRevealed) || s == Screen::Done)
+                s = newQuestion() ? Screen::Quiz : Screen::Done;
+        };
+        if (gScreen == Screen::Quiz || gScreen == Screen::Done)
+            refresh(gScreen);
+        else if (gScreen == Screen::Wifi || gScreen == Screen::GetDecks)
+            refresh(gBeforeMenu);
     }
     if (!gScreenOff) drawScreen();
     return true;
+}
+
+// The UTC offset of the last real-time sync (NVS `tz`); false before the first
+// one. NTP only yields UTC: without the offset the study day is unknown, and
+// guessing UTC could put it off by one, so the NTP paths skip the sync instead.
+bool savedTzOffset(int16_t* out) {
+    if (!gPrefs.isKey(kPrefTz)) return false;
+    *out = gPrefs.getShort(kPrefTz, 0);
+    return true;
+}
+
+// Boot-time date question (setup()): with a home Wi-Fi and an offset saved,
+// start joining in the background; dateSyncPoll() takes it from there.
+void dateSyncBegin() {
+    int16_t tz = 0;
+    if (!tgc::HomeWifi::hasCredentials() || !savedTzOffset(&tz)) {
+        Serial.printf("clock: no network time at boot (no %s saved)\n",
+                      tgc::HomeWifi::hasCredentials() ? "UTC offset" : "home Wi-Fi");
+        return;
+    }
+    setCpuFrequencyMhz(kCpuWifiMhz);
+    if (!gHome.begin()) {
+        netRadioOff();
+        gDateSync = DateSync::NoNetwork;
+        Serial.printf("clock: no network time at boot (radio did not start)\n");
+        return;
+    }
+    gDateSyncTz = tz;
+    gDateSync = DateSync::Joining;
+    gNetActivityAt = millis();  // the join keeps the idle timers away (powerTick)
+}
+
+// loop() on the date screen. Once the join succeeds: NTP (blocking, at most
+// kNtpTimeoutMs), radio off, then applyWallClock(), which answers the question
+// and leaves for the quiz -- true when that happened. On any failure the radio
+// is off too and the status line says to set the date by hand.
+bool dateSyncPoll() {
+    if (gDateSync != DateSync::Joining) return false;
+    const tgc::HomeWifi::State st = gHome.poll();
+    if (st == tgc::HomeWifi::State::Connecting) return false;
+    const bool joined = st == tgc::HomeWifi::State::Connected;
+    int64_t utcMs = 0;
+    const bool got = joined && gHome.fetchUtcMs(&utcMs, kNtpTimeoutMs);
+    netRadioOff();
+    if (joined) gSwallowInput = true;  // presses made while blocked must not act now
+    gDateSync = DateSync::None;
+    if (got && applyWallClock(utcMs, gDateSyncTz)) return true;
+    gDateSync = joined ? DateSync::NoTime : DateSync::NoNetwork;
+    // The status is news: the join's time does not count against the reader.
+    gNetActivityAt = millis();
+    Serial.printf("clock: no network time at boot (%s), asking by hand\n",
+                  joined ? "no NTP answer" : "could not join");
+    if (!gScreenOff) drawScreen();
+    return false;
 }
 
 void drawScreen() {
@@ -1920,6 +2027,20 @@ void closeGetDecks() {
     openDecks();
 }
 
+// Connected: the network is up anyway, so take the real date from NTP first
+// (blocking, at most kNtpTimeoutMs; netLoadCatalog() right after resets the
+// idle timers and drops the presses made meanwhile). Only with the saved UTC
+// offset (see savedTzOffset()); a failure is logged and Get decks carries on.
+void netSyncClock() {
+    int16_t tz = 0;
+    if (!savedTzOffset(&tz)) {
+        Serial.printf("clock: no NTP sync, no UTC offset saved yet (open the portal page once)\n");
+        return;
+    }
+    int64_t utcMs = 0;
+    if (gHome.fetchUtcMs(&utcMs, kNtpTimeoutMs)) applyWallClock(utcMs, tz);
+}
+
 // Connected: read and parse the catalog (blocking), then show the list.
 void netLoadCatalog() {
     const String url = tgc::HomeWifi::catalogUrl();
@@ -2106,6 +2227,7 @@ void getDecksLoop(int a, int b) {
         if (st == tgc::HomeWifi::State::Connected) {
             gNetStep = NetStep::Catalog;
             drawScreen();
+            netSyncClock();
             netLoadCatalog();
             drawScreen();
         } else if (st == tgc::HomeWifi::State::Failed) {
@@ -2292,7 +2414,9 @@ void powerTick(uint32_t now) {
         const uint32_t http = now - gPortal.lastActivityMs();
         if (http < idle) idle = http;
     }
-    if (gHome.active()) {  // a download or catalog read counts as activity
+    // A download, catalog read or join counts as activity, and so does the end
+    // of the date screen's network-time attempt (a new status line to read).
+    if (gHome.active() || gDateSync != DateSync::None) {
         const uint32_t net = now - gNetActivityAt;
         if (net < idle) idle = net;
     }
@@ -2431,7 +2555,9 @@ void setup() {
     if ((gPoweredOff || datePending) && gSrs.count() > 0 && !gWallClockSynced) {
         // Power cut: the elapsed days are unknown. Ask *before* deciding "done",
         // because advancing the day can make reviews due. A real time applied
-        // earlier in this boot (applyWallClock) already answered it.
+        // earlier in this boot (applyWallClock) already answered it. Meanwhile
+        // the home Wi-Fi, if saved, may answer it with the network time.
+        dateSyncBegin();
         openDate(Screen::Quiz);
         return;
     }
@@ -2574,8 +2700,11 @@ void loop() {
         }
     } else if (gScreen == Screen::Date) {
         // Tap: one more day. Hold: confirm. Side hold: one day back, never below
-        // the current day (undoes an overshoot). Side tap: cancel.
-        if (a == 1) {
+        // the current day (undoes an overshoot). Side tap: cancel. Confirming or
+        // cancelling also stops the network-time attempt (see leaveDate()).
+        if (dateSyncPoll()) {
+            // The network time answered the boot-time question: on the quiz now.
+        } else if (a == 1) {
             if (dateTarget() < 0xFFFF) ++gDateSteps;
             drawScreen();
         } else if (a == 2) {

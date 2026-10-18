@@ -34,7 +34,8 @@ copy a pack onto the device without a computer running `uploadfs`:
    page also sets the device's date from the phone's clock and time zone, so the
    review day rolls over at 04:00 local. Once the date has been set this way,
    a power-off can be handled by skipping the on-device date question (side tap)
-   and opening this page again.
+   and opening this page again -- or, with a home Wi-Fi saved (below), the
+   device answers that question itself from the network time.
 4. Tap the side button to leave the screen and stop the portal.
 
 Notes and limits:
@@ -77,6 +78,12 @@ Notes and limits:
 - The radio is on **only while this screen is open**, and the device sleeps as
   usual when idle. A fresh device without packs also offers it on its boot
   screen ("hold: get decks") once a home Wi-Fi is saved.
+- The home Wi-Fi also keeps the **date** right: Get decks sets it from the
+  network time (NTP) once connected, and after a power-off the date question
+  tries the same in the background ("Syncing via <network>...") and goes away
+  by itself when it works; you can still answer it by hand meanwhile, which
+  turns the radio off. Both use the time zone the portal page last sent, and
+  skip the sync until the page has been opened once.
 - Every download is checked against the catalog's **size and SHA-256** and must
   be a valid pack before it replaces anything; a failure leaves `/packs` as it
   was. HTTPS is verified against a small embedded set of root certificates

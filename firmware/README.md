@@ -110,7 +110,8 @@ power-off. **On USB power** it only turns the panel off (the serial port stays u
 for flashing and logs); any press turns it back on, and unplugging lets it sleep.
 To flash a sleeping device on battery, wake it first. The CPU runs at 80 MHz
 (240 MHz while the Wi-Fi portal or the home Wi-Fi is up; the home Wi-Fi only
-while Get decks is open, and a download counts as activity).
+while Get decks is open, or for a few seconds while the date question after a
+power-off fetches the network time; a download or a join counts as activity).
 
 **Sleep on demand.** On the StickS3 a **click of the power button** (the M5PM1's
 button, which used to restart the device) saves and deep-sleeps right away, after
@@ -151,6 +152,15 @@ screen**: it shows the last-used date and a proposed "today" with its weekday. A
 tap adds a day, a hold confirms, a side-button hold takes a day back (never
 before the current day) and a side tap skips the question. The same screen is
 **Settings → Date** for manual corrections.
+
+**Network time.** With a home Wi-Fi saved, the date also comes from NTP: Get
+decks syncs it once connected (at most 3 s, a failure is only logged), and the
+power-off date question joins the home Wi-Fi in the background ("Syncing via
+<network>..."), takes the time and moves on to the quiz by itself. If that
+fails the line says to set the date by hand (radio off); answering by hand at
+any time cancels the join. NTP gives UTC only, so both use the UTC offset the
+portal page last sent and skip the sync until it has been opened once (the
+offset is not refreshed by NTP: after a DST change, open the page again).
 
 ## Layout
 

@@ -1,6 +1,6 @@
 #pragma once
 // Calendar and wall-clock helpers for the SRS day clock: civil dates, the
-// plausibility bounds for a real time coming from a phone (or, later, NTP) and
+// plausibility bounds for a real time coming from a phone (or NTP) and
 // the "study day" that rolls over at a fixed local hour. Pure C++, no Arduino.
 // Design: docs/srs.md sections 4.1 and 5.1.
 #include <cstdint>

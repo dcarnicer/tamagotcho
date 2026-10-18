@@ -29,8 +29,8 @@ This document is the design; the implementation lives in `firmware/src/srs/`
 - No stats screen. The cross-cutting "Statistics" item on the roadmap can read
   the same file later; phase 2 only keeps the counters it needs.
 - No RTC and no required network: the day clock in §5 derives the date. A real
-  wall-clock time (the phone's browser through the Wi-Fi portal, later NTP) is
-  an optional correction on top of it (§5.1).
+  wall-clock time (the phone's browser through the Wi-Fi portal, or NTP over the
+  home Wi-Fi) is an optional correction on top of it (§5.1).
 
 ## 2. State model
 
@@ -354,7 +354,9 @@ use a **persisted, day-granular clock**:
   by the next answer or sync. The same screen is in the settings for manual
   corrections. A real-time sync (§5.1) answers the question instead, so it is
   not asked when the time is already known and it is dismissed if a sync
-  arrives while it is shown.
+  arrives while it is shown. With a home Wi-Fi and a UTC offset saved, the
+  screen tries one itself: it asks NTP over the home Wi-Fi in the background
+  while the stepper stays usable (§5.1).
   On the StickS3 a click of the power
   button used to be such a cut: the M5PM1's "reset" cycles the chip's power. The
   click now saves and deep-sleeps instead, and so does a critical battery
@@ -379,7 +381,7 @@ Testability: the pure module never calls `millis()` or the RTC; `beginSession()`
 `syncWallClock(utc_ms, tz_offset_min)` and a test-only `setToday()` are all the
 clock needs, so the native tests drive time explicitly.
 
-### 5.1 Real time from the phone (and later NTP)
+### 5.1 Real time from the phone and from NTP
 
 Opening the Wi-Fi portal page (`http://192.168.4.1`) makes the browser post its
 clock: `POST /time` with `ms` = `Date.now()` (UTC milliseconds), `tz` = minutes
@@ -387,10 +389,10 @@ clock: `POST /time` with `ms` = `Date.now()` (UTC milliseconds), `tz` = minutes
 optional IANA `zone` name used only in the portal's message. The portal checks
 the syntax and hands the two numbers to the app (`WifiPortal::Hooks::onTime`);
 the app's `applyWallClock(utc_ms, tz_offset_min)` calls the pure
-`SrsStore::syncWallClock()` and is the single entry point a future NTP client
-will call too. The offset is stored in NVS (`tangocho`/`tz`, int16, minutes east
-of UTC; absent until the first sync) so NTP, which only yields UTC, can reuse it.
-It is not part of the SRS file.
+`SrsStore::syncWallClock()` and is the single entry point for both sources (NTP
+below calls it too). The offset is stored in NVS (`tangocho`/`tz`, int16, minutes
+east of UTC; absent until the first sync) so NTP, which only yields UTC, can
+reuse it. It is not part of the SRS file.
 
 **Plausibility.** A time before 2026-01-01T00:00Z or from 2100 on, or an offset
 outside -12 h..+14 h, is a broken browser clock (or a forged request) and is
@@ -431,14 +433,39 @@ roll the day over at the next 04:00 local.
 - **Idempotent.** Posting the same instant twice gives the same state; a later
   instant on the same day only moves the carry. The page posts on every load.
 - **Time zones and DST.** The offset is a snapshot. After a DST change (or
-  travel) the rollover is off by the difference until the next sync; the day
-  index itself is unaffected unless the gap crosses 04:00.
+  travel) the rollover is off by the difference until the next phone sync (NTP
+  reuses the stored offset); the day index itself is unaffected unless the gap
+  crosses 04:00.
 - **First sync after a power cut.** A never-synced store cannot measure a
   power-off gap: the first sync anchors the current index as today. This can
   only lose a gap once in a device's life.
 - **Display.** The statistics screen, the date screen and `/api/stats` show
   `epoch_anchor + now_day`; `/api/stats` also says whether the date came from a
   real clock (`dateSynced`).
+
+**NTP over the home Wi-Fi.** `HomeWifi::fetchUtcMs()` runs SNTP (pool.ntp.org,
+time.google.com, time.cloudflare.com) for at most **3 s** once the home Wi-Fi
+is connected. NTP yields UTC only, so the result goes through `applyWallClock()`
+with the **stored** offset, and only when the `tz` key exists. Without it the
+sync is skipped (and logged): guessing UTC could put the study day off by one,
+and the offset is normally known, because the portal page that saves the home
+Wi-Fi also posts the browser's clock. The radio is never on just for the clock;
+NTP runs at two moments:
+
+- **Get decks**, once connected and before the catalog is read. A failed NTP
+  is logged and Get decks carries on. The screen stays as it is (a new day
+  rebuilds the queue, and "Continue" then shows a fresh question).
+- **The boot-time date question** (after a power cut, or a wake that re-asks
+  it), once per boot. With a home Wi-Fi and the offset saved, the date screen
+  joins in the background (15 s join timeout, CPU at 240 MHz only while the
+  radio is on) and says "Syncing via <ssid>..."; the stepper works meanwhile.
+  Connected -> NTP (the loop blocks for at most 3 s) -> radio off ->
+  `applyWallClock()`, which answers the question and starts the quiz. A failed
+  join or NTP turns the radio off and the status line says to set the date by
+  hand. Confirming or skipping the question by hand stops the attempt, radio
+  off. The join and its outcome count as activity for the idle timers, so the
+  30 s dim and the 2 min sleep cannot cut it short; an idle timeout or an
+  explicit sleep turns the radio off like any other.
 
 ## 6. Queue building
 
@@ -488,7 +515,7 @@ New globals: `tgc::SrsStore gSrs;`, `tgc::Queue gQueue;`, `uint32_t gShownAt;`.
 | `tapAction()` | count the navigation tap (`gNavTaps`); the response time later subtracts a fixed allowance per tap. Unchanged otherwise. |
 | `holdAction()` | compute `correct`, `rt_ms` and `grade` (`rt >= slow_ms` → Hard), call `gSrs.grade(card.codepoint, grade, now_day)`, `gQueue.answered(cardIndex, grade)`, mark dirty, then the existing reveal. QLOG grows one line: grade, `S -> S'`, `D`, interval. |
 | `loop()` | add `gSrs.tick(millis())` and `gSrs.maybeFlush(millis(), dirtyCount)`. Keep the existing 10 ms delay. |
-| `applyWallClock()` | real time from the portal's `POST /time` (later NTP): `gSrs.syncWallClock()`, NVS `tz`, save, rebuild the queue when the day moved, and dismiss the boot-time date question (§5.1). |
+| `applyWallClock()` | real time from the portal's `POST /time` or from NTP over the home Wi-Fi (Get decks, the boot-time date question): `gSrs.syncWallClock()`, NVS `tz`, save, rebuild the queue when the day moved, and dismiss the boot-time date question (§5.1). |
 | `selectPack()` / `loadPack()` | flush state before opening the new pack; after loading, `gQueue.rebuild(...)`. State is global, so progress carries across decks. |
 | `openMenu()`/`drawMenu()` | optional: append `due/new` counts per pack (a `gSrs.countDue(gPack, now_day)` helper) and a small progress line in the quiz header. |
 | `showError()` | a corrupt state file is *not* an error screen; log and start empty. |
