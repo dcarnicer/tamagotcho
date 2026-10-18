@@ -19,10 +19,13 @@ namespace tgc {
 
 class HomeWifi {
 public:
-    // GitHub redirects `releases/latest/download/<asset>` to the newest
-    // release's asset. Works once a public release carries packs + catalog.txt.
+    // The decks release for the pack format this firmware reads: a fixed tag
+    // `decks-v<format version>`, never marked "latest" and refreshed in place by
+    // .github/workflows/decks.yml. A format bump publishes `decks-v<N+1>` and
+    // changes this URL, so older firmware keeps the decks it can open. Answers
+    // 404 until that release exists.
     static constexpr const char* kDefaultCatalogUrl =
-        "https://github.com/dcarnicer/tangocho/releases/latest/download/catalog.txt";
+        "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt";
     static constexpr uint32_t kConnectTimeoutMs = 15000;
     static constexpr size_t kMaxSsidLen = 32;   // 802.11 limit, in bytes
     static constexpr size_t kMaxUrlLen = 256;

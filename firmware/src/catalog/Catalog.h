@@ -59,8 +59,8 @@ struct CatalogParse {
 
 // Parses `len` bytes of catalog text. `catalogUrl` is the URL the catalog was
 // requested from (before any redirect): a record whose `url` is a bare file name
-// is resolved against it, so `.../releases/latest/download/catalog.txt` lists
-// `.../releases/latest/download/<file>`. An empty catalog (tag line only) is Ok
+// is resolved against it, so `.../releases/download/decks-v2/catalog.txt` lists
+// `.../releases/download/decks-v2/<file>`. An empty catalog (tag line only) is Ok
 // with no entries.
 CatalogParse parseCatalog(const char* text, size_t len, const char* catalogUrl);
 
