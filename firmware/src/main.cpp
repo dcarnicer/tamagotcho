@@ -79,7 +79,6 @@ struct UiStrings {
     const char* appName;  // error screen title bar
     const char* settingsTitle;
     const char* decksTitle;
-    const char* backHint;
     // continue, decks, date, new/day, speed, stats, wifi (a submenu), orientation,
     // language, brightness, sleep, about
     const char* menuRows[12];
@@ -245,7 +244,7 @@ struct UiStrings {
 
 const UiStrings kUiEn = {
     "Tangocho",
-    "SETTINGS", "DECKS", "side: back",
+    "SETTINGS", "DECKS",
     {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi »", "Orientation",
      "Language", "Brightness", "Sleep", "About"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
@@ -295,7 +294,7 @@ const UiStrings kUiEn = {
 
 const UiStrings kUiEs = {
     "Tangocho",
-    "AJUSTES", "MAZOS", "lateral: atrás",
+    "AJUSTES", "MAZOS",
     {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi »", "Orientacion",
      "Idioma", "Brillo", "Suspender", "Acerca de"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
@@ -585,15 +584,6 @@ void createCanvas() {
         gCanvas->setPsram(false);  // fall back to internal RAM
         gCanvas->createSprite(W, H);
     }
-}
-
-// Right-aligned header hint. Drawn with the built-in GFX font (not the pack
-// font) so accented Spanish ("atrás") renders; the 1x size matches smallText.
-void drawBackHint(lgfx::LovyanGFX& d) {
-    const char* s = ui().backHint;
-    const int tw = gRender.textWidth(s, tgc::Renderer::kTextBuiltinSmall);
-    gRender.drawCentred(d, s, W - 3 - tw, 3, tw, 8, 1, kWhite, kGrey,
-                        tgc::Renderer::kTextBuiltinSmall);
 }
 
 void showError(const char* line1, const char* line2 = "") {
@@ -928,7 +918,6 @@ void drawMenu() {
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, ui().settingsTitle, 3, 3, kWhite, kGrey);
-    drawBackHint(d);
 
     // Shrink the row step on the short landscape screen so all rows fit; in
     // portrait (or when there is room) this keeps the original 36 px step.
@@ -972,7 +961,6 @@ void drawDecks() {
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, ui().decksTitle, 3, 3, kWhite, kGrey);
-    drawBackHint(d);
 
     uint32_t due = 0, fresh = 0;
     packDueNew(&due, &fresh);  // only shown on the loaded pack's row
@@ -1022,7 +1010,6 @@ void drawChoice() {
                         : gChoice == Choice::ForgetWifi  ? ui().forgetTitle
                                                          : ui().langTitle;
     smallText(d, title, 3, 3, kWhite, kGrey);
-    drawBackHint(d);
     // "Forget": which network, between the header and the rows.
     if (gChoice == Choice::ForgetWifi)
         gRender.drawCentred(d, gWifiMenuSsid.c_str(), 2, 20, W - 4, 16, 1, kYellow, kBlack,
@@ -1176,7 +1163,6 @@ void drawDate() {
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, ui().dateTitle, 3, 3, kWhite, kGrey);
-    drawBackHint(d);
 
     constexpr uint8_t kBig = tgc::Renderer::kTextBuiltin;
     constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
@@ -1272,7 +1258,6 @@ void drawStats() {
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, ui().statsTitle, 3, 3, kWhite, kGrey);
-    drawBackHint(d);
 
     const tgc::Stats st = gSrs.stats();
     uint32_t due = 0, fresh = 0;
@@ -1344,12 +1329,6 @@ void drawAbout() {
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, ui().aboutTitle, 3, 3, kWhite, kGrey);
-    // "ACERCA DE" and "lateral: atrás" do not both fit the 135 px header: the
-    // hint then moves to the footer.
-    const bool hintInHeader = 3 + gRender.textWidth(ui().aboutTitle, kSmall) + 6 +
-                                  gRender.textWidth(ui().backHint, kSmall) + 3 <=
-                              W;
-    if (hintInHeader) drawBackHint(d);
 
     struct Item {
         const char* label;  // "" for none
@@ -1384,10 +1363,8 @@ void drawAbout() {
         const int h = (it.title ? kTitleH : 0) + static_cast<int>(lines.back().size()) * kLineH;
         blocks.push_back({h, it.newGroup});
     }
-    // One page if it all fits above the footer's back hint (if any); else
-    // another footer line for the page number.
-    const int footLines = hintInHeader ? 0 : 1;
-    int pageH = H - kTop - footLines * kLineH - 2;
+    // One page if it all fits; else a footer line for the page number.
+    int pageH = H - kTop - 2;
     std::vector<tgc::PageSlot> slots = tgc::layoutPages(blocks, pageH, kGap, kGroupGap);
     int pages = tgc::pageCount(slots);
     if (pages > 1) {
@@ -1421,11 +1398,7 @@ void drawAbout() {
         }
     }
 
-    int footY = H - kLineH;
-    if (!hintInHeader) {
-        gRender.drawCentred(d, ui().backHint, 2, footY, W - 4, kLineH, 1, kWhite, kBlack, kSmall);
-        footY -= kLineH;
-    }
+    const int footY = H - kLineH;
     if (pages > 1) {
         char foot[48];
         snprintf(foot, sizeof foot, "%u/%u%s%s", (unsigned)(gAboutPage + 1), (unsigned)pages,
@@ -1500,8 +1473,6 @@ void drawWifi() {
     const int headerH = 14;
     d.fillRect(0, 0, W, headerH, kGrey);
     smallText(d, ui().wifiTitle, 3, 3, kWhite, kGrey);
-    // On the boot-time screen without a deck the side button does nothing.
-    if (!gWifiBootUpload || gPack->isOpen()) drawBackHint(d);
     constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
 
     if (gWifiStep != WifiStep::Serving) {
@@ -1605,7 +1576,6 @@ void drawWifiMenu() {
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, ui().wifiTitle, 3, 3, kWhite, kGrey);
-    drawBackHint(d);
 
     const int top = 20;
     const int noteH = 12;
@@ -1632,7 +1602,6 @@ void drawNetTest() {
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, ui().testTitle, 3, 3, kWhite, kGrey);
-    drawBackHint(d);
     constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
 
     if (gTestStep == NetTestStep::NoNetwork) {
@@ -1686,7 +1655,6 @@ void drawGetDecks() {
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, ui().getDecksTitle, 3, 3, kWhite, kGrey);
-    drawBackHint(d);
     constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
 
     if (gNetStep == NetStep::Connecting || gNetStep == NetStep::Catalog) {

@@ -1760,3 +1760,18 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   → 54,164 bytes (both built with `TGC_VERSION=dev`). **Not verified on
   hardware.**
 
+
+## 2026-10-18 – No back hint in the screen headers
+
+- **Why.** Hardware test of the v0.1.0 candidate: in Spanish the right-aligned
+  "lateral: atrás" overlapped header titles in the 135 px portrait (DESCARGAR,
+  VELOCIDAD, ESTADISTICAS; About had already moved it to its footer). The side
+  button is "back" on every settings screen, a global convention the README
+  states, so the hint goes instead of being squeezed.
+- **What.** `drawBackHint()` and the `backHint` strings are gone from every
+  header (settings home, decks, pickers, statistics, About, Wi-Fi screens, Get
+  decks, network test, date). About no longer keeps a footer copy: its footer
+  is only the page number ("1/2  tap: more") when it needs two pages, and the
+  freed line goes to the content. Screens where the side button does something
+  else keep saying so in their own hints (the Wi-Fi screen's "side: start
+  studying", and its "side: cancel" during a download from the page).

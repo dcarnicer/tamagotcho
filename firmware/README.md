@@ -105,6 +105,7 @@ a tap shortcut; **holding it opens the settings home** (Continue / Decks / Date 
 New per day / Speed / Statistics / Wi-Fi » / Orientation / Language / Brightness
 / Sleep / About), where a tap moves the selection, a hold activates the row, and
 the side button goes back (in landscape the list scrolls with the selection).
+The screen headers no longer say so: going back is always the side button.
 **Wi-Fi »** opens its own list (Web portal / Home network / Setup mode / Forget
 network) that works the same way. **About** shows the
 firmware version and licence, the decks' licence, the repository, and the loaded
