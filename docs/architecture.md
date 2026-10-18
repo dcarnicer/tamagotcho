@@ -6,9 +6,10 @@
  KANJIDIC2 ─┐                                                   LittleFS
  KanjiVG ───┼──► importers ─► deck model ─► distractors ─┐      ├─ packs/*.tgc ──► PackReader
  WaniKani* ─┤                                            ├─► .tgc ──► upload ──►├─ state/srs.bin ──► SRS (FSRS)
- CSV/Anki* ─┘                 font (Klee One) ─► glyphs ─┘      └─ config         Quiz engine ─► UI
+ CSV/Anki* ─┘             font (Noto Sans JP) ─► glyphs ─┘      └─ config         Quiz engine ─► UI
                                                                                   Board HAL (StickS3 / T-Display-S3)
         phone/laptop ──(open AP 192.168.4.1)──► Wi-Fi portal (HTTP) ──► /packs
+        decks-v<format> release: catalog.txt + packs ──(home Wi-Fi, HTTPS, on demand)──► Get decks ──► /packs
  * later phases
 ```
 
@@ -30,16 +31,19 @@
 
 | module        | role                                                         |
 |---------------|--------------------------------------------------------------|
-| `board/`      | HAL: display handle, buttons, battery, sleep. One impl per board |
-| `pack/`       | `PackReader`: parse header/tables, glyph lookup, string access, stroke masks. Pure C++, unit tested natively |
+| `board/`      | HAL: display handle and rotation, buttons, accelerometer, battery, sleep. One impl per board |
+| `pack/`       | `PackReader`: parse header/tables (pack v1 and v2), glyph lookup, string access, stroke masks; `Rle` decodes v2's compressed glyph bitmaps and stroke masks on read, through a small window over the file. Pure C++, unit tested natively |
 | `render/`     | Draw 4bpp glyphs, 1bpp stroke masks and UTF-8 text from pack glyphs onto a GFX canvas |
 | `quiz/`       | Build a question (prompt + 4 options) from a card and its distractors. Pure C++ |
+| `catalog/`    | Parse the line-oriented deck catalog (`tangocho-pack catalog`): version check, per-record validation (safe file name, numbers, SHA-256, URL), bare-file-name URLs resolved against the catalog URL, entry cap. Pure C++, unit tested natively |
 | `srs/`        | Scheduling (FSRS, phase 2) and persisted review state         |
-| `platform/`   | LittleFS-backed pack source and SRS state file, plus the on-device **Wi-Fi portal** (access point + HTTP server) for uploading, deleting and downloading packs and reading the statistics. Arduino only |
+| `imu/`        | `OrientationFilter`: accelerometer samples to a stable display rotation for the Auto orientation (hysteresis, settle time, flat and motion rejection). Pure C++, unit tested natively |
+| `power/`      | Critical-battery guard (`BatteryGuard.h`, header-only). Pure C++, unit tested natively |
+| `platform/`   | LittleFS-backed pack source and SRS state file; the on-device **Wi-Fi portal** (access point + HTTP server) for uploading, deleting and downloading packs, reading the statistics and saving the home Wi-Fi (its page also posts the phone's clock, `POST /time`, which anchors the SRS date); `HomeWifi` (home network in NVS, station mode on demand, SNTP time for the SRS date); `NetFetch` (atomic HTTP(S) pack download with size/SHA-256 checks, shared by the portal and Get decks) with the embedded root CAs in `RootCerts.h`. Arduino only |
 | `ui/`         | Screens and input state machine                              |
 
-Pure-logic modules (`pack`, `quiz`, `srs`) must build in the `native`
-PlatformIO env with no Arduino headers.
+Pure-logic modules (`pack`, `quiz`, `srs`, `imu`, `power`, `catalog`) must build
+in the `native` PlatformIO env with no Arduino headers.
 
 ## Target hardware
 
@@ -48,4 +52,9 @@ PlatformIO env with no Arduino headers.
 - **LilyGO T-Display-S3** (dev stand-in): ESP32-S3R8, 16 MB flash, 170×320
   parallel panel, 2 buttons, no IMU. Via LovyanGFX.
 
-UI layout is computed from the panel size, portrait orientation.
+UI layout is computed from the panel size (`W` x `H`), so every screen has a
+portrait and a landscape form. The Orientation setting is Portrait (rotation
+0, default), Landscape (rotation 1) or, on boards with an accelerometer, Auto:
+`board::readAccel()` gives gravity in the panel frame, `imu/OrientationFilter`
+turns it into rotation 0, 1 or 3, and the app applies a settled change only
+while no button is down (docs/decisions.md, 2026-10-18).

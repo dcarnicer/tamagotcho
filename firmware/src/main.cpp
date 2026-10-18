@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <Preferences.h>
+#include <esp_partition.h>
 
 #include <algorithm>
 #include <cstring>
@@ -11,14 +12,20 @@
 #include <vector>
 
 #include "board/Board.h"
+#include "catalog/Catalog.h"
+#include "imu/OrientationFilter.h"
 #include "pack/PackReader.h"
 #include "platform/FsPackSource.h"
 #include "platform/FsSrsFile.h"
+#include "platform/HomeWifi.h"
+#include "platform/NetFetch.h"
 #include "platform/WifiPortal.h"
+#include "power/BatteryGuard.h"
 #include "quiz/Quiz.h"
 #include "render/Renderer.h"
 #include "srs/Queue.h"
 #include "srs/SrsStore.h"
+#include "srs/WallClock.h"
 #include "ui/UiLang.h"
 
 using tgc::board::Button;
@@ -45,6 +52,14 @@ bool gPoweredOff = false;
 RTC_DATA_ATTR uint64_t gSleptAtUs = 0;
 RTC_DATA_ATTR uint32_t gSleepMagic = 0;
 constexpr uint32_t kSleepMagic = 0x51EE9A7Eu;
+// Set when the last sleep was forced by a critical battery, so the wake can
+// check the cell before anything else; plus the UI language of the moment, for
+// the "battery low" notice shown before a pack (and its language) is loaded.
+RTC_DATA_ATTR bool gSleptCritical = false;
+RTC_DATA_ATTR bool gSleepUiEs = false;
+// The boot-time date question (after a power cut) was still open when the chip
+// went to sleep: the wake asks it again instead of silently dropping it.
+RTC_DATA_ATTR bool gDatePending = false;
 
 namespace {
 
@@ -61,8 +76,9 @@ struct UiStrings {
     const char* settingsTitle;
     const char* decksTitle;
     const char* backHint;
-    // continue, decks, date, new/day, speed, stats, wifi, orientation, language, brightness
-    const char* menuRows[10];
+    // continue, decks, date, new/day, speed, stats, wifi, orientation, language,
+    // brightness, sleep
+    const char* menuRows[11];
     const char* newPerDayTitle;
     const char* speedTitle;
     const char* speedOff;
@@ -71,7 +87,19 @@ struct UiStrings {
     const char* quizReading;
     const char* quizKanji;
     const char* dateTitle;
-    const char* dateRows[4];
+    // Date screen: the last-used day and a proposed "today" the user steps.
+    const char* dateLastUsed;  // label of the last-used date
+    const char* dateToday;     // label of the proposed date
+    const char* dateOneDay;    // "+1 day"
+    const char* dateDaysFmt;   // "+%u days" (0 and 2 and up)
+    const char* dateHintTap;   // what a tap / hold of the front button does
+    const char* dateHintSide;  // what a side-button hold does
+    const char* weekdays[7];   // short names, Sunday first
+    // Date screen status line while (or after) the boot-time question tries the
+    // network time over the home Wi-Fi. 1x font, two lines in portrait.
+    const char* dateSyncingFmt;  // %s = home Wi-Fi name
+    const char* dateNoNetwork;   // could not join
+    const char* dateNoTime;      // joined, but no (plausible) time came back
     const char* doneBadge;
     // Font0 is 6 px/char and each done-screen line is centred on the 135 px
     // portrait width, so every done line must stay short (about 21 chars).
@@ -87,13 +115,17 @@ struct UiStrings {
     const char* statsAnswersFmt;
     const char* statsAccuracyFmt;
     const char* statsLearnedFmt;
-    const char* errNoFilesystem;
-    const char* errNoFilesystemHint;
+    const char* errNoFilesystem;      // LittleFS present but will not mount
+    const char* errNoFilesystemHint;  // hold the front button to erase it
+    // First boot on an erased (or foreign) data partition: formatting it takes
+    // a few seconds. 2x title (words of at most 10 characters) + 1x hint.
+    const char* fsPreparing;
+    const char* fsPreparingHint;
     const char* errNoPack;
     const char* errNoPackHint;
     const char* errOpenPack;
     const char* orientTitle;
-    const char* orientRows[2];  // portrait, landscape
+    const char* orientRows[3];  // indexed by OrientPref: portrait, landscape, auto
     // Detail card (shown after a wrong answer). `detailOn`/`detailKun` label the
     // on'yomi/kun'yomi lines; the meanings label reuses quizMeaning.
     const char* detailTitle;
@@ -115,53 +147,125 @@ struct UiStrings {
     const char* wifiTitle;
     const char* wifiHint;
     const char* brightTitle;
+    // Full-screen notices before a deep sleep: a short title (2x font, wrapped
+    // at spaces, so no word longer than 10 characters) and a hint (1x font).
+    const char* sleepTitle;
+    const char* sleepHint;
+    const char* batteryTitle;
+    const char* batteryHint;
+    // "Get decks" (last row of the deck list): download decks from the release
+    // catalog over the home Wi-Fi. Drawn with the 1x built-in font in the list
+    // footer and on the error screen, so keep each line short.
+    const char* getDecksRow;
+    const char* getDecksTitle;
+    const char* netConnecting;
+    const char* netCatalog;
+    const char* netDownloadingFmt;  // %u = percent
+    const char* netHoldDownload;
+    const char* netHoldUpdate;
+    const char* netHoldStudy;
+    const char* netHoldRetry;
+    const char* netSavedFmt;  // %s = deck name
+    const char* netCardsFmt;  // %s = language, %u = cards, %s = size
+    const char* netEmpty;
+    const char* netNoWifi;
+    const char* netNoWifiHint;
+    const char* netNotFound;
+    const char* netAuthFailed;
+    const char* netNoConnect;
+    const char* netNoServer;
+    const char* netTls;
+    const char* netHttpFmt;  // %d = HTTP status
+    const char* netNotPublished;
+    const char* netBadCatalog;
+    const char* netNewerCatalog;
+    const char* netCorrupt;
+    const char* netNoSpace;
+    const char* netNoSpaceUpdate;  // detail: an update needs room for the old and the new copy
+    const char* netInvalid;
+    const char* netFailed;
+    const char* netCancelled;
+    const char* wifiGetDecksHint;  // boot-time upload screen with a saved home Wi-Fi
 };
 
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS", "side: back",
     {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi", "Orientation", "Language",
-     "Brightness"},
+     "Brightness", "Sleep"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
-    "DATE", {"today (0)", "1 day", "2-7 days", "more (14)"},
+    "DATE", "last used", "today", "+1 day", "+%u days", "tap +1  hold: OK", "side hold: -1",
+    {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
+    "Syncing via %s...", "No network: set it by hand", "No network time: set it by hand",
     "DONE", "All reviewed for now", "day %u  %u cards", "due %u  new %u", "tap/hold: +10 new",
     "side hold: menu",
     "  %u/%u",
     "STATISTICS", "seen %u / %u", "due %u  new %u", "answers %u", "accuracy %u%%", "learned %u",
-    "Filesystem not found", "Run: pio run -t uploadfs",
+    "Storage damaged", "Hold the front button to erase it. Decks and progress are lost.",
+    "Preparing storage...", "First start: this takes a few seconds.",
     "No pack found", "Put a .tgc in data/packs/ then run uploadfs",
     "Cannot open pack",
-    "ORIENTATION", {"Portrait", "Landscape"},
+    "ORIENTATION", {"Portrait", "Landscape", "Auto"},
     "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
     "streak %u/%u", "time %s", "%uh %um", "%um %us", "%us",
     "LANGUAGE", {"Auto", "English", "Español"},
     "WI-FI", "Open the URL on your phone and upload a .tgc",
     "BRIGHTNESS",
+    "Sleeping", "Progress saved. The front button wakes me.",
+    "Battery low", "Charge me, then press the front button.",
+    "+ Get decks", "GET DECKS", "Connecting...", "Reading catalog...", "Downloading %u%%",
+    "hold: download", "hold: update", "hold: study", "hold: retry", "Saved %s", "%s, %u cards, %s",
+    "No decks in the catalog",
+    "No home Wi-Fi saved", "Settings > Wi-Fi: open 192.168.4.1 and save your network there",
+    "Network not found", "Wrong password?", "Could not connect", "Server unreachable",
+    "Secure connection failed", "Server error %d", "No catalog published at this URL yet",
+    "Bad catalog", "Newer catalog format: update the firmware", "Download corrupt",
+    "Not enough space",
+    "An update needs room for both copies. Delete the old one first: Settings > Wi-Fi, 192.168.4.1",
+    "Not a valid deck", "Download failed", "Cancelled",
+    "hold: get decks (home Wi-Fi)",
 };
 
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS", "lateral: atrás",
     {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi", "Orientacion", "Idioma",
-     "Brillo"},
+     "Brillo", "Suspender"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
-    "FECHA", {"hoy (0)", "1 día", "2-7 días", "más (14)"},
+    "FECHA", "último uso", "hoy", "+1 día", "+%u días", "toque +1  larga: OK", "lateral larga: -1",
+    {"dom", "lun", "mar", "mié", "jue", "vie", "sáb"},
+    "Sincronizando vía %s...", "Sin red: ajústala a mano", "Sin hora de red: ajústala a mano",
     "FIN", "Todo repasado", "dia %u  %u tarjetas", "vencen %u  nuevas %u",
     "toque/larga: +10", "lateral: menu",
     "  %u/%u",
     "ESTADISTICAS", "vistos %u / %u", "pendientes %u  nuevas %u", "respuestas %u",
     "precisión %u%%", "aprendidas %u",
-    "No se encuentra el sistema de archivos", "Ejecuta: pio run -t uploadfs",
+    "Memoria dañada", "Mantén el botón frontal para borrarla. Se pierden mazos y progreso.",
+    "Preparando memoria...", "Primer arranque: tarda unos segundos.",
     "No hay ningún mazo", "Pon un .tgc en data/packs/ y ejecuta uploadfs",
     "No se puede abrir el mazo",
-    "ORIENTACION", {"Vertical", "Horizontal"},
+    "ORIENTACION", {"Vertical", "Horizontal", "Auto"},
     "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
     "racha %u/%u", "tiempo %s", "%uh %um", "%um %us", "%us",
     "IDIOMA", {"Auto", "English", "Español"},
     "WI-FI", "Abre la URL en el móvil y sube un .tgc",
     "BRILLO",
+    "Suspendido", "Progreso guardado. El botón frontal me despierta.",
+    "Batería baja", "Cárgame y pulsa el botón frontal.",
+    "+ Descargar", "DESCARGAR", "Conectando...", "Leyendo catálogo...", "Descargando %u%%",
+    "larga: descargar", "larga: actualizar", "larga: estudiar", "larga: reintentar",
+    "Guardado %s", "%s %u tarjetas %s",
+    "El catálogo está vacío",
+    "Sin Wi-Fi de casa", "Ajustes > Wi-Fi: abre 192.168.4.1 y guarda allí tu red",
+    "Red no encontrada", "¿Contraseña incorrecta?", "No se pudo conectar", "Servidor inaccesible",
+    "Fallo de conexión segura", "Error del servidor %d", "Aún no hay catálogo en esta URL",
+    "Catálogo no válido", "Catálogo más nuevo: actualiza el firmware", "Descarga dañada",
+    "No hay espacio",
+    "Hace falta sitio para las dos copias. Borra antes la vieja: Ajustes > Wi-Fi, 192.168.4.1",
+    "Mazo no válido", "Descarga fallida", "Cancelado",
+    "larga: bajar mazos (Wi-Fi de casa)",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -176,6 +280,10 @@ int gUiLangPref = tgc::kUiLangAuto;
 void setUiForLang(const char* lang) {
     gUi = (std::strcmp(tgc::uiLangCodeFor(gUiLangPref, lang), "es") == 0) ? &kUiEs : &kUiEn;
 }
+
+// The language the screens are in now ("en", "es"): the Language setting, or
+// the pack's language under Auto, as setUiForLang() last resolved it.
+const char* uiLangCode() { return gUi == &kUiEs ? "es" : "en"; }
 
 lgfx::LGFX_Sprite* gCanvas = nullptr;  // full-screen back buffer in PSRAM
 std::unique_ptr<tgc::PackReader> gPack = std::make_unique<tgc::PackReader>();
@@ -209,15 +317,36 @@ int gNavTaps = 0;          // navigation taps on the current question
 constexpr uint32_t kNavAllowanceMs = 400;
 uint32_t gLastAnswerAt = 0;
 int gDirty = 0;            // answers not yet persisted
-uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
+// "Study more" override for the daily new-card cap (the done screen's tap), and
+// the SRS day it was granted on: it only applies on that day (extraNewToday()).
+uint16_t gExtraNew = 0;
+uint16_t gExtraNewDay = 0;
 
-enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi };
+enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks };
 // Screen::Choice is shared by the row pickers (see openChoice()).
 enum class Choice { NewPerDay, SlowMs, Orientation, UiLang, Brightness };
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
-int gDateSel = 0;
+uint16_t gDateSteps = 0;  // days the proposed "today" is past the current day
+uint16_t gBootDay = 0;    // persisted day index at boot: "last used" on the date screen
+// A real wall-clock time was applied since boot (applyWallClock), so the
+// power-cut date question is not needed.
+bool gWallClockSynced = false;
+// NVS `tangocho`/`tz`: the UTC offset of the last wall-clock sync, in minutes
+// east of UTC (int16). Absent until the first sync; reused by the NTP sync,
+// which only yields UTC (docs/srs.md section 5.1).
+constexpr const char* kPrefTz = "tz";
+// NTP over the home Wi-Fi gets this long once the network is up.
+constexpr uint32_t kNtpTimeoutMs = 3000;
+// Network time for the boot-time date question (docs/srs.md section 5.1): with a
+// home Wi-Fi and an offset saved, the date screen joins in the background and
+// asks NTP; the manual answer works meanwhile and is the fallback. Tried once
+// per boot. The radio (gHome, shared with Get decks, which cannot be opened from
+// this screen) is on only while Joining; the other states are the status line.
+enum class DateSync : uint8_t { None, Joining, NoNetwork, NoTime };
+DateSync gDateSync = DateSync::None;
+int16_t gDateSyncTz = 0;  // the saved offset the sync will apply
 std::vector<String> gPacks;  // paths of the *.tgc files in /packs
 int gMenuSel = 0;            // highlighted row on the settings home
 int gDeckSel = 0;            // highlighted row on the deck list
@@ -228,6 +357,17 @@ uint16_t gChoiceValues[4] = {0, 0, 0, 0};
 String gCurrentPack;
 Preferences gPrefs;
 
+// Orientation setting, NVS `tangocho`/`orient` (it replaced the bool `land`,
+// see loadOrientPref()). Auto is offered only on boards with an accelerometer:
+// the IMU then picks rotation 0, 1 or 3 (imu/OrientationFilter) and the picked
+// rotation is never persisted. Values double as orientRows indexes.
+enum OrientPref : uint8_t { kOrientPortrait = 0, kOrientLandscape = 1, kOrientAuto = 2 };
+uint8_t gOrientPref = kOrientPortrait;
+tgc::OrientationFilter gOrient;
+constexpr uint32_t kImuPollMs = 100;  // accelerometer poll while Auto is on
+uint32_t gImuPollAt = 0;
+float gAccel[3] = {0, 0, 0};          // last sample, for the rotation log
+
 // On-device Wi-Fi portal (roadmap phase 4). Started on the Wi-Fi screen and
 // stopped on exit. `gWifiBootUpload` marks the boot-time "no packs yet" state:
 // the Wi-Fi screen is then the only screen (there is no quiz to return to), so
@@ -237,6 +377,44 @@ Preferences gPrefs;
 // leave for the settings home.
 tgc::WifiPortal gPortal;
 bool gWifiBootUpload = false;
+
+// "Get decks" (roadmap phase 4): the last row of the deck list. Joins the saved
+// home Wi-Fi on demand (HomeWifi), reads the release catalog over HTTPS and
+// downloads the chosen deck into /packs (NetFetch). The radio is on only while
+// this screen is, at kCpuWifiMhz. Connecting is polled from loop() so the side
+// button can cancel; the catalog read and the download block, the latter with a
+// progress callback that redraws, keeps the idle timers away and lets the side
+// button cancel.
+enum class NetStep { Connecting, Catalog, List, Error };
+// A catalog deck compared with /packs: absent, present with the catalog's size,
+// or present with another size (an older or newer build).
+enum DeckState : uint8_t { kDeckNew, kDeckOnDevice, kDeckUpdate };
+tgc::HomeWifi gHome;
+NetStep gNetStep = NetStep::Connecting;
+bool gNetFromBoot = false;   // opened from the boot-time upload screen
+std::string gGetDecksLangHint;  // the phone's language from the portal page, or ""
+std::vector<tgc::CatalogEntry> gCatalog;
+std::vector<uint8_t> gCatalogState;  // DeckState per gCatalog entry
+int gNetSel = 0;
+bool gNetBusy = false;       // a download is running (footer shows the progress)
+int gNetPct = -1;            // last drawn download percentage
+uint32_t gNetActivityAt = 0; // millis() of the last network progress (idle timers)
+uint32_t gNetInputAt = 0;    // last button poll during a blocking download
+char gNetErrTitle[48] = "";
+char gNetErrDetail[96] = "";
+char gNetNote[48] = "";      // footer status line (cleared when the selection moves)
+uint16_t gNetNoteColor = 0;
+// A sleep asked for during a blocking download (power button, critical
+// battery): netProgress() cancels the download, and netDownload() sleeps once
+// fetchPackFile() has cleaned up after it.
+enum class NetSleep : uint8_t { None, User, Critical };
+NetSleep gNetSleep = NetSleep::None;
+// The catalog is a few KB; anything larger is not a catalog.
+constexpr size_t kCatalogMaxBytes = 32u * 1024u;
+constexpr uint32_t kCatalogTimeoutMs = 30000;
+// TLS stalls are longer than on the local portal; a big pack may take minutes.
+constexpr uint32_t kNetIdleMs = 15000;
+constexpr uint32_t kNetDownloadMs = 10u * 60u * 1000u;
 
 // Power management. After kDimAfterMs without input the backlight dims; after
 // kSleepAfterMs (kWifiIdleMs while the portal is up and no HTTP request came
@@ -261,6 +439,14 @@ bool gSrsLoaded = false;        // the state file loaded at boot
 constexpr uint32_t kBatteryCheckMs = 30000;
 int gShownBattery = -2;
 uint32_t gBatteryCheckAt = 0;
+// Critical battery (power/BatteryGuard.h): one reading every kBatteryGuardMs on
+// every screen, so three low readings put the device to sleep within ~30 s.
+constexpr uint32_t kBatteryGuardMs = 10000;
+tgc::BatteryGuard gBatteryGuard;
+uint32_t gBatteryGuardAt = 0;
+// How long the notice before an explicit sleep stays up.
+constexpr uint32_t kSleepNoticeMs = 1500;
+constexpr uint32_t kBatteryNoticeMs = 2500;
 
 int W, H;
 
@@ -359,6 +545,14 @@ void packDueNew(uint32_t* due, uint32_t* fresh) {
     if (fresh) *fresh = n;
 }
 
+// The "study more" override in force. It belongs to the day it was granted, so
+// any change of the day index (uptime rollover, sleep time, a manual date, a
+// real-time sync) drops it without each of those paths having to.
+uint16_t extraNewToday() {
+    if (gExtraNewDay != gSrs.today()) gExtraNew = 0;
+    return gExtraNew;
+}
+
 // Pops the next queue item and builds a question for it, trying the item's
 // mode first and then the other two (a card may lack readings/meanings).
 // False when the queue is exhausted.
@@ -396,10 +590,50 @@ bool newQuestion() {
 }
 
 void drawScreen();  // dispatches to the active screen
-void applyOrientation(bool landscape);
+void applyRotation(uint8_t r);
+void drawGetDecks();
 void formatDate(uint16_t days, char* out, size_t n);
+[[noreturn]] void sleepNow(bool critical);
+void netRadioOff();
+void openDecks();
+void openGetDecks(bool fromBoot);
+
+// The card of the question on screen. False when there is none to draw or
+// grade: no pack open, no question built yet, or an index the open pack does
+// not have. (A question left over from a pack the portal or Get decks replaced
+// is replaced itself, in portalPacksChanged().)
+bool questionCard(tgc::Card* out) {
+    return gPack->isOpen() && gQ.count > 0 && gPack->card(gQ.cardIndex, out);
+}
+
+// Stand-in for the quiz or detail screen when questionCard() fails (a deck that
+// could not be loaded): says so and how to get out, since a side hold opens
+// the settings home on both screens.
+void drawNoQuestion() { showError(ui().errOpenPack, ui().doneMenuHint); }
+
+// The quiz prompt's set-0 kanji. With TGC_QUIZ_LOG it also traces the draw
+// cost: the whole call and the bitmap fetch inside it (file read plus the v2
+// decode; 0 when the renderer still held this glyph from the last redraw).
+void drawPromptKanji(lgfx::LovyanGFX& d, uint32_t cp, int x, int y, int w, int h) {
+#if defined(TGC_QUIZ_LOG)
+    const uint32_t t0 = micros();
+#endif
+    gRender.drawKanji(d, tgc::kGlyphSetLarge, cp, x, y, w, h, kWhite, kBlack);
+#if defined(TGC_QUIZ_LOG)
+    const uint32_t us = micros() - t0;
+    const tgc::Glyph* g = gPack->findGlyph(tgc::kGlyphSetLarge, cp);
+    QLOG("R U+%04X kanji %ux%u enc=%u draw %u us (fetch %u us)\n", (unsigned)cp,
+         g ? (unsigned)g->width : 0u, g ? (unsigned)g->height : 0u, g ? (unsigned)g->encoding : 0u,
+         (unsigned)us, (unsigned)gRender.lastFetchUs());
+#endif
+}
 
 void drawQuiz() {
+    tgc::Card card;
+    if (!questionCard(&card)) {
+        drawNoQuestion();
+        return;
+    }
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
 
@@ -418,8 +652,6 @@ void drawQuiz() {
     // Prompt: the kanji, or (meaning -> kanji) the meaning text.
     const bool reading = gQ.mode == tgc::QuizMode::Reading;
     const bool k2m = gQ.mode == tgc::QuizMode::MeaningToKanji;
-    tgc::Card card;
-    gPack->card(gQ.cardIndex, &card);
     const int largePx = gPack->header().largePx ? gPack->header().largePx : 64;
     // Landscape: prompt in the left column, options bounded to the right one.
     const bool landscape = W > H;
@@ -447,11 +679,9 @@ void drawQuiz() {
         gRender.drawCentred(d, prompt, pX + 3, boxY, pW - 6, boxH - (landscape ? 2 : 0), ml,
                             kWhite, kBlack, set);
     } else if (landscape) {
-        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH, leftW, H - headerH,
-                          kWhite, kBlack);
+        drawPromptKanji(d, card.codepoint, 0, headerH, leftW, H - headerH);
     } else {
-        gRender.drawKanji(d, tgc::kGlyphSetLarge, card.codepoint, 0, headerH + 2, W, kanjiH, kWhite,
-                          kBlack);
+        drawPromptKanji(d, card.codepoint, 0, headerH + 2, W, kanjiH);
     }
     if (landscape)
         smallText(d, k2m ? ui().quizKanji : (reading ? ui().quizReading : ui().quizMeaning),
@@ -561,7 +791,7 @@ void drawRow(lgfx::LovyanGFX& d, const char* label, int y, int h, bool sel) {
 
 // Settings home (hold the side button from the quiz): tap moves the highlight,
 // hold activates the row. Each row is a full-width box with a label.
-constexpr int kSettingRows = 10;
+constexpr int kSettingRows = 11;
 
 void drawMenu() {
     auto& d = *gCanvas;
@@ -578,8 +808,10 @@ void drawMenu() {
         step = (H - top - 2) / kSettingRows;
         if (step < 10) step = 10;
     }
-    // Tight landscape steps keep only a 1 px gap so the 1x font still fits.
-    const int pad = step >= 20 ? 4 : 1;
+    // Tight landscape steps keep only a 1 px gap so the 1x font still fits; at
+    // the 10 px floor (eleven rows on the 135 px landscape height) the gap goes,
+    // so the highlight's border still clears the 8 px font above and below.
+    const int pad = step >= 20 ? 4 : step > 10 ? 1 : 0;
     const int rowH = step - pad < 32 ? step - pad : 32;
     for (int i = 0; i < kSettingRows; ++i)
         drawRow(d, ui().menuRows[i], top + i * step, rowH, i == gMenuSel);
@@ -589,6 +821,7 @@ void drawMenu() {
 // Deck list (opened from "Mazos"): one row per pack; the loaded pack is marked
 // '*' and shows its due/new counts. Hold loads the highlighted pack; the side
 // button returns to the settings home. The date row lives in the settings home.
+// The last row, "+ Get decks", opens the download screen (drawGetDecks).
 void drawDecks() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
@@ -599,7 +832,7 @@ void drawDecks() {
     uint32_t due = 0, fresh = 0;
     packDueNew(&due, &fresh);  // only shown on the loaded pack's row
     const int top = 18;
-    const int rows = static_cast<int>(gPacks.size());
+    const int rows = static_cast<int>(gPacks.size()) + 1;  // + "Get decks"
     int rowH = 20;
     if (rows > 0) {
         const int fit = (H - top - 2) / rows;  // shrink so the list fits landscape
@@ -613,6 +846,10 @@ void drawDecks() {
         const uint16_t bg = sel ? kHighlight : kBlack;
         d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
         if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
+        if (i == rows - 1) {
+            smallText(d, ui().getDecksRow, 4, y + (rowH - 2 - 8) / 2, kYellow, bg);
+            break;
+        }
         String label = gPacks[i];
         const int slash = label.lastIndexOf('/');
         if (slash >= 0) label = label.substring(slash + 1);
@@ -653,7 +890,7 @@ void drawChoice() {
     for (int i = 0; i < gChoiceCount; ++i) {
         char label[16];
         if (gChoice == Choice::Orientation) {
-            snprintf(label, sizeof label, "%s", ui().orientRows[i]);
+            snprintf(label, sizeof label, "%s", ui().orientRows[gChoiceValues[i] % 3]);
         } else if (gChoice == Choice::UiLang) {
             snprintf(label, sizeof label, "%s", ui().langRows[i]);
         } else if (gChoice == Choice::Brightness) {
@@ -696,70 +933,114 @@ void showDone() {
     drawDone();
 }
 
-// Civil date helpers (Howard Hinnant's algorithms) for the internal day index.
-// Day 0 is 2026-10-17; only differences matter for the SRS, the date is a
-// convenience for the user.
-long daysFromCivil(int y, unsigned m, unsigned d) {
-    y -= m <= 2;
-    const long era = (y >= 0 ? y : y - 399) / 400;
-    const unsigned yoe = static_cast<unsigned>(y - era * 400);
-    const unsigned doy = (153u * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
-    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    return era * 146097 + static_cast<long>(doe) - 719468;
-}
-
-void civilFromDays(long z, int* y, unsigned* m, unsigned* d) {
-    z += 719468;
-    const long era = (z >= 0 ? z : z - 146096) / 146097;
-    const unsigned doe = static_cast<unsigned>(z - era * 146097);
-    const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    const int yr = static_cast<int>(yoe) + static_cast<int>(era) * 400;
-    const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    const unsigned mp = (5 * doy + 2) / 153;
-    *d = doy - (153 * mp + 2) / 5 + 1;
-    *m = mp + (mp < 10 ? 3 : -9);
-    *y = yr + (*m <= 2);
-}
-
-void formatDate(uint16_t days, char* out, size_t n) {
-    static const long kBase = daysFromCivil(2026, 10, 17);
-    int y = 2026;
-    unsigned m = 10, d = 17;
-    civilFromDays(kBase + days, &y, &m, &d);
+// The calendar date of SRS day `day`: the store's wall-clock anchor once a real
+// time was synced, else the fixed 2026-10-17 base (docs/srs.md section 4.1).
+// Only differences matter for the schedule; the date is for the user.
+void formatDate(uint16_t day, char* out, size_t n) {
+    int y = 0;
+    unsigned m = 0, d = 0;
+    tgc::civilFromDays(gSrs.epochDayOf(day), &y, &m, &d);
     snprintf(out, n, "%04d-%02d-%02d", y, m, d);
 }
 
-// Date screen: shows today and offers to add days (the user's gap since the
-// last session, asked on a power-on boot, or a manual correction from the menu).
-constexpr int kDateRows = 4;
-const uint16_t kDateAdd[kDateRows] = {0, 1, 4, 14};
+// Date screen (docs/srs.md section 5, power-cut rule): the last-used date and a
+// proposed "today" that starts at the current day. A tap adds a day, a side
+// hold takes one back (never below the current day: the index does not
+// rewind), a hold confirms. Asked on a power-on boot (the side tap skips it) and
+// opened from the settings home for manual corrections.
+uint16_t dateTarget() {
+    const uint32_t t = static_cast<uint32_t>(gSrs.today()) + gDateSteps;
+    return t > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(t);
+}
 
+const char* weekdayName(uint16_t day) {
+    return ui().weekdays[tgc::weekdayFromDays(gSrs.epochDayOf(day))];
+}
+
+void openDate(Screen after) {
+    gAfterDate = after;
+    gDateSteps = 0;
+    gScreen = Screen::Date;
+    drawScreen();
+}
+
+// Labels share a line with their value when it fits (landscape), else sit above
+// it; the proposed date is one 2x line when it fits, else weekday over date.
+// All text uses the built-in font so accented Spanish renders.
 void drawDate() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
     smallText(d, ui().dateTitle, 3, 3, kWhite, kGrey);
     drawBackHint(d);
-    char date[16];
-    formatDate(gSrs.today(), date, sizeof date);
-    gRender.drawCentred(d, date, 2, 18, W - 4, 18, 1, kYellow, kBlack, tgc::Renderer::kTextBuiltin);
 
-    // Shrink the rows on the short landscape screen; portrait keeps 44/32.
-    int top = 44, rowH = 32;
-    if (top + rowH * kDateRows > H - 2) {
-        top = 38;
-        rowH = (H - top - 2) / kDateRows;
-        if (rowH < 12) rowH = 12;
+    constexpr uint8_t kBig = tgc::Renderer::kTextBuiltin;
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    const int w = W - 4;
+    const int gap = H > W ? 10 : 3;  // portrait has room to breathe
+    char date[16], value[32], line[64];
+
+    // Last used: the day the device last ran.
+    formatDate(gBootDay, date, sizeof date);
+    snprintf(value, sizeof value, "%s %s", weekdayName(gBootDay), date);
+    snprintf(line, sizeof line, "%s: %s", ui().dateLastUsed, value);
+    int y = 19;
+    if (gRender.textWidth(line, kSmall) <= w) {
+        gRender.drawCentred(d, line, 2, y, w, 10, 1, kWhite, kBlack, kSmall);
+        y += 10;
+    } else {
+        gRender.drawCentred(d, ui().dateLastUsed, 2, y, w, 10, 1, kWhite, kBlack, kSmall);
+        gRender.drawCentred(d, value, 2, y + 10, w, 10, 1, kWhite, kBlack, kSmall);
+        y += 20;
     }
-    for (int i = 0; i < kDateRows; ++i) {
-        const int y = top + i * rowH;
-        const bool sel = i == gDateSel;
-        const uint16_t bg = sel ? kHighlight : kBlack;
-        d.fillRoundRect(2, y, W - 4, rowH - 4, 5, bg);
-        if (sel) d.drawRoundRect(2, y, W - 4, rowH - 4, 5, kWhite);
-        const uint8_t set = labelFont(ui().dateRows[i], rowH - 4, 22, W - 10);
-        gRender.drawCentred(d, ui().dateRows[i], 4, y + 2, W - 8, rowH - 8, 1, kWhite, bg, set);
+    y += gap;
+
+    // The proposed "today", highlighted: this is what the buttons change.
+    const uint16_t target = dateTarget();
+    formatDate(target, date, sizeof date);
+    snprintf(value, sizeof value, "%s %s", weekdayName(target), date);
+    gRender.drawCentred(d, ui().dateToday, 2, y, w, 10, 1, kYellow, kBlack, kSmall);
+    y += 11;
+    const bool oneLine = gRender.textWidth(value, kBig) <= w - 8;
+    const int boxH = oneLine ? 24 : 42;
+    d.fillRoundRect(2, y, w, boxH, 5, kHighlight);
+    d.drawRoundRect(2, y, w, boxH, 5, kWhite);
+    if (oneLine) {
+        gRender.drawCentred(d, value, 4, y + 2, w - 4, boxH - 4, 1, kWhite, kHighlight, kBig);
+    } else {
+        gRender.drawCentred(d, weekdayName(target), 4, y + 3, w - 4, 17, 1, kWhite, kHighlight,
+                            kBig);
+        gRender.drawCentred(d, date, 4, y + 21, w - 4, 17, 1, kWhite, kHighlight, kBig);
     }
+    y += boxH + gap;
+
+    // How far that is from the current day.
+    if (gDateSteps == 1)
+        snprintf(line, sizeof line, "%s", ui().dateOneDay);
+    else
+        snprintf(line, sizeof line, ui().dateDaysFmt, (unsigned)gDateSteps);
+    gRender.drawCentred(d, line, 2, y, w, 18, 1, kYellow, kBlack,
+                        gRender.textWidth(line, kBig) <= w ? kBig : kSmall);
+
+    // The network-time sync of the boot-time question, right above the hints
+    // (one line in landscape, where the space above is taken).
+    if (gDateSync != DateSync::None) {
+        const char* status = line;
+        uint16_t color = kGreen;
+        if (gDateSync == DateSync::Joining) {
+            snprintf(line, sizeof line, ui().dateSyncingFmt, gHome.ssid());
+        } else {
+            status = gDateSync == DateSync::NoNetwork ? ui().dateNoNetwork : ui().dateNoTime;
+            color = kYellow;
+        }
+        const int lines = H > W ? 2 : 1;
+        gRender.drawCentred(d, status, 2, H - 24 - lines * 10, w, lines * 10, lines, color, kBlack,
+                            kSmall);
+    }
+
+    // Button hints along the bottom.
+    gRender.drawCentred(d, ui().dateHintTap, 2, H - 22, w, 10, 1, kWhite, kBlack, kSmall);
+    gRender.drawCentred(d, ui().dateHintSide, 2, H - 11, w, 10, 1, kWhite, kBlack, kSmall);
     present();
 }
 
@@ -850,16 +1131,141 @@ void drawWifi() {
     char upLine[40];
     snprintf(upLine, sizeof upLine, "uploaded: %u", (unsigned)gPortal.uploadedPacks());
 
+    // On the boot-time upload screen a saved home Wi-Fi also offers Get decks.
+    const bool offerGetDecks = gWifiBootUpload && tgc::HomeWifi::hasCredentials();
     const char* lines[] = {gPortal.ssid(), gPortal.url(), ui().wifiHint, freeLine, upLine,
-                           gPortal.lastMessage()};
-    constexpr int kN = 6;
+                           gPortal.lastMessage(), ui().wifiGetDecksHint};
+    const int kN = offerGetDecks ? 7 : 6;
     const int top = headerH + 4;
     int step = (H - top - 2) / kN;
     if (step > 22) step = 22;
     if (step < 10) step = 10;
     for (int i = 0; i < kN; ++i)
         gRender.drawCentred(d, lines[i], 2, top + i * step, W - 4, step - 2, 2,
-                            i == 1 ? kYellow : kWhite, kBlack, tgc::Renderer::kTextBuiltinSmall);
+                            i == 1 ? kYellow : (i == 6 ? kGreen : kWhite), kBlack,
+                            tgc::Renderer::kTextBuiltinSmall);
+    present();
+}
+
+// "704 KB" / "1.2 MB", or "704K" / "1.2M" when `compact`.
+void formatBytes(uint32_t bytes, char* out, size_t n, bool compact) {
+    if (bytes >= 1024u * 1024u) {
+        const unsigned tenths = static_cast<unsigned>(bytes / (1024u * 1024u / 10u));
+        snprintf(out, n, compact ? "%u.%uM" : "%u.%u MB", tenths / 10u, tenths % 10u);
+    } else {
+        snprintf(out, n, compact ? "%uK" : "%u KB", (unsigned)((bytes + 1023u) / 1024u));
+    }
+}
+
+// "Get decks" screen. Connecting / reading: a centred status and the network
+// name. List: one row per catalog deck ('+' new, '=' already here, '~' here
+// with another size), scrolled to keep the selection visible, and a two-line
+// footer (language, cards and size of the selection, or a status note, then the
+// hold hint; a progress bar while downloading). Error: a title and a wrapped
+// detail. Only the built-in font is used, so it works before any pack is open.
+void drawGetDecks() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, ui().getDecksTitle, 3, 3, kWhite, kGrey);
+    drawBackHint(d);
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+
+    if (gNetStep == NetStep::Connecting || gNetStep == NetStep::Catalog) {
+        const char* line = gNetStep == NetStep::Connecting ? ui().netConnecting : ui().netCatalog;
+        gRender.drawCentred(d, line, 2, H / 2 - 22, W - 4, 18, 1, kYellow, kBlack,
+                            labelFont(line, 18, 16, W - 8));
+        gRender.drawCentred(d, gHome.ssid(), 2, H / 2 + 2, W - 4, 20, 2, kWhite, kBlack, kSmall);
+        present();
+        return;
+    }
+    if (gNetStep == NetStep::Error) {
+        const int titleH = 36;
+        gRender.drawCentred(d, gNetErrTitle, 2, 20, W - 4, titleH, 2, kYellow, kBlack,
+                            labelFont(gNetErrTitle, titleH, 16, W - 8));
+        gRender.drawCentred(d, gNetErrDetail, 2, 20 + titleH + 4, W - 4, H - 20 - titleH - 20, 6,
+                            kWhite, kBlack, kSmall);
+        gRender.drawCentred(d, ui().netHoldRetry, 2, H - 12, W - 4, 10, 1, kWhite, kBlack, kSmall);
+        present();
+        return;
+    }
+
+    const int footerH = 22;
+    const int footY = H - footerH;
+    const int n = static_cast<int>(gCatalog.size());
+    if (n == 0) {
+        gRender.drawCentred(d, ui().netEmpty, 2, 20, W - 4, footY - 22, 3, kWhite, kBlack, kSmall);
+    } else {
+        const int top = 18;
+        const int rowH = H >= 200 ? 18 : 15;
+        int visible = (footY - 2 - top) / rowH;
+        if (visible < 1) visible = 1;
+        const int first = gNetSel >= visible ? gNetSel - visible + 1 : 0;
+        for (int i = first; i < n && i < first + visible; ++i) {
+            const int y = top + (i - first) * rowH;
+            const bool sel = i == gNetSel;
+            const uint16_t bg = sel ? kHighlight : kBlack;
+            d.fillRoundRect(1, y, W - 2, rowH - 2, 4, bg);
+            if (sel) d.drawRoundRect(1, y, W - 2, rowH - 2, 4, kWhite);
+            const tgc::CatalogEntry& e = gCatalog[i];
+            const uint8_t st = gCatalogState[i];
+            const uint16_t fg = st == kDeckOnDevice ? kGreen : (st == kDeckUpdate ? kYellow : kWhite);
+            const int ty = y + (rowH - 2 - 8) / 2;
+            // Right column "en 704K"; when the name would not fit next to it
+            // (the 135 px portrait), only the size (the footer has the language).
+            const int nameX = 13;
+            String name = e.name.c_str();
+            char right[24], size[12];
+            formatBytes(e.bytes, size, sizeof size, true);
+            snprintf(right, sizeof right, "%s %s", e.lang.c_str(), size);
+            int maxW = W - 4 - gRender.textWidth(right, kSmall) - 6 - nameX;
+            if (gRender.textWidth(name.c_str(), kSmall) > maxW) {
+                snprintf(right, sizeof right, "%s", size);
+                maxW = W - 4 - gRender.textWidth(right, kSmall) - 6 - nameX;
+            }
+            smallText(d, right, W - 4, ty, kWhite, bg, lgfx::top_right);
+            smallText(d, st == kDeckOnDevice ? "=" : (st == kDeckUpdate ? "~" : "+"), 4, ty, fg, bg);
+            // The name gets what the size column leaves, cut with ".." if needed.
+            if (gRender.textWidth(name.c_str(), kSmall) > maxW) {
+                while (name.length() > 1 && gRender.textWidth((name + "..").c_str(), kSmall) > maxW)
+                    name.remove(name.length() - 1);
+                name += "..";
+            }
+            smallText(d, name.c_str(), nameX, ty, fg, bg);
+        }
+    }
+
+    // Footer: what the selection is (or a status note), then what a hold does.
+    char line1[64] = "";
+    uint16_t c1 = kWhite;
+    const char* line2 = "";
+    if (gNetBusy) {
+        snprintf(line1, sizeof line1, ui().netDownloadingFmt, (unsigned)(gNetPct < 0 ? 0 : gNetPct));
+        c1 = kYellow;
+    } else if (gNetNote[0]) {
+        snprintf(line1, sizeof line1, "%s", gNetNote);
+        c1 = gNetNoteColor;
+    } else if (n > 0) {
+        const tgc::CatalogEntry& e = gCatalog[gNetSel];
+        char size[16];
+        formatBytes(e.bytes, size, sizeof size, false);
+        snprintf(line1, sizeof line1, ui().netCardsFmt, e.lang.empty() ? "?" : e.lang.c_str(),
+                 (unsigned)e.cards, size);
+    }
+    if (!gNetBusy && n > 0) {
+        const uint8_t st = gCatalogState[gNetSel];
+        line2 = st == kDeckOnDevice ? ui().netHoldStudy
+                                    : (st == kDeckUpdate ? ui().netHoldUpdate : ui().netHoldDownload);
+    }
+    gRender.drawCentred(d, line1, 2, footY + 1, W - 4, 10, 1, c1, kBlack, kSmall);
+    if (gNetBusy) {
+        const int bw = W - 8;
+        d.drawRect(4, footY + 12, bw, 8, kWhite);
+        const int fill = gNetPct > 0 ? (bw - 2) * gNetPct / 100 : 0;
+        if (fill > 0) d.fillRect(5, footY + 13, fill, 6, kGreen);
+    } else {
+        gRender.drawCentred(d, line2, 2, footY + 11, W - 4, 10, 1, kWhite, kBlack, kSmall);
+    }
     present();
 }
 
@@ -895,9 +1301,18 @@ void drawDetailKanji(int boxX, int boxY, int boxW, int boxH, uint32_t cp) {
     }
     const int emX = boxX + (boxW - px) / 2;
     const int emY = boxY + (boxH - px) / 2;
+#if defined(TGC_QUIZ_LOG)
+    const uint32_t t0 = micros();
+#endif
     for (int i = 0; i <= gAnimFrame; ++i)
         gRender.drawStroke(d, gQ.cardIndex, static_cast<uint16_t>(i), emX, emY,
                            i == gAnimFrame ? kYellow : kWhite);
+#if defined(TGC_QUIZ_LOG)
+    // One line per animation loop: the last frame draws every stroke (worst case).
+    if (gAnimFrame == static_cast<int>(gAnimStrokes) - 1)
+        QLOG("R U+%04X strokes %d draw %u us\n", (unsigned)cp, gAnimFrame + 1,
+             (unsigned)(micros() - t0));
+#endif
 }
 
 // Detail card (roadmap phase 3): a tap after a wrong reveal opens this read-only
@@ -910,6 +1325,11 @@ void drawDetailKanji(int boxX, int boxY, int boxW, int boxH, uint32_t cp) {
 // When the pack carries stroke data for the card, the kanji animates instead
 // (see drawDetailKanji and the Screen::Detail branch of loop()).
 void drawDetail() {
+    tgc::Card card;
+    if (!questionCard(&card)) {
+        drawNoQuestion();
+        return;
+    }
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     const int headerH = 14;
@@ -917,8 +1337,6 @@ void drawDetail() {
     smallText(d, gPack->deckName(), 3, 3, kWhite, kGrey);
     smallText(d, ui().detailTitle, W - 3, 3, kWhite, kGrey, lgfx::top_right);
 
-    tgc::Card card;
-    gPack->card(gQ.cardIndex, &card);
     const int largePx = gPack->header().largePx ? gPack->header().largePx : 64;
     const bool landscape = W > H;
 
@@ -1018,8 +1436,8 @@ void drawDetail() {
 }
 
 void showDetail() {
-    tgc::Card c;
-    gPack->card(gQ.cardIndex, &c);
+    tgc::Card c{};  // stays zero when there is no card (drawDetail() then says so)
+    questionCard(&c);
     // Start the stroke animation when the pack has stroke data for this card.
     uint16_t sc = 0;
     gAnimOn = gPack->strokeInfo(gQ.cardIndex, &sc, nullptr) && sc > 0;
@@ -1034,9 +1452,20 @@ void showDetail() {
     drawDetail();
 }
 
+// The boot-time question has its answer (from the user or from the network
+// time): a join still in progress stops, radio off, and the status line goes.
+void dateSyncCancel() {
+    if (gDateSync == DateSync::Joining) {
+        netRadioOff();
+        Serial.printf("clock: network time cancelled, answered by hand\n");
+    }
+    gDateSync = DateSync::None;
+}
+
 // Rebuilds the queue and shows the quiz (or the done screen if nothing is due).
 // Used after the date screen so newly due cards appear.
 void leaveDate() {
+    dateSyncCancel();
     gQueue.rebuild(*gPack, gSrs, gRng);
     if (!newQuestion()) {
         showDone();
@@ -1046,11 +1475,13 @@ void leaveDate() {
     drawScreen();
 }
 
-// Applies the chosen number of days, persists it, rebuilds the queue (cards may
-// now be due) and goes back to where the date screen was opened from: the
-// settings home, or the quiz on a power-off boot.
+// Applies the stepped days (advanceDaysManual also restarts the day carry, see
+// docs/srs.md section 5), persists them, rebuilds the queue (cards may now be
+// due) and goes back to where the date screen was opened from: the settings
+// home, or the quiz on a power-off boot.
 void applyDate() {
-    gSrs.advanceDays(kDateAdd[gDateSel]);
+    dateSyncCancel();
+    gSrs.advanceDaysManual(gDateSteps);
     gSrs.save(gSrsIo);
     gDirty = 0;
     gQueue.rebuild(*gPack, gSrs, gRng);
@@ -1067,6 +1498,128 @@ void applyDate() {
     drawScreen();
 }
 
+const char* clockSyncName(tgc::ClockSync k) {
+    switch (k) {
+        case tgc::ClockSync::Rejected: return "rejected";
+        case tgc::ClockSync::Anchored: return "anchored";
+        case tgc::ClockSync::Same: return "same day";
+        case tgc::ClockSync::Advanced: return "advanced";
+        case tgc::ClockSync::Reanchored: return "re-anchored";
+    }
+    return "?";
+}
+
+// Applies a real wall-clock time to the SRS day clock (docs/srs.md section 5.1):
+// the phone's browser through the portal's POST /time, or NTP over the home
+// Wi-Fi (Get decks, the boot-time date question). Anchors or advances the day,
+// aligns the 04:00 rollover, remembers the UTC offset and brings the screen up
+// to date: a pending power-cut date question is answered, and a new day
+// rebuilds the queue. `tzOffsetMin` is local time minus UTC in minutes. False
+// when the time was rejected as implausible; nothing changes then.
+bool applyWallClock(int64_t utcMs, int tzOffsetMin) {
+    const uint16_t before = gSrs.today();
+    const tgc::ClockSyncResult r = gSrs.syncWallClock(utcMs, tzOffsetMin);
+    if (r.kind == tgc::ClockSync::Rejected) {
+        Serial.printf("clock: rejected (%ld s, utc%+d min)\n", static_cast<long>(utcMs / 1000),
+                      tzOffsetMin);
+        return false;
+    }
+    gWallClockSynced = true;
+    if (!gPrefs.isKey(kPrefTz) || gPrefs.getShort(kPrefTz, 0) != tzOffsetMin)
+        gPrefs.putShort(kPrefTz, static_cast<int16_t>(tzOffsetMin));
+    // Persist a new anchor or day. A same-day sync (every page reload) only
+    // moved the carry, which the idle save persists, so it does not write the
+    // flash. As in goIdle(), a store that failed to load and has no answers is
+    // not written over a damaged file; the next answer saves it.
+    if (r.kind != tgc::ClockSync::Same && (gDirty || gSrsLoaded)) {
+        gSrs.save(gSrsIo);
+        gDirty = 0;
+    }
+    char date[16];
+    formatDate(gSrs.today(), date, sizeof date);
+    Serial.printf("clock: %s, day %u -> %u (%s), utc%+d min\n", clockSyncName(r.kind),
+                  (unsigned)before, (unsigned)gSrs.today(), date, tzOffsetMin);
+
+    // The boot-time "how many days?" question: the real time answers it.
+    if (gScreen == Screen::Date && gAfterDate == Screen::Quiz) {
+        leaveDate();
+        return true;
+    }
+    // A manual correction in progress restarts from the new (real) today.
+    if (gScreen == Screen::Date) gDateSteps = 0;
+    if (gSrs.today() != before && gPack->isOpen()) {
+        // A new day: cards may have come due. An unanswered question (or the
+        // done screen) gives way to the new queue; after an answer, the next
+        // question comes from it. On the portal or Get decks screen the same
+        // goes for the quiz screen that the settings home's "Continue" shows.
+        gQueue.rebuild(*gPack, gSrs, gRng);
+        auto refresh = [](Screen& s) {
+            if ((s == Screen::Quiz && !gRevealed) || s == Screen::Done)
+                s = newQuestion() ? Screen::Quiz : Screen::Done;
+        };
+        if (gScreen == Screen::Quiz || gScreen == Screen::Done)
+            refresh(gScreen);
+        else if (gScreen == Screen::Wifi || gScreen == Screen::GetDecks)
+            refresh(gBeforeMenu);
+    }
+    if (!gScreenOff) drawScreen();
+    return true;
+}
+
+// The UTC offset of the last real-time sync (NVS `tz`); false before the first
+// one. NTP only yields UTC: without the offset the study day is unknown, and
+// guessing UTC could put it off by one, so the NTP paths skip the sync instead.
+bool savedTzOffset(int16_t* out) {
+    if (!gPrefs.isKey(kPrefTz)) return false;
+    *out = gPrefs.getShort(kPrefTz, 0);
+    return true;
+}
+
+// Boot-time date question (setup()): with a home Wi-Fi and an offset saved,
+// start joining in the background; dateSyncPoll() takes it from there.
+void dateSyncBegin() {
+    int16_t tz = 0;
+    if (!tgc::HomeWifi::hasCredentials() || !savedTzOffset(&tz)) {
+        Serial.printf("clock: no network time at boot (no %s saved)\n",
+                      tgc::HomeWifi::hasCredentials() ? "UTC offset" : "home Wi-Fi");
+        return;
+    }
+    setCpuFrequencyMhz(kCpuWifiMhz);
+    if (!gHome.begin()) {
+        netRadioOff();
+        gDateSync = DateSync::NoNetwork;
+        Serial.printf("clock: no network time at boot (radio did not start)\n");
+        return;
+    }
+    gDateSyncTz = tz;
+    gDateSync = DateSync::Joining;
+    gNetActivityAt = millis();  // the join keeps the idle timers away (powerTick)
+}
+
+// loop() on the date screen. Once the join succeeds: NTP (blocking, at most
+// kNtpTimeoutMs), radio off, then applyWallClock(), which answers the question
+// and leaves for the quiz -- true when that happened. On any failure the radio
+// is off too and the status line says to set the date by hand.
+bool dateSyncPoll() {
+    if (gDateSync != DateSync::Joining) return false;
+    const tgc::HomeWifi::State st = gHome.poll();
+    if (st == tgc::HomeWifi::State::Connecting) return false;
+    const bool joined = st == tgc::HomeWifi::State::Connected;
+    int64_t utcMs = 0;
+    const bool got = joined && gHome.fetchUtcMs(&utcMs, kNtpTimeoutMs);
+    netRadioOff();
+    if (joined) gSwallowInput = true;  // presses made while blocked must not act now
+    gDateSync = DateSync::None;
+    if (got && applyWallClock(utcMs, gDateSyncTz)) return true;
+    gDateSync = joined ? DateSync::NoTime : DateSync::NoNetwork;
+    // The status is news: the join's time does not count against the reader.
+    gNetActivityAt = millis();
+    Serial.printf("clock: no network time at boot (%s), asking by hand\n",
+                  joined ? "no NTP answer" : "could not join");
+    if (!gScreenOff) drawScreen();
+    return false;
+}
+
 void drawScreen() {
     if (gScreen == Screen::Menu) drawMenu();
     else if (gScreen == Screen::Decks) drawDecks();
@@ -1076,20 +1629,78 @@ void drawScreen() {
     else if (gScreen == Screen::Stats) drawStats();
     else if (gScreen == Screen::Detail) drawDetail();
     else if (gScreen == Screen::Wifi) drawWifi();
+    else if (gScreen == Screen::GetDecks) drawGetDecks();
     else drawQuiz();
 }
 
-// Switch the panel between portrait (default) and landscape: rotate, pick up the
-// new width/height, recreate the back buffer for it, persist the choice in NVS
-// and redraw. The canvas is recreated here so a landscape change can never leave
-// the portrait default (or the previous orientation) mis-sized.
-void applyOrientation(bool landscape) {
-    tgc::board::setOrientation(landscape);
+// Rotate the panel (0-3, see board::setRotation), pick up the new width/height,
+// recreate the back buffer for it and redraw. The canvas is recreated here so a
+// rotation can never leave the previous orientation's buffer mis-sized.
+// Persisting the setting is the caller's job: Auto rotations are never stored.
+void applyRotation(uint8_t r) {
+    tgc::board::setRotation(r);
     W = tgc::board::width();
     H = tgc::board::height();
     createCanvas();
-    gPrefs.putBool("land", landscape);
     drawScreen();
+}
+
+bool orientAuto() { return gOrientPref == kOrientAuto && tgc::board::hasAccel(); }
+
+// The rotation a fixed setting asks for. Auto on a board whose accelerometer is
+// missing or failed to start behaves as portrait (the setting is kept).
+uint8_t fixedRotation() { return gOrientPref == kOrientLandscape ? 1 : 0; }
+
+// The orientation setting. Up to 2026-10-18 it was the bool `land`; that key
+// is read once, rewritten as `orient` and removed, so a landscape user keeps
+// landscape. New users get portrait.
+uint8_t loadOrientPref() {
+    if (gPrefs.isKey("orient")) {
+        const uint8_t v = gPrefs.getUChar("orient", kOrientPortrait);
+        return v <= kOrientAuto ? v : kOrientPortrait;
+    }
+    const uint8_t v = gPrefs.getBool("land", false) ? kOrientLandscape : kOrientPortrait;
+    gPrefs.putUChar("orient", v);
+    gPrefs.remove("land");
+    return v;
+}
+
+// First rotation at boot. In Auto mode one accelerometer sample decides at once
+// (no settle time: nothing is on screen yet); a flat or unclear pose falls back
+// to portrait. The filter then starts from what is shown.
+uint8_t bootRotation() {
+    if (!orientAuto()) return fixedRotation();
+    int r = tgc::OrientationFilter::kNone;
+    float x, y, z;
+    for (int tries = 0; tries < 10; ++tries) {  // the first sample needs ~10 ms
+        if (tgc::board::readAccel(&x, &y, &z)) {
+            r = gOrient.classify(x, y, z);
+            break;
+        }
+        delay(5);
+    }
+    if (r == tgc::OrientationFilter::kNone) r = 0;
+    gOrient.reset(r);
+    return static_cast<uint8_t>(r);
+}
+
+// Auto orientation, once per loop(): sample the accelerometer every kImuPollMs
+// while the panel is on and apply a settled rotation only while no button is
+// down, so the picture never turns in the middle of a press (the change waits
+// for the release). A rotation is not user activity: it neither brightens a
+// dimmed panel nor delays sleep, so a device turning in a bag still sleeps.
+void orientTick(uint32_t now, bool buttonDown) {
+    if (!orientAuto() || gScreenOff) return;
+    if (now - gImuPollAt >= kImuPollMs) {
+        gImuPollAt = now;
+        if (tgc::board::readAccel(&gAccel[0], &gAccel[1], &gAccel[2]))
+            gOrient.update(gAccel[0], gAccel[1], gAccel[2], now);
+    }
+    const int want = gOrient.current();
+    if (want == tgc::OrientationFilter::kNone || buttonDown) return;
+    if (want == tgc::board::rotation()) return;
+    QLOG("O rotation %d (a=%.2f %.2f %.2f)\n", want, gAccel[0], gAccel[1], gAccel[2]);
+    applyRotation(static_cast<uint8_t>(want));
 }
 
 // Opens `path`, replacing the live pack only after the new one validates.
@@ -1129,6 +1740,8 @@ bool loadPack(const String& path) {
 void portalFillStats(tgc::PortalStats& out) {
     const tgc::Stats st = gSrs.stats();
     out.day = gSrs.today();
+    formatDate(gSrs.today(), out.date, sizeof out.date);
+    out.dateSynced = gSrs.hasWallClock();
     out.seen = st.seen;
     out.learned = st.learned;
     out.answers = st.answers;
@@ -1140,10 +1753,19 @@ void portalFillStats(tgc::PortalStats& out) {
     out.packCards = gPack->isOpen() ? gPack->cardCount() : 0;
 }
 
-// Called by the portal after /packs changed. Rescans the folder and keeps the
-// live pack usable: reload the loaded pack (its contents may have changed),
-// else fall back to the first remaining one, else leave no pack open.
+// Called by the portal after /packs changed, and by Get decks after a download.
+// Rescans the folder and keeps the live pack usable: reload the loaded pack (its
+// contents may have changed), else fall back to the first remaining one, else
+// leave no pack open. Both callers run under the settings home, whose
+// "Continue" returns to the quiz, detail or done screen; when the live reader
+// was replaced or closed, the question kept for it belongs to the old pack and
+// must never be shown or graded. So Continue gets a fresh question from the
+// rebuilt queue (or the done screen) -- or, with no pack left, the deck list,
+// where "+ Get decks" still works. A failed reload that kept the old reader
+// keeps its question too.
 bool portalPacksChanged() {
+    const tgc::PackReader* const before = gPack->isOpen() ? gPack.get() : nullptr;
+    const String pathBefore = gCurrentPack;
     listPacks(gPacks);
     if (gPacks.empty()) {
         gRender.end();
@@ -1151,18 +1773,51 @@ bool portalPacksChanged() {
         gSource.reset();
         gCurrentPack = "";
         gPrefs.remove("pack");
-        return false;
+    } else {
+        String want = gCurrentPack;
+        if (want.isEmpty() || std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end())
+            want = gPacks[0];
+        if (loadPack(want) || loadPack(gPacks[0])) gPrefs.putString("pack", gCurrentPack);
     }
-    String want = gCurrentPack;
-    if (want.isEmpty() || std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end())
-        want = gPacks[0];
-    if (!loadPack(want) && !loadPack(gPacks[0])) return false;
-    gPrefs.putString("pack", gCurrentPack);
-    gQueue.rebuild(*gPack, gSrs, gRng);
-    return true;
+    if (!gPack->isOpen()) {
+        gQueue.rebuild(*gPack, gSrs, gRng);  // empty: nothing refers to the old cards
+        gBeforeMenu = Screen::Decks;
+    } else if (gPack.get() != before) {
+        if (gCurrentPack != pathBefore) gExtraNew = 0;  // another deck, as in selectPack()
+        gQueue.rebuild(*gPack, gSrs, gRng, extraNewToday());
+        gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
+    }
+    return gPack->isOpen();
 }
 
-const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged};
+// Called by the portal with the browser's clock (POST /time on every page load).
+bool portalTime(int64_t utcMs, int16_t tzOffsetMin) {
+    return applyWallClock(utcMs, tzOffsetMin);
+}
+
+// Stops the portal and opens Get decks in its place: the boot-time upload
+// screen's hold, and the portal page's "Get decks now" (the portal's onGetDecks
+// hook, called from poll() once its response is out) from the boot-time portal
+// or the settings one. Get decks then leaves as it always does: back to the
+// boot-time screen (or into the quiz once a deck is loaded), else the deck list.
+void wifiToGetDecks(const char* phoneLang) {
+    // Only an Auto UI with no deck loaded has no language of its own (it shows
+    // English); then the phone's language orders the deck list instead.
+    gGetDecksLangHint = phoneLang ? phoneLang : "";
+    gPortal.end();
+    setCpuFrequencyMhz(kCpuMhz);  // openGetDecks() raises it again while the radio is on
+    QLOG("W wifi: stopped for Get decks\n");
+    // The page sends the user to the device screen: undo an idle dim (the time
+    // spent typing on the phone is not button input).
+    if (gDimmed) {
+        tgc::board::setBrightness(gBrightness);
+        gDimmed = false;
+    }
+    openGetDecks(gWifiBootUpload);
+}
+
+const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged, portalTime,
+                                             wifiToGetDecks};
 
 // Opens the Wi-Fi screen and starts the portal (from the settings home, or at
 // boot when there is no pack yet). The boot-time upload mode is decided by the
@@ -1224,7 +1879,18 @@ void openMenu() {
 }
 
 void closeMenu() {
+    if (gBeforeMenu == Screen::Decks) {  // no pack open (see portalPacksChanged())
+        openDecks();
+        return;
+    }
     gScreen = gBeforeMenu;
+    // The question was hidden behind the settings, or even built there (see
+    // portalPacksChanged()): restart its answer clock, as wakeScreen() does,
+    // so the time away does not grade it Hard.
+    if (gScreen == Screen::Quiz && !gRevealed) {
+        gShownAt = millis();
+        gNavTaps = 0;
+    }
     drawScreen();
 }
 
@@ -1243,10 +1909,13 @@ void openChoice(Choice which) {
     gChoice = which;
     gChoiceSel = 0;
     if (which == Choice::Orientation) {
-        gChoiceCount = 2;
-        gChoiceValues[0] = 0;  // portrait
-        gChoiceValues[1] = 1;  // landscape
-        gChoiceSel = gPrefs.getBool("land", false) ? 1 : 0;
+        // Auto first, as in the language picker; only with an accelerometer.
+        gChoiceCount = 0;
+        if (tgc::board::hasAccel()) gChoiceValues[gChoiceCount++] = kOrientAuto;
+        gChoiceValues[gChoiceCount++] = kOrientPortrait;
+        gChoiceValues[gChoiceCount++] = kOrientLandscape;
+        for (int i = 0; i < gChoiceCount; ++i)
+            if (gChoiceValues[i] == gOrientPref) gChoiceSel = i;
         gScreen = Screen::Choice;
         drawScreen();
         return;
@@ -1292,8 +1961,17 @@ void openChoice(Choice which) {
 // Applies the highlighted choice, persists it and returns to the settings home.
 void applyChoice() {
     if (gChoice == Choice::Orientation) {
-        gScreen = Screen::Menu;  // applyOrientation redraws the active screen
-        applyOrientation(gChoiceValues[gChoiceSel] != 0);
+        gOrientPref = static_cast<uint8_t>(gChoiceValues[gChoiceSel]);
+        gPrefs.putUChar("orient", gOrientPref);
+        gScreen = Screen::Menu;
+        if (orientAuto()) {
+            // The hold is still down: keep the picture; orientTick() takes over
+            // from it after the release and the settle time.
+            gOrient.reset(tgc::board::rotation());
+            drawScreen();
+        } else {
+            applyRotation(fixedRotation());  // redraws the active screen
+        }
         return;
     }
     if (gChoice == Choice::UiLang) {
@@ -1338,10 +2016,7 @@ void activateSetting() {
             openDecks();
             break;
         case 2:  // Fecha
-            gAfterDate = Screen::Menu;
-            gDateSel = 0;
-            gScreen = Screen::Date;
-            drawScreen();
+            openDate(Screen::Menu);
             break;
         case 3:  // Nuevas/dia
             openChoice(Choice::NewPerDay);
@@ -1365,6 +2040,9 @@ void activateSetting() {
         case 9:  // Brillo / Brightness
             openChoice(Choice::Brightness);
             break;
+        case 10:  // Suspender / Sleep
+            sleepNow(false);
+            break;
     }
 }
 
@@ -1386,6 +2064,362 @@ void selectPack() {
     }
     gScreen = Screen::Quiz;
     drawScreen();
+}
+
+// --- Get decks (roadmap phase 4) -------------------------------------------
+
+// Radio off and the CPU back to its normal clock. Safe in any state.
+void netRadioOff() {
+    const bool wasOn = gHome.state() != tgc::HomeWifi::State::Off;
+    gHome.end();
+    if (wasOn) setCpuFrequencyMhz(kCpuMhz);
+}
+
+void netError(const char* title, const char* detail) {
+    netRadioOff();
+    gNetStep = NetStep::Error;
+    snprintf(gNetErrTitle, sizeof gNetErrTitle, "%s", title);
+    snprintf(gNetErrDetail, sizeof gNetErrDetail, "%s", detail ? detail : "");
+    QLOG("N error: %s | %s\n", title, gNetErrDetail);
+}
+
+void netNote(const char* text, uint16_t color) {
+    snprintf(gNetNote, sizeof gNetNote, "%s", text);
+    gNetNoteColor = color;
+}
+
+String catalogPath(const tgc::CatalogEntry& e) { return String("/packs/") + e.name.c_str() + ".tgc"; }
+
+// Compares the catalog with /packs (existence and size).
+void netRefreshStates() {
+    listPacks(gPacks);
+    gCatalogState.assign(gCatalog.size(), kDeckNew);
+    for (size_t i = 0; i < gCatalog.size(); ++i) {
+        const String path = catalogPath(gCatalog[i]);
+        if (!LittleFS.exists(path)) continue;
+        File f = LittleFS.open(path, "r");
+        if (!f) continue;
+        gCatalogState[i] = f.size() == gCatalog[i].bytes ? kDeckOnDevice : kDeckUpdate;
+        f.close();
+    }
+}
+
+// Opens the Get decks screen and starts joining the home Wi-Fi. `fromBoot`: from
+// the boot-time upload screen (whose portal the caller already stopped).
+void openGetDecks(bool fromBoot) {
+    gNetFromBoot = fromBoot;
+    gScreen = Screen::GetDecks;
+    gCatalog.clear();
+    gCatalogState.clear();
+    gNetSel = 0;
+    gNetBusy = false;
+    gNetNote[0] = 0;
+    gNetActivityAt = millis();
+    if (!tgc::HomeWifi::hasCredentials()) {
+        netError(ui().netNoWifi, ui().netNoWifiHint);
+        drawScreen();
+        return;
+    }
+    setCpuFrequencyMhz(kCpuWifiMhz);
+    if (!gHome.begin()) {
+        netError(ui().netNoConnect, gHome.ssid());
+        drawScreen();
+        return;
+    }
+    gNetStep = NetStep::Connecting;
+    QLOG("N get decks: joining %s\n", gHome.ssid());
+    drawScreen();
+}
+
+// Leaves the screen with the radio off: back to the deck list, or -- when it was
+// opened from the boot-time upload screen -- into the quiz if a deck is now
+// loaded, else back to that screen.
+void closeGetDecks() {
+    netRadioOff();
+    gGetDecksLangHint.clear();
+    gCatalog.clear();
+    gCatalogState.clear();
+    QLOG("N get decks: closed\n");
+    if (gNetFromBoot) {
+        gNetFromBoot = false;
+        if (gPack->isOpen()) {
+            gWifiBootUpload = false;
+            startQuizFromPortal();
+        } else {
+            openWifi();
+        }
+        return;
+    }
+    listPacks(gPacks);
+    openDecks();
+}
+
+// Connected: the network is up anyway, so take the real date from NTP first
+// (blocking, at most kNtpTimeoutMs; netLoadCatalog() right after resets the
+// idle timers and drops the presses made meanwhile). Only with the saved UTC
+// offset (see savedTzOffset()); a failure is logged and Get decks carries on.
+void netSyncClock() {
+    int16_t tz = 0;
+    if (!savedTzOffset(&tz)) {
+        Serial.printf("clock: no NTP sync, no UTC offset saved yet (open the portal page once)\n");
+        return;
+    }
+    int64_t utcMs = 0;
+    if (gHome.fetchUtcMs(&utcMs, kNtpTimeoutMs)) applyWallClock(utcMs, tz);
+}
+
+// Connected: read and parse the catalog (blocking), then show the list.
+void netLoadCatalog() {
+    const String url = tgc::HomeWifi::catalogUrl();
+    std::string text;
+    const tgc::FetchResult r = tgc::fetchText(url, kCatalogMaxBytes, kCatalogTimeoutMs, &text);
+    gNetActivityAt = millis();
+    gSwallowInput = true;  // presses made while blocked must not act now
+    Serial.printf("[net] catalog %s: %s (http %d, tls %d, %u bytes)\n", url.c_str(),
+                  tgc::fetchStatusString(r.status), r.httpCode, r.tlsError, (unsigned)r.bytes);
+    char detail[96];
+    switch (r.status) {
+        case tgc::FetchStatus::Ok:
+            break;
+        case tgc::FetchStatus::Connect:
+            netError(ui().netNoServer, url.c_str());
+            return;
+        case tgc::FetchStatus::Tls:
+            snprintf(detail, sizeof detail, "mbedTLS -0x%04X  %s", (unsigned)(-r.tlsError), url.c_str());
+            netError(ui().netTls, detail);
+            return;
+        case tgc::FetchStatus::Http: {
+            // 404 on the default URL: no release with a catalog exists yet.
+            char title[40];
+            snprintf(title, sizeof title, ui().netHttpFmt, r.httpCode);
+            netError(title, r.httpCode == 404 ? ui().netNotPublished : url.c_str());
+            return;
+        }
+        case tgc::FetchStatus::TooLarge:
+            netError(ui().netBadCatalog, url.c_str());
+            return;
+        default:
+            netError(ui().netFailed, url.c_str());
+            return;
+    }
+    tgc::CatalogParse parsed = tgc::parseCatalog(text.data(), text.size(), url.c_str());
+    Serial.printf("[net] catalog: %s, %u decks, %u skipped%s\n", tgc::catalogErrorString(parsed.error),
+                  (unsigned)parsed.entries.size(), (unsigned)parsed.skipped,
+                  parsed.truncated ? ", truncated" : "");
+    if (parsed.error != tgc::CatalogError::Ok) {
+        netError(ui().netBadCatalog, parsed.error == tgc::CatalogError::UnsupportedVersion
+                                         ? ui().netNewerCatalog
+                                         : url.c_str());
+        return;
+    }
+    gCatalog = std::move(parsed.entries);
+    // The decks in the screen's language first, the catalog order otherwise
+    // (every other language is still listed after them).
+    const char* firstLang =
+        (gUiLangPref == tgc::kUiLangAuto && !gPack->isOpen() && !gGetDecksLangHint.empty())
+            ? gGetDecksLangHint.c_str()
+            : uiLangCode();
+    tgc::orderCatalogForLang(gCatalog, firstLang);
+    Serial.printf("[net] catalog: \"%s\" decks first\n", firstLang);
+    netRefreshStates();
+    // Start on the first deck that is not here yet.
+    gNetSel = 0;
+    for (size_t i = 0; i < gCatalogState.size(); ++i)
+        if (gCatalogState[i] != kDeckOnDevice) {
+            gNetSel = static_cast<int>(i);
+            break;
+        }
+    gNetStep = NetStep::List;
+}
+
+// Critical-battery guard (power/BatteryGuard.h): one reading every
+// kBatteryGuardMs, from loop() and during a download. True when the device must
+// save and sleep now.
+bool batteryCritical(uint32_t now) {
+    if (now - gBatteryGuardAt < kBatteryGuardMs) return false;
+    gBatteryGuardAt = now;
+    const bool external = tgc::board::externalPower() || tgc::board::isCharging();
+    return gBatteryGuard.update(tgc::board::batteryPercent(), external);
+}
+
+// Download progress: redraw on a new percentage, keep the idle timers away and
+// let the side button cancel (its release is swallowed afterwards). The power
+// button and a critical battery cancel too and ask netDownload() to sleep: a
+// download may run for minutes at 240 MHz, and neither can wait that long.
+bool netProgress(size_t done, size_t total, void*) {
+    const uint32_t now = millis();
+    gNetActivityAt = now;
+    if (now - gNetInputAt >= 50) {
+        gNetInputAt = now;
+        tgc::board::update();
+        if (tgc::board::isHeld(Button::Next)) return false;
+        if (tgc::board::powerButtonClicked()) {
+            gNetSleep = NetSleep::User;
+            return false;
+        }
+    }
+    if (batteryCritical(now)) {
+        gNetSleep = NetSleep::Critical;
+        return false;
+    }
+    const int pct = total ? static_cast<int>(static_cast<uint64_t>(done) * 100u / total) : 0;
+    if (pct != gNetPct) {
+        gNetPct = pct;
+        drawScreen();
+    }
+    return true;
+}
+
+const char* netDownloadError(const tgc::FetchResult& r, char* buf, size_t n) {
+    switch (r.status) {
+        case tgc::FetchStatus::Connect: return ui().netNoServer;
+        case tgc::FetchStatus::Tls: return ui().netTls;
+        case tgc::FetchStatus::Http:
+            snprintf(buf, n, ui().netHttpFmt, r.httpCode);
+            return buf;
+        case tgc::FetchStatus::NoSpace:
+        case tgc::FetchStatus::TooLarge: return ui().netNoSpace;
+        case tgc::FetchStatus::SizeMismatch:
+        case tgc::FetchStatus::HashMismatch: return ui().netCorrupt;
+        case tgc::FetchStatus::InvalidPack: return ui().netInvalid;
+        case tgc::FetchStatus::Cancelled: return ui().netCancelled;
+        default: return ui().netFailed;
+    }
+}
+
+// Downloads catalog deck `i` into /packs (atomic; size and SHA-256 checked),
+// then rescans /packs through the portal's path and marks the row.
+void netDownload(int i) {
+    const tgc::CatalogEntry& e = gCatalog[i];
+    const String path = catalogPath(e);
+    const bool updating = gCatalogState[i] == kDeckUpdate;
+    // On battery below the level a critical sleep resumes at, the download
+    // would likely be cut by the guard: refuse it up front.
+    const bool external = tgc::board::externalPower() || tgc::board::isCharging();
+    if (!tgc::BatteryGuard::canResume(tgc::board::batteryPercent(), external)) {
+        netNote(ui().batteryTitle, kYellow);
+        drawScreen();
+        return;
+    }
+    // Replacing the loaded deck: close it first so its file is not open while
+    // the new one is renamed over it; portalPacksChanged() reloads it below.
+    const bool replacingLive = gPack->isOpen() && path == gCurrentPack;
+    if (replacingLive) {
+        gRender.end();
+        gPack->close();
+        gSource.reset();
+    }
+    gNetBusy = true;
+    gNetPct = -1;
+    gNetNote[0] = 0;
+    gNetInputAt = millis();
+    gNetSleep = NetSleep::None;
+    drawScreen();
+
+    tgc::PackFetchRequest req;
+    req.url = e.url.c_str();
+    req.fileName = String(e.name.c_str()) + ".tgc";
+    req.allowHttps = true;
+    req.maxBytes = tgc::WifiPortal::kMaxPackBytes;
+    req.expectBytes = e.bytes;
+    req.expectSha256 = e.sha256;
+    req.idleTimeoutMs = kNetIdleMs;
+    req.totalTimeoutMs = kNetDownloadMs;
+    req.http10 = true;
+    req.progress = netProgress;
+    const uint32_t started = millis();
+    const tgc::FetchResult r = tgc::fetchPackFile(req);
+    gNetBusy = false;
+    gNetActivityAt = millis();
+    gSwallowInput = true;
+    Serial.printf("[net] get %s: %s (%u bytes in %u ms, http %d, tls %d)\n", req.fileName.c_str(),
+                  tgc::fetchStatusString(r.status), (unsigned)r.bytes,
+                  (unsigned)(millis() - started), r.httpCode, r.tlsError);
+    // Cancelled for a sleep: the temp is gone and the old deck untouched, so
+    // sleep now (sleepNow() saves); the wake reopens the deck closed above.
+    if (gNetSleep != NetSleep::None) sleepNow(gNetSleep == NetSleep::Critical);
+
+    // Rescan /packs the portal's way; that also reopens the deck closed above, or
+    // loads the first one when none was open (the boot-time path), and gives
+    // the settings home's "Continue" a question from the deck now loaded.
+    if (r.packsChanged || !gPack->isOpen()) portalPacksChanged();
+    netRefreshStates();
+    char buf[48];
+    if (r.status == tgc::FetchStatus::Ok) {
+        snprintf(buf, sizeof buf, ui().netSavedFmt, e.name.c_str());
+        netNote(buf, kGreen);
+    } else if (r.status == tgc::FetchStatus::NoSpace && updating) {
+        // The old copy stays until the new one validated, so an update needs
+        // room for both: say how to make it.
+        netError(ui().netNoSpace, ui().netNoSpaceUpdate);
+    } else {
+        netNote(netDownloadError(r, buf, sizeof buf), kYellow);
+    }
+    drawScreen();
+}
+
+// Loads a deck that is already on the device and starts studying it.
+void netStudy(int i) {
+    const String path = catalogPath(gCatalog[i]);
+    if (!loadPack(path)) {
+        netNote(ui().netInvalid, kYellow);
+        drawScreen();
+        return;
+    }
+    gPrefs.putString("pack", path);
+    listPacks(gPacks);
+    netRadioOff();
+    gCatalog.clear();
+    gCatalogState.clear();
+    gNetFromBoot = false;
+    gWifiBootUpload = false;
+    startQuizFromPortal();
+}
+
+// Shows why joining the home Wi-Fi failed (the radio is already off).
+void netJoinFailed() {
+    using F = tgc::HomeWifi::Failure;
+    const F f = gHome.failure();
+    netError(f == F::NotFound ? ui().netNotFound
+                              : (f == F::AuthFailed ? ui().netAuthFailed : ui().netNoConnect),
+             gHome.ssid());
+}
+
+// loop() while on the Get decks screen.
+void getDecksLoop(int a, int b) {
+    if (b) {  // side button: back (or cancel the connection attempt)
+        closeGetDecks();
+        return;
+    }
+    if (gNetStep == NetStep::Connecting) {
+        const tgc::HomeWifi::State st = gHome.poll();
+        if (st == tgc::HomeWifi::State::Connected) {
+            gNetStep = NetStep::Catalog;
+            drawScreen();
+            netSyncClock();
+            netLoadCatalog();
+            drawScreen();
+        } else if (st == tgc::HomeWifi::State::Failed) {
+            netJoinFailed();
+            drawScreen();
+        }
+        return;
+    }
+    if (gNetStep == NetStep::Error) {
+        if (a == 2) openGetDecks(gNetFromBoot);  // retry from the start
+        return;
+    }
+    if (gNetStep != NetStep::List || gCatalog.empty()) return;
+    if (a == 1) {
+        gNetSel = (gNetSel + 1) % static_cast<int>(gCatalog.size());
+        gNetNote[0] = 0;
+        drawScreen();
+    } else if (a == 2) {
+        if (gCatalogState[gNetSel] == kDeckOnDevice)
+            netStudy(gNetSel);
+        else
+            netDownload(gNetSel);
+    }
 }
 
 // Tap/hold detection: 1 = tap (on release), 2 = hold (at the threshold).
@@ -1426,11 +2460,21 @@ void applySleepTime() {
                   (unsigned)gSrs.today());
 }
 
-// Idle timeout reached: persist, stop the radio, then sleep (battery) or blank
-// the panel (USB power). Returns only in the USB case.
-void goIdle() {
-    // Also persists the uptime carry. A store that failed to load and has no
-    // answers is not written, so a damaged file (and its .bak) stays on disk.
+// Leaves what the next wake needs in RTC memory: when the chip went to sleep
+// (for applySleepTime) and whether the boot-time date question is still open.
+// Called by prepareDeepSleep() right after the save, so the saved day carry and
+// this timestamp describe the same moment and the wake adds exactly the time
+// since (a notice shown before the sleep included).
+void armSleep() {
+    gSleptAtUs = tgc::board::rtcMicros();
+    gSleepMagic = kSleepMagic;
+    gDatePending = gScreen == Screen::Date && gAfterDate == Screen::Quiz;
+}
+
+// Persists the SRS, which also persists the uptime day carry, and stops the
+// portal and the home Wi-Fi. A store that failed to load and has no answers is
+// not written, so a damaged file (and its .bak) stays on disk.
+void saveAndRadiosOff() {
     if (gDirty || gSrsLoaded) {
         gSrs.save(gSrsIo);
         gDirty = 0;
@@ -1438,20 +2482,37 @@ void goIdle() {
     if (gPortal.active()) {
         gPortal.end();
         setCpuFrequencyMhz(kCpuMhz);
-        QLOG("W wifi: stopped (idle)\n");
+        QLOG("W wifi: stopped\n");
     }
-    if (tgc::board::externalPower()) {
-        tgc::board::setDisplayOn(false);
-        gScreenOff = true;
-        gDimmed = false;
-        gLastPowerCheck = millis();
-        QLOG("P screen off (usb)\n");
-        return;
+    if (gHome.state() != tgc::HomeWifi::State::Off) QLOG("N home wifi: stopped\n");
+    netRadioOff();  // safe in any state
+}
+
+// What every deep sleep of the running app needs first: the state saved, the
+// radios off and the RTC timestamp the wake adds to the day clock. Used by the
+// idle sleep on battery, the sleep after unplugging a dark panel and the
+// explicit sleep. Not by the critical-battery re-sleep at boot, which keeps the
+// first sleep's timestamp, nor by halt(), where the SRS may not be loaded.
+void prepareDeepSleep() {
+    saveAndRadiosOff();
+    armSleep();
+}
+
+// Idle timeout reached: on battery, deep-sleep. On USB power only the panel
+// goes dark (the serial port stays up), after the same save and radio stop;
+// powerTick() sleeps once it is unplugged. Returns only in the USB case.
+void goIdle() {
+    if (!tgc::board::externalPower()) {
+        prepareDeepSleep();
+        QLOG("P deep sleep\n");
+        tgc::board::deepSleep();
     }
-    gSleptAtUs = tgc::board::rtcMicros();
-    gSleepMagic = kSleepMagic;
-    QLOG("P deep sleep\n");
-    tgc::board::deepSleep();
+    saveAndRadiosOff();
+    tgc::board::setDisplayOn(false);
+    gScreenOff = true;
+    gDimmed = false;
+    gLastPowerCheck = millis();
+    QLOG("P screen off (usb)\n");
 }
 
 // First input after the panel went dark or dim: restore it. A Wi-Fi screen whose
@@ -1468,6 +2529,8 @@ void wakeScreen() {
         }
         if (gScreen == Screen::Wifi && !gPortal.active()) {
             openWifi();
+        } else if (gScreen == Screen::GetDecks && gNetStep != NetStep::Error && !gHome.active()) {
+            openGetDecks(gNetFromBoot);  // the idle timeout turned the radio off: join again
         } else {
             drawScreen();
         }
@@ -1476,15 +2539,51 @@ void wakeScreen() {
     gDimmed = false;
 }
 
+// Full-screen notice: `title` in the 2x built-in font, `hint` below in the 1x
+// one. Built-in fonts only, so it works before a pack is open.
+void showNotice(const char* title, const char* hint, uint16_t titleColor) {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    const int mid = H / 2;
+    gRender.drawCentred(d, title, 4, mid - 44, W - 8, 40, 2, titleColor, kBlack,
+                        tgc::Renderer::kTextBuiltin);
+    gRender.drawCentred(d, hint, 4, mid + 2, W - 8, 40, 4, kWhite, kBlack,
+                        tgc::Renderer::kTextBuiltinSmall);
+    present();
+}
+
+// Explicit sleep: the power button, the "Sleep" settings row, or a critical
+// battery. Saves like goIdle(), but deep-sleeps even on USB power -- the user
+// asked for it (or the cell is about to die) -- after a short notice that says
+// how to wake up. The RTC timestamp keeps the day clock running through it.
+void sleepNow(bool critical) {
+    // Saved before the notice: the first click of a double click (power off)
+    // already gets the state onto the flash.
+    prepareDeepSleep();
+    QLOG("P deep sleep (%s)\n", critical ? "battery" : "user");
+    if (gScreenOff) tgc::board::setDisplayOn(true);
+    tgc::board::setBrightness(gBrightness);
+    if (critical)
+        showNotice(ui().batteryTitle, ui().batteryHint, kYellow);
+    else
+        showNotice(ui().sleepTitle, ui().sleepHint, kWhite);
+    delay(critical ? kBatteryNoticeMs : kSleepNoticeMs);
+    gSleptCritical = critical;
+    gSleepUiEs = gUi == &kUiEs;
+    tgc::board::deepSleep();
+}
+
 // Called once per loop() with the current time: dims, then idles.
 void powerTick(uint32_t now) {
     if (gScreenOff) {
-        // Unplugged while dark: nothing keeps it awake any more.
+        // Unplugged while dark: nothing keeps it awake any more. The day carry
+        // kept running in RAM since goIdle() saved (a night on the charger is
+        // hours of it, maybe the 04:00 rollover), so save again first.
         if (now - gLastPowerCheck >= kPowerCheckMs) {
             gLastPowerCheck = now;
             if (!tgc::board::externalPower()) {
-                gSleptAtUs = tgc::board::rtcMicros();
-                gSleepMagic = kSleepMagic;
+                prepareDeepSleep();
+                QLOG("P deep sleep (unplugged)\n");
                 tgc::board::deepSleep();
             }
         }
@@ -1494,6 +2593,12 @@ void powerTick(uint32_t now) {
     if (gPortal.active()) {
         const uint32_t http = now - gPortal.lastActivityMs();
         if (http < idle) idle = http;
+    }
+    // A download, catalog read or join counts as activity, and so does the end
+    // of the date screen's network-time attempt (a new status line to read).
+    if (gHome.active() || gDateSync != DateSync::None) {
+        const uint32_t net = now - gNetActivityAt;
+        if (net < idle) idle = net;
     }
     if (!gDimmed && idle >= kDimAfterMs) {
         uint8_t dim = gBrightness / 4;
@@ -1512,7 +2617,60 @@ void halt() {
         tgc::board::update();
         if (millis() - start >= kSleepAfterMs && !tgc::board::externalPower())
             tgc::board::deepSleep();
+        if (tgc::board::powerButtonClicked()) tgc::board::deepSleep();  // no click reset now
         delay(50);
+    }
+}
+
+// True when the LittleFS partition holds a LittleFS (the "littlefs" magic of the
+// superblock, at byte 8 of either block of the root metadata pair). An erased
+// partition (a browser flasher's "erase device", a fresh merged image) or one
+// left by another firmware does not. Unknown layout: true, so it is never
+// formatted blindly.
+bool partitionHasLittleFs() {
+    const esp_partition_t* p = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
+    if (!p) return true;
+    char magic[8];
+    for (uint32_t block = 0; block < 2; ++block)
+        if (esp_partition_read(p, block * 4096u + 8u, magic, sizeof magic) == ESP_OK &&
+            std::memcmp(magic, "littlefs", sizeof magic) == 0)
+            return true;
+    return false;
+}
+
+// Mounts LittleFS. A partition with no LittleFS on it is a fresh device: it is
+// formatted, and the empty /packs then leads into the Wi-Fi upload screen. A
+// LittleFS that will not mount is damage instead: false, and the caller asks.
+bool mountFilesystem() {
+    if (LittleFS.begin(false)) return true;
+    if (partitionHasLittleFs()) return false;
+    Serial.println("fs: no LittleFS on the data partition, formatting (first start)");
+    showNotice(ui().fsPreparing, ui().fsPreparingHint, kWhite);
+    return LittleFS.format() && LittleFS.begin(false);
+}
+
+// A damaged filesystem: nothing on it can be read, but it is only erased on a
+// long press of the front button (decks and progress are lost), then the device
+// restarts into the fresh-device path. The press that woke the chip must be
+// released first, so it cannot become that long press.
+[[noreturn]] void askFormat() {
+    showError(ui().errNoFilesystem, ui().errNoFilesystemHint);
+    bool released = !tgc::board::isHeld(tgc::board::Button::Select);
+    const uint32_t start = millis();
+    for (;;) {
+        tgc::board::update();
+        if (!tgc::board::isHeld(tgc::board::Button::Select)) released = true;
+        if (released && tgc::board::wasHeld(tgc::board::Button::Select)) {
+            Serial.println("fs: erased on request");
+            showNotice(ui().fsPreparing, ui().fsPreparingHint, kWhite);
+            LittleFS.format();
+            ESP.restart();
+        }
+        if (millis() - start >= kSleepAfterMs && !tgc::board::externalPower())
+            tgc::board::deepSleep();
+        if (tgc::board::powerButtonClicked()) tgc::board::deepSleep();
+        delay(20);
     }
 }
 
@@ -1542,26 +2700,51 @@ void setup() {
     gBrightness = gPrefs.getUChar("bri", gBrightness);
     tgc::board::setBrightness(gBrightness);
     setUiForLang(nullptr);  // localise the pre-pack error screens to the choice too
-    tgc::board::setOrientation(gPrefs.getBool("land", false));
+    gOrientPref = loadOrientPref();
+    tgc::board::setRotation(bootRotation());
     W = tgc::board::width();
     H = tgc::board::height();
     createCanvas();
     gRng = tgc::XorShiftRng(tgc::board::randomSeed());
 
-    if (!LittleFS.begin(false)) {
-        showError(ui().errNoFilesystem, ui().errNoFilesystemHint);
-        halt();
+    // Woken after a critical-battery sleep: unless the cell recovered (with
+    // hysteresis) or USB is in, say so and sleep again before anything runs.
+    // The RTC timestamp of the first sleep is left alone, so the next real
+    // wake adds the whole span to the day clock.
+    if (tgc::board::wokeFromSleep() && gSleptCritical) {
+        int pct = -1;  // the best of a few readings: the gauge is noisy
+        for (int i = 0; i < 3; ++i) {
+            pct = std::max(pct, tgc::board::batteryPercent());
+            delay(20);
+        }
+        const bool external = tgc::board::externalPower() || tgc::board::isCharging();
+        Serial.printf("power: critical wake, battery %d%%%s\n", pct, external ? " (usb)" : "");
+        if (!tgc::BatteryGuard::canResume(pct, external)) {
+            gUi = gSleepUiEs ? &kUiEs : &kUiEn;
+            showNotice(ui().batteryTitle, ui().batteryHint, kYellow);
+            delay(kBatteryNoticeMs);
+            tgc::board::deepSleep();
+        }
     }
+    gSleptCritical = false;
+
+    if (!mountFilesystem()) askFormat();
+    // A power cut in the middle of a download or an upload leaves its temp
+    // behind (up to 5 MB), which would count against every later free-space
+    // check. Nothing can be in flight at boot.
+    for (const char* tmp : {tgc::kFetchTmp, tgc::WifiPortal::kUploadTmp})
+        if (LittleFS.remove(tmp)) Serial.printf("fs: removed stale %s\n", tmp);
     listPacks(gPacks);
 
     // No packs yet: do not halt. Start the Wi-Fi portal so a pack can be
     // uploaded from a phone (or downloaded from a URL); loop() moves on to the
     // quiz as soon as one arrives. This is the practical answer to a fresh (or
-    // launcher-formatted) filesystem. A missing filesystem stays fatal above,
-    // and an AP that will not start leaves nothing to do, so that keeps the old
-    // error screen.
+    // launcher-formatted) filesystem, including one mountFilesystem() has just
+    // formatted. An AP that will not start leaves nothing to do, so that keeps
+    // the old error screen.
     if (gPacks.empty()) {
         gSrsLoaded = gSrs.begin(gSrsIo);
+        gBootDay = gSrs.today();
         gSrs.beginSession();
         applySleepTime();
         setCpuFrequencyMhz(kCpuWifiMhz);
@@ -1586,6 +2769,7 @@ void setup() {
 
     const bool srsLoaded = gSrs.begin(gSrsIo);
     gSrsLoaded = srsLoaded;
+    gBootDay = gSrs.today();  // the persisted day, before any slept time is added
     gSrs.beginSession();
     applySleepTime();
     gExtraNew = 0;
@@ -1599,13 +2783,16 @@ void setup() {
                   (unsigned)gSrs.today(), today, (unsigned)gSrs.count(), (unsigned)due,
                   (unsigned)fresh, srsLoaded ? "" : " (new)", gPoweredOff ? 1 : 0);
 
-    if (gPoweredOff && gSrs.count() > 0) {
+    // A wake from a sleep taken while the question was open asks it again.
+    const bool datePending = tgc::board::wokeFromSleep() && gDatePending;
+    gDatePending = false;
+    if ((gPoweredOff || datePending) && gSrs.count() > 0 && !gWallClockSynced) {
         // Power cut: the elapsed days are unknown. Ask *before* deciding "done",
-        // because advancing the day can make reviews due.
-        gAfterDate = Screen::Quiz;
-        gDateSel = 0;
-        gScreen = Screen::Date;
-        drawScreen();
+        // because advancing the day can make reviews due. A real time applied
+        // earlier in this boot (applyWallClock) already answered it. Meanwhile
+        // the home Wi-Fi, if saved, may answer it with the network time.
+        dateSyncBegin();
+        openDate(Screen::Quiz);
         return;
     }
     if (!newQuestion()) {
@@ -1640,6 +2827,8 @@ void tapAction() {
         afterReveal();
         return;
     }
+    tgc::Card card;
+    if (!questionCard(&card)) return;  // also keeps gQ.count from being 0 below
     gSel = (gSel + 1) % gQ.count;
     ++gNavTaps;
     drawScreen();
@@ -1650,6 +2839,10 @@ void holdAction(uint32_t pressedAt) {
         afterReveal();
         return;
     }
+    // No card, no grade: a record must never be written for a card that is not
+    // the one on screen (see questionCard()).
+    tgc::Card card;
+    if (!questionCard(&card)) return;
     gRevealed = true;
 
     const bool correct = gSel == gQ.correct;
@@ -1668,8 +2861,6 @@ void holdAction(uint32_t pressedAt) {
     else
         grade = tgc::Grade::Good;
 
-    tgc::Card card;
-    gPack->card(gQ.cardIndex, &card);
     const float u01 = gRng.below(1000) / 1000.0f;
     gSrs.grade(card.codepoint, grade, gSrs.today(), static_cast<uint8_t>(gQ.mode), u01);
     gSrs.addReviewMs(rt_ms);
@@ -1705,6 +2896,13 @@ void loop() {
         a = b = 0;
         if (!downA && !downB) gSwallowInput = false;
     }
+    // The power button (StickS3 M5PM1, click reset disabled) means "sleep now";
+    // on a dark panel (idle on USB) it only wakes the panel, like the others.
+    if (tgc::board::powerButtonClicked()) {
+        gLastInputAt = t;
+        if (!gScreenOff) sleepNow(false);
+        wakeScreen();
+    }
     if (gScreen == Screen::Menu) {
         if (a == 1) {
             gMenuSel = (gMenuSel + 1) % kSettingRows;
@@ -1715,10 +2913,13 @@ void loop() {
         if (b) closeMenu();  // side button backs out to the previous screen
     } else if (gScreen == Screen::Decks) {
         if (a == 1) {
-            if (!gPacks.empty()) gDeckSel = (gDeckSel + 1) % static_cast<int>(gPacks.size());
+            gDeckSel = (gDeckSel + 1) % (static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
             drawScreen();
         } else if (a == 2) {
-            selectPack();
+            if (gDeckSel == static_cast<int>(gPacks.size()))
+                openGetDecks(false);  // the "+ Get decks" row
+            else
+                selectPack();
         }
         if (b) {  // side button returns to the settings home
             gScreen = Screen::Menu;
@@ -1736,13 +2937,22 @@ void loop() {
             drawScreen();
         }
     } else if (gScreen == Screen::Date) {
-        if (a == 1) {
-            gDateSel = (gDateSel + 1) % kDateRows;
+        // Tap: one more day. Hold: confirm. Side hold: one day back, never below
+        // the current day (undoes an overshoot). Side tap: cancel. Confirming or
+        // cancelling also stops the network-time attempt (see leaveDate()).
+        if (dateSyncPoll()) {
+            // The network time answered the boot-time question: on the quiz now.
+        } else if (a == 1) {
+            if (dateTarget() < 0xFFFF) ++gDateSteps;
             drawScreen();
         } else if (a == 2) {
             applyDate();
-        }
-        if (b) {  // cancel: back to the menu, or straight into the quiz
+        } else if (b == 2) {
+            if (gDateSteps > 0) {
+                --gDateSteps;
+                drawScreen();
+            }
+        } else if (b == 1) {  // cancel: back to the menu, or straight into the quiz
             if (gAfterDate == Screen::Menu) {
                 gScreen = Screen::Menu;
                 drawScreen();
@@ -1780,8 +2990,9 @@ void loop() {
         if (b == 2) {
             openMenu();
         } else if (a || b == 1) {
-            // Nothing due and the daily new cap is spent: study kMoreNew more.
-            gExtraNew = static_cast<uint16_t>(gExtraNew + 10);
+            // Nothing due and the daily new cap is spent: study 10 more today.
+            gExtraNew = static_cast<uint16_t>(extraNewToday() + 10);
+            gExtraNewDay = gSrs.today();
             gQueue.rebuild(*gPack, gSrs, gRng, gExtraNew);
             if (newQuestion()) {
                 gScreen = Screen::Quiz;
@@ -1791,12 +3002,21 @@ void loop() {
             }
         }
     } else if (gScreen == Screen::Wifi) {
-        gPortal.poll();
+        gPortal.poll();  // the page's "Get decks now" may leave this screen (wifiToGetDecks)
         if (gPortal.consumeDirty()) drawScreen();
         // On the boot-time upload screen, continue booting as soon as a pack has
         // been uploaded; otherwise the side button leaves for the settings home
         // (closeWifi itself ignores the button in the boot-time state).
-        if (!wifiUploadReadyToQuiz() && b) closeWifi();
+        if (gScreen == Screen::Wifi && !wifiUploadReadyToQuiz()) {
+            if (b) {
+                closeWifi();
+            } else if (a == 2 && gWifiBootUpload && tgc::HomeWifi::hasCredentials()) {
+                // Boot-time screen with a saved home Wi-Fi: fetch a deck instead.
+                wifiToGetDecks(nullptr);
+            }
+        }
+    } else if (gScreen == Screen::GetDecks) {
+        getDecksLoop(a, b);
     } else {
         if (a == 1) tapAction();
         else if (a == 2) holdAction(keyA.downAt);
@@ -1811,6 +3031,10 @@ void loop() {
         gBatteryCheckAt = t;
         if (tgc::board::batteryPercent() != gShownBattery) drawScreen();
     }
+    orientTick(t, downA || downB);
+    // Save and sleep before a nearly flat cell browns out and takes the RTC
+    // timer (the SRS day clock) with it.
+    if (batteryCritical(t)) sleepNow(true);
     powerTick(t);
     delay(10);
 }

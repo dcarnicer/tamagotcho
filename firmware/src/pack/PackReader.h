@@ -1,12 +1,14 @@
 #pragma once
-// Reader for Tangocho packs (*.tgc), format v1. See docs/pack-format.md.
+// Reader for Tangocho packs (*.tgc), format v1 and v2. See docs/pack-format.md.
 // Pure C++, no Arduino. Caches header, card table, glyph table and the string
 // pool in memory (obtained through a pluggable allocator, PSRAM on device);
-// bitmaps and distractor lists are read on demand through a PackSource.
+// bitmaps and distractor lists are read on demand through a PackSource, and
+// v2's compressed bitmaps are decoded on the way (pack/Rle.h).
 #include <cstddef>
 #include <cstdint>
 
 #include "pack/PackSource.h"
+#include "pack/Rle.h"  // glyph and mask encoding constants, decoders
 
 namespace tgc {
 
@@ -29,6 +31,8 @@ struct Allocator {
 // malloc/free.
 Allocator defaultAllocator();
 
+constexpr uint16_t kPackVersionMin = 1;  // oldest readable pack version
+constexpr uint16_t kPackVersionMax = 2;  // newest readable pack version
 constexpr uint32_t kPackHeaderSize = 64;
 constexpr uint32_t kCardSize = 32;
 constexpr uint32_t kGlyphEntrySize = 16;
@@ -71,11 +75,13 @@ struct Glyph {
     uint32_t dataOff;
 };
 
-// One stroke's mask: position/size inside the em square plus where its 1bpp
-// bitmap lives in the file (see docs/pack-format.md).
+// One stroke's mask: position/size inside the em square plus where its data
+// lives in the file and how it is stored (see docs/pack-format.md).
 struct Stroke {
     int8_t xOff, yOff;
     uint8_t w, h;
+    uint8_t encoding;  // kMaskEnc*; always raw in a v1 pack
+    uint16_t size;     // stored bytes at dataOff
     uint32_t dataOff;
 };
 
@@ -116,9 +122,10 @@ public:
     // Index of a Glyph returned by findGlyph/glyphAt.
     uint32_t glyphIndex(const Glyph* g) const { return static_cast<uint32_t>(g - glyphs_); }
 
-    // Bytes of raw 4bpp data for this glyph: ceil(w/2)*h.
+    // Bytes of the decoded (raw 4bpp) bitmap of this glyph: ceil(w/2)*h.
     static size_t bitmapSize(const Glyph& g) { return static_cast<size_t>((g.width + 1) / 2) * g.height; }
-    // Reads the bitmap into buf (cap >= bitmapSize). Only encoding 0 is supported.
+    // Reads the bitmap into buf (cap >= bitmapSize) as raw 4bpp, decoding RLE
+    // glyphs (encoding 1) on the way. False on a read error or a bad stream.
     bool readGlyphBitmap(const Glyph& g, uint8_t* buf, size_t cap) const;
 
     // --- stroke order (optional section; all false/0 when absent) ------------
@@ -130,14 +137,19 @@ public:
     bool strokeInfo(uint32_t cardIdx, uint16_t* count, uint16_t* px) const;
     // The i-th stroke of a card. False when out of range / absent.
     bool strokeAt(uint32_t cardIdx, uint16_t i, Stroke* out) const;
-    // Bytes of 1bpp mask data for a stroke: ceil(w/8)*h.
+    // Bytes of the decoded (raw 1bpp) mask of a stroke: ceil(w/8)*h.
     static size_t strokeBitmapSize(const Stroke& s) { return static_cast<size_t>((s.w + 7) / 8) * s.h; }
-    // Reads the 1bpp mask into buf (cap >= strokeBitmapSize), like readGlyphBitmap.
+    // Reads the mask into buf (cap >= strokeBitmapSize) as raw 1bpp, decoding
+    // encodings 1 and 2 on the way, like readGlyphBitmap.
     bool readStrokeBitmap(const Stroke& s, uint8_t* buf, size_t cap) const;
 
 private:
-    // Offset of the first stroke entry of a card; false when the card has none.
-    bool strokeBlock(uint32_t cardIdx, uint32_t* entriesOff, uint16_t* count, uint16_t* px) const;
+    // Card's stroke block: offset of its first entry, count, px and (v2) the
+    // offset of its first mask. False when the card has none.
+    bool strokeBlock(uint32_t cardIdx, uint32_t* entriesOff, uint16_t* count, uint16_t* px,
+                     uint32_t* firstMask = nullptr) const;
+    // Validates one card's stroke block at open() time.
+    PackError checkStrokeBlock(uint32_t blk, uint32_t total) const;
 
     PackSource* src_ = nullptr;
     Allocator alloc_{nullptr, nullptr};

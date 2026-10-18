@@ -86,7 +86,7 @@ def draw_glcd(img, s: str, x: int, y_top: int, scale: int, ink) -> int:
         if idx >= 0:
             cols = glcd.glyph_columns(idx)
             for c in range(5):
-                for r in range(7):
+                for r in range(glcd.GLYPH_H):  # bit 7 is the descender row
                     if (cols[c] >> r) & 1:
                         fill_rect(img, pen + c * scale, y_top + r * scale,
                                   pen + (c + 1) * scale, y_top + (r + 1) * scale, ink)

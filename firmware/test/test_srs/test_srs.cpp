@@ -14,6 +14,7 @@
 #include "srs/Queue.h"
 #include "srs/Srs.h"
 #include "srs/SrsStore.h"
+#include "srs/WallClock.h"
 
 using namespace tgc;
 
@@ -977,6 +978,400 @@ void test_serialize_old_file_has_defaults() {
     TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(b.count()));
 }
 
+// ------------------------------------------------ wall clock (section 5.1)
+
+namespace {
+
+constexpr int64_t kMinMs = 60000;
+constexpr int64_t kHourMs = 60 * kMinMs;
+
+// UTC milliseconds of local time y-m-d hh:mm in a zone `tz` minutes east of UTC.
+int64_t utcOf(int y, unsigned m, unsigned d, int hh, int mm, int tz) {
+    const int64_t local = static_cast<int64_t>(daysFromCivil(y, m, d)) * kSrsMsPerDay +
+                          hh * kHourMs + mm * kMinMs;
+    return local - tz * kMinMs;
+}
+
+}  // namespace
+
+void test_civil_dates() {
+    TEST_ASSERT_EQUAL_INT32(0, daysFromCivil(1970, 1, 1));
+    TEST_ASSERT_EQUAL_INT32(-1, daysFromCivil(1969, 12, 31));
+    TEST_ASSERT_EQUAL_INT32(11017, daysFromCivil(2000, 3, 1));
+    TEST_ASSERT_EQUAL_INT32(20743, daysFromCivil(2026, 10, 17));
+    TEST_ASSERT_EQUAL_INT32(20743, kSrsLegacyEpochDay);
+    TEST_ASSERT_EQUAL_INT32(21243, daysFromCivil(2028, 2, 29));  // leap day
+
+    // civilFromDays inverts daysFromCivil over a few years, leap days included.
+    for (int32_t z = daysFromCivil(2026, 1, 1); z < daysFromCivil(2030, 1, 1); ++z) {
+        int y = 0;
+        unsigned m = 0, d = 0;
+        civilFromDays(z, &y, &m, &d);
+        TEST_ASSERT_EQUAL_INT32(z, daysFromCivil(y, m, d));
+        TEST_ASSERT_TRUE(m >= 1 && m <= 12 && d >= 1 && d <= 31);
+    }
+    int y = 0;
+    unsigned m = 0, d = 0;
+    civilFromDays(21243, &y, &m, &d);
+    TEST_ASSERT_EQUAL_INT(2028, y);
+    TEST_ASSERT_EQUAL_UINT(2, m);
+    TEST_ASSERT_EQUAL_UINT(29, d);
+
+    // Weekdays: 0 = Sunday. 1970-01-01 was a Thursday, 2026-10-17 a Saturday.
+    TEST_ASSERT_EQUAL_INT(4, weekdayFromDays(0));
+    TEST_ASSERT_EQUAL_INT(3, weekdayFromDays(-1));
+    TEST_ASSERT_EQUAL_INT(6, weekdayFromDays(20743));
+    TEST_ASSERT_EQUAL_INT(0, weekdayFromDays(20744));
+    TEST_ASSERT_EQUAL_INT(2, weekdayFromDays(21243));
+}
+
+void test_wall_clock_plausibility() {
+    TEST_ASSERT_TRUE(wallClockPlausible(kWallClockMinUtcMs, 0));
+    TEST_ASSERT_FALSE(wallClockPlausible(kWallClockMinUtcMs - 1, 0));  // before 2026
+    TEST_ASSERT_FALSE(wallClockPlausible(0, 0));                        // the epoch
+    TEST_ASSERT_FALSE(wallClockPlausible(-5, 0));
+    TEST_ASSERT_TRUE(wallClockPlausible(kWallClockMaxUtcMs - 1, 0));
+    TEST_ASSERT_FALSE(wallClockPlausible(kWallClockMaxUtcMs, 0));       // 2100
+    TEST_ASSERT_TRUE(wallClockPlausible(utcOf(2026, 10, 18, 12, 0, 0), -12 * 60));
+    TEST_ASSERT_TRUE(wallClockPlausible(utcOf(2026, 10, 18, 12, 0, 0), 14 * 60));
+    TEST_ASSERT_FALSE(wallClockPlausible(utcOf(2026, 10, 18, 12, 0, 0), -12 * 60 - 1));
+    TEST_ASSERT_FALSE(wallClockPlausible(utcOf(2026, 10, 18, 12, 0, 0), 14 * 60 + 1));
+
+    // A rejected sync leaves the store exactly as it was.
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(9);
+    s.addElapsedMs(1234);
+    const ClockSyncResult r = s.syncWallClock(kWallClockMinUtcMs - 1, 60);
+    TEST_ASSERT_TRUE(r.kind == ClockSync::Rejected);
+    TEST_ASSERT_EQUAL_UINT16(9, s.today());
+    TEST_ASSERT_EQUAL_UINT32(1234, s.msCarry());
+    TEST_ASSERT_EQUAL_UINT16(0, s.epochAnchor());
+    TEST_ASSERT_TRUE(s.syncWallClock(utcOf(2026, 10, 18, 12, 0, 0), 15 * 60).kind ==
+                     ClockSync::Rejected);
+    TEST_ASSERT_FALSE(s.hasWallClock());
+}
+
+// The study day starts at 04:00 local, whatever the zone.
+void test_study_day_rollover_hour() {
+    const int zones[] = {0, 120, -300, 330, 14 * 60, -12 * 60};
+    for (int tz : zones) {
+        int32_t day = 0;
+        uint32_t into = 0;
+        // 03:59 local on the 20th still belongs to the 19th, 23 h 59 min in.
+        TEST_ASSERT_TRUE(studyDayOf(utcOf(2026, 10, 20, 3, 59, tz), tz, &day, &into));
+        TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 10, 19), day);
+        TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(23 * kHourMs + 59 * kMinMs), into);
+        // 04:00 sharp starts the 20th; 04:01 is one minute in.
+        TEST_ASSERT_TRUE(studyDayOf(utcOf(2026, 10, 20, 4, 0, tz), tz, &day, &into));
+        TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 10, 20), day);
+        TEST_ASSERT_EQUAL_UINT32(0, into);
+        TEST_ASSERT_TRUE(studyDayOf(utcOf(2026, 10, 20, 4, 1, tz), tz, &day, &into));
+        TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 10, 20), day);
+        TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(kMinMs), into);
+        // Local midnight is still the previous study day.
+        TEST_ASSERT_TRUE(studyDayOf(utcOf(2026, 10, 20, 0, 0, tz), tz, &day, &into));
+        TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 10, 19), day);
+    }
+    // The same UTC instant is a different study day on either side of the world.
+    const int64_t t = utcOf(2026, 10, 20, 2, 0, 0);  // 02:00 UTC
+    int32_t east = 0, west = 0;
+    TEST_ASSERT_TRUE(studyDayOf(t, 9 * 60, &east, nullptr));   // 11:00 in Tokyo
+    TEST_ASSERT_TRUE(studyDayOf(t, -5 * 60, &west, nullptr));  // 21:00 the day before
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 10, 20), east);
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 10, 19), west);
+    // Implausible input leaves the outputs untouched.
+    int32_t day = 77;
+    uint32_t into = 88;
+    TEST_ASSERT_FALSE(studyDayOf(1000, 0, &day, &into));
+    TEST_ASSERT_EQUAL_INT32(77, day);
+    TEST_ASSERT_EQUAL_UINT32(88, into);
+}
+
+// No anchor: the legacy base is shown and the first sync anchors the current
+// index as today without moving it.
+void test_sync_anchor_absent_then_present() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(5);
+    TEST_ASSERT_FALSE(s.hasWallClock());
+    TEST_ASSERT_EQUAL_INT32(kSrsLegacyEpochDay + 5, s.epochDayOf(5));
+    TEST_ASSERT_EQUAL_INT32(kSrsLegacyEpochDay, s.epochDayOf(0));
+
+    const int tz = 60;  // CET
+    const ClockSyncResult r = s.syncWallClock(utcOf(2026, 11, 2, 10, 0, tz), tz);
+    TEST_ASSERT_TRUE(r.kind == ClockSync::Anchored);
+    TEST_ASSERT_EQUAL_UINT16(0, r.daysAdvanced);
+    TEST_ASSERT_EQUAL_UINT16(5, s.today());  // the index is not moved
+    TEST_ASSERT_TRUE(s.hasWallClock());
+    TEST_ASSERT_EQUAL_UINT16(daysFromCivil(2026, 11, 2) - 5, s.epochAnchor());
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 11, 2), s.epochDayOf(s.today()));
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 10, 31), s.epochDayOf(3));
+    TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(6 * kHourMs), s.msCarry());  // since 04:00
+}
+
+// Anchored: a real day ahead advances, the same day only aligns the carry,
+// a real day behind re-bases the display and keeps the index.
+void test_sync_ahead_same_behind() {
+    const int tz = -300;  // EST
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(10);
+    TEST_ASSERT_TRUE(s.syncWallClock(utcOf(2026, 11, 1, 20, 0, tz), tz).kind ==
+                     ClockSync::Anchored);
+    const uint16_t anchor = s.epochAnchor();
+
+    // Same study day, later: only the carry moves. 03:59 the next morning is
+    // still the same study day.
+    ClockSyncResult r = s.syncWallClock(utcOf(2026, 11, 2, 3, 59, tz), tz);
+    TEST_ASSERT_TRUE(r.kind == ClockSync::Same);
+    TEST_ASSERT_EQUAL_UINT16(10, s.today());
+    TEST_ASSERT_EQUAL_UINT16(anchor, s.epochAnchor());
+    TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(23 * kHourMs + 59 * kMinMs), s.msCarry());
+
+    // Two minutes later it is 04:01: the next study day.
+    r = s.syncWallClock(utcOf(2026, 11, 2, 4, 1, tz), tz);
+    TEST_ASSERT_TRUE(r.kind == ClockSync::Advanced);
+    TEST_ASSERT_EQUAL_UINT16(1, r.daysAdvanced);
+    TEST_ASSERT_EQUAL_UINT16(11, s.today());
+    TEST_ASSERT_EQUAL_UINT16(anchor, s.epochAnchor());
+    TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(kMinMs), s.msCarry());
+
+    // Idempotent: the same post again changes nothing.
+    r = s.syncWallClock(utcOf(2026, 11, 2, 4, 1, tz), tz);
+    TEST_ASSERT_TRUE(r.kind == ClockSync::Same);
+    TEST_ASSERT_EQUAL_UINT16(11, s.today());
+    TEST_ASSERT_EQUAL_UINT16(anchor, s.epochAnchor());
+    TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(kMinMs), s.msCarry());
+
+    // A week away.
+    r = s.syncWallClock(utcOf(2026, 11, 9, 18, 30, tz), tz);
+    TEST_ASSERT_TRUE(r.kind == ClockSync::Advanced);
+    TEST_ASSERT_EQUAL_UINT16(7, r.daysAdvanced);
+    TEST_ASSERT_EQUAL_UINT16(18, s.today());
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 11, 9), s.epochDayOf(s.today()));
+
+    // The user overshot by two days on the date screen: the index is ahead of
+    // the real date. The sync keeps the index and re-bases the display.
+    s.advanceDaysManual(2);
+    TEST_ASSERT_EQUAL_UINT16(20, s.today());
+    r = s.syncWallClock(utcOf(2026, 11, 9, 19, 0, tz), tz);
+    TEST_ASSERT_TRUE(r.kind == ClockSync::Reanchored);
+    TEST_ASSERT_EQUAL_UINT16(0, r.daysAdvanced);
+    TEST_ASSERT_EQUAL_UINT16(20, s.today());  // never rewound
+    TEST_ASSERT_EQUAL_UINT16(anchor - 2, s.epochAnchor());
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 11, 9), s.epochDayOf(s.today()));
+    TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(15 * kHourMs), s.msCarry());
+
+    // From there index and real date move together again.
+    r = s.syncWallClock(utcOf(2026, 11, 10, 8, 0, tz), tz);
+    TEST_ASSERT_TRUE(r.kind == ClockSync::Advanced);
+    TEST_ASSERT_EQUAL_UINT16(21, s.today());
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 11, 10), s.epochDayOf(s.today()));
+}
+
+// After a sync the uptime and sleep rules roll the day over at 04:00 local.
+void test_sync_aligns_rollover_to_four() {
+    const int zones[] = {120, -420};
+    for (int tz : zones) {
+        SrsStore s;
+        MemoryIo io;
+        s.begin(io);
+        s.setToday(3);
+        s.addElapsedMs(17 * kHourMs);  // an arbitrary carry from before the sync
+        TEST_ASSERT_TRUE(s.syncWallClock(utcOf(2026, 12, 1, 22, 0, tz), tz).kind ==
+                         ClockSync::Anchored);
+        TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(18 * kHourMs), s.msCarry());
+
+        // Awake until 03:59:59.999 local: still the same day.
+        s.tick(0);
+        s.tick(static_cast<uint32_t>(6 * kHourMs - 1));
+        TEST_ASSERT_EQUAL_UINT16(3, s.today());
+        // 04:00 local: the next day.
+        s.tick(static_cast<uint32_t>(6 * kHourMs));
+        TEST_ASSERT_EQUAL_UINT16(4, s.today());
+        TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 12, 2), s.epochDayOf(s.today()));
+
+        // Deep sleep from 10:00 to 03:00 the next morning: not yet...
+        s.addElapsedMs(6 * kHourMs);   // 10:00
+        s.addElapsedMs(17 * kHourMs);  // 03:00
+        TEST_ASSERT_EQUAL_UINT16(4, s.today());
+        s.addElapsedMs(kHourMs);  // ...04:00
+        TEST_ASSERT_EQUAL_UINT16(5, s.today());
+        TEST_ASSERT_EQUAL_UINT32(0, s.msCarry());
+    }
+}
+
+// The day index never decreases, whatever the sync sequence (an earlier but
+// plausible phone clock included).
+void test_sync_monotonic() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(40);
+    const int64_t times[] = {
+        utcOf(2026, 12, 10, 12, 0, 0), utcOf(2026, 12, 12, 9, 0, 0), utcOf(2026, 12, 1, 9, 0, 0),
+        utcOf(2026, 12, 12, 3, 0, 0),  utcOf(2027, 1, 5, 23, 0, 0),  utcOf(2026, 1, 1, 0, 0, 0),
+        utcOf(2027, 1, 6, 5, 0, 0),
+    };
+    const int zones[] = {0, 540, -600, 60, 0, 0, 330};
+    uint16_t prev = s.today();
+    for (size_t i = 0; i < sizeof times / sizeof times[0]; ++i) {
+        const ClockSyncResult r = s.syncWallClock(times[i], zones[i]);
+        TEST_ASSERT_TRUE(r.kind != ClockSync::Rejected);
+        TEST_ASSERT_TRUE(s.today() >= prev);
+        TEST_ASSERT_EQUAL_UINT16(s.today() - prev, r.daysAdvanced);
+        // Whatever happened to the index, the displayed date is the real one.
+        int32_t real = 0;
+        TEST_ASSERT_TRUE(studyDayOf(times[i], zones[i], &real, nullptr));
+        TEST_ASSERT_EQUAL_INT32(real, s.epochDayOf(s.today()));
+        prev = s.today();
+    }
+}
+
+// The new-card budget and the streak behave across a sync-driven day change.
+void test_sync_counters() {
+    const int tz = 0;
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(0);
+    TEST_ASSERT_TRUE(s.syncWallClock(utcOf(2026, 10, 20, 9, 0, tz), tz).kind ==
+                     ClockSync::Anchored);
+    s.grade(0x65E5, Grade::Good, s.today(), 0, 0.5f);  // a new card, first study day
+    TEST_ASSERT_EQUAL_UINT16(1, s.newIntroducedCount());
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
+
+    // Same day: nothing resets.
+    TEST_ASSERT_TRUE(s.syncWallClock(utcOf(2026, 10, 20, 21, 0, tz), tz).kind == ClockSync::Same);
+    TEST_ASSERT_EQUAL_UINT16(0, s.newIntroducedDay());
+    TEST_ASSERT_EQUAL_UINT16(1, s.newIntroducedCount());
+
+    // Next day: a fresh new-card budget, and the next answer extends the streak.
+    TEST_ASSERT_TRUE(s.syncWallClock(utcOf(2026, 10, 21, 7, 0, tz), tz).kind ==
+                     ClockSync::Advanced);
+    TEST_ASSERT_EQUAL_UINT16(1, s.today());
+    TEST_ASSERT_EQUAL_UINT16(1, s.newIntroducedDay());
+    TEST_ASSERT_EQUAL_UINT16(0, s.newIntroducedCount());
+    s.grade(0x6708, Grade::Good, s.today(), 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(1, s.newIntroducedCount());
+    TEST_ASSERT_EQUAL_UINT16(2, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(2, s.streakBest());
+
+    // Two days later: the gap restarts the streak, the best is kept.
+    TEST_ASSERT_TRUE(s.syncWallClock(utcOf(2026, 10, 23, 7, 0, tz), tz).kind ==
+                     ClockSync::Advanced);
+    TEST_ASSERT_EQUAL_UINT16(3, s.today());
+    TEST_ASSERT_EQUAL_UINT16(0, s.newIntroducedCount());
+    s.grade(0x65E5, Grade::Good, s.today(), 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(2, s.streakBest());
+    TEST_ASSERT_EQUAL_UINT16(0, s.newIntroducedCount());  // a review, not a new card
+
+    // Re-anchoring (the index ran ahead) touches neither counter.
+    s.advanceDaysManual(1);
+    s.grade(0x706B, Grade::Good, s.today(), 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(2, s.streakCurrent());
+    TEST_ASSERT_TRUE(s.syncWallClock(utcOf(2026, 10, 23, 20, 0, tz), tz).kind ==
+                     ClockSync::Reanchored);
+    TEST_ASSERT_EQUAL_UINT16(4, s.today());
+    TEST_ASSERT_EQUAL_UINT16(2, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(4, s.newIntroducedDay());
+    TEST_ASSERT_EQUAL_UINT16(1, s.newIntroducedCount());
+}
+
+// The date screen's gap: n > 0 restarts the carry (late, never early).
+void test_advance_days_manual() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(7);
+    s.addElapsedMs(20 * kHourMs);
+    s.advanceDaysManual(0);  // "same day": nothing changes
+    TEST_ASSERT_EQUAL_UINT16(7, s.today());
+    TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(20 * kHourMs), s.msCarry());
+
+    s.setNewIntroducedDay(7);
+    s.setNewIntroducedCount(5);
+    s.advanceDaysManual(2);
+    TEST_ASSERT_EQUAL_UINT16(9, s.today());
+    TEST_ASSERT_EQUAL_UINT32(0, s.msCarry());  // the next rollover is 24 h away
+    TEST_ASSERT_EQUAL_UINT16(9, s.newIntroducedDay());
+    TEST_ASSERT_EQUAL_UINT16(0, s.newIntroducedCount());
+    s.addElapsedMs(kSrsMsPerDay - 1);
+    TEST_ASSERT_EQUAL_UINT16(9, s.today());
+
+    s.setToday(0xFFFE);
+    s.advanceDaysManual(5);  // saturates like advanceDays
+    TEST_ASSERT_EQUAL_UINT16(0xFFFF, s.today());
+}
+
+// The anchor survives a save/load at byte 38; bytes 44..47 stay zero.
+void test_serialize_anchor_roundtrip() {
+    SrsStore a;
+    MemoryIo empty;
+    a.begin(empty);
+    a.setToday(12);
+    a.grade(0x65E5, Grade::Good, 12, 0, 0.5f);
+    TEST_ASSERT_TRUE(a.syncWallClock(utcOf(2026, 11, 20, 13, 30, 60), 60).kind ==
+                     ClockSync::Anchored);
+    const uint16_t anchor = a.epochAnchor();
+    TEST_ASSERT_EQUAL_UINT16(daysFromCivil(2026, 11, 20) - 12, anchor);
+
+    MemoryIo io;
+    TEST_ASSERT_TRUE(a.save(io));
+    TEST_ASSERT_EQUAL_UINT8(anchor & 0xFF, io.bytes[38]);  // LE
+    TEST_ASSERT_EQUAL_UINT8(anchor >> 8, io.bytes[39]);
+    for (size_t i = 44; i < 48; ++i) TEST_ASSERT_EQUAL_UINT8(0, io.bytes[i]);
+
+    SrsStore b;
+    TEST_ASSERT_TRUE(b.begin(io));
+    TEST_ASSERT_EQUAL_UINT16(anchor, b.epochAnchor());
+    TEST_ASSERT_TRUE(b.hasWallClock());
+    TEST_ASSERT_EQUAL_UINT16(12, b.today());
+    TEST_ASSERT_EQUAL_UINT32(a.msCarry(), b.msCarry());
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 11, 20), b.epochDayOf(b.today()));
+    TEST_ASSERT_EQUAL_UINT16(1, b.streakCurrent());  // the neighbours are intact
+
+    // A loaded anchor keeps working: the next day advances.
+    TEST_ASSERT_TRUE(b.syncWallClock(utcOf(2026, 11, 21, 9, 0, 60), 60).kind ==
+                     ClockSync::Advanced);
+    TEST_ASSERT_EQUAL_UINT16(13, b.today());
+}
+
+// A file written before the anchor existed (byte 38 zero) loads unchanged: no
+// anchor, the legacy date, and it serialises back to the very same bytes.
+void test_serialize_pre_anchor_file_unchanged() {
+    SrsStore a;
+    MemoryIo empty;
+    a.begin(empty);
+    a.setToday(30);
+    a.addElapsedMs(5 * kHourMs);
+    for (uint16_t day = 28; day <= 30; ++day) a.grade(0x65E5, Grade::Good, day, 0, 0.5f);
+    a.addReviewMs(4321);
+    MemoryIo io;
+    TEST_ASSERT_TRUE(a.save(io));
+    TEST_ASSERT_EQUAL_UINT8(0, io.bytes[38]);
+    TEST_ASSERT_EQUAL_UINT8(0, io.bytes[39]);
+    const std::vector<uint8_t> old = io.bytes;
+
+    SrsStore b;
+    TEST_ASSERT_TRUE(b.begin(io));
+    TEST_ASSERT_EQUAL_UINT16(0, b.epochAnchor());
+    TEST_ASSERT_FALSE(b.hasWallClock());
+    TEST_ASSERT_EQUAL_INT32(kSrsLegacyEpochDay + 30, b.epochDayOf(b.today()));
+    TEST_ASSERT_EQUAL_UINT16(30, b.today());
+    TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(5 * kHourMs), b.msCarry());
+    TEST_ASSERT_EQUAL_UINT16(3, b.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT32(4321, b.reviewMs());
+    std::vector<uint8_t> again;
+    TEST_ASSERT_TRUE(b.serialize(again));
+    TEST_ASSERT_TRUE(again == old);
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -1006,5 +1401,16 @@ int main() {
     RUN_TEST(test_serialize_new_header_roundtrip);
     RUN_TEST(test_serialize_old_file_has_defaults);
     RUN_TEST(test_elapsed_sleep_time);
+    RUN_TEST(test_civil_dates);
+    RUN_TEST(test_wall_clock_plausibility);
+    RUN_TEST(test_study_day_rollover_hour);
+    RUN_TEST(test_sync_anchor_absent_then_present);
+    RUN_TEST(test_sync_ahead_same_behind);
+    RUN_TEST(test_sync_aligns_rollover_to_four);
+    RUN_TEST(test_sync_monotonic);
+    RUN_TEST(test_sync_counters);
+    RUN_TEST(test_advance_days_manual);
+    RUN_TEST(test_serialize_anchor_roundtrip);
+    RUN_TEST(test_serialize_pre_anchor_file_unchanged);
     return UNITY_END();
 }

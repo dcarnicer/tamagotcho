@@ -15,6 +15,21 @@ MAX_MEANINGS = 3
 # mapped to N3 (lossy). See docs/data-sources.md.
 OLD_TO_NEW_JLPT = {4: 5, 3: 4, 2: 3, 1: 1}
 
+# The Jōyō kanji (2010 list, 2,136 characters) as KANJIDIC2 school grades:
+# 1-6 are the kyōiku kanji taught in elementary school (1,026) and 8 the rest of
+# the list, taught in secondary school (1,110). Grades 9 and 10 are jinmeiyō
+# (name) kanji, not Jōyō.
+JOYO_GRADES = frozenset({1, 2, 3, 4, 5, 6, 8})
+
+# Card orders for make_cards(). The order becomes each card's `level` hint, the
+# order in which the device introduces new cards (docs/srs.md, "New cards").
+#   jlpt:  N5 first .. N1, then kanji with no JLPT level; within a level by
+#          school grade, then newspaper frequency.
+#   grade: school order, grade 1 .. 6, then 8 (secondary school); within a grade
+#          by newspaper frequency, kanji with no frequency rank last (fewer
+#          strokes first). The Jōyō deck uses it.
+ORDERS = ("jlpt", "grade")
+
 
 @dataclass
 class Card:
@@ -137,8 +152,14 @@ def make_cards(
     jlpt_levels: set[int] | None = None,
     grades: set[int] | None = None,
     new_jlpt: dict[int, int] | None = None,
+    order: str = "jlpt",
 ) -> list[Card]:
-    """Select and convert kanji to cards, ordered easiest-first (level hint)."""
+    """Select and convert kanji to cards, ordered easiest-first (level hint).
+
+    `order` is one of ORDERS (see there); it decides each card's `level`.
+    """
+    if order not in ORDERS:
+        raise ValueError(f"unknown card order {order!r} (expected one of {', '.join(ORDERS)})")
     cards: list[Card] = []
     for k in raw:
         jlpt = new_jlpt.get(k.codepoint, 0) if new_jlpt is not None else OLD_TO_NEW_JLPT.get(k.jlpt_old, 0)
@@ -173,8 +194,12 @@ def make_cards(
                 fallback_en=fallback,
             )
         )
-    # easiest first: higher N number, then lower grade, then frequency, then codepoint
-    cards.sort(key=lambda c: (-c.jlpt, c.grade or 99, c.freq or 9999, c.codepoint))
+    if order == "grade":
+        # school order: lower grade, then frequency, then fewer strokes, then codepoint
+        cards.sort(key=lambda c: (c.grade or 99, c.freq or 9999, c.strokes or 99, c.codepoint))
+    else:
+        # easiest first: higher N number, then lower grade, then frequency, then codepoint
+        cards.sort(key=lambda c: (-c.jlpt, c.grade or 99, c.freq or 9999, c.codepoint))
     for i, c in enumerate(cards):
         c.level = min(i, 65535)
     return cards

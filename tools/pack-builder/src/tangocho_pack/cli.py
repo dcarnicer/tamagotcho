@@ -9,11 +9,12 @@ import sys
 from pathlib import Path
 
 from . import paths
+from .kanjidic import ORDERS
 
 
 def cmd_fetch(a) -> int:
     from .fetch import fetch_all
-    fetch_all(force=a.force)
+    fetch_all(force=a.force, klee_one=a.klee_one)
     return 0
 
 
@@ -21,6 +22,12 @@ def cmd_build(a) -> int:
     from .build import build_pack, default_deck_name
     from .kanjivg import KanjiVGError
     from .pack import read_pack
+
+    # A cache filled before Noto Sans JP became the default has only Klee One.
+    if not Path(a.font).is_file():
+        print(f"error: font {a.font} not found (run `tangocho-pack fetch`, or pass --font)",
+              file=sys.stderr)
+        return 2
 
     # The WaniKani path is opt-in: it needs the user's own token (flag or env)
     # instead of the cached KANJIDIC2 file. The token is never printed, logged
@@ -40,11 +47,16 @@ def cmd_build(a) -> int:
             return 1
         name = a.name or default_wanikani_name(levels)
     else:
-        from .kanjidic import load_new_jlpt, make_cards, parse_kanjidic
+        from .kanjidic import JOYO_GRADES, load_new_jlpt, make_cards, parse_kanjidic
 
         jlpt, grades = set(a.jlpt or []), set(a.grade or [])
+        if a.joyo and grades:
+            print("error: --joyo already selects grades 1-6 and 8; drop --grade", file=sys.stderr)
+            return 2
+        if a.joyo:
+            grades = set(JOYO_GRADES)
         if not jlpt and not grades:
-            print("error: give at least one --jlpt or --grade, or a --wanikani-token",
+            print("error: give at least one --jlpt, --grade or --joyo, or a --wanikani-token",
                   file=sys.stderr)
             return 2
         if not paths.KANJIDIC_GZ.exists():
@@ -55,11 +67,18 @@ def cmd_build(a) -> int:
             new = load_new_jlpt(paths.KANJI_JSON)
         else:
             print("warning: kanji.json missing, mapping old 4-level JLPT (lossy)", file=sys.stderr)
-        cards = make_cards(parse_kanjidic(paths.KANJIDIC_GZ), a.lang, jlpt, grades, new)
+        # The order becomes the new-card order on the device: school order for
+        # the Jōyō deck, N5-first for everything else unless --order says so.
+        order = a.order or ("grade" if a.joyo else "jlpt")
+        cards = make_cards(parse_kanjidic(paths.KANJIDIC_GZ), a.lang, jlpt, grades, new,
+                           order=order)
         if not cards:
             print("error: no cards selected", file=sys.stderr)
             return 1
-        name = a.name or default_deck_name(jlpt, grades)
+        name = a.name or default_deck_name(jlpt, grades, joyo=a.joyo)
+    if not name.isascii():
+        print(f"warning: deck name {name!r} is not ASCII; the device draws the deck name "
+              "in its built-in ASCII font, so it will not show correctly", file=sys.stderr)
     try:
         raw = build_pack(cards, a.font, a.lang, name, a.large_px, a.small_px, a.text_px, a.option_px,
                          strokes=a.strokes, strokes_px=a.strokes_px)
@@ -83,15 +102,19 @@ def cmd_build(a) -> int:
 
 def cmd_inspect(a) -> int:
     from .pack import CARD_SIZE, GLYPH_SIZE, read_pack
+    from .rle import raw1_size, raw4_size
     raw = Path(a.file).read_bytes()
     try:
-        p = read_pack(raw)
+        p = read_pack(raw)  # decodes and checks every glyph and stroke mask
     except ValueError as e:
         print(f"INVALID: {e}")
         return 1
     h = p.header
     sets = [sum(1 for g in p.glyphs if g.set == s) for s in (0, 1, 2, 3)]
-    data_bytes = sum(((g.width + 1) // 2) * g.height for g in p.glyphs)
+
+    def ratio(stored: int, plain: int) -> str:
+        return f"{stored / plain * 100:5.1f} %" if plain else "    - "
+
     print(f"file        {a.file}")
     print(f"sha256      {hashlib.sha256(raw).hexdigest()}")
     print(f"version     {h['version']}   lang {h['lang']}   deck {p.deck_name!r}")
@@ -100,19 +123,38 @@ def cmd_inspect(a) -> int:
     print(f"px          large {h['large_px']}  small {h['small_px']}  text {h['text_px']} "
           f"(line {h['text_line_height']}, ascent {h['text_ascent']})  option {h['option_px']} "
           f"(line {h['option_line_height']}, ascent {h['option_ascent']})")
+    glyph_raw = sum(raw4_size(g.width, g.height) for g in p.glyphs)
+    glyph_stored = sum(g.size for g in p.glyphs)
     print("sections    bytes")
     print(f"  header          {h['header_size']:>9,}")
     print(f"  cards           {h['card_count'] * CARD_SIZE:>9,}")
     print(f"  glyph table     {h['glyph_count'] * GLYPH_SIZE:>9,}")
     print(f"  distractors     {h['strings_off'] - h['distract_off']:>9,}")
     print(f"  strings         {h['strings_size']:>9,}")
-    print(f"  glyph bitmaps   {data_bytes:>9,}")
+    print(f"  glyph bitmaps   {glyph_stored:>9,}")
     if h["stroke_off"]:
         stroked = sum(1 for s in p.strokes if s)
         strokes = sum(len(s) for s in p.strokes)
         print(f"  strokes         {len(raw) - h['stroke_off']:>9,} "
               f"({stroked} cards, {strokes} masks)")
     print(f"  total           {len(raw):>9,}")
+    print("compression       raw    stored   ratio  (encoded)")
+    for s, name in enumerate(("set 0", "set 1", "set 2", "set 3")):
+        gl = [g for g in p.glyphs if g.set == s]
+        if not gl:
+            continue
+        r = sum(raw4_size(g.width, g.height) for g in gl)
+        st = sum(g.size for g in gl)
+        print(f"  {name:<9} {r:>9,} {st:>9,} {ratio(st, r)}  ({sum(1 for g in gl if g.encoding)}"
+              f"/{len(gl)} RLE)")
+    print(f"  {'glyphs':<9} {glyph_raw:>9,} {glyph_stored:>9,} {ratio(glyph_stored, glyph_raw)}")
+    masks = [m for s in p.strokes for m in s]
+    if masks:
+        r = sum(raw1_size(m.w, m.h) for m in masks)
+        st = sum(m.size for m in masks)
+        by = [sum(1 for m in masks if m.encoding == e) for e in (0, 1, 2)]
+        print(f"  {'masks':<9} {r:>9,} {st:>9,} {ratio(st, r)}  "
+              f"(raw {by[0]}, runs {by[1]}, row-xor runs {by[2]})")
     if p.errors:
         print(f"INVALID: {len(p.errors)} problem(s)")
         for e in p.errors[:50]:
@@ -160,7 +202,8 @@ def cmd_catalog(a) -> int:
         print(f"error: {directory} is not a directory", file=sys.stderr)
         return 1
     try:
-        records = scan(directory, a.base_url)
+        order = a.order.replace(",", " ").split() if a.order else None
+        records = scan(directory, a.base_url, order)
     except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -188,13 +231,25 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="tangocho-pack")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("fetch", help="download KANJIDIC2, JLPT levels, Klee One and KanjiVG into cache/")
-    s.add_argument("--force", action="store_true")
+    s = sub.add_parser("fetch", help="download KANJIDIC2, JLPT levels, Noto Sans JP and KanjiVG "
+                                     "into cache/")
+    s.add_argument("--force", action="store_true", help="download again even if present")
+    s.add_argument("--klee-one", action="store_true",
+                   help="also download Klee One (textbook-style font, the default before "
+                        "2026-10-18) into cache/fonts/; build with it via "
+                        "--font cache/fonts/KleeOne-SemiBold.ttf")
     s.set_defaults(fn=cmd_fetch)
 
     s = sub.add_parser("build", help="build a .tgc pack (KANJIDIC2 or your own WaniKani account)")
     s.add_argument("--jlpt", type=int, action="append", choices=range(1, 6), metavar="N")
     s.add_argument("--grade", type=int, action="append", choices=range(1, 11), metavar="N")
+    s.add_argument("--joyo", action="store_true",
+                   help="the 2,136 Jōyō kanji (KANJIDIC2 grades 1-6 and 8), in school order "
+                        "(grade, then frequency); default name 'Joyo kanji'. AND-ed with --jlpt")
+    s.add_argument("--order", choices=ORDERS,
+                   help="order new cards are introduced in: jlpt (N5 first, then grade and "
+                        "frequency) or grade (school grade, then frequency). Default: grade "
+                        "with --joyo, otherwise jlpt")
     s.add_argument("--wanikani-token", metavar="TOKEN",
                    help="build from the kanji unlocked on your own WaniKani account; the token "
                         "is never logged or cached (the WANIKANI_TOKEN environment variable is "
@@ -203,7 +258,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="limit the WaniKani import to this level (repeatable); "
                         "default: every unlocked level")
     s.add_argument("--lang", default="en", choices=["en", "es", "fr", "pt"])
-    s.add_argument("--font", default=str(paths.DEFAULT_FONT))
+    s.add_argument("--font", default=str(paths.DEFAULT_FONT),
+                   help="TTF/OTF to render the glyphs from (default: Noto Sans JP Regular, "
+                        "from `fetch`)")
     s.add_argument("--large-px", type=int, default=96)
     s.add_argument("--small-px", type=int, default=40)
     s.add_argument("--text-px", type=int, default=18)
@@ -217,7 +274,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(fn=cmd_build)
 
-    s = sub.add_parser("inspect", help="validate a pack and print a summary")
+    s = sub.add_parser("inspect", help="validate a pack (decoding every bitmap) and print a summary")
     s.add_argument("file")
     s.set_defaults(fn=cmd_inspect)
 
@@ -237,7 +294,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(fn=cmd_preview)
 
-    s = sub.add_parser("fixture", help="regenerate fixtures/mini.tgc and mini.json")
+    s = sub.add_parser("fixture", help="regenerate fixtures/mini.tgc, mini.json and rle_vectors.bin")
     s.add_argument("--font")
     s.set_defaults(fn=cmd_fixture)
 
@@ -247,6 +304,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="prefix for the url column; may contain {file}, otherwise joined with '/'")
     s.add_argument("--json", metavar="PATH",
                    help="also write a human-readable JSON catalog (not read by the device)")
+    s.add_argument("--order", metavar="NAMES",
+                   help="pack names (without .tgc, comma or space separated) to list first, in "
+                        "this order; the rest follow by file name")
     s.add_argument("-o", "--output", required=True,
                    help="catalog file to write, or - for stdout")
     s.set_defaults(fn=cmd_catalog)

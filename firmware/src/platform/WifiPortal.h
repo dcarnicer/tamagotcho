@@ -1,23 +1,29 @@
 #pragma once
 // On-device Wi-Fi access point + HTTP portal (roadmap phase 4): upload, delete
 // and download packs under /packs and read the SRS statistics from a phone or
-// laptop -- no computer running `uploadfs`. Arduino/ESP32 only; not part of the
-// native build.
+// laptop -- no computer running `uploadfs`. Opening the page also hands the
+// browser's clock to the app, which is how the device learns the real date.
+// The page also stores the home Wi-Fi network and the deck catalog URL that
+// "Get decks" uses (HomeWifi.h); the password is write-only from the page's
+// point of view. Arduino/ESP32 only; not part of the native build.
 //
 // Security: the AP is intentionally open (no password) so joining it is easy.
-// Anyone in radio range can list, upload or delete packs and read the stats.
+// Anyone in radio range can list, upload or delete packs, read the stats and
+// replace the saved home Wi-Fi or catalog URL (but never read the password).
 // The portal is meant to be started for a moment and stopped again, not left
 // running on an untrusted network.
 //
 // The class is deliberately decoupled from main.cpp: the app hands over a small
-// Hooks struct (statistics + a "packs changed" callback) and the portal never
-// reaches into the app's globals.
+// Hooks struct (statistics, a "packs changed" callback, a sink for the
+// browser's clock and the page's "Get decks now") and the portal never reaches
+// into the app's globals.
 #include <Arduino.h>
 #include <FS.h>
 #include <WebServer.h>
 #include <WiFi.h>
 
 #include <memory>
+#include <vector>
 
 namespace tgc {
 
@@ -25,6 +31,8 @@ namespace tgc {
 // portal only reads it while building a page.
 struct PortalStats {
     uint32_t day = 0;
+    char date[12] = "";       // "YYYY-MM-DD" of `day` (docs/srs.md section 5.1)
+    bool dateSynced = false;  // the date comes from a real clock, not the fixed base
     uint32_t seen = 0, learned = 0, answers = 0, reps = 0, lapses = 0;
     uint32_t streakCurrent = 0, streakBest = 0;
     uint32_t reviewMs = 0;
@@ -42,6 +50,20 @@ public:
         // when a usable pack is loaded afterwards (used to leave the boot-time
         // "no packs yet" screen).
         bool (*onPacksChanged)() = nullptr;
+        // Called with the browser's clock, which the page posts on every load
+        // (POST /time): `utcMs` is Date.now(), `tzOffsetMin` the offset in
+        // minutes east of UTC (-getTimezoneOffset()). The app checks that the
+        // time is plausible and applies it; the portal never touches the SRS.
+        // Returns true when the time was accepted.
+        bool (*onTime)(int64_t utcMs, int16_t tzOffsetMin) = nullptr;
+        // The page's "Get decks now" (POST /getdecks, offered only while a home
+        // Wi-Fi is saved): the device should leave this access point and open
+        // Get decks over the home Wi-Fi. Called from poll(), once the response
+        // page has had time to reach the phone; the app normally calls end()
+        // from it, so poll() touches nothing afterwards. Null hides the button.
+        // `phoneLang` is the phone's language tag (navigator.language, e.g.
+        // "es-ES"; letters, digits and '-' only) or "" when the page sent none.
+        void (*onGetDecks)(const char* phoneLang) = nullptr;
     };
 
     WifiPortal() = default;
@@ -53,7 +75,8 @@ public:
     // lastMessage() then says why. A no-op while already active.
     bool begin(const Hooks& hooks);
     // Serves pending requests and drives a URL download. Call every loop()
-    // iteration while on the Wi-Fi screen; a download may block briefly.
+    // iteration while on the Wi-Fi screen; a download may block briefly. May
+    // call Hooks::onGetDecks, which usually stops the portal.
     void poll();
     // Stops the server and the AP and frees the state. Safe to call when idle.
     void end();
@@ -93,7 +116,15 @@ private:
     void handleFetchRequest();
     void handleUploadChunk();
     void handleUploadDone();
+    void handleTime();
     void handleNotFound();
+    void handleHomeWifi();
+    void handleForgetWifi();
+    void handleCatalogUrl();
+    void handleGetDecks();
+    // Remembers the nearby network names (strongest first) for the page's SSID
+    // suggestions. Runs once in begin(), before the AP starts.
+    void scanNearby();
 
     // Blocking download of `url` into /packs; true on success.
     bool doFetch(const String& url);
@@ -127,6 +158,15 @@ private:
     // on-device screen can paint "downloading..." before the loop blocks.
     String fetchPending_;
     String fetchUrl_;
+
+    // "Get decks now", staged like a fetch: POST /getdecks only records it and
+    // poll() calls Hooks::onGetDecks a moment later, after the response page
+    // went out while the access point was still up.
+    bool getDecksPending_ = false;
+    uint32_t getDecksAt_ = 0;  // millis() of the request
+    String getDecksLang_;      // the phone's language tag sent with it, or ""
+
+    std::vector<String> nearby_;  // SSIDs seen by scanNearby()
 };
 
 }  // namespace tgc

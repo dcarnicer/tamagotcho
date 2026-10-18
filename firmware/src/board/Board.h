@@ -34,8 +34,22 @@ int height();  // height of the current rotation
 // Display rotation. Portrait is the default (begin() sets it); landscape swaps
 // the panel's width and height (e.g. 135x240 -> 240x135). width()/height()
 // follow the current rotation.
-void setOrientation(bool landscape);
+void setOrientation(bool landscape);  // setRotation(landscape ? 1 : 0)
 bool landscape();
+// Rotation 0-3 as LovyanGFX's setRotation(): the top of the picture is at the
+// panel's top (0, native portrait), right (1, landscape), bottom (2) or left
+// (3, landscape the other way) edge, as seen in rotation 0.
+void setRotation(uint8_t r);
+uint8_t rotation();
+
+// --- Accelerometer ---------------------------------------------------------
+// True when the board has a working accelerometer (StickS3: BMI270).
+bool hasAccel();
+// Latest acceleration in g in the *panel frame*: +x toward the panel's right
+// edge, +y toward its top edge, +z out of the screen, as seen in rotation 0. At
+// rest the axis that points up reads +1 g. Non-blocking; false when the board
+// has no accelerometer or no sample has arrived yet.
+bool readAccel(float* x, float* y, float* z);
 
 // True once on the press edge (this update() cycle only).
 bool wasPressed(Button b);
@@ -66,6 +80,15 @@ void setDisplayOn(bool on);
 // Microseconds since the RTC timer started. It keeps counting through deep
 // sleep and resets only on a power cut, so differences measure sleep time.
 uint64_t rtcMicros();
+// True once when the power button was pressed since the last report, meaning
+// "save and sleep now". StickS3: begin() disables the M5PM1's single-click
+// reset (which cuts the chip's power and with it the RTC timer) and this polls
+// the PM1's press flag; the double-click power-off stays as the hardware
+// escape hatch. False when the PM1 is missing, unknown or failed to configure
+// (the button then keeps its factory behaviour), and always on the
+// T-Display-S3. A press does not wake the chip from deepSleep(); only Select
+// does.
+bool powerButtonClicked();
 
 // Hardware random seed.
 uint32_t randomSeed();

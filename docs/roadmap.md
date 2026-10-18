@@ -17,21 +17,45 @@ Scope for now: **kanji only** (no vocabulary decks).
       only a real power-off asks the user for the gap. `slow_ms`, the daily new
       cap and the "study more" override are all adjustable/working. Pending: tune
       the defaults with real use, and **better day detection**:
-      - [ ] Make real power-offs rare: the M5PM1 power button can have its
-        double-click shutdown and click reset disabled (`BTN_CFG_1/2`) and its
-        clicks read (`BTN_STATUS`), so a press saves and deep-sleeps instead; a
-        "Power off" settings row does the same; save and sleep at critical
-        battery (~3 %) before the cell dies. Check on hardware that the PM1
-        honours the registers.
-      - [ ] Real date from the phone: the portal page posts `Date.now()` and the
-        browser's time zone (`POST /time`); store an absolute epoch day in the
-        SRS header's reserved bytes (v1-compatible) and roll the day over at a
-        fixed local hour (04:00, as Anki) instead of every 24 h from an arbitrary
-        origin.
-      - [ ] Real date from NTP over the home Wi-Fi (phase 4) after a power cut,
-        with a short timeout and the manual question as the fallback.
-      - [ ] Better manual fallback: show the last-used date and step a proposed
-        "today" (tap +1 day, hold confirms) instead of the 0/1/2-7/14+ buckets.
+      - [~] Make real power-offs rare (docs/decisions.md, 2026-10-18).
+        - [x] The M5PM1's click reset is disabled (`BTN_CFG_1`) and its press
+          read from `BTN_STATUS`. A click saves and deep-sleeps instead of
+          power-cycling the chip. Any PM1 check or I2C failure keeps the
+          factory button.
+        - [x] A "Sleep"/"Suspender" settings row does the same (also on USB).
+        - [x] Save and sleep at critical battery (3 %, three readings, resume
+          only at 6 % or on USB).
+        - Deliberately **not** done: the double-click shutdown stays enabled.
+          A long press only enters download mode and the PM1 keeps its button
+          config through resets, so the double click is the only hardware
+          escape hatch.
+        - [ ] Hardware checks: the PM1 honours `SINGLE_RESET_DIS` and reports
+          the press; a click still powers on a device that is off; a double
+          click still leaves download mode; sleep notice layout; battery
+          thresholds on a real discharge.
+        - [ ] Maybe: wake from deep sleep with the power button through the
+          PM1 IRQ output (PM1 G1 is wired to ESP32 G13). Held back because the
+          datasheet says the PM1 LED then blinks while the click reset is off.
+      - [x] Real date from the phone (2026-10-18): opening the portal page posts
+        the browser's clock (`POST /time`: `Date.now()` and the UTC offset); the
+        SRS header stores an absolute anchor (epoch day of SRS day 0, byte 38,
+        v1-compatible) and the day rolls over at 04:00 local, as Anki, instead of
+        every 24 h from an arbitrary origin. The statistics screen, the portal
+        page and `/api/stats` show the real date. `applyWallClock()` is the entry
+        point the NTP item below reuses; the offset is kept in NVS (`tz`).
+        Native-tested; not yet verified with a phone on hardware.
+      - [x] Real date from NTP over the home Wi-Fi (2026-10-18). Get decks syncs
+        the clock once connected (3 s NTP timeout, a failure never stops it).
+        After a power cut, the date question joins the home Wi-Fi in the
+        background and answers itself from NTP, with a status line ("Syncing
+        via <ssid>..." / "No network: set it by hand"); the stepper stays usable
+        and is the fallback, and any manual answer turns the radio off. Uses the
+        UTC offset stored by the last phone sync and is skipped without it.
+        **Not verified on hardware yet.**
+      - [x] Better manual fallback (2026-10-18): the date screen shows the
+        last-used date and a proposed "today" with its weekday (tap +1 day, hold
+        confirms, side hold -1 day, side tap cancels) instead of the 0/1/2-7/14+
+        buckets. A sync from the phone answers it instead.
 - [~] **Phase 3 – Better cards.** Distractors done for visual similarity,
       shared classical radicals and confusable readings; meaning→kanji questions
       done; the mistake detail card is done (a tap after a wrong answer opens a
@@ -51,23 +75,35 @@ Scope for now: **kanji only** (no vocabulary decks).
       download packs and to read the SRS statistics (`/`, `/api/stats`); it also
       lets a fresh, pack-less device boot into an "upload a `.tgc`" state and
       continue into the quiz once a pack arrives. Pending:
-      - [ ] **Home Wi-Fi (station mode).** Enter the SSID/password once from the
-        portal page (stored in NVS, never logged or shown back); the device then
-        joins the home network on demand, not permanently, so the battery
-        policy still holds. Used for NTP time (phase 2) and the catalog below.
-      - [ ] **One-button deck download.** A "Get decks" screen fetches the
-        release catalog (`tangocho-pack catalog`, line-oriented, phase 5) over
-        the home Wi-Fi, lists the decks not yet on the device with their size,
-        and downloads the chosen one into `/packs` with the existing
-        temp-file + validate + rename path, checking the catalog's `sha256`.
-        Needs **HTTPS**: GitHub release assets are `https://` with redirects,
-        and the current fetch is plain `http://` only, so TLS (root CA bundle,
-        redirect following, memory on the StickS3) has to be added and tested.
-      - [ ] **Auto-rotation from the IMU.** Use the StickS3's BMI270
+      - [x] **Home Wi-Fi (station mode).** The SSID/password are entered once on
+        the portal page (with nearby-network suggestions) and stored in NVS
+        `net`; the password is never logged or shown back. The device joins the
+        home network only on demand -- while Get decks runs, and briefly for the
+        date after a power cut (NTP, phase 2) -- with a 15 s join timeout, the
+        radio off afterwards and the CPU at 240 MHz only meanwhile, so the
+        battery policy holds.
+        **Not verified on hardware yet** (built and reviewed only).
+      - [x] **One-button deck download.** Decks -> "+ Get decks" joins the home
+        Wi-Fi, reads the release catalog over **HTTPS** (verified against a small
+        embedded root-CA set, redirects followed), lists its decks marked new /
+        already here / other size, and a hold downloads one into `/packs` through
+        the shared temp-file + validate + rename path, checking the catalog's
+        size and `sha256`, with a progress bar and cancel. A fresh device offers
+        it on the boot-time upload screen once a home Wi-Fi is saved. The default
+        catalog is the dedicated decks release
+        (`releases/download/decks-v2/catalog.txt`, never marked "latest"), which
+        only answers once `decks.yml` has published it (see "Before
+        publishing"); the URL can be changed on the portal page. **Not verified
+        on hardware yet**: TLS
+        heap use, download speed and the GitHub redirect chain on a real
+        StickS3 are to be confirmed (`[net]` serial lines log the heap).
+      - [x] **Auto-rotation from the IMU** (2026-10-18). Use the StickS3's BMI270
         accelerometer to switch portrait/landscape as the device is turned, with
         hysteresis and a short settle time so it does not flicker; the
         Orientation setting gains "Auto" next to the fixed choices. The
-        T-Display-S3 has no IMU and keeps the fixed setting.
+        T-Display-S3 has no IMU and keeps the fixed setting. Auto uses portrait
+        and both landscape directions (pure `imu/OrientationFilter`). Pending:
+        confirm the accelerometer axis mapping on hardware.
       - [ ] IMU input (tilt to choose).
       - [x] **WaniKani importer** (user's own token, unlocked kanji only). The
         builder can build a pack from the kanji a user has unlocked on their own
@@ -77,8 +113,9 @@ Scope for now: **kanji only** (no vocabulary decks).
         logged or cached; a WaniKani-derived pack is the user's own
         responsibility and is not redistributed (docs/data-sources.md).
       - [x] **Download packs over Wi-Fi** from a URL, so a fresh device gets
-        decks without `uploadfs` and without a computer. Plain `http://` only
-        (TLS to arbitrary hosts is untested); no resume yet.
+        decks without `uploadfs` and without a computer. Plain `http://` only on
+        the portal (its own AP has no internet; Get decks above does HTTPS over
+        the home Wi-Fi); no resume yet.
       - [~] **M5Launcher compatibility.** The app-only `.bin` that
         `pio run -e sticks3` produces can be installed as a launcher app, and
         the Wi-Fi upload is the intended way to populate `/packs` once it runs
@@ -93,12 +130,20 @@ Scope for now: **kanji only** (no vocabulary decks).
       board builds plus the pack-builder tests; a `tangocho-pack catalog` command
       that writes the small line-oriented catalog the device is meant to read;
       README with the licence/attribution and flashing instructions.
-      Pending: **README photos**; the **device-side catalog fetch/parse** (the
-      catalog format is defined and tested, the firmware does not read it yet);
-      and hardware verification of the merged-image/ESP Web Tools path (written,
-      **not flashed on a real device**). Prebuilt packs can be attached to a
-      release, but only on request — redistributing CC BY-SA data is a
-      maintainer decision (see "Before publishing").
+      The **device-side catalog fetch/parse** is done (`firmware/src/catalog/`,
+      native-tested against the builder's output; used by Get decks).
+      **Prebuilt decks** have their own workflow, `.github/workflows/decks.yml`
+      (manual dispatch): JLPT N5-N1 and the full Jōyō deck (school order), in
+      es and en, with stroke order, published with `catalog.txt` to the fixed
+      release `decks-v<pack format>` (never "latest", replaced in place), which
+      is the firmware's default Get decks catalog; firmware releases no longer
+      carry packs (docs/decisions.md, 2026-10-18 "Decks release").
+      Pending: **README photos**; hardware verification of the
+      merged-image/ESP Web Tools path (written, **not flashed on a real
+      device**); and the **first decks run**, which waits on pack format v2
+      (in v1 the N1 deck is 6.8 MB and the Jōyō deck 11.6 MB, over the device's
+      5 MiB per-pack cap) and on the maintainer's decision to publish (see
+      "Before publishing").
 
 ## Cross-cutting
 
@@ -130,29 +175,42 @@ Scope for now: **kanji only** (no vocabulary decks).
 
 - [~] **Power management** (2026-10-18). Done: dim after 30 s, deep sleep
       after 2 min on battery (front button wakes; panel-off only on USB), 5 min
-      Wi-Fi portal timeout, CPU at 80 MHz (240 while the portal runs), a
-      brightness setting. Pending: hardware checks (does the M5PM1 keep the rail
-      up through deep sleep, sleep current, battery life), and the **USB buzz**:
-      still audible up close after moving the backlight PWM to 25 kHz, so the
-      backlight was not (or not the only) cause; to investigate.
+      Wi-Fi portal timeout, CPU at 80 MHz (240 while the portal or the home
+      Wi-Fi runs), a brightness setting, power button and "Sleep" row = save +
+      deep sleep, a critical-battery sleep. Pending: hardware checks (does the
+      M5PM1 keep the rail up through deep sleep, sleep current, battery life),
+      and the **USB buzz**: still audible up close after moving the backlight
+      PWM to 25 kHz, so the backlight was not (or not the only) cause; to
+      investigate.
 - [ ] **UX refresh.** A review to give the device UI a more modern look and feel:
       typography and spacing, a consistent visual language across quiz, menus
       and detail card, clearer feedback and transitions on answers, a less
       text-heavy settings home (fewer rows or grouping), and an on-screen hint of
       what tap/hold do. Start with an audit and mockups before code.
+      **Audit and mockups done, awaiting approval** (2026-10-18):
+      `docs/ux-refresh.md` (screen-by-screen audit, design tokens, type scale,
+      components, regrouped settings tree, phased plan, open decisions) and
+      before/after PNGs in `docs/ux/`, generated by `tools/ux-mockups/render.py`.
+      No firmware change yet.
 
 ## Before publishing
 
 - [ ] Verify licence of tanos.co.uk JLPT lists (used via kanji-data `jlpt_new`).
       Not verified; left open.
 - [~] Decide whether prebuilt packs are distributed (CC BY-SA 4.0 attribution in
-      README and on device). Progress: packs built with KANJIDIC2/KanjiVG are
-      licensed CC BY-SA and the release workflow adds the combined attribution to
-      the release notes automatically, but attaching them stays **opt-in** (a
-      dispatch input) until this is a standing decision.
+      README and on device). Progress: the mechanics are done. Packs built with
+      KANJIDIC2/KanjiVG are licensed CC BY-SA; `.github/workflows/decks.yml`
+      (manual dispatch only) builds the default set and publishes it, with the
+      combined attribution in the notes, to the release `decks-v<pack format>`
+      (`decks-v2`), which is never marked "latest" so firmware releases cannot
+      hide it. The device's default Get decks catalog
+      (`releases/download/decks-v2/catalog.txt` on `dcarnicer/tangocho`) answers
+      404 until that first run. **Running it is still blocked** on the licence
+      of the tanos.co.uk JLPT lists (above), which stays open, and on pack
+      format v2 (the N1 and Jōyō decks do not fit the 5 MiB cap in v1).
 - [x] Attribution for redistributed data: README's "Releases" section,
       `docs/data-sources.md` and the release notes all carry the combined
-      KANJIDIC2 / KanjiVG / Klee One credit. (Still open: an attribution line on
+      KANJIDIC2 / KanjiVG / Noto Sans JP credit. (Still open: an attribution line on
       the device itself.)
 - [ ] Flash a **merged** image on a real StickS3 — ESP Web Tools in a browser and
       `esptool write_flash 0x0 …` — to confirm the documented offsets. The image

@@ -20,7 +20,8 @@ constexpr size_t kSrsRecordSize = 16;
 constexpr size_t kSrsCrcSize = 4;
 constexpr size_t kSrsMaxRecords = 8192;
 
-// Session clock: one day index per 24 h of uptime (section 5).
+// Session clock: one day index per 24 h of uptime (section 5); after a
+// wall-clock sync the 24 h end at 04:00 local (section 5.1).
 constexpr uint32_t kSrsMsPerDay = 86400000u;
 
 // Header defaults (docs/srs.md section 3).
@@ -68,6 +69,20 @@ struct Stats {
     uint32_t reviewMs;       // total time spent on questions, ms (header field)
 };
 
+// Outcome of SrsStore::syncWallClock() (docs/srs.md section 5.1).
+enum class ClockSync : uint8_t {
+    Rejected,    // implausible time or offset: nothing changed
+    Anchored,    // first sync: the current day index became "today"
+    Same,        // already on the real day: only the rollover was aligned
+    Advanced,    // the real day was ahead: the index moved forward
+    Reanchored,  // the index was ahead of the real day: display re-based, index kept
+};
+
+struct ClockSyncResult {
+    ClockSync kind = ClockSync::Rejected;
+    uint16_t daysAdvanced = 0;  // non-zero only for Advanced
+};
+
 // Byte sink/source for the state file. Device code implements this over
 // LittleFS (temp + rename); MemoryIo below is the test double.
 class StateIo {
@@ -113,6 +128,27 @@ public:
 
     // Adds `n` days to the index (the user-reported gap, or a manual fix).
     void advanceDays(uint16_t n);
+
+    // A gap the user entered on the date screen: advanceDays(n) and, for n > 0,
+    // a restarted day carry. The time of day is unknown after a power cut, so the
+    // next rollover comes a full day after the answer -- late, never early
+    // (docs/srs.md section 5, power-cut rule).
+    void advanceDaysManual(uint16_t n);
+
+    // Applies a real wall-clock time (docs/srs.md section 5.1); `tzOffsetMin` is
+    // local time minus UTC in minutes. The first sync anchors the displayed date
+    // to the current index; later ones advance the index when the real study day
+    // is ahead and re-base the display (never the index) when it is behind.
+    // Every accepted sync aligns the day carry so the uptime and sleep rules roll
+    // over at kSrsRolloverHour local. A Rejected result changes nothing.
+    ClockSyncResult syncWallClock(int64_t utcMs, int tzOffsetMin);
+
+    // Days since 1970-01-01 of SRS day 0 (header byte 38); 0 = never synced.
+    uint16_t epochAnchor() const { return epochAnchor_; }
+    bool hasWallClock() const { return epochAnchor_ != 0; }
+    // Calendar day (days since 1970-01-01) shown for SRS day `day`: anchor + day,
+    // or the fixed 2026-10-17 base + day while never synced.
+    int32_t epochDayOf(uint16_t day) const;
 
     // Uptime rule: accumulates elapsed milliseconds into the day carry.
     // `nowMs` is the app's millisecond clock (millis()); wraps are handled.
@@ -208,6 +244,7 @@ private:
     uint16_t streakBest_ = 0;     // best streak ever
     uint16_t lastStudyDay_ = 0;   // SRS day of the last answer (valid while studied)
     uint32_t reviewMs_ = 0;       // lifetime time on questions, ms
+    uint16_t epochAnchor_ = 0;    // days since 1970-01-01 of SRS day 0; 0 = never synced
 
     bool tickStarted_ = false;
     uint32_t lastTickMs_ = 0;

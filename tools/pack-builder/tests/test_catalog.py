@@ -43,6 +43,22 @@ def test_catalog_ordering_is_stable(tmp_path):
     assert catalog.render(catalog.scan(d)) == catalog.render(catalog.scan(d))
 
 
+def test_catalog_order_puts_named_packs_first(tmp_path):
+    d = _dir(tmp_path, "joyo-es.tgc", "n1-es.tgc", "n5-es.tgc", "n5-en.tgc")
+    names = [r.name for r in catalog.scan(d, order=["n5-es", "n1-es", "joyo-es"])]
+    assert names == ["n5-es", "n1-es", "joyo-es", "n5-en"]
+    try:
+        catalog.scan(d, order=["n4-es"])
+    except ValueError as e:
+        assert "n4-es" in str(e)
+    else:
+        raise AssertionError("an unknown --order name must fail")
+    out = tmp_path / "c.txt"
+    assert main(["catalog", str(d), "--order", "n5-en,n5-es", "-o", str(out)]) == 0
+    assert [l.split("\t")[0] for l in out.read_text().splitlines()[2:]] == [
+        "n5-en", "n5-es", "joyo-es", "n1-es"]
+
+
 def test_catalog_ignores_non_packs(tmp_path):
     d = _dir(tmp_path, "n5-en.tgc")
     (d / "notes.txt").write_text("not a pack")

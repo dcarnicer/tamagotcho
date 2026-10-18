@@ -509,7 +509,8 @@ Short log of non-obvious choices. Newest last.
   one has flashed a merged image from a browser (ESP Web Tools) or with
   `esptool write_flash` on a real StickS3. Stated as such in README and in the
   release notes.
-- **Prebuilt packs are opt-in.** A dispatch input `build_packs` (with
+- **Prebuilt packs are opt-in.** (Superseded 2026-10-18: packs come only from
+  `decks.yml`, see "Decks release" below.) A dispatch input `build_packs` (with
   `packs_jlpt`/`packs_langs`) builds N5 (and, on request, deeper levels) for en
   and es with `--strokes`, writes the catalog, and attaches them. Off by default
   because redistributing CC BY-SA data is a maintainer decision ("Before
@@ -684,3 +685,760 @@ Short log of non-obvious choices. Newest last.
   `sticks3-dev` env turns it on.
 - The quiz header re-reads the battery every 30 s and redraws when it changed.
 - `docs/srs.md` §5 described a boot rule the code no longer had; rewritten.
+
+## 2026-10-18 – Auto-rotation from the IMU
+
+- **Setting.** Orientation gains **Auto** (first row, as in the language
+  picker) on boards with an accelerometer; the T-Display-S3 keeps Portrait and
+  Landscape only. It is stored as NVS `tangocho`/`orient` (0 portrait,
+  1 landscape, 2 auto), replacing the bool `land`: the first boot reads `land`
+  once, writes `orient` and removes `land`, so landscape users keep landscape.
+  **New users still get portrait**: the axis mapping below is unconfirmed on
+  hardware, and portrait is what the docs describe. The rotation Auto picks is
+  never persisted. Auto on a board whose IMU did not start behaves as portrait.
+- **Rotations.** Auto uses 0 (portrait) and **both landscape directions** (1
+  and 3), so the text is upright whichever way the stick is turned, but **not
+  2** (portrait upside down): with the front button under the thumb below the
+  screen, upside-down poses are mostly transient (tipping the device toward
+  you, lying down), and phones leave it out for the same reason. That sector
+  keeps the current layout; the filter can allow it with one mask bit. The
+  fixed Landscape choice stays rotation 1.
+- **The buttons do not move, only the picture.** Every on-screen hint names
+  the button ("side: back", "tap/hold", "side hold: menu") instead of pointing
+  at it, and options are reached by cycling, not by position, so no hint
+  becomes wrong in rotation 1 or 3. In rotation 1 the front button is to the
+  right of the screen, in rotation 3 to the left.
+- **Filter (pure `imu/OrientationFilter`, native tests in `test_imu`).** "Up"
+  in the screen plane is θ = atan2(x, y), clockwise from the panel's top edge;
+  rotation r is centred on r·90°. A different rotation needs the pose within
+  30° of its centre (±15° hysteresis on each 45° boundary, so a turn of at
+  least 60° from the current centre) held continuously for **500 ms**. Samples
+  are ignored when the screen is within 25° of horizontal (face up or down) or
+  when |a| is outside 1 ± 0.3 g (shaking, taps), and an ignored or dead-band
+  sample, or a gap of more than 1 s between samples, restarts the settle time.
+  At boot one sample picks the nearest allowed sector at once (no settle,
+  nothing is on screen yet), falling back to portrait when flat or unclear.
+- **App.** The accelerometer is polled every 100 ms, only while Auto is on and
+  the panel is on (not while it is off on USB idle). A settled change goes
+  through the same path as the setting (rotate, new canvas, redraw the active
+  screen) but **only while no button is down**: a change that settles during a
+  press waits for the release, so tap/hold timing and the highlighted option
+  never change under the finger. Selecting Auto keeps the current picture (the
+  hold that selected it is still down); the IMU takes over after the release.
+- **A rotation is not user activity.** It does not brighten a dimmed panel or
+  reset the idle timers, as on phones: a stick turning over in a bag or pocket
+  must still dim and sleep. The picture does rotate while dimmed.
+- **Axis mapping, to be confirmed on hardware.** M5Unified remaps the StickS3's
+  BMI270 (`IMU_Class.inl`: "X=+Y, Y=-X, Z=+Z"). Applied to M5Stack's StickS3
+  axis diagram (chip X toward the USB end, Y toward the screen's right edge, Z
+  out of the screen) this gives X = screen right, Y = top (HAT) end, Z = out of
+  the screen, with the front button below the screen: exactly the frame
+  M5Stack documents for the StickC Plus2, whose MPU6886 M5Unified does not
+  remap. LovyanGFX rotation r puts the picture's top at the panel's top, right,
+  bottom or left edge (read from its software rotation in `Panel_HasBuffer`,
+  which its MADCTL tables are meant to match), so the picture is upright when
+  the +1 g reaction points r·90° clockwise from the top edge. Hence the HAL's
+  panel frame is M5Unified's frame unchanged. Confidence is moderate (two
+  diagrams and the source agree; nothing measured); the swap/sign constants
+  live only in `BoardSticks3.cpp`, and the `sticks3-dev` log prints each
+  rotation with its sample.
+- **IMU power.** M5Unified starts the BMI270 with the accelerometer and
+  gyroscope in normal mode and never suspends it: its BMI270 driver has no
+  `sleep()` and `M5.Power` does not touch the IMU. So it kept running through
+  the ESP32's deep sleep, if the M5PM1 keeps its rail up. `board::deepSleep()`
+  now writes PWR_CTRL = 0 and PWR_CONF = adv_power_save (the chip's power-on
+  reset state) first; `M5.begin()` soft-resets and re-initialises it on the
+  next boot, exactly as after a power-on. Unmeasured: the current saved, and
+  whether the rail stays up at all. The gyroscope also runs while awake for
+  nothing; turning it off is a possible follow-up.
+
+## 2026-10-18 – Power button sleeps, "Sleep" row, critical battery
+
+- **Why.** On the StickS3 the M5PM1 owns the power button. A click "resets" the
+  ESP32 and a double click powers it off, and both cut its rails (M5PM1
+  datasheet v1.9, §V.3: reset = shutdown, 500 ms, power on), which clears the RTC
+  timer and RTC memory and so leads to the "how many days?" screen. That was
+  the main way the day clock got lost.
+- **Registers** (I2C 0x6E, through M5Unified's `M5.Power.M5pm1`; the pinned
+  M5PM1 library is not needed): `Device_ID` 0x00 = 0x50 and `Device_Model`
+  0x01 = 0x20 identify the chip. Both registers arrived with PM1 firmware 6,
+  the release that added `BTN_STATUS` (older firmware has a UID there), so
+  they double as the version check. `BTN_CFG_1` 0x49 bit0 `SINGLE_RESET_DIS`
+  (factory 0x2A: double-click gap 250 ms, long press 2 s, click 250 ms,
+  `DL_LOCK` 0), `BTN_CFG_2` 0x4A bit0 `DOUBLE_POWEROFF_DIS`, `BTN_STATUS` 0x48
+  bit7 "pressed since the last read" (the read clears it), bit0 "down now".
+  Only bit0 of the config registers is changed (read-modify-write), and each
+  write is read back.
+- **What the firmware does.** At every boot `board::begin()` checks the
+  board, the PMIC type and the ID/model. It enables the double-click
+  power-off, then sets `SINGLE_RESET_DIS` and reads `BTN_STATUS` once to drop
+  a stale press. `board::powerButtonClicked()` polls `BTN_STATUS` every 100 ms
+  (a 1-byte read; M5Unified already reads `IRQ_STATUS3` on every
+  `M5.update()`). The app treats a press like "sleep now": save the SRS, stop
+  the portal, show "Sleeping / progress saved, the front button wakes me" for
+  1.5 s, store the RTC timestamp as the idle path does, deep-sleep. On a dark
+  panel (idle on USB) the press only turns the panel back on, like the other
+  buttons. The error screen (`halt()`) sleeps on a press too.
+- **The double-click power-off is kept on purpose: it is the escape hatch.**
+  A long press is not a force-off. It restarts the ESP32 into **download
+  mode** (rails cycled with BOOT held low; the green LED blinks every 500 ms).
+  The register map lists `BTN_CFG_1`/`BTN_CFG_2` as untouched by reset,
+  download mode and power-off. With both bits set, a long press (or a hung
+  app) would leave a device that no button can get back into the app: a click
+  no longer resets, a double click no longer powers off. Only a host reset
+  over USB or a flat cell would help. So a double click stays a real power-off,
+  which still forgets the day: a deliberate act, and the first press of it
+  already starts the (atomic) SRS save. The boot re-enables it if another
+  firmware turned it off, and it only disables the click reset once that
+  worked.
+- **Persistence.** The PM1 runs from the cell while the device is "off", so
+  the setting survives ESP32 resets, deep sleep, download mode and PM1
+  power-off. It returns to the factory value only on a PM1 cold start (cell
+  disconnected or flat with no USB). It is re-applied at every boot anyway.
+  Side effect: other firmware (another M5Launcher app, a reflash) inherits
+  "click does nothing" until it clears the bit. A build with
+  `-DTGC_PM1_CLICK_SLEEP=0` puts the factory button back at boot.
+- **No power-button wake.** `IRQ_STATUS1..3` only latch while a PM1 GPIO is in
+  IRQ mode, and M5Unified sets none on the StickS3. The StickS3 pin map shows
+  PM1 G1 wired to ESP32 G13 (RTC-capable), so a power-button wake from deep
+  sleep looks possible: PM1 G1 as the IRQ output, every IRQ but the click
+  masked, ext0 on G13. It is **not done**. The datasheet says that with the
+  click reset disabled and an IRQ GPIO, the PM1 LED blinks every 200 ms, and
+  it is unclear whether that is continuous. Every unmasked charge, VBUS or IMU
+  event would also wake the chip. Neither can be checked without hardware. The
+  front button stays the only wake source; a power-button press during sleep
+  does nothing and is dropped at the next boot.
+- **"Sleep" settings row** (row 11, "Sleep"/"Suspender", not "Power
+  off"/"Apagar"). It does the same as the button: a deep sleep that keeps the
+  day clock, not a power-off. Both explicit paths deep-sleep **on USB power
+  too**. They are an explicit request, unlike the idle timeout (which only
+  blanks the panel on USB to keep the serial port). Charging carries on in the
+  PM1. To flash, wake the device with the front button, or long-press for
+  download mode. Eleven rows fit: portrait 135x240 steps 19 px (was 21),
+  landscape 240x135 hits the 10 px floor and drops the 1 px gap so the
+  highlight still clears the 8 px font, T-Display-S3 steps 27 px (2x font
+  kept) and 13 px in landscape.
+- **Critical battery.** M5Unified maps the PM1's cell voltage linearly,
+  `(mV - 3300) / 8`, so 3 % is about 3.32 V and the figure is noisy under load.
+  `power/BatteryGuard.h` is pure and native-tested. It takes a reading every
+  10 s on every screen. Three readings at or below 3 %, with no reading of 6 %
+  or more in between, trigger the sleep: save, then a localised "Battery low /
+  Charge me" notice, then deep sleep with a flag in RTC memory. USB/charging is
+  never critical. On a wake after such a sleep the app takes the best of three
+  readings first. It carries on only at 6 % or more (hysteresis) or on USB.
+  Otherwise it shows the notice again and goes back to sleep **without**
+  touching the stored RTC timestamp, so the next real wake adds the whole
+  span. There is no timer wake, so it cannot flap on its own. This buys time
+  to reach a charger, no more: the PM1's own low-voltage cut (`BATT_LVP`,
+  factory 0x40 = 2.5 V) still powers off a cell left flat, and that loses the
+  day.
+- **Fail-safe.** No StickS3/PM1, an I2C error or an unknown ID/model: nothing
+  is written and `powerButtonClicked()` stays false (if an earlier boot had
+  disabled the click reset and the chip now fails to answer, the click does
+  nothing until it does; the double click still powers off). A failed write
+  puts the factory bits back (best effort). The T-Display-S3 has no PM1:
+  always false.
+- **Unverified on hardware** (no device attached): that the PM1 honours
+  `SINGLE_RESET_DIS` and still reports the press in `BTN_STATUS`; that a
+  click still **powers on** a device that is off with the bit set (the
+  datasheet treats "reset" and power-on as separate wake sources but does not
+  say); that a double click still works from download mode; the sleep notice
+  layout; the battery thresholds against a real discharge.
+
+## 2026-10-18 – Real date from the phone, 04:00 rollover, stepped manual date
+
+- **An anchor, not a clock.** The SRS keeps its monotonic day index and due days
+  stay in index space; the real date is an **anchor**: header byte 38 (u16,
+  unused and zero in every existing file) holds the days since 1970-01-01 of SRS
+  day 0, `0` = never synced. Display = anchor + `now_day`, else the old fixed
+  2026-10-17 base, so v1 files load unchanged with no version bump
+  (docs/srs.md §4.1). The anchor only moves on a sync, so every date the device
+  shows (last used, today, statistics) derives from one number. Bytes 44..47
+  stay unused.
+- **The phone's browser is the source.** Opening `http://192.168.4.1` posts
+  `Date.now()` and the offset (`POST /time`, form-encoded: the portal has no
+  JSON parser). The offset travels as **minutes east of UTC**
+  (`-getTimezoneOffset()`), the ISO sign, everywhere in the code. The portal only
+  parses; the pure `srs/WallClock` decides plausibility (2026-01-01 <= t < 2100,
+  offset -12..+14 h). The new hook is `bool onTime(int64_t utcMs, int16_t
+  tzOffsetMin)` -- a `bool` rather than `void` so the page can say whether the
+  device accepted the clock.
+- **`applyWallClock(int64_t utcMs, int tzOffsetMin)` in `main.cpp`** is the one
+  entry point for a real time; the NTP item will call it too. It stores the
+  offset in NVS (`tangocho`/`tz`, int16, minutes east, absent until the first
+  sync) because NTP only yields UTC. It saves the SRS only when the anchor or
+  the day changed, so reloading the page (every upload/delete redirects to it)
+  does not rewrite the 40 KB state file. A real time applied before `setup()`
+  decides on the power-cut question (`gWallClockSynced`) skips the question.
+- **Rollover at 04:00 local**, as in Anki, so a late session still counts for
+  the evening's day. A sync sets `ms_carry` to the time since the last local
+  04:00 and the existing uptime/sleep rules do the rest, unchanged. The offset is
+  a snapshot: DST or travel shifts the rollover until the next sync.
+- **Never rewind the index.** Real day ahead -> `advanceDays` (the new-card
+  counter resets as on any day change; the streak follows the index). Real day
+  behind (an overshot manual answer, or the RC oscillator running fast through
+  a long sleep) -> re-anchor the display, keep the index; rewinding would put
+  past reviews in the future. Re-anchoring was chosen over "freeze the index
+  until real time catches up" because the uptime/sleep rules cannot know when
+  that happens after a power cut.
+- **First sync of a never-synced store** anchors the current index as today: it
+  cannot measure a power-off gap that happened before it. This can only lose one
+  gap once per device, and a sync dismisses the boot-time question (the user
+  should not have to answer a question the device can answer itself).
+- **Manual fallback: a stepped date.** The bucket rows are gone: the screen
+  shows the last-used date (the persisted day at boot) and a proposed today with
+  its weekday. Tap +1 day, hold confirms, **side hold -1 day** (never below the
+  current day), side tap cancels. Stepping back was chosen over wrapping after
+  +N: a wrap either caps how long an absence can be entered or makes an overshoot
+  cost a full cycle of taps. On the other sub-screens any side press is "back";
+  here the side hold is the minus key, and the bottom hint line says so.
+- **A manual advance restarts the carry** (`advanceDaysManual`): after a power
+  cut the time of day is unknown, and carry 0 rolls over a full day after the
+  answer -- late, never early. An early rollover would hand out a day the index
+  can never give back; a late one is fixed by the next answer or sync. "Same
+  day" (+0) leaves the carry alone.
+- **A sync while the quiz is up.** Today the portal only runs on the Wi-Fi
+  screen, so a sync there just rebuilds the queue when the day changed. For a
+  sync on other screens (NTP later): an unanswered question gives way to the new
+  queue, an answered one or the detail card continues into it, the done screen
+  re-checks. As with a date set from the settings, the question left behind the
+  menu is still shown on return and may come up once more.
+
+## 2026-10-18 – The date question survives a sleep
+
+- Found while integrating the power-button and day-detection branches: after a
+  power cut the boot shows the date question, but the idle timeout (2 min on
+  battery), a power-button click or the Sleep row could deep-sleep the device
+  before it was answered, and the wake then went straight to the quiz -- the
+  unknown gap was silently treated as zero days.
+- Every deep sleep now goes through `armSleep()`, which stores the sleep
+  timestamp (as before) and `gDatePending` in RTC memory when the boot-time
+  question is on screen. A wake from deep sleep with the flag set asks again.
+  The proposed date starts from the current index, which by then includes the
+  slept time, so stepping to the real date does not count the sleep twice. A
+  critical-battery re-sleep at boot leaves the flag untouched.
+
+## 2026-10-18 – UX refresh: generated mockups, proposal first
+
+- The UX refresh starts as a **proposal** (`docs/ux-refresh.md`), not code: an
+  audit of every screen, design tokens, a type scale, components, a regrouped
+  settings tree and a phased plan, all awaiting the maintainer's approval.
+- **Mockups are generated, not drawn.** `tools/ux-mockups/render.py` runs in the
+  pack builder's environment and reuses its `FontRenderer`, Font0 table and
+  KanjiVG rasteriser. "Before" screens are line-by-line ports of the `draw*`
+  functions in `main.cpp`, rendered in RGB565 with `blend565`, so the audit's
+  numbers (row heights, fallbacks to the 6×8 font) come from the real layout
+  code, not from screenshots. Output is deterministic; the PNGs (native + 3x +
+  a contact sheet, ~0.6 MB) are committed so the proposal can be reviewed
+  without a device. The script is not part of the builder and does not change
+  its behaviour.
+
+## 2026-10-18 – Home Wi-Fi: station mode on demand, credentials in NVS `net`
+
+- **Entered on the portal page, stored in NVS namespace `net`** (`ssid`,
+  `pass`, and `cat` for an optional catalog URL override), separate from the
+  app's `tangocho` namespace. The page has a "Home Wi-Fi" form (SSID with
+  suggestions from a scan, password, "forget") and a catalog URL field.
+- **The password is write-only.** It is never logged, never put in a page or in
+  `/api/stats`, and `HomeWifi` has no getter for it: the page shows only the
+  saved SSID. `WiFi.persistent(false)` keeps the driver from writing its own copy
+  into its NVS area. NVS is **not encrypted** (no flash encryption on this
+  device), so anyone holding it with a USB cable can read the flash -- the usual
+  trade-off for a stored Wi-Fi password. Because the portal's AP is open, anyone
+  in range while it runs can *replace* (not read) the home network or the catalog
+  URL; a pack fetched from a hostile catalog still has to pass the same checks as
+  an upload (size, SHA-256 from that catalog, magic, `PackReader` probe), so this
+  is the exposure the upload form already has.
+- **On demand, never left on.** `HomeWifi::begin()` joins only when the Get decks
+  screen opens; the join times out after 15 s with a reason from the driver's
+  disconnect event (`NO_AP_FOUND` -> "network not found"; `AUTH_FAIL`, 4-way or
+  handshake timeout, 802.1X, MIC -> "wrong password?"; else "could not
+  connect"). Leaving the screen, an error, or the idle timeout calls
+  `WiFi.disconnect(true)` + `WIFI_OFF`. The CPU runs at 240 MHz only while the
+  radio is up (the portal's rule). Download progress counts as activity for the
+  dim/sleep timers (as HTTP requests do for the portal); an idle list screen
+  still sleeps after 2 min, and a USB-powered panel that went dark rejoins on the
+  next press.
+- **SSID suggestions:** the portal scans once when it starts, in station mode
+  *before* the AP comes up (~1.5 s, 100 ms per channel), so no phone is
+  connected yet and the AP never shares the radio with a scan. Up to 12 names,
+  strongest first, go into a `<datalist>`.
+- **NTP helper only.** `HomeWifi::fetchUtcMs()` runs SNTP (`configTime`, UTC,
+  pool.ntp.org / time.google.com / time.cloudflare.com) until the first sync or
+  a timeout, stops SNTP again and refuses times before 2026-01-01. It is **not
+  wired into the SRS**: the wall-clock integration belongs with the separate
+  `applyWallClock()` change (roadmap phase 2, "real date from NTP").
+
+## 2026-10-18 – HTTPS for Get decks: embedded root CAs
+
+- **`WiFiClientSecure` + `HTTPClient`, redirects followed**
+  (`HTTPC_STRICT_FOLLOW_REDIRECTS`): `github.com/.../releases/latest/download/x`
+  answers 302 to `github.com/.../releases/download/<tag>/x`, which answers 302 to
+  `release-assets.githubusercontent.com` (signed, short-lived URL). Each hop is a
+  new handshake verified against the same roots. **No `setInsecure()`**
+  anywhere; plain `http://` still works (the portal's URL download, a LAN
+  catalog).
+- **Chains on 2026-10-18** (`openssl s_client -showcerts`): `github.com` ->
+  Sectigo DV E36 -> Sectigo Public Server Authentication Root E46, served
+  cross-signed by USERTrust ECC; `release-assets` / `objects` /
+  `raw.githubusercontent.com` -> Let's Encrypt YR1 -> ISRG Root YR, served
+  cross-signed by ISRG Root X1.
+- **The embedded set** (`firmware/src/platform/RootCerts.h`, 11 roots, 14.6 KB
+  of PEM, copied verbatim from Mozilla's root store via certifi 2026.07.22):
+
+  | root | key | expires | why |
+  |---|---|---|---|
+  | ISRG Root X1 | RSA 4096 | 2035-06-04 | today's anchor for the release-asset hosts |
+  | ISRG Root X2 | ECDSA P-384 | 2040-09-17 | Let's Encrypt ECDSA |
+  | USERTrust ECC Certification Authority | ECDSA P-384 | 2038-01-18 | today's anchor for github.com |
+  | USERTrust RSA Certification Authority | RSA 4096 | 2038-01-18 | Sectigo RSA |
+  | Sectigo Public Server Authentication Root E46 | ECDSA P-384 | 2046-03-21 | github.com once the cross-sign goes |
+  | Sectigo Public Server Authentication Root R46 | RSA 4096 | 2046-03-21 | Sectigo RSA, newer |
+  | DigiCert Global Root G2 | RSA 2048 | 2038-01-15 | earlier GitHub asset hosts, Azure |
+  | DigiCert Global Root G3 | ECDSA P-384 | 2038-01-15 | DigiCert ECC |
+  | GTS Root R1 | RSA 4096 | 2036-06-22 | Google, many Cloudflare sites |
+  | GTS Root R4 | ECDSA P-384 | 2036-06-22 | Cloudflare ECDSA |
+  | Amazon Root CA 1 | RSA 2048 | 2038-01-17 | S3 / CloudFront |
+
+  Checked with only these roots (`openssl s_client -CAfile roots.pem -no-CApath
+  -no-CAstore -verify_return_error`): github.com, release-assets / objects /
+  raw.githubusercontent.com, pages.github.com, www.cloudflare.com,
+  s3.amazonaws.com, gitlab.com, codeberg.org and storage.googleapis.com all
+  verify. A host under another CA needs its root added (below).
+- **No clock, no date check.** The device has no RTC and this mbedTLS build has
+  no `MBEDTLS_HAVE_TIME_DATE`, so certificate validity dates are not checked;
+  signatures, chain and host name are. A pack's integrity is anchored in the
+  catalog's SHA-256, and the catalog itself comes over this verified TLS.
+- **How to update the roots:** (1) look at the chains with `openssl s_client
+  -connect HOST:443 -servername HOST -showcerts`; (2) copy the root PEM blocks
+  verbatim from Mozilla's store (e.g. certifi's `cacert.pem`); (3) record
+  `openssl x509 -noout -subject -enddate -fingerprint -sha256` above each block
+  in `RootCerts.h` and in this table; (4) re-run the `-CAfile` check above.
+  Watch: Let's Encrypt's self-signed ISRG Root YR/YE (not in Mozilla's store yet)
+  once the X1 cross-sign stops; the USERTrust and DigiCert G2/G3 roots expire in
+  January 2038.
+- **Memory.** This mbedTLS build allocates from internal RAM only
+  (`CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC`): 16 KB in + 4 KB out record buffers plus
+  handshake state, and ~16 KB while the 11 roots are parsed (freed when the
+  handshake ends) -- roughly 40-60 KB of internal heap per connection, one at a
+  time. Static RAM is ~51 KB of 320 KB and the canvas and pack tables live in
+  PSRAM, so this fits; `[net] before/after TLS` lines log the free, largest and
+  minimum internal heap and the free PSRAM so it can be confirmed on hardware.
+  The handshake runs on the Arduino loop task, whose stack goes from 8 to 16 KB
+  (`SET_LOOP_TASK_STACK_SIZE` in `NetFetch.cpp`, +8 KB internal RAM).
+- **HTTP/1.0 for Get decks.** The body is read raw from the stream, so a chunked
+  answer would corrupt it; HTTP/1.0 rules chunking out. GitHub's whole redirect
+  chain answers HTTP/1.0 requests with a `Content-Length` (checked with
+  `curl --http1.0`). The portal's request is unchanged (HTTP/1.1).
+- **Flash:** the StickS3 build grows from 1,248,709 to 1,292,181 bytes (+43 KB,
+  61.6 % of the 2 MB app slot), TLS included.
+
+## 2026-10-18 – Get decks: the catalog, the download and where it lives
+
+- **The last row of the Decks screen** ("+ Get decks" / "+ Descargar"), not a
+  settings-home row: the home has 10 rows (another is on the way) and this is a
+  deck action. A fresh device on the boot-time upload screen also offers it (a
+  hold) once a home Wi-Fi is saved: the portal stops, Get decks runs, and the
+  side button returns to the upload screen -- or into the quiz if a deck is now
+  loaded.
+- **Default catalog URL** (superseded the same day by `decks-v2`, see "Decks
+  release" below)
+  `https://github.com/dcarnicer/tangocho/releases/latest/download/catalog.txt`.
+  It works only once the newest (non-pre-)release of a **public** repo carries
+  `catalog.txt` and the packs, which the release workflow attaches only on
+  request ("Before publishing"). A release without them makes "latest" answer
+  404, which the device reports as "no catalog published at this URL yet". The
+  portal's catalog field overrides it (e.g. a tag-pinned
+  `releases/download/vX.Y.Z/catalog.txt`, or any http(s) host).
+- **Catalog rules** (pure `catalog/` module, native-tested against the builder's
+  output): no `#tangocho-catalog<TAB>N` first line -> not a catalog (an HTML
+  error page, say); an unknown version -> refused ("update the firmware");
+  otherwise each record is validated on its own and a bad one is skipped and
+  counted, so one bad line does not hide the rest. A name must be safe as
+  `/packs/<name>.tgc` with the portal's character set and no hidden names; sizes
+  are 64 B..5 MB, cards 1..65535, `sha256` 64 hex digits. A bare-file-name `url`
+  resolves against the **configured** catalog URL, not the post-redirect one
+  (for GitHub that is a signed, expiring blob URL). At most 32 entries and a
+  32 KB catalog body.
+- **Download** (`NetFetch`, shared with the portal): free space is checked
+  against the catalog size plus the portal's 96 KB reserve *before* connecting;
+  the `Content-Length` must equal the catalog size; SHA-256 is computed while
+  streaming (mbedTLS, hardware SHA) and compared, with the byte count, before
+  the usual magic + `PackReader` probe and the rename of `/packs/.fetch.tmp` over
+  the destination. Any failure removes only the temp. Afterwards `/packs` is
+  rescanned through `portalPacksChanged()`, the portal's path.
+- **"Already here"** is decided by existence and size: the same size marks a
+  deck as on the device (a hold studies it), another size as an update (a hold
+  downloads it, replacing the file). Replacing the loaded deck closes it first
+  and reopens it afterwards, also when the download failed. A same-size file
+  with other content is not detected (hashing the local file is a follow-up).
+- **The portal's "download from a URL" now uses the same code.** Its messages
+  are unchanged; one behaviour changed: a body shorter than its announced
+  `Content-Length` is now "download failed" instead of being probed and possibly
+  kept as a truncated pack.
+
+## 2026-10-18 – NTP over the home Wi-Fi
+
+- **The stored offset, or nothing.** NTP yields UTC; the study day needs the
+  local offset. The NTP paths use the `tz` key the last phone sync left in NVS
+  and **skip the sync** (logged) when it is absent rather than assume UTC: a
+  wrong offset can move the 04:00 rollover across midnight and put the day off
+  by one, which the index can never take back. In practice the offset is known,
+  because the portal page that saves the home Wi-Fi also posts the browser's
+  clock. It stays a snapshot: DST or travel is only corrected by opening the
+  portal page again.
+- **No radio just for the clock, except after a power cut.** NTP runs (3 s
+  timeout, `HomeWifi::fetchUtcMs()`) when Get decks has connected, before the
+  catalog read; a failure is logged and Get decks goes on. And when the boot
+  shows the date question (power cut, or a wake that re-asks it) with a home
+  Wi-Fi and the offset saved, the date screen joins in the background, once per
+  boot: it is the one moment the day is unknown. Every other boot keeps the
+  radio off.
+- **The manual answer stays first-class.** The stepper works while the screen
+  says "Syncing via <ssid>..."; confirming or skipping stops the join, radio
+  off. Connected -> NTP (the loop blocks for at most 3 s, presses made meanwhile
+  are dropped) -> radio off -> `applyWallClock()`, which dismisses the question
+  as a phone sync does. A failed join or NTP leaves "No network (time): set it
+  by hand". Joining in the background was chosen over a blocking "syncing"
+  screen before the question: without the network that would cost the 15 s
+  join timeout every time.
+- **Power.** The CPU runs at 240 MHz only while the radio is on (`netRadioOff()`
+  on every exit). The join and its outcome count as activity for the idle
+  timers, so neither the 30 s dim nor the 2 min sleep can cut the 15 s join +
+  3 s NTP short, and the status line gets a full timeout to be read. An idle
+  timeout or an explicit sleep turns the radio off as for Get decks; a sleep
+  while the question is open still re-asks it (and retries NTP) on the wake.
+- **A new day under the settings.** `applyWallClock()` already gave an
+  unanswered question (or the done screen) way to the new queue; on the portal
+  and Get decks screens it now does the same for the screen the settings home's
+  "Continue" returns to, so a sync there does not leave a stale "all reviewed".
+- **Flash:** the StickS3 build grows by ~4 KB (the SNTP client is linked now).
+  **Not verified on hardware.**
+
+## 2026-10-18 – Integration review fixes
+
+Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10-18`).
+
+- **A catalog deck name may not end in '.'.** `x.` was accepted and saved as
+  `/packs/x..tgc`, which the portal's delete refuses (it rejects any ".."), so
+  the deck could never be removed again. `catalogNameIsSafe()` now refuses a
+  trailing '.' too (native test).
+- **Stale download/upload temps are removed.** `fetchPackFile()` measured the
+  free space *before* removing a `/packs/.fetch.tmp` left by an interrupted
+  download, and nothing else removed it, so a power cut mid-download kept up to
+  5 MB occupied and every later download or upload failed "not enough space".
+  `setup()` now removes `/packs/.fetch.tmp` and `/packs/.upload.tmp` right after
+  mounting LittleFS (nothing can be in flight at boot), and the download and the
+  portal upload discard their temp before measuring the space. `kFetchTmp`
+  moved to `NetFetch.h` for that.
+- **Unplugging a dark panel saves before sleeping.** On USB power the idle
+  timeout saves and only blanks the panel; the uptime rule keeps advancing the
+  day carry in RAM, and the unplug path went straight to `armSleep()` +
+  `deepSleep()`, so a night on the charger lost those hours (04:00 rollover
+  included) on the next wake. Every sleep of the running app now goes through
+  `prepareDeepSleep()`: save (with the usual guard: a store that failed to load
+  and has no answers is not written), portal and home Wi-Fi off, then
+  `armSleep()`. The explicit sleep calls it before its notice, so the saved
+  carry and the RTC timestamp describe the same moment. The critical-battery
+  re-sleep at boot (keeps the first sleep's timestamp) and `halt()` (SRS maybe
+  not loaded) stay as they were.
+- **A pack change under the settings refreshes "Continue".** The portal (upload,
+  delete, URL download) and Get decks reload, swap or close the live pack while
+  the settings home waits to "Continue" into the quiz, detail or done screen,
+  but only `netDownload()` refreshed the question kept for it, and only when
+  it had closed the live deck itself to replace it (or none was open).
+  Deleting every pack and pressing Continue drew a closed pack (crash);
+  replacing or deleting the live pack showed the old question and a hold graded
+  whatever card sat at that index in the new pack. `portalPacksChanged()`, the
+  path both share, now notices when the live reader was replaced or closed:
+  with a pack open it rebuilds the queue and builds the question Continue
+  returns to (or the done screen); with none, Continue opens the deck list,
+  whose "+ Get decks" row still works. The deck list was chosen over the
+  boot-time upload screen because that one deliberately makes the side button
+  inert, and the portal opened from the settings must stay leavable. A failed
+  reload that kept the old reader keeps its question. Continue also restarts
+  the answer clock of an unrevealed question, as a wake from a dark panel does:
+  the question was hidden (or built) behind the settings, and that time must
+  not grade it Hard. As a last line of defence, `drawQuiz()`, `drawDetail()`,
+  `tapAction()` and `holdAction()` check `questionCard()` (pack open, a question
+  built, its card readable) and otherwise draw "Cannot open pack / side hold:
+  menu" or do nothing, so nothing is ever graded for a card that is not on
+  screen.
+- **A download no longer blocks the power button and the battery guard.** Get
+  decks downloads block `loop()` for up to 10 min at 240 MHz, and the progress
+  callback only watched the side button. It now also feeds the critical-battery
+  guard every 10 s (`batteryCritical()`, shared with `loop()`) and polls the
+  power button; either one cancels the download and records the sleep request,
+  and `netDownload()` calls `sleepNow()` only after `fetchPackFile()` returned,
+  so the temp is already removed and the old deck untouched (the wake reopens
+  a deck that was closed to be replaced). A download is also refused on battery
+  below the guard's resume level (6 %, `BatteryGuard::canResume()`), with
+  "Battery low" in the footer. The portal's URL download has no progress
+  callback and is unchanged (it is capped at 60 s).
+- **"Study more" is for today only.** The done screen's +10 new-card override
+  (`gExtraNew`) was never reset on a day change, so the next day started with
+  yesterday's raised cap (and every further tap stacked on it). It now carries
+  the day it was granted, and `extraNewToday()` drops it once the day index
+  differs: one check at the point of use covers the uptime rollover, the sleep
+  time, a manual date and a wall-clock sync alike, instead of a reset in each
+  of those paths. Loading another deck still resets it, now also when the
+  portal or Get decks swaps the live deck. Verified on the way: the NTP merge's
+  `applyWallClock()` already gives the settings home's "Continue" a fresh
+  question when a sync on the Wi-Fi or Get decks screen starts a new day.
+- **An update that does not fit says what to do.** A download keeps the old
+  copy until the new one validated, so updating a big deck needs room for both,
+  and the footer only said "Not enough space". For an update (`~` row) that
+  fails that way, Get decks now shows its error screen: "Not enough space" and
+  "An update needs room for both copies. Delete the old one first: Settings >
+  Wi-Fi, 192.168.4.1" (es: "Hace falta sitio para las dos copias...").
+
+## 2026-10-18 – First boot formats a data partition with no LittleFS
+
+- **Found while preparing an onboarding test.** The merged release image
+  carries no filesystem (earlier docs said "an empty filesystem", which was
+  wrong): the data partition is whatever was there before -- erased by a browser
+  flasher, or another firmware's data. `LittleFS.begin(false)` fails on both, and
+  the app stopped on "Filesystem not found / Run: pio run -t uploadfs", so no new
+  user could ever reach the Wi-Fi upload screen.
+- **Format only what is not ours.** `mountFilesystem()` formats the partition
+  (with a "Preparing storage..." notice) only when it holds no LittleFS at all:
+  neither block of the root metadata pair has the superblock's `"littlefs"`
+  magic at byte 8. A LittleFS that is there but will not mount is damage, not a
+  fresh device, and is never erased silently: the error screen ("Storage
+  damaged") erases it only on a long press of the front button, after the press
+  that woke the chip was released, then restarts. `LittleFS.begin(true)`
+  (format on any failure) was rejected because it would wipe decks and progress
+  on a transient or partial corruption without asking.
+
+## 2026-10-18 – Default font: Noto Sans JP
+
+- **Noto Sans JP Regular replaces Klee One SemiBold as the builder's default
+  font** (decided with the maintainer; supersedes the "Default font: Klee One"
+  bullet of the 2026-10-16 entry). The app is about *recognising* kanji in
+  print, so the glyphs should look like the gothic learners meet in real texts
+  (and in WaniKani) rather than Klee One's textbook (教科書体) style. Stroke
+  shapes for writing are still shown by the KanjiVG stroke animation, which
+  does not depend on the font. Klee One stays available: `fetch --klee-one`,
+  then `build --font cache/fonts/KleeOne-SemiBold.ttf`.
+- **Regular, not Medium**, after comparing previews: Medium clogs dense kanji
+  at the 40 px option size, and light ink on the dark panel already looks
+  heavier on the real screen than in a preview.
+- **M5GFX's built-in `lgfxJapanGothic_*` fonts were rejected**: they stop at
+  40 px (the prompt is 96 px), are 1bpp with no antialiasing, and cost ~534 KB
+  of app flash per size. Packs keep their pre-rendered glyphs.
+- **Pinned download.** `fetch` gets the Japanese subset OTF and the OFL
+  `LICENSE` from the noto-cjk `Sans2.004` release tag (the latest Sans release,
+  byte-identical to `main` today) into `cache/noto/`.
+- **No format or layout change.** Both fonts have the same vertical metrics
+  (1160/-288 per 1000), so text line heights and ascents in the header are
+  unchanged. N5 builds for en/es/fr/pt and N4-N1 for es keep every card and
+  every text glyph (œ, ç, ã, õ included). Packs grow ~4-7 % because gothic ink
+  fills more of the em square (N5 es 375,356 -> 401,816 bytes; N3 es 1,738,280
+  -> 1,829,012; N1 es 5,765,932 -> 6,026,068, which still fits the StickS3's
+  6,225,920-byte LittleFS partition, but with little room to spare). Meaning
+  distractors are ranked from the font's own bitmaps, so they shift too (N5 es:
+  the first distractor changes on 28 of 79 cards).
+- The UX mockups (`tools/ux-mockups/`, `docs/ux/`, `docs/ux-refresh.md`) were
+  rendered with Klee One and are left as they are: they show layout, not the
+  final typeface, and `render.py` still reads `cache/fonts/KleeOne-SemiBold.ttf`
+  (fetch it with `--klee-one`).
+
+## 2026-10-18 – Decks release: `decks-v<format>` instead of `latest`
+
+- **Why.** The default catalog, `releases/latest/download/catalog.txt`, needed
+  the newest release to carry the packs, but `release.yml` attached them only on
+  an opt-in dispatch: any tag-push firmware release (never with packs) would
+  become "latest" and break Get decks. There was no release yet, so it 404'd.
+- **The decks get their own release with a fixed tag, `decks-v<pack format
+  version>`** (`decks-v2` for format v2), created with `--latest=false` so it is
+  never "latest" and no firmware release can hide it. `.github/workflows/decks.yml`
+  (manual dispatch only) builds, checks and publishes it; a rebuild replaces the
+  assets in place (`gh release upload --clobber`, packs first and the catalog
+  last, so a device reading the new catalog finds the new packs) and refreshes
+  the title and notes. A run publishes its whole set: `catalog.txt` lists exactly
+  the packs it built, and `.tgc` assets left by an earlier run that it did not
+  build are deleted, so the release and its catalog always agree. A format bump
+  publishes a new `decks-v<N+1>` release and old firmware keeps reading
+  `decks-v<N>`, so it never downloads a pack it cannot open.
+- **Firmware default** (supersedes the "Default catalog URL" bullet of "Get
+  decks: the catalog, the download and where it lives"):
+  `HomeWifi::kDefaultCatalogUrl =
+  https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt`,
+  to change together with the pack reader's version. The portal's override field
+  stays. Until `decks-v2` exists the URL answers 404, which the device reports as
+  "No catalog published at this URL yet" -- still accurate, and also right for a
+  future firmware whose `decks-v<N>` is not out yet.
+- **Redirects and roots still hold.** `releases/download/<tag>/<asset>` is one
+  hop shorter than `latest`: `github.com` answers 302 straight to
+  `release-assets.githubusercontent.com` (signed URL), which answers 200 with a
+  `Content-Length` to an HTTP/1.0 request (`curl -sIL --http1.0` on KanjiVG's
+  r20260714 asset, 2026-10-18). Same hosts, so the embedded roots ("HTTPS for Get
+  decks") are unchanged.
+- **The tag is derived, not typed.** The workflow reads every pack's format
+  version from `tangocho-pack inspect`, fails if they disagree, and publishes to
+  `decks-v<that>`. It reads the per-pack cap `kCatalogMaxPackBytes` (5 MiB) from
+  `firmware/src/catalog/Catalog.h` and fails if a pack is over it (Get decks
+  would skip that record). It also fails unless the builder's default font is
+  Noto Sans JP, the font the notes credit, so the attribution cannot go stale.
+- **Default set**: JLPT N5..N1 and the full Jōyō deck, each in es and en, all
+  with `--strokes` (12 packs: `n5-es.tgc` .. `n1-en.tgc`, `joyo-es.tgc`,
+  `joyo-en.tgc`). Levels, languages and the Jōyō deck are dispatch inputs
+  (validated against fixed lists and passed through the environment), plus
+  `publish` (off: build, check and keep a workflow artifact only).
+- **The Jōyō deck** (`tangocho-pack build --joyo`) is KANJIDIC2 grades 1-6 and 8
+  = 2,136 kanji, named `Joyo kanji`: deck names stay ASCII because the device
+  draws them in its built-in font, which has no "ō" (the builder now warns about
+  a non-ASCII name). Its cards are in **school order** -- grade 1..6, then 8, each
+  by newspaper frequency, kanji with no frequency rank last (fewer strokes first)
+  -- because a pack's card order is its `level` hint, the order the device
+  introduces new cards in (docs/srs.md). A JLPT order would only replay the N5..N1
+  decks back to back; school order is the curriculum Japanese learners follow and
+  starts with the simplest, most frequent kanji (日一人年大十二本中出...).
+  `--order jlpt|grade` overrides either default.
+- **Sizes in pack format v1** (Klee One, `--strokes`, built 2026-10-18): N5 0.42
+  MB, N4 0.91, N3 2.03, N2 2.02, N1 6.80, Jōyō 11.62 (es; en within 0.1 %). N1
+  and Jōyō are over the 5 MiB cap and the StickS3's 5.9 MB filesystem, so the
+  default set only passes the workflow's check with pack format v2's compression;
+  until then a run with those decks fails before publishing anything.
+- **`release.yml` no longer builds packs** (supersedes the "Prebuilt packs are
+  opt-in" bullet of "Release artifacts"): the `build_packs`/`packs_jlpt`/
+  `packs_langs` inputs and the packs job are gone, the rest is unchanged. The
+  firmware notes link to the decks release named in that firmware's own
+  `kDefaultCatalogUrl` (read from `HomeWifi.h` when the release is made), for
+  Get decks and for manual download.
+- **Still open:** running the decks workflow is a maintainer decision, blocked
+  on the licence of the tanos.co.uk JLPT lists ("Before publishing" in the
+  roadmap).
+- **Catalog order = learning order** (added at integration). Get decks lists
+  decks in catalog order (own language first), and `catalog` sorted by file
+  name put `joyo-*` first and N5 last. `tangocho-pack catalog --order NAMES`
+  lists named packs first; `decks.yml` passes its build order, so the catalog
+  reads N5, N4, N3, N2, N1, Joyo per language and a new device's selection
+  starts on N5.
+
+## 2026-10-18 – Get decks from the portal page; own language first
+
+- **One step from the page.** With a home Wi-Fi saved, the portal page's Home
+  Wi-Fi section has a **Get decks now** button (`POST /getdecks`); saving the
+  network redirects to `/?wifi=saved#home`, which confirms the save and points
+  at it. The device stops the portal and opens Get decks: the boot-time upload
+  screen's hold, now one function (`wifiToGetDecks()`), from the boot-time
+  portal and the Settings one alike. Its exit is the existing one: from the
+  boot-time state the upload screen again, or the quiz once a deck is loaded;
+  from Settings the deck list, whose side button goes to the settings home. The
+  boot-only upload-ready flag is not touched. No home Wi-Fi saved: no button,
+  and `POST /getdecks` answers 400.
+- **The response goes out before the AP goes down.** As with the URL download,
+  the handler only records the request and sends the page; `poll()` calls the
+  new `Hooks::onGetDecks` 1 s later, so `WifiPortal` still never reaches into
+  `main.cpp`. The WebServer closes the connection right after `send()` and lwIP
+  delivers the buffered page in the background, so leaving on the very next
+  poll could pull the AP from under it; a second is ample on a local link. A
+  side press, an upload that starts the quiz or the idle timeout within that
+  second stops the portal, and `end()` drops the request. `loop()` ignores the
+  Wi-Fi screen's input once `poll()` has left it, so a press in that iteration
+  cannot `closeWifi()` over the Get decks screen. The page says the device
+  leaves this Wi-Fi to download over the home network, that the phone can go
+  back to its own network, and to follow the device screen; the switch undoes
+  an idle dim, since typing on the phone is not button input. A network
+  forgotten within that second gets Get decks' own "No home Wi-Fi saved".
+- **Own language first.** Get decks orders the catalog so that the decks whose
+  `lang` is the screen's language come first, in catalog order, followed by all
+  the others in catalog order (a stable partition, `orderCatalogForLang()` in
+  the pure `catalog/` module, native-tested); nothing is hidden. The language is
+  the string table the screens are drawn with: the Language setting, or the
+  pack's language under Auto (`uiLangCodeFor()` through `setUiForLang()`).
+  After every pack was deleted under Auto it stays the last pack's language,
+  which is what the screen still shows. The primary subtag is compared without
+  case (`es-MX` counts as Spanish). The selection still starts on the first
+  deck not on the device, so now in the user's language when there is one. A
+  fresh device has no pack, hence an English UI under Auto; so the page's button
+  also posts the phone's `navigator.language` (hidden field, filtered to
+  letters, digits and `-`), and when the setting is Auto **and no pack is
+  open** that tag orders the list instead (also after every pack was deleted).
+  The screens stay in their own language; the hint lives until Get decks closes
+  and the boot-time hold sends none.
+- **Flash:** +3.8 KB on the StickS3 build. **Not verified on hardware.**
+
+## 2026-10-18 – Pack format v2: compressed glyphs and strokes
+
+- **Why.** Raw 4bpp bitmaps made packs ~5.5 KB per kanji: JLPT N1 with
+  `--strokes` was 6.8 MB and a Jōyō-sized pack 11.6 MB, over the 5 MB per-pack
+  cap and the StickS3's 5.9 MB filesystem. Set 0 (96 px) alone was two thirds
+  of a pack, and most of its pixels are 0 or 15.
+- **Glyphs: encoding 1, a nibble-code RLE** (docs/pack-format.md). The stream is
+  4-bit codes, high nibble first like the pixels: `1..14` one anti-aliased
+  pixel, `0 L` / `F L` runs of 0 / 15, `0 0 L` copy the next `L` pixels from the
+  row above; lengths are 1–3 codes (1..330). Pixels run on across row ends. The
+  length is implied by the codes and never exceeds the raw size, so the glyph
+  table did not change. The builder keeps encoding 0 whenever RLE is not
+  strictly smaller (it never is for an empty glyph), so the worst case never
+  grows. The encoder is greedy (copy if it covers >= 3 pixels and more than a
+  run, else a run, else a literal); an optimal parse was only 0.1–0.2 points
+  better.
+- **Measured before choosing** (N4, 166 kanji, set 0 / set 1 as % of raw, Klee
+  One | Noto Sans JP Medium): the crude byte RLE 31/70 | 26/59; a byte-oriented
+  code (2-bit op + 6-bit count: zero run, ink run, literal block) 35/70 |
+  31/69, because two thirds of the anti-aliased runs are a single pixel and a
+  byte-aligned code pays a whole byte for each; the nibble code without copies
+  23/50 | 20/43; **with copies 21/46 | 14/32**; zlib per glyph 25/54 | 15/37.
+  Copies from up-left/up-right gained nothing (< 0.1 point). The brief asked
+  for a byte-oriented code; the nibble one was kept because it is a third
+  smaller and decodes with the same "next nibble" step the raw format already
+  uses (no tables, no bit fields across bytes).
+- **Stroke masks: encodings 1 and 2.** Alternating run lengths, empty first,
+  1–3 nibble lengths (0..285), trailing empty pixels implied; encoding 2 codes
+  each row XOR the row above (a vertical stroke becomes two runs). Per mask the
+  builder stores the smallest of raw, 1 and 2. On N4: plain runs alone ~50 %,
+  row XOR alone ~43 %, the per-mask best 33 % (zlib per mask 56 %, over a card's
+  whole mask data 37 %).
+- **Stroke layout change.** A stroke entry had no free byte, so v2 reuses the
+  block's reserved u32 for the offset of the card's first mask and replaces each
+  entry's absolute `data_off` with `encoding`, `reserved` and a u16 `size`; masks
+  are back to back in stroke order. Entries stay 8 bytes, sizes are exact (the
+  reader validates and fetches exactly), and the v1 per-mask 4-byte padding
+  goes. `strokeAt(i)` sums the sizes of the entries before `i` in one read.
+- **Why not deflate (miniz / the ROM's tinfl).** Per bitmap it is not smaller
+  (numbers above), and compressing across bitmaps, where it would win, breaks
+  the random access the reader relies on. Inflate also needs an ~11 KB
+  decompressor state plus a dictionary window or the whole output, more flash,
+  and a second implementation to cross-check in tests; the RLE decoders are
+  ~200 lines with no state beyond the caller's bitmap and a 256-byte read
+  window.
+- **Results** (`--lang es --strokes`, defaults 96/40/18/20 px; v1 → v2 bytes):
+
+  | deck | kanji | Klee One v1 → v2 | Noto Sans JP v1 → v2 |
+  |------|------:|------------------|----------------------|
+  | N5   |    79 | 424,906 → 119,944 | 459,906 → 107,440 |
+  | N4   |   166 | 908,352 → 280,944 | 975,980 → 238,980 |
+  | N3   |   367 | 2,027,180 → 644,120 | 2,150,336 → 539,576 |
+  | N2   |   367 | 2,019,558 → 643,092 | 2,142,434 → 533,712 |
+  | N1   | 1,232 | 6,795,127 → 2,236,624 | 7,160,003 → 1,837,008 |
+  | Jōyō (grades 1–6 + 8) | 2,136 | 11,619,375 → 3,691,532 | 12,271,851 → 3,022,048 |
+
+  Ratios in the Jōyō build: set 0 23 % (Klee) / 16 % (Noto), set 1 50 / 36 %,
+  text sets 58–65 %, masks 34 %; the stroke section is ~340 B per kanji (was
+  ~800 B). Every pack fits the 5 MB cap; the Jōyō pack with strokes is 3.7 MB
+  with Klee One, a little over the ~3.5 MB target, and 3.0 MB with Noto. Pixels
+  are unchanged: the firmware reader decodes the v2 N1 and Jōyō packs to the
+  same bitmaps as the v1 builds (checked by hashing every glyph and mask).
+- **Compatibility.** `version` is 2; readers accept 1 and 2 (in a v1 pack every
+  glyph must be encoding 0 and blocks use the v1 layout), so the packs already
+  on devices keep working. Firmware from before this change checks
+  `version != 1` and refuses a v2 pack with "unsupported pack version" before
+  reading any bitmap. The builder writes v2 only.
+- **Firmware.** `pack/Rle.{h,cpp}` (pure, native-tested) decodes through a
+  `ByteIn`: memory, or a 256-byte window refilled from the `PackSource`.
+  `readGlyphBitmap`/`readStrokeBitmap` decode transparently, so the renderer
+  and the stroke animation draw decoded data as before. The renderer now also
+  keeps the decoded set-0 glyph in its scratch buffer, so the quiz's redraws
+  (every button press) skip the read and decode. +1.9 KB of flash. With
+  `TGC_QUIZ_LOG` (`sticks3-dev`) an `R` line gives the prompt kanji's draw
+  time and the fetch (read + decode) time inside it, and the full stroke frame's
+  draw time; not yet measured on hardware.
+- **Tests.** `tangocho-pack fixture` also writes `fixtures/rle_vectors.bin`
+  (synthetic edge cases, every glyph and mask of `mini.tgc` with its decoded
+  bitmap, malformed streams); the firmware's `test_rle` suite decodes all of it
+  and reads the v2 `mini.tgc` against it. `fixtures/mini_v1.tgc` is the last v1
+  fixture, frozen, for the v1 reader test. The byte-identity baseline of the
+  no-strokes writer is now `tests/data/mini_v2_baseline.tgc`.

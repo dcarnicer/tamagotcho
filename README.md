@@ -9,8 +9,9 @@ with **multiple-choice reviews** and spaced repetition, fully offline.
 ## How it works
 
 1. `tools/pack-builder` builds a **pack** (`.tgc`) from open data
-   (KANJIDIC2), choosing a level (e.g. JLPT N5), meaning language and font.
-   All glyphs are pre-rendered, so the device needs no Japanese font.
+   (KANJIDIC2), choosing a level (e.g. JLPT N5), meaning language and font
+   (default: Noto Sans JP, a gothic like the one in printed texts). All glyphs
+   are pre-rendered, so the device needs no Japanese font.
 2. Upload the pack to the device.
 3. Review: a kanji appears, pick the right meaning or reading from four
    options. Distractors are chosen to be genuinely confusable. A wrong answer
@@ -29,8 +30,14 @@ copy a pack onto the device without a computer running `uploadfs`:
 2. Join that access point from the phone (it is **open**, no password) and open
    `http://192.168.4.1` in a browser.
 3. Upload a `.tgc` with the file picker. The same page deletes a pack, downloads
-   one from a plain `http://` URL, and shows the SRS statistics; the counters
-   and the pack list are also available as JSON at `/api/stats`.
+   one from a plain `http://` URL, sends the device to **Get decks** once a
+   home Wi-Fi is saved (below), and shows the SRS statistics; the counters
+   and the pack list are also available as JSON at `/api/stats`. Opening the
+   page also sets the device's date from the phone's clock and time zone, so the
+   review day rolls over at 04:00 local. Once the date has been set this way,
+   a power-off can be handled by skipping the on-device date question (side tap)
+   and opening this page again -- or, with a home Wi-Fi saved (below), the
+   device answers that question itself from the network time.
 4. Tap the side button to leave the screen and stop the portal.
 
 Notes and limits:
@@ -42,14 +49,67 @@ Notes and limits:
   to fit in RAM), then checked for the `TNGC` magic and a valid pack header. A
   file that is not a pack is deleted again, so a bad upload cannot strand the
   device, and there must be enough free space (the portal keeps a reserve).
-- **URL download is HTTP only.** TLS to arbitrary hosts is untested and may
-  fail on flash/memory, so `https://` is refused rather than silently tried; a
-  failed download leaves the existing packs untouched.
+- **The page's URL download is plain `http://` only**: on its own access point
+  the device has no internet, so this is for a server on the phone/laptop side.
+  For decks from the internet use **Get decks** below. A failed download leaves
+  the existing packs untouched.
 - On a fresh device (or one whose filesystem a launcher formatted) with no
   packs, the firmware boots straight into the Wi-Fi screen with instructions
   and continues into the quiz as soon as a pack arrives.
 - Everything works offline as before; the portal is only started on the Wi-Fi
   screen.
+
+## Getting decks with one button (home Wi-Fi)
+
+Once the device knows your home Wi-Fi it can download decks from the release
+catalog by itself:
+
+1. Open the Wi-Fi portal as above and, on the `http://192.168.4.1` page, fill in
+   **Home Wi-Fi** (network name -- nearby networks are suggested -- and
+   password; empty for an open network) and press **Save**. The page confirms
+   it and offers **Get decks now**: press it and the device stops the portal
+   and goes straight to step 3. The phone can go back to its own network; the
+   rest happens on the device screen.
+2. Later, without the phone: hold the side button -> **Decks** -> the last row,
+   **+ Get decks** (**+ Descargar** in Spanish), and hold.
+3. It joins the home network, reads the catalog over HTTPS and lists the decks,
+   **those in the device's language first** (the Language setting, or the
+   loaded deck's language under Auto; the other languages follow):
+   `+` not on the device yet, `=` already here, `~` here but a different size
+   (another build). Tap moves, **hold downloads** (with a progress bar; the side
+   button cancels), and a hold on a deck that is already here starts studying it.
+   The side button goes back (to the deck list; on a device without decks, to
+   the Wi-Fi upload screen).
+
+Notes and limits:
+
+- The radio is on **only while this screen is open**, and the device sleeps as
+  usual when idle. A fresh device without packs also offers it on its boot
+  screen ("hold: get decks") once a home Wi-Fi is saved, besides the page's
+  **Get decks now**. A fresh device has no deck to take a language from, so
+  under Auto it lists the English decks first.
+- The home Wi-Fi also keeps the **date** right: Get decks sets it from the
+  network time (NTP) once connected, and after a power-off the date question
+  tries the same in the background ("Syncing via <network>...") and goes away
+  by itself when it works; you can still answer it by hand meanwhile, which
+  turns the radio off. Both use the time zone the portal page last sent, and
+  skip the sync until the page has been opened once.
+- Every download is checked against the catalog's **size and SHA-256** and must
+  be a valid pack before it replaces anything; a failure leaves `/packs` as it
+  was. HTTPS is verified against a small embedded set of root certificates
+  (Let's Encrypt, Sectigo/USERTrust, DigiCert, Google Trust Services, Amazon);
+  see `docs/decisions.md`.
+- The password is stored on the device (NVS, **not encrypted**) and is never
+  shown again; the page only shows the saved network name and a "forget"
+  button. While the portal runs, anyone in range could replace (not read) it.
+- The default catalog is
+  `https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt`,
+  the dedicated **decks release** for the pack format this firmware reads (see
+  [Prebuilt decks](#prebuilt-decks-and-their-licence) below). It works once that
+  release has been published (a maintainer decision, see "Before publishing" in
+  the roadmap); until then the device says no catalog is published. The portal
+  page can point it at another catalog (any `http(s)://` URL, e.g. your own
+  server). **Not verified on hardware yet.**
 
 ## M5Launcher and app-only `.bin`s
 
@@ -84,6 +144,12 @@ Honest status — **not verified on hardware**:
 - Because of that, the reliable way to populate `/packs` under a
   launcher-installed app is the **Wi-Fi upload above**, once the firmware is
   running — it does not depend on who owns the filesystem.
+- On the StickS3 the firmware turns the power button's **click into "save and
+  sleep"** by switching off the M5PM1's click reset (see
+  [firmware/README.md](firmware/README.md#power)). The PM1 keeps that setting
+  after you leave the app, so under the launcher a click no longer restarts the
+  device. A double click still powers it off, and a click (or plugging in USB)
+  should power it back on. Not yet verified on hardware.
 
 ## Releases
 
@@ -96,9 +162,8 @@ A newer push on the same ref cancels the superseded run.
 [`.github/workflows/release.yml`](.github/workflows/release.yml) runs on tags
 `v*` and on manual dispatch. It builds, per board, an **app-only** image and a
 **merged, single-file** image, writes an **ESP Web Tools** `manifest.json`, and
-publishes a GitHub release with those artifacts. Prebuilt packs and a catalog are
-**opt-in** (a dispatch input), because they redistribute CC BY-SA data; when they
-are attached, the attribution is added to the release notes automatically.
+publishes a GitHub release with those artifacts. Firmware releases carry **no
+packs**; their notes link to the decks release below.
 
 ### Flash over USB
 
@@ -136,9 +201,10 @@ what PlatformIO flashes for the same table (see `docs/decisions.md`).
 
 For a **browser flash**, open an ESP Web Tools page (e.g.
 <https://esphome.github.io/esp-web-tools/>) and point it at the release's
-`tangocho-sticks3-manifest.json`. A merged image flashes an **empty
-filesystem**, so a fresh device boots straight into the Wi-Fi upload screen and
-a pack can be dropped in over the air.
+`tangocho-sticks3-manifest.json`. A merged image carries **no filesystem**:
+on the first boot the firmware finds no LittleFS on the data partition (erased,
+or left by another firmware), formats it ("Preparing storage...") and boots
+into the Wi-Fi upload screen, where a pack can be dropped in over the air.
 
 > Honest status — **not verified on hardware.** We have not flashed a merged
 > image through ESP Web Tools or `esptool write_flash` on a real StickS3. The
@@ -146,16 +212,32 @@ a pack can be dropped in over the air.
 > `pio run -t upload`, but the browser path is unconfirmed until someone tries
 > it.
 
-### Prebuilt packs and their licence
+### Prebuilt decks and their licence
 
-When the maintainer asks for them (a release-workflow input), a release can
-attach `*.tgc` packs built with `--strokes` (for example JLPT N5 in English and
-Spanish) together with a line-oriented `catalog.txt` — the small catalog the
-device is meant to read; the on-device fetch/parse is not implemented yet (see
-`tools/pack-builder/README.md`). A pack contains **KANJIDIC2** data (CC BY-SA
-4.0) and, with `--strokes`, **KanjiVG** data (CC BY-SA 3.0), so prebuilt packs
-are licensed **CC BY-SA**. The combined attribution is in the release notes and
-in [docs/data-sources.md](docs/data-sources.md).
+Prebuilt decks live in their own GitHub release with a fixed tag,
+**`decks-v<pack format version>`** (`decks-v2`), published by
+[`.github/workflows/decks.yml`](.github/workflows/decks.yml) when the maintainer
+runs it (manual dispatch only). That release is **never marked "latest"**, so a
+firmware release never hides it, and a rebuild replaces its files in place. It
+holds `*.tgc` packs built with `--strokes` — by default JLPT N5 to N1 and the
+full **Jōyō** deck (2,136 kanji, in school order), each in Spanish and English
+(`n5-es.tgc` ... `n1-en.tgc`, `joyo-es.tgc`, `joyo-en.tgc`) — and the
+line-oriented `catalog.txt` the device reads for **Get decks** (format:
+`tools/pack-builder/README.md`), plus a `catalog.json` for people. Firmware
+reads the release of its own pack format, so a future format gets a new
+`decks-v<N>` release and older firmware keeps the decks it can open.
+
+The workflow's inputs are the JLPT levels (`5 4 3 2 1`), the meaning languages
+(`es en`), whether to build the Jōyō deck, and whether to publish (off: build,
+check and keep the packs as a workflow artifact). It derives the tag from the
+packs' format version and fails if the packs disagree on it or if any pack is
+over the device's 5 MiB per-pack limit.
+
+To install a deck by hand, download a `.tgc` from that release and upload it
+from the Wi-Fi portal page. A pack contains **KANJIDIC2** data (CC BY-SA 4.0)
+and, with `--strokes`, **KanjiVG** data (CC BY-SA 3.0), so prebuilt packs are
+licensed **CC BY-SA**. The combined attribution is in the decks release notes
+and in [docs/data-sources.md](docs/data-sources.md).
 
 ## Repository layout
 
@@ -164,11 +246,11 @@ in [docs/data-sources.md](docs/data-sources.md).
 | `firmware/`           | PlatformIO firmware (StickS3, T-Display-S3) |
 | `tools/pack-builder/` | Python CLI that builds `.tgc` packs     |
 | `tools/release/`      | release helper: merge a build into one flashable image |
-| `.github/workflows/`  | CI and release automation               |
+| `.github/workflows/`  | CI, firmware release and decks release automation |
 | `docs/`               | architecture, pack format, decisions, roadmap |
 
 ## Licence
 
 Code: MIT. Generated packs contain data from KANJIDIC2 (© EDRDG, CC BY-SA 4.0)
-and glyphs from the selected font (default Klee One, SIL OFL 1.1). See
-[docs/data-sources.md](docs/data-sources.md).
+and glyphs from the selected font (default Noto Sans JP, © Adobe, SIL OFL
+1.1). See [docs/data-sources.md](docs/data-sources.md).

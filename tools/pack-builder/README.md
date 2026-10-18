@@ -6,9 +6,12 @@ a font. Python 3.12+, managed with [uv](https://docs.astral.sh/uv/).
 ```sh
 cd tools/pack-builder
 uv sync
-uv run tangocho-pack fetch            # KANJIDIC2, JLPT N5-N1 table, Klee One, KanjiVG -> cache/
+uv run tangocho-pack fetch            # KANJIDIC2, JLPT N5-N1 table, Noto Sans JP, KanjiVG -> cache/
 uv run tangocho-pack build --jlpt 5 --lang es -o out/n5-es.tgc
 uv run tangocho-pack build --jlpt 5 --lang es --strokes -o out/n5-es-strokes.tgc
+uv run tangocho-pack fetch --klee-one # optional: Klee One (textbook style) -> cache/fonts/
+uv run tangocho-pack build --jlpt 5 --font cache/fonts/KleeOne-SemiBold.ttf -o out/n5-en-klee.tgc
+uv run tangocho-pack build --joyo --lang es --strokes -o out/joyo-es.tgc
 uv run tangocho-pack build --wanikani-token "$WANIKANI_TOKEN" -o out/wanikani.tgc
 uv run tangocho-pack build --wanikani-level 1 --wanikani-level 2 -o out/wanikani-l1-2.tgc
 uv run tangocho-pack inspect out/n5-es.tgc
@@ -20,19 +23,39 @@ uv run pytest
 
 ## Commands
 
-- `fetch [--force]` downloads into `cache/` (git-ignored): KANJIDIC2, the
-  JLPT table, Klee One and the pinned KanjiVG release zip.
-- `build --jlpt N [--jlpt M ...] [--grade G ...] --lang en|es|fr|pt
+- `fetch [--force] [--klee-one]` downloads into `cache/` (git-ignored):
+  KANJIDIC2, the JLPT table, Noto Sans JP Regular (the default font, pinned to
+  the noto-cjk `Sans2.004` release, with its OFL `LICENSE`, in `cache/noto/`)
+  and the pinned KanjiVG release zip. `--klee-one` also gets Klee One (the
+  textbook-style font that was the default before 2026-10-18) into
+  `cache/fonts/`, for `build --font cache/fonts/KleeOne-SemiBold.ttf`.
+- `build --jlpt N [--jlpt M ...] [--grade G ... | --joyo] [--order jlpt|grade]
+  --lang en|es|fr|pt
   [--font PATH] [--large-px 96] [--small-px 40] [--text-px 18] [--option-px 20]
-  [--strokes] [--strokes-px N] [--name NAME] -o FILE`. `--jlpt` and `--grade`
-  filters are AND-ed when both are given. Cards are ordered easiest first (N5
-  before N1, lower grade, frequency). `--strokes` adds the optional KanjiVG
-  stroke-order section (off by default; a pack without it is byte-identical to a
-  KANJIDIC2-only v1 pack). `--strokes-px` sets the em square for the masks and
-  defaults to `--large-px`.
+  [--strokes] [--strokes-px N] [--name NAME] -o FILE`. `--font` takes any
+  TTF/OTF (default `cache/noto/NotoSansJP-Regular.otf`); a card whose kanji the
+  font lacks is dropped with a warning, and a missing text glyph is an error.
+  `--jlpt` and `--grade` filters are AND-ed when both are given. `--joyo`
+  selects the 2,136 **Jōyō** kanji (KANJIDIC2 grades 1-6, the elementary-school
+  kyōiku kanji, and 8, the rest of the list) and names the deck `Joyo kanji`.
+  The card order is the pack's `level` hint, i.e. the order the device
+  introduces new cards in (docs/srs.md): `--order jlpt`, the default, is
+  easiest first (N5 before N1, then lower grade, then frequency); `--order
+  grade`, the default with `--joyo`, is school order (grade 1..6, then 8; within
+  a grade by newspaper frequency, kanji with no frequency rank last, fewer
+  strokes first). Deck names should be ASCII (`Joyo`, not `Jōyō`): the device
+  draws the name in its built-in ASCII font, and the builder warns otherwise.
+  `--strokes` adds the optional KanjiVG stroke-order section (off by default).
+  `--strokes-px` sets the em square for the masks and defaults to `--large-px`.
+  Packs are written in format **v2**: each glyph bitmap and stroke mask is
+  stored compressed when that is smaller (`docs/pack-format.md`), which makes a
+  pack about a third to a quarter of its v1 size. Firmware older than v2
+  support refuses these packs ("unsupported pack version"); it keeps reading its
+  v1 packs.
 - `build --wanikani-token TOKEN [--wanikani-level N ...]` builds from **your own
-  WaniKani account** instead of KANJIDIC2 (so no `--jlpt`/`--grade` and no
-  `fetch` needed). It imports only the kanji you have **unlocked** (WaniKani API
+  WaniKani account** instead of KANJIDIC2 (so no `--jlpt`/`--grade`, and
+  `fetch` is only needed for the font). It imports only the kanji you have
+  **unlocked** (WaniKani API
   v2, `/assignments` joined to `/subjects`), reads the token from the flag or
   the `WANIKANI_TOKEN` environment variable, and never logs, prints or caches
   it. `--wanikani-level` (repeatable) limits the import to those WaniKani levels;
@@ -44,8 +67,10 @@ uv run pytest
   redistributed (docs/data-sources.md).
 - `inspect FILE` validates (magic, version, offsets, alignment, glyph table
   order, set 0/1 glyph per card, every string character present in set 2, every
-  reading character in set 3) and prints sizes and the file's `sha256`; exit
-  code 1 when invalid.
+  reading character in set 3, and every compressed glyph and stroke mask decodes
+  within its size) and prints sizes, raw vs stored bytes per glyph set and for
+  the stroke masks, and the file's `sha256`; exit code 1 when invalid. It reads
+  v1 and v2 packs.
 - `preview FILE --card 日 --mode meaning|reading|kanji|strokes [--kind on|kun]
   -o out.png [--width 135 --height 240 --scale 3 --seed 1 --reveal]
   [--stroke N]` draws a mock quiz screen that mirrors the device: reading answers
@@ -56,13 +81,19 @@ uv run pytest
   highlighting the last, mirroring the device animation).
 - `fixture` regenerates `fixtures/mini.tgc` and `fixtures/mini.json` (3 cards,
   large 32 / small 16 / text 12 / option 18, build_time 0) for the firmware's
-  native tests. `mini.json` lists the expected decoded fields; all offsets in it
-  are absolute file offsets.
-- `catalog DIRECTORY [-o FILE| -] [--base-url URL] [--json PATH]` scans a
-  directory of `*.tgc` and writes the line-oriented **catalog** the device is
-  meant to read (see below). It refuses an empty directory or a file that is not
-  a valid pack, so a broken build cannot silently enter a release. `--json` also
-  writes a human-readable `catalog.json` (never read on device).
+  native tests, plus `fixtures/rle_vectors.bin`, the decoder test vectors the
+  firmware cross-checks against this encoder (format in `fixture.py`).
+  `mini.json` lists the expected decoded fields; all offsets in it are absolute
+  file offsets. `fixtures/mini_v1.tgc` is the last v1 fixture, kept frozen (not
+  regenerated) to test that v1 packs stay readable.
+- `catalog DIRECTORY [-o FILE| -] [--base-url URL] [--json PATH] [--order NAMES]`
+  scans a directory of `*.tgc` and writes the line-oriented **catalog** the
+  device is meant to read (see below). It refuses an empty directory or a file
+  that is not a valid pack, so a broken build cannot silently enter a release.
+  `--json` also writes a human-readable `catalog.json` (never read on device).
+  Records are sorted by file name unless `--order` (pack names without `.tgc`,
+  comma or space separated) lists some first: Get decks shows decks in catalog
+  order, so the decks release puts N5 first.
 
 ## Catalog format
 
@@ -86,15 +117,17 @@ n5-en<TAB>en<TAB>79<TAB>703123<TAB>ab12cd…<TAB>https://example.com/v1/n5-en.tg
   - `lang` — the pack's meaning language (the header's `lang`);
   - `cards` — its card count;
   - `bytes` — the exact file size;
-  - `sha256` — lowercase hex digest of the whole file, so the device can check
-    integrity after download (the on-device check is a follow-up);
+  - `sha256` — lowercase hex digest of the whole file; the device checks it
+    (and `bytes`) before it keeps a download;
   - `url` — absolute when `--base-url` is given, otherwise the bare file name,
     meaning "relative to the URL the catalog was fetched from". `--base-url` may
     contain `{file}`, which is replaced by the file name.
 - Records are sorted by file name, so the output is deterministic and safe to
   diff.
-- **Not implemented yet:** the device does not fetch or parse a catalog. The
-  format above is the contract to implement against (roadmap phase 5).
+- The device reads this file for **Get decks** (`firmware/src/catalog/`): it
+  refuses an unknown version, skips a record that does not validate (and keeps
+  the others), caps the list at 32 decks, and resolves a bare-file-name `url`
+  against the catalog URL it was configured with (before any redirect).
 
 ## Layout
 

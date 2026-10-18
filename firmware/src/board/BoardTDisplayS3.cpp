@@ -134,8 +134,14 @@ int width() { return gDisplay.width(); }
 int height() { return gDisplay.height(); }
 
 // Rotation 0 = native portrait, 1 = landscape. width()/height() follow it.
-void setOrientation(bool landscape) { gDisplay.setRotation(landscape ? 1 : 0); }
+void setOrientation(bool landscape) { setRotation(landscape ? 1 : 0); }
 bool landscape() { return gDisplay.width() > gDisplay.height(); }
+void setRotation(uint8_t r) { gDisplay.setRotation(r & 3); }
+uint8_t rotation() { return gDisplay.getRotation() & 3; }
+
+// No IMU on this board: the app does not offer the Auto orientation.
+bool hasAccel() { return false; }
+bool readAccel(float*, float*, float*) { return false; }
 
 bool wasPressed(Button b) { return pin(b).pressedEdge; }
 bool isHeld(Button b) { return pin(b).down; }
@@ -176,6 +182,7 @@ void deepSleep() {
 }
 
 uint64_t rtcMicros() { return esp_rtc_get_time_us(); }
+bool powerButtonClicked() { return false; }  // no power-management chip
 uint32_t randomSeed() { return esp_random(); }
 
 }  // namespace board

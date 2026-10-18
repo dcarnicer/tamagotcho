@@ -28,7 +28,9 @@ This document is the design; the implementation lives in `firmware/src/srs/`
   codepoint, the mode is chosen at ask time (§6).
 - No stats screen. The cross-cutting "Statistics" item on the roadmap can read
   the same file later; phase 2 only keeps the counters it needs.
-- No user-visible clock or date entry (see §5 for the alternative).
+- No RTC and no required network: the day clock in §5 derives the date. A real
+  wall-clock time (the phone's browser through the Wi-Fi portal, or NTP over the
+  home Wi-Fi) is an optional correction on top of it (§5.1).
 
 ## 2. State model
 
@@ -240,17 +242,18 @@ Header (little-endian):
 | 32  | u16    | streak_current        | consecutive SRS days with an answer (§4.1)    |
 | 34  | u16    | streak_best           | best day streak ever (§4.1)                   |
 | 36  | u16    | last_study_day        | SRS day of the last answer; 0 = never         |
-| 38  | u16    | (unused)              | 0                                             |
+| 38  | u16    | epoch_anchor          | days since 1970-01-01 of SRS day 0; 0 = never synced (§4.1, §5.1) |
 | 40  | u32    | review_ms             | lifetime time on questions, ms (saturates)    |
 | 44  | u32    | (unused)              | 0                                             |
 
 #### 4.1 Header extension in the reserved bytes (v1-compatible)
 
 Bytes 32..47 were `reserved[4] = 0` in the first v1 writer and are not
-validated, so the streak and time fields reuse them **without a version bump**:
-`0` keeps meaning "absent", so a file written by the older firmware loads with
-zeroed streak/time, and an older reader ignores the new fields while still
-verifying the CRC (which covers the whole header, new bytes included).
+validated, so the streak, time and wall-clock fields reuse them **without a
+version bump**: `0` keeps meaning "absent", so a file written by the older
+firmware loads with zeroed streak/time and no anchor, and an older reader
+ignores the new fields while still verifying the CRC (which covers the whole
+header, new bytes included). Bytes 44..47 are still unused (0).
 
 - **Day streak.** A day streak over the SRS day index (§5), not wall time. In
   `grade(codepoint, grade, day, ...)`: when `day != last_study_day` (or nothing
@@ -268,6 +271,14 @@ verifying the CRC (which covers the whole header, new bytes included).
   `0xFFFFFFFF`. The app calls it once per answer with the same response time
   that graded it (question shown → the confirming press-down, minus the
   per-tap allowance), so it is a pure UI measure, not a clock.
+- **Wall-clock anchor.** `epoch_anchor` (u16 at 38) is the calendar day, counted
+  in days since 1970-01-01, that SRS day `0` corresponds to; the date shown for
+  any SRS day `d` is `epoch_anchor + d`. It is written by the first real-time
+  sync and moved only by a sync (§5.1). `0` means "never synced": the display
+  then falls back to the fixed base of the first firmware (SRS day 0 =
+  2026-10-17, epoch day 20743), exactly as before. Epoch day 0 (1970-01-01) can
+  never be a real anchor, because syncs before 2026 are refused, so `0` is
+  unambiguous; a u16 covers dates up to 2149 and syncs after 2099 are refused.
 
 CRC-32 (poly `0xEDB88320`, init/final `0xFFFFFFFF`). On load: size ≥ 48, magic,
 `version == 1`, `header_size == 48`, `count` consistent with file size, CRC
@@ -314,11 +325,15 @@ counter is only advanced in the file, so the loss is also visible.
 There is no RTC chip and no network, so "what day is it" has to be derived. We
 use a **persisted, day-granular clock**:
 
-- `now_day` (u16) is a monotonic day index. Absolute epoch is irrelevant; only
-  differences matter (day 0 is displayed as 2026-10-17).
+- `now_day` (u16) is a monotonic day index. The schedule only uses
+  differences; due days live in this index space and it never goes back. The
+  date shown to the user is `epoch_anchor + now_day` once a real time has been
+  synced (§5.1), else the fixed base 2026-10-17 + `now_day` (§4.1).
 - **Uptime rule** (`tick(now_ms)` from `loop()`): accumulate elapsed
   `millis()` into `ms_carry`; every 86 400 000 ms, `now_day += 1`, carry the
-  remainder. `ms_carry` is persisted, so short sessions add up.
+  remainder. `ms_carry` is persisted, so short sessions add up. After a sync,
+  `ms_carry` is the time since the last 04:00 local, so this rollover falls at
+  04:00 local (§5.1) instead of 24 h after an arbitrary origin.
 - **Sleep rule** (`addElapsedMs(ms)` at boot): the app deep-sleeps when idle
   (docs/decisions.md, 2026-10-18). The ESP32's RTC timer keeps counting through
   deep sleep, so on a wake-up the app adds the slept time (RTC now minus the
@@ -327,22 +342,130 @@ use a **persisted, day-granular clock**:
   day granularity.
 - **Power-cut rule** (app, not the store): a full power-off clears the RTC timer
   and RTC memory, so the elapsed time is unknown. The app detects this boot
-  (`RTC_NOINIT` magic) and **asks the user** on the date screen (0 / 1 / 2-7 /
-  14+ days); the answer goes through `advanceDays(n)`. The same screen is in
-  the settings for manual corrections.
+  (`RTC_NOINIT` magic) and **asks the user** on the date screen: it shows the
+  last-used date (the persisted `now_day` at boot) and a proposed "today" that
+  starts there; a tap adds a day, a side-button hold takes one back (never below
+  the current day), a hold confirms and a side tap skips the question. The
+  confirmed difference `n` goes through `advanceDaysManual(n)`, which is
+  `advanceDays(n)` plus, for `n > 0`, `ms_carry = 0`: the time of day is unknown
+  after a power cut, so the next rollover comes a full day after the answer.
+  That is late rather than early on purpose: an early rollover would hand out a
+  day that cannot be taken back (the index never rewinds), a late one is fixed
+  by the next answer or sync. The same screen is in the settings for manual
+  corrections. A real-time sync (§5.1) answers the question instead, so it is
+  not asked when the time is already known and it is dismissed if a sync
+  arrives while it is shown. With a home Wi-Fi and a UTC offset saved, the
+  screen tries one itself: it asks NTP over the home Wi-Fi in the background
+  while the stepper stays usable (§5.1).
+  On the StickS3 a click of the power
+  button used to be such a cut: the M5PM1's "reset" cycles the chip's power. The
+  click now saves and deep-sleeps instead, and so does a critical battery
+  (docs/decisions.md, 2026-10-18). What is left is the deliberate double-click
+  power-off, a long press into download mode, and a cell left to go flat.
+  If the device goes to sleep (idle timeout, power button, Sleep row) while the
+  boot-time question is still open, a flag in RTC memory (`gDatePending`)
+  makes the next wake ask it again instead of dropping it.
 - `beginSession()` only resets the tick base and the new-card counter on a day
   change; it never advances the day by itself. (An earlier "boot rule" advanced
   it on every boot that followed a session with answers; it inflated the
   schedule with every restart and was removed.)
 
 **Trade-off (explicit).** With deep sleep the day index follows wall time
-except across real power-offs, where it is only as good as the user's answer.
-FSRS recomputes S from the *observed* elapsed time every review, so a coarse
-answer ("2-7 days" adds 4) changes S by a factor, not by an order of magnitude.
+except across real power-offs, where it is only as good as the user's answer or
+the next sync. FSRS recomputes S from the *observed* elapsed time every review,
+so an answer that is off by a day changes S by a factor, not by an order of
+magnitude.
 
 Testability: the pure module never calls `millis()` or the RTC; `beginSession()`,
-`tick(now_ms)`, `addElapsedMs(ms)`, `advanceDays(n)` and a test-only `setToday()`
-are all the clock needs, so the native tests drive time explicitly.
+`tick(now_ms)`, `addElapsedMs(ms)`, `advanceDays(n)`, `advanceDaysManual(n)`,
+`syncWallClock(utc_ms, tz_offset_min)` and a test-only `setToday()` are all the
+clock needs, so the native tests drive time explicitly.
+
+### 5.1 Real time from the phone and from NTP
+
+Opening the Wi-Fi portal page (`http://192.168.4.1`) makes the browser post its
+clock: `POST /time` with `ms` = `Date.now()` (UTC milliseconds), `tz` = minutes
+**east** of UTC (`-new Date().getTimezoneOffset()`, so +120 for CEST) and an
+optional IANA `zone` name used only in the portal's message. The portal checks
+the syntax and hands the two numbers to the app (`WifiPortal::Hooks::onTime`);
+the app's `applyWallClock(utc_ms, tz_offset_min)` calls the pure
+`SrsStore::syncWallClock()` and is the single entry point for both sources (NTP
+below calls it too). The offset is stored in NVS (`tangocho`/`tz`, int16, minutes
+east of UTC; absent until the first sync) so NTP, which only yields UTC, can
+reuse it. It is not part of the SRS file.
+
+**Plausibility.** A time before 2026-01-01T00:00Z or from 2100 on, or an offset
+outside -12 h..+14 h, is a broken browser clock (or a forged request) and is
+rejected; nothing changes.
+
+**Study day.** The day rolls over at a fixed **local 04:00**, as in Anki, so a
+late-night session still counts for the evening's day:
+
+```
+local     = utc_ms + tz_offset_min * 60 000
+real_day  = floor((local - 4 h) / 86 400 000)      # days since 1970-01-01
+into_day  = (local - 4 h) mod 86 400 000           # ms since the last 04:00
+```
+
+**Applying it** (`now_day` before the sync, `anchor` = `epoch_anchor`):
+
+| state                                | result       | effect                                                   |
+|--------------------------------------|--------------|----------------------------------------------------------|
+| no anchor yet                        | `Anchored`   | `anchor = real_day - now_day`; the index is unchanged (the first sync defines the device's current day as today) |
+| `real_day - anchor > now_day`        | `Advanced`   | `advanceDays(real_day - anchor - now_day)`               |
+| `real_day - anchor == now_day`       | `Same`       | nothing but the carry                                    |
+| `real_day - anchor < now_day`        | `Reanchored` | `anchor = real_day - now_day`; the index is **kept**     |
+
+and in every accepted case `ms_carry = into_day`, so the uptime and sleep rules
+roll the day over at the next 04:00 local.
+
+- **Never rewind.** When the index is ahead of the real date (a manual answer
+  that overshot, or the RC oscillator running fast through a long deep sleep),
+  the *display* is re-based and the index stays: due days are index days, and
+  rewinding would make already-reviewed cards look reviewed in the future.
+  From then on index and real date advance together.
+- **Counters.** An `Advanced` sync goes through `advanceDays`, so the new-card
+  counter resets exactly as on any other day change. The streak compares the
+  SRS days of answers, and a sync only moves the day the next answer is
+  recorded on: an answer on the day after the last study day extends the
+  streak, a later one restarts it at 1. `Same` and `Reanchored` leave both
+  untouched.
+- **Idempotent.** Posting the same instant twice gives the same state; a later
+  instant on the same day only moves the carry. The page posts on every load.
+- **Time zones and DST.** The offset is a snapshot. After a DST change (or
+  travel) the rollover is off by the difference until the next phone sync (NTP
+  reuses the stored offset); the day index itself is unaffected unless the gap
+  crosses 04:00.
+- **First sync after a power cut.** A never-synced store cannot measure a
+  power-off gap: the first sync anchors the current index as today. This can
+  only lose a gap once in a device's life.
+- **Display.** The statistics screen, the date screen and `/api/stats` show
+  `epoch_anchor + now_day`; `/api/stats` also says whether the date came from a
+  real clock (`dateSynced`).
+
+**NTP over the home Wi-Fi.** `HomeWifi::fetchUtcMs()` runs SNTP (pool.ntp.org,
+time.google.com, time.cloudflare.com) for at most **3 s** once the home Wi-Fi
+is connected. NTP yields UTC only, so the result goes through `applyWallClock()`
+with the **stored** offset, and only when the `tz` key exists. Without it the
+sync is skipped (and logged): guessing UTC could put the study day off by one,
+and the offset is normally known, because the portal page that saves the home
+Wi-Fi also posts the browser's clock. The radio is never on just for the clock;
+NTP runs at two moments:
+
+- **Get decks**, once connected and before the catalog is read. A failed NTP
+  is logged and Get decks carries on. The screen stays as it is (a new day
+  rebuilds the queue, and "Continue" then shows a fresh question).
+- **The boot-time date question** (after a power cut, or a wake that re-asks
+  it), once per boot. With a home Wi-Fi and the offset saved, the date screen
+  joins in the background (15 s join timeout, CPU at 240 MHz only while the
+  radio is on) and says "Syncing via <ssid>..."; the stepper works meanwhile.
+  Connected -> NTP (the loop blocks for at most 3 s) -> radio off ->
+  `applyWallClock()`, which answers the question and starts the quiz. A failed
+  join or NTP turns the radio off and the status line says to set the date by
+  hand. Confirming or skipping the question by hand stops the attempt, radio
+  off. The join and its outcome count as activity for the idle timers, so the
+  30 s dim and the 2 min sleep cannot cut it short; an idle timeout or an
+  explicit sleep turns the radio off like any other.
 
 ## 6. Queue building
 
@@ -354,7 +477,9 @@ list. Rebuilt on boot and on every pack change.
 2. **Reviews first**, ordered by `due_day` ascending, then stability ascending
    (most overdue / weakest first). Ties broken by codepoint for determinism.
 3. **New cards**, ordered by the pack's `level` hint then codepoint — the
-   builder's "learn earlier" order, which for the N5 deck means frequency-ish.
+   builder's "learn earlier" order, which for the N5 deck means frequency-ish
+   and for the Jōyō deck is school order (grade 1..6, then 8, each by
+   frequency; `tangocho-pack build --order`, tools/pack-builder/README.md).
    Take at most `new_per_day - new_introduced_count` (and reset the counter when
    `new_introduced_day != now_day`), then append. Reviews are not capped in a
    day; the session as a whole has a soft `session_cap = 200`.
@@ -375,8 +500,11 @@ list. Rebuilt on boot and on every pack change.
    is `now_day` if still `I < 1`, so it comes back tomorrow. This is the only
    path that can show a card twice.
 7. **Empty queue**: "done" state showing the number due next and the interval
-   of the next card (from `future`). A "study more new cards" override can be
-   added later.
+   of the next card (from `future`). A tap there is the "study more" override:
+   each one raises today's new-card allowance by 10 and rebuilds the queue. It
+   belongs to the day it was granted: once the day index moves on (uptime
+   rollover, sleep time, a manual date or a real-time sync) it no longer
+   applies, and loading another deck resets it.
 
 Optionally mixing one new card every 3 reviews (instead of all reviews then all
 new) is a one-constant change; phase 2 keeps the literal reviews-first order.
@@ -392,6 +520,7 @@ New globals: `tgc::SrsStore gSrs;`, `tgc::Queue gQueue;`, `uint32_t gShownAt;`.
 | `tapAction()` | count the navigation tap (`gNavTaps`); the response time later subtracts a fixed allowance per tap. Unchanged otherwise. |
 | `holdAction()` | compute `correct`, `rt_ms` and `grade` (`rt >= slow_ms` → Hard), call `gSrs.grade(card.codepoint, grade, now_day)`, `gQueue.answered(cardIndex, grade)`, mark dirty, then the existing reveal. QLOG grows one line: grade, `S -> S'`, `D`, interval. |
 | `loop()` | add `gSrs.tick(millis())` and `gSrs.maybeFlush(millis(), dirtyCount)`. Keep the existing 10 ms delay. |
+| `applyWallClock()` | real time from the portal's `POST /time` or from NTP over the home Wi-Fi (Get decks, the boot-time date question): `gSrs.syncWallClock()`, NVS `tz`, save, rebuild the queue when the day moved, and dismiss the boot-time date question (§5.1). |
 | `selectPack()` / `loadPack()` | flush state before opening the new pack; after loading, `gQueue.rebuild(...)`. State is global, so progress carries across decks. |
 | `openMenu()`/`drawMenu()` | optional: append `due/new` counts per pack (a `gSrs.countDue(gPack, now_day)` helper) and a small progress line in the quiz header. |
 | `showError()` | a corrupt state file is *not* an error screen; log and start empty. |
@@ -466,10 +595,10 @@ changes *which* card the loop asks next and records the outcome.
   (shortens intervals; costs `powf` for the interval and loses the `I = S`
   nicety); weight lapses more; or require a second consecutive correct before
   a card leaves the "learning" set. Decide after hardware use.
-- **The day index is not wall time** (§5). Sessions-per-day inflate it; long
-  offline gaps deflate it. The 365-day cap and FSRS's per-review recomputation
-  bound the damage, but the intervals should be described to users as
-  "sessions", not days.
+- **The day index is not wall time** (§5) until a real time is synced (§5.1),
+  and after a power cut it is only as good as the user's answer. The 365-day
+  cap and FSRS's per-review recomputation bound the damage; opening the Wi-Fi
+  portal from a phone now and then re-anchors it.
 - **`uploadfs` clears `/state`.** Unavoidable in LittleFS; document it. A
   small NVS mirror is possible only for tiny collections.
 - **Flash wear and write pauses.** ~40 KB per flush, every 8 answers. Fine on
