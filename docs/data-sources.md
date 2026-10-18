@@ -11,7 +11,11 @@ third-party-derived files in the repo are the three kanji in
 three KanjiVG SVG excerpts in `tools/pack-builder/tests/data/kanjivg/`, the
 fixture pack built from them, and the hand-written WaniKani API response
 fixtures in `tools/pack-builder/tests/data/wanikani/` (a handful of kanji and
-their English glosses, © Tofugu LLC, used only to test the importer offline).
+their English glosses, © Tofugu LLC, used only to test the importer offline),
+and the UX mockups in `docs/ux/*.png`. The mockups render five N5 kanji with
+their KANJIDIC2 glosses and readings (hard-coded in
+`tools/ux-mockups/render.py`), Klee One glyphs and the KanjiVG stroke shapes of
+one kanji, so they carry the same CC BY-SA terms and attribution as a pack.
 
 ## KANJIDIC2
 
