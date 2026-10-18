@@ -17,7 +17,7 @@ uv run tangocho-pack build --wanikani-level 1 --wanikani-level 2 -o out/wanikani
 uv run tangocho-pack inspect out/n5-es.tgc
 uv run tangocho-pack preview out/n5-es.tgc --card 水 --mode meaning -o out/preview.png
 uv run tangocho-pack preview out/n5-es-strokes.tgc --card 水 --mode strokes --stroke 2 -o out/strokes.png
-uv run tangocho-pack catalog out --base-url "https://example.com/v1" -o out/catalog.txt
+uv run tangocho-pack catalog out --base-url "https://example.com/v1" -o out/catalog-v2.txt
 uv run pytest
 ```
 
@@ -88,9 +88,12 @@ uv run pytest
   regenerated) to test that v1 packs stay readable.
 - `catalog DIRECTORY [-o FILE| -] [--base-url URL] [--json PATH] [--order NAMES]`
   scans a directory of `*.tgc` and writes the line-oriented **catalog** the
-  device is meant to read (see below). It refuses an empty directory or a file
-  that is not a valid pack, so a broken build cannot silently enter a release.
-  `--json` also writes a human-readable `catalog.json` (never read on device).
+  device reads, format version 2 (see below; publish it as `catalog-v2.txt`). It
+  refuses an empty directory, a file that is not a valid pack, and a pack whose
+  deck name cannot be a catalog title (over 64 bytes, or a control character),
+  so a broken build cannot silently enter a release.
+  `--json` also writes a human-readable JSON companion (`catalog-v2.json` in the
+  decks release; never read on device).
   Records are sorted by file name unless `--order` (pack names without `.tgc`,
   comma or space separated) lists some first: Get decks shows decks in catalog
   order, so the decks release puts N5 first.
@@ -99,21 +102,26 @@ uv run pytest
 
 The roadmap wants prebuilt packs hosted with "a small catalog the device can
 read". The catalog is deliberately trivial to parse on an ESP32 without a JSON
-library: one record per line, TAB-separated, `#` comments to skip. The exact
-bytes, one example per line:
+library: one record per line, TAB-separated, `#` comments to skip. This is
+**version 2**; the exact bytes, one example per line:
 
 ```
-#tangocho-catalog<TAB>1
-# name<TAB>lang<TAB>cards<TAB>bytes<TAB>sha256<TAB>url
-n5-en<TAB>en<TAB>79<TAB>703123<TAB>ab12cd…<TAB>https://example.com/v1/n5-en.tgc
+#tangocho-catalog<TAB>2
+# name<TAB>title<TAB>lang<TAB>cards<TAB>bytes<TAB>sha256<TAB>url
+n5-en<TAB>JLPT N5<TAB>en<TAB>79<TAB>703123<TAB>ab12cd…<TAB>https://example.com/v1/n5-en.tgc
 ```
 
 - The **first line** is a `#` comment that also carries the format version, so a
   reader can detect the format and refuse an unknown version before parsing.
 - Every line starting with `#` is a comment; blank lines are ignored.
-- A **record** is exactly six TAB-separated fields:
+- A **record** is exactly seven TAB-separated fields:
   - `name` — the file name without `.tgc`; the name the device should save the
     download as (`<name>.tgc`);
+  - `title` — the deck's human-readable name, the pack header's `deck_name`
+    (e.g. `JLPT N5`, `Joyo kanji`): UTF-8, at most **64 bytes**, may contain
+    spaces but no TAB or other control character (U+0000..U+001F, U+007F). It
+    may be empty, and a reader then shows `name`. The device draws it in its
+    built-in font, so keep deck names ASCII (`build` warns otherwise);
   - `lang` — the pack's meaning language (the header's `lang`);
   - `cards` — its card count;
   - `bytes` — the exact file size;
@@ -122,12 +130,31 @@ n5-en<TAB>en<TAB>79<TAB>703123<TAB>ab12cd…<TAB>https://example.com/v1/n5-en.tg
   - `url` — absolute when `--base-url` is given, otherwise the bare file name,
     meaning "relative to the URL the catalog was fetched from". `--base-url` may
     contain `{file}`, which is replaced by the file name.
+- `title` is the second column so that a person reading the file sees the file
+  name and the deck name side by side, and `url`, the longest field, stays last.
 - Records are sorted by file name, so the output is deterministic and safe to
   diff.
-- The device reads this file for **Get decks** (`firmware/src/catalog/`): it
-  refuses an unknown version, skips a record that does not validate (and keeps
-  the others), caps the list at 32 decks, and resolves a bare-file-name `url`
-  against the catalog URL it was configured with (before any redirect).
+- The device reads this file for **Get decks** and the portal page lists it
+  (`firmware/src/catalog/`): it refuses any other version, skips a record that
+  does not validate (and keeps the others), caps the list at 32 decks, and
+  resolves a bare-file-name `url` against the catalog URL it was configured
+  with (before any redirect).
+
+**File name and versions.** The catalog's format version (the `N` of
+`#tangocho-catalog<TAB>N`) and the pack format version (`docs/pack-format.md`)
+are independent. The published file is named after the **catalog** format,
+`catalog-v<N>.txt` (`catalog-v2.txt` now, with `catalog-v2.json` for people);
+the decks release tag `decks-v<N>` is named after the **pack** format. So the
+firmware's default catalog,
+`https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog-v2.txt`,
+is catalog format v2 listing packs of format v2, and either version can change
+without the other.
+
+**Version 1** (`catalog.txt`, the same columns without `title`) is no longer
+written or read: the builder writes only v2, and the firmware refuses a v1 file
+as an unsupported version ("old catalog format"). There is no backward
+compatibility while the maintainer is the only user (docs/decisions.md,
+2026-10-18 "Catalog v2: deck titles").
 
 ## Layout
 
