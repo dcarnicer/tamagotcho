@@ -1707,8 +1707,12 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   a future install page.
 - **Verified on hardware** (v0.1.0-rc1, StickS3): the esptool path — the merged
   image booted, kept 30 SRS records and the decks, came up with no settings,
-  opened setup mode with its QR and served the portal. Not yet tried: the
-  browser path and the T-Display-S3 merged image.
+  opened setup mode with its QR and served the portal. The browser path was
+  then verified with rc2 and rc3 (esptool-js; with Erase Flash first, rc3 came
+  up as a new device: language picker, setup mode, portal). Without Erase
+  Flash the decks stay, so there is no picker and a power-cut date question
+  follows (the settings, hence the Wi-Fi and zone for NTP, are gone). Not
+  verified: the T-Display-S3 merged image.
 
 ## 2026-10-18 – First-boot language picker
 

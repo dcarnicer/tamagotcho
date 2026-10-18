@@ -263,11 +263,12 @@ Wi-Fi and the time zone erased it cannot get it from the network first. Set it
 with the stepper (or skip), then open the portal page once to save the Wi-Fi
 and the zone again.
 
-> Status: the **esptool** path is verified — a v0.1.0 candidate's merged
-> image, written at `0x0` on a real StickS3, booted, kept its decks and
-> progress, and started with the settings erased (2026-10-18). The **browser**
-> path (esptool-js) writes the same file at the same offset but has not been
-> tried yet; nor has the T-Display-S3 image.
+> Status: verified on a real StickS3 (2026-10-18) both ways. With **esptool**,
+> a v0.1.0 candidate's merged image written at `0x0` booted, kept its decks and
+> progress, and started with the settings erased. From the **browser**
+> (esptool-js), Erase Flash and then the merged image at `0x0` gave a new
+> device: language picker, setup mode, portal. The T-Display-S3 images are
+> built but not verified on hardware.
 
 ### Prebuilt decks and their licence
 

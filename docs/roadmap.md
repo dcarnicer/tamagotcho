@@ -161,9 +161,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       carry packs (docs/decisions.md, 2026-10-18 "Decks release").
       The **first decks run** published `decks-v2` on 2026-10-18 (12 packs,
       105 KB to 3.0 MB in pack format v2; Get decks and the portal download them
-      on a real StickS3). Pending: **README photos**; hardware verification of
-      the merged-image/ESP Web Tools path (written, **not flashed on a real
-      device**); and the **first firmware release** (v0.1.0).
+      on a real StickS3). The **first firmware release, v0.1.0**, followed on
+      2026-10-18; its StickS3 merged image was verified with esptool and from
+      the browser (esptool-js). Pending: **README photos**, and the T-Display-S3
+      images on real hardware.
 
 ## Cross-cutting
 
@@ -237,6 +238,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       `docs/data-sources.md` and the release notes all carry the combined
       KANJIDIC2 / KanjiVG / Noto Sans JP credit. (On the device too since
       2026-10-18: Settings › About, and the portal page's footer.)
-- [ ] Flash a **merged** image on a real StickS3 — ESP Web Tools in a browser and
-      `esptool write_flash 0x0 …` — to confirm the documented offsets. The image
-      and manifest are written and locally checked, **not verified on hardware**.
+- [x] Flash a **merged** image on a real StickS3 — in a browser and with
+      `esptool write_flash 0x0 …` — to confirm the documented offsets. Done
+      2026-10-18 for v0.1.0 (esptool, and esptool-js after Erase Flash); an
+      ESP Web Tools install page is not set up (it needs a page serving the image
+      and the manifest together).
