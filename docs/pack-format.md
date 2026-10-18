@@ -1,4 +1,4 @@
-# Tangochō pack format (v1)
+# Tangochō pack format (v2)
 
 A **pack** is a single binary file (`*.tgc`) that holds one deck of kanji cards
 plus every pre-rendered glyph the device needs to show them. The device never
@@ -8,6 +8,12 @@ rasterises fonts: if a character is not in the pack, it cannot be drawn
 This document is the contract between `tools/pack-builder` (writer) and
 `firmware` (reader). Change it here first, bump `version` on any
 incompatible change.
+
+**Version 2** (current) adds compressed glyph bitmaps (encoding 1) and a new
+stroke block layout with compressed stroke masks. Everything else is
+unchanged from version 1, and readers keep accepting version 1 packs: the
+differences are marked *v1* / *v2* below and summarised under
+[Versioning](#versioning). The builder writes version 2 only.
 
 All integers are **little-endian**. All offsets are **absolute byte offsets
 from the start of the file**. Strings are UTF-8, NUL-terminated, stored in the
@@ -34,18 +40,21 @@ string section.
 ```
 
 Sections are 4-byte aligned. Readers must use the offsets, not assume order.
+Individual bitmaps inside the glyph bitmap section (and, in v2, the stroke
+masks) are not aligned: they are read byte by byte.
 
 The **stroke section** is optional: `stroke_off` is 0 for every pack built
 without `--strokes`, which is what all packs written before this extension have.
 A reader that does not know about strokes ignores `stroke_off` and treats the
-pack exactly as before, so this is a v1-compatible extension (no version bump).
+pack exactly as before, so it was added to v1 as a compatible extension (no
+version bump). Version 2 changed the stroke block layout (see below).
 
 ## Header (64 bytes)
 
 | off | type     | field            | notes                                          |
 |-----|----------|------------------|------------------------------------------------|
 | 0   | char[4]  | magic            | `"TNGC"`                                       |
-| 4   | u16      | version          | `1`                                            |
+| 4   | u16      | version          | `2` (`1` for older packs, still readable)       |
 | 6   | u16      | header_size      | `64`                                           |
 | 8   | u32      | card_count       |                                                |
 | 12  | u32      | glyph_count      |                                                |
@@ -110,14 +119,14 @@ Sorted ascending by `(set, codepoint)` so the device can binary-search.
 |-----|------|-----------|--------------------------------------------------------|
 | 0   | u32  | codepoint |                                                        |
 | 4   | u8   | set       | 0 = large kanji (quiz prompt), 1 = small kanji (answer options / lists), 2 = text (kana, Latin, punctuation for meanings and readings), 3 = large option text (kana for reading answers) |
-| 5   | u8   | encoding  | 0 = raw 4bpp. (1 = RLE 4bpp, reserved for v2)           |
+| 5   | u8   | encoding  | 0 = raw 4bpp, 1 = RLE 4bpp (v2 only). Others: invalid  |
 | 6   | u8   | width     | bitmap width, px (may be 0 for space)                  |
 | 7   | u8   | height    | bitmap height, px                                      |
 | 8   | i8   | x_off     | left bearing: pen x → bitmap left                      |
 | 9   | i8   | y_off     | baseline → bitmap top (negative = above baseline)      |
 | 10  | u8   | advance   | pen advance, px                                        |
 | 11  | u8   | reserved  | 0                                                      |
-| 12  | u32  | data_off  | absolute offset of bitmap                              |
+| 12  | u32  | data_off  | absolute offset of the bitmap data (encoded as `encoding` says) |
 
 For sets 0 and 1 the builder centres each kanji's ink box in a
 `large_px`/`small_px` square and stores the cropped bitmap. The **baseline is
@@ -138,7 +147,77 @@ omit set 3 entirely: `option_px = 0`).
 Row-major, top to bottom. Two pixels per byte, **high nibble first**. Each
 row starts on a byte boundary (row stride = `ceil(width/2)`). Value 0 =
 background, 15 = full ink. The device alpha-blends ink colour over
-background with `v/15`.
+background with `v/15`. A row of odd width ends in a padding nibble, which is 0.
+
+## Bitmap encoding 1: RLE 4bpp (v2)
+
+A compressed form of the same bitmap: decoding it yields exactly the encoding 0
+bytes (same stride, padding nibbles 0). Most kanji pixels are 0 or 15 and many
+rows repeat the row above, so the code has runs of 0, runs of 15, copies from
+the row above, and single anti-aliased pixels.
+
+**Pixel order.** The `width x height` pixels are one row-major sequence: a run
+or copy that reaches the end of a row continues at the start of the next one
+(rows are not padded in the stream).
+
+**Codes.** The stream is a sequence of 4-bit codes, two per byte, **high nibble
+first**. Tokens, by their first code:
+
+| codes      | meaning                                                         |
+|------------|-----------------------------------------------------------------|
+| `v`        | `v` = 1..14: one pixel of value `v`                              |
+| `0 L`      | `L` pixels of value 0                                           |
+| `F L`      | `L` pixels of value 15                                          |
+| `0 0 L`    | copy: each of the next `L` pixels takes the value of the pixel one row above it (pixel index `i` copies `i - width`). Every copied pixel must be in row 1 or later |
+| `F 0`      | reserved: invalid in v2                                         |
+
+`L` is a **length code** of one to three codes. Its first code `c` is never 0
+(that is what tells `0 0 L` from `0 L`):
+
+| first code `c` | codes      | length                                  |
+|----------------|------------|-----------------------------------------|
+| 1..10          | `c`        | `c` (1..10)                             |
+| 11..14         | `c n`      | `11 + (c - 11) * 16 + n` (11..74)       |
+| 15             | `F n1 n2`  | `75 + n1 * 16 + n2` (75..330)           |
+
+A longer run or copy is written as several tokens (400 zeros: `0 F F F` = 330,
+then `0 E B` = 70).
+
+**End.** Decoding stops after exactly `width * height` pixels. A token that
+would produce more pixels than remain is an error. If the last code is a high
+nibble, the low nibble of that byte is padding and is ignored. The stream
+length is **not stored**: it is implied by the codes. The builder uses encoding
+1 only when it is strictly smaller than encoding 0, and readers must reject a
+stream longer than `ceil(width/2) * height` bytes, so a reader may fetch that
+many bytes (clamped to the end of the file) from `data_off` and decode from
+them. Glyphs with no pixels (`width` or `height` 0) are always encoding 0.
+
+**Example.** A 5x3 glyph:
+
+```
+row 0:   0  0  7 15 15
+row 1:   0  0  7 15 15
+row 2:  15 15 15 15  3
+```
+
+Encoding 0 is `00 7F F0 00 7F F0 FF FF 30` (9 bytes). Encoding 1:
+
+```
+0 2      two 0 pixels
+7        one pixel of 7
+F 2      two 15 pixels (end of row 0)
+0 0 5    copy five pixels from above (all of row 1)
+F 4      four 15 pixels
+3        one pixel of 3
+(0)      padding
+```
+
+which packs to `02 7F 20 05 F4 30` (6 bytes). Longer lengths: 40 zeros are
+`0 C D` (`11 + 1*16 + 13`), 100 zeros are `0 F 1 9` (`75 + 25`).
+
+The builder's encoder is greedy (at each pixel: a copy when it covers at least
+3 pixels and more than a run would, else a run of 0/15, else a literal); any
+stream that follows the rules above is valid.
 
 ## Stroke order section (optional)
 
@@ -153,21 +232,26 @@ offsets are absolute file offsets, as everywhere else, and the section is
 +----------------------------------+  (4-byte aligned)
 | Per-card stroke blocks (aligned) |
 +----------------------------------+  (4-byte aligned)
-| 1bpp stroke masks                |
+| Stroke masks                     |
 +----------------------------------+
 ```
 
-**Per-card stroke block** (always starts 4-byte aligned; `8 + 8*stroke_count`
+The index is the same in both versions; the block and entry layouts differ.
+
+**Per-card stroke block, v2** (always starts 4-byte aligned; `8 + 8*stroke_count`
 bytes):
 
 | off | type     | field        | notes                                             |
 |-----|----------|--------------|---------------------------------------------------|
 | 0   | u16      | stroke_count |                                                   |
 | 2   | u16      | px           | em-square size the masks are drawn in (`== header large_px`) |
-| 4   | u32      | reserved     | 0 (keeps the stroke entries 8-byte aligned)       |
+| 4   | u32      | data_off     | absolute offset of the first stroke's mask data   |
 | 8   | entry[]  | strokes      | `stroke_count` entries, 8 bytes each (below)      |
 
-**Stroke entry** (8 bytes):
+A card's masks are stored **back to back in stroke order**, with no padding:
+mask `k` starts at `data_off + size_0 + ... + size_(k-1)`.
+
+**Stroke entry, v2** (8 bytes):
 
 | off | type | field    | notes                                                       |
 |-----|------|----------|-------------------------------------------------------------|
@@ -175,13 +259,54 @@ bytes):
 | 1   | i8   | y_off    | mask top, relative to the em-square top (0..px-1)           |
 | 2   | u8   | w        | mask width, px (`> 0`)                                      |
 | 3   | u8   | h        | mask height, px (`> 0`)                                     |
-| 4   | u32  | data_off | absolute offset of the 1bpp mask                            |
+| 4   | u8   | encoding | 0 = raw 1bpp, 1 = runs, 2 = runs of the row XOR (below). Others: invalid |
+| 5   | u8   | reserved | 0                                                           |
+| 6   | u16  | size     | bytes of mask data. Encoding 0: exactly `ceil(w/8)*h`; 1 and 2: at most that |
 
-**Mask encoding: 1bpp.** Row-major, top to bottom, **bit 7 = leftmost pixel**,
-row stride `ceil(w/8)`, 1 = ink, 0 = nothing. A mask is the stroke's **own ink
-only**: the earlier strokes are never baked in. To show stroke `i` of a kanji
-the device composites strokes `0..i-1` in full ink and stroke `i` in a highlight
-colour; strokes after `i` are simply not drawn.
+**v1 layout.** In version 1 the block's bytes 4..7 are `reserved` (0) and each
+stroke entry ends in `u32 data_off` (absolute offset of that mask, at bytes 4..7)
+instead of `encoding`, `reserved` and `size`. Every v1 mask is raw 1bpp, its
+size is `ceil(w/8)*h`, and the v1 writer started each mask on a 4-byte boundary.
+
+**Mask encoding 0: raw 1bpp.** Row-major, top to bottom, **bit 7 = leftmost pixel**,
+row stride `ceil(w/8)`, 1 = ink, 0 = nothing; the padding bits at the end of a
+row are 0. A mask is the stroke's **own ink only**: the earlier strokes are
+never baked in. To show stroke `i` of a kanji the device composites strokes
+`0..i-1` in full ink and stroke `i` in a highlight colour; strokes after `i` are
+simply not drawn.
+
+**Mask encoding 1: runs (v2).** The `w x h` pixels are one row-major sequence
+(rows run on into the next, as in glyph encoding 1), coded as **alternating run
+lengths, starting with a run of empty pixels** (which may have length 0), then
+ink, then empty, and so on. The stream is 4-bit codes, two per byte, high nibble
+first; each run length is a length code with first code `c`:
+
+| first code `c` | codes      | length                         |
+|----------------|------------|--------------------------------|
+| 0..13          | `c`        | `c` (0..13)                    |
+| 14             | `E n`      | `14 + n` (14..29)              |
+| 15             | `F n1 n2`  | `30 + n1 * 16 + n2` (30..285)  |
+
+A run longer than 285 is written as 285, a 0-length run of the other colour,
+then the rest. The stream ends with the mask's `size` bytes: **pixels after the
+last run are empty**, so the builder leaves out a final empty run. A last padding
+nibble 0 is just a 0-length run. A run that goes past `w*h` pixels, or a length
+code cut off by the end of the data, is an error.
+
+**Mask encoding 2: runs of the row XOR (v2).** The same run stream, but it codes
+each row XOR the row above it (row 0 as is). To decode, decode as encoding 1,
+then for `y = 1 .. h-1`, top to bottom, XOR row `y` with the already decoded
+row `y-1` (byte by byte over the row stride). A vertical stroke becomes a few
+runs. The builder stores each mask in whichever of encodings 0, 1 and 2 is
+smallest (0 on a tie).
+
+**Examples.** A 16x2 mask whose rows are `...##########...` and
+`....##########..` is `1F F8 0F FC` raw (4 bytes). As runs it is 3 empty, 10
+ink, 7 empty (3 + 4 across the row end), 10 ink, and the final 2 empty pixels
+are left out: codes `3 A 7 A`, bytes `3A 7A` (encoding 1, 2 bytes). A 4x6
+vertical stroke whose rows are all `.##.` is `60 60 60 60 60 60` raw; its row
+XOR is `.##.` followed by five empty rows, so encoding 2 is the runs 1 empty, 2
+ink: one byte, `12`.
 
 The em square is the same one `Renderer::drawKanji` uses for set 0: a `px x px`
 square whose top-left is `(boxX + (boxW - px)/2, boxY + (boxH - px)/2)`. A mask
@@ -194,19 +319,46 @@ the pack regardless of the font used.
 - `card_count` ≤ 65535 (distractor indices are u16).
 - `large_px` ≤ 128 when the optional stroke section is present: a stroke entry's
   `x_off`/`y_off` are i8, so a larger em square cannot be represented.
-- Expected size: ~650 kanji (N5–N3) at large_px=96 fits well under 3 MB.
-- The optional stroke section costs roughly **1.1–1.2 KB per kanji** at
-  `large_px=96` (~90–95 KB for the 79 N5 cards). A mask's pixel count scales with
-  the em square's *area*, so the cost grows quadratically: the committed
-  `mini.tgc` (3 cards, `large_px=32`) carries ~130 bytes/card, i.e. ~1.2 KB/card
-  once scaled 3x to 96 px. It stays a small fraction of the glyph data.
+- Expected size (v2, builder defaults `large_px=96`, `small_px=40`, with
+  `--strokes`): **about 1.7–1.8 KB per kanji** with the Klee One font and
+  1.4–1.5 KB with Noto Sans JP, whose straight strokes compress better. Per kanji
+  (2,136-kanji Jōyō build, Klee One / Noto): set-0 glyph ~880 / 640 B, set-1
+  glyph ~340 / 260 B, stroke section ~340 B, card and glyph table entries,
+  strings and distractors ~160 B; the text sets add ~20–30 KB per pack. JLPT N1
+  (1,232 kanji) is 2.2 / 1.8 MB, a Jōyō-sized pack 3.7 / 3.0 MB, both under the
+  device's 5 MB per-pack cap. The same packs in v1 were about 3–4 times
+  larger (5.4–5.8 KB per kanji: 6.8 MB for N1, 11.6 MB for the Jōyō set).
+- The optional stroke section costs **about 340 bytes per kanji** at
+  `large_px=96` in v2 (it was ~800 bytes in v1): ~100 bytes of index, block and
+  entries (8 bytes per stroke), ~240 bytes of masks (about 34 % of their raw
+  size). A mask's pixel count scales with the em square's *area*, so the raw
+  cost grows quadratically with `large_px`.
 - The device reads packs through the filesystem with random access; the
   builder must not rely on the device loading the whole file in RAM, although
-  the device may cache the header, card table and glyph table in PSRAM.
+  the device may cache the header, card table and glyph table in PSRAM. Both v2
+  encodings decode front to back into the caller's bitmap buffer, reading the
+  stream through a small window (the firmware reads 256 bytes at a time), so a
+  reader needs one decoded bitmap (`ceil(large_px/2) * large_px` bytes at most:
+  4.6 KB at 96 px) and no other memory.
 
 ## Versioning
 
-- Unknown `version` → device refuses the pack and shows an error.
+- Unknown `version` → device refuses the pack and shows an error. Firmware
+  that only knows version 1 therefore refuses a v2 pack cleanly ("unsupported
+  pack version"); it never misreads compressed data as raw.
 - New fields go into `reserved` bytes when possible (no version bump needed if
   0 means "absent"). The stroke section follows this rule: it reuses the old
   `reserved` u32 at offset 60 and 0 means "no stroke data".
+- **Version 2** (compression) needed a bump, because a v1 reader would draw
+  compressed bytes as raw ones:
+  - glyph `encoding` 1 (RLE 4bpp) is allowed; encoding 0 stays valid, and the
+    builder picks, per glyph, whichever is smaller;
+  - the per-card stroke block's bytes 4..7 hold the `data_off` of the card's
+    first mask, and each stroke entry holds `encoding`/`reserved`/`size`
+    instead of an absolute `data_off`; masks are stored back to back, in
+    encoding 0, 1 or 2;
+  - everything else (header, cards, distractors, strings, glyph table layout,
+    stroke index) is identical to v1.
+- A reader for version 2 must also accept version 1 (devices keep their old
+  packs): in a v1 pack every glyph must be encoding 0 and the stroke blocks use
+  the v1 layout.
