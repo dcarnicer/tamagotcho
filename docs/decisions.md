@@ -1129,3 +1129,14 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   mounting LittleFS (nothing can be in flight at boot), and the download and the
   portal upload discard their temp before measuring the space. `kFetchTmp`
   moved to `NetFetch.h` for that.
+- **Unplugging a dark panel saves before sleeping.** On USB power the idle
+  timeout saves and only blanks the panel; the uptime rule keeps advancing the
+  day carry in RAM, and the unplug path went straight to `armSleep()` +
+  `deepSleep()`, so a night on the charger lost those hours (04:00 rollover
+  included) on the next wake. Every sleep of the running app now goes through
+  `prepareDeepSleep()`: save (with the usual guard: a store that failed to load
+  and has no answers is not written), portal and home Wi-Fi off, then
+  `armSleep()`. The explicit sleep calls it before its notice, so the saved
+  carry and the RTC timestamp describe the same moment. The critical-battery
+  re-sleep at boot (keeps the first sleep's timestamp) and `halt()` (SRS maybe
+  not loaded) stay as they were.

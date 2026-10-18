@@ -2293,18 +2293,19 @@ void applySleepTime() {
 
 // Leaves what the next wake needs in RTC memory: when the chip went to sleep
 // (for applySleepTime) and whether the boot-time date question is still open.
-// Call right before every board::deepSleep().
+// Called by prepareDeepSleep() right after the save, so the saved day carry and
+// this timestamp describe the same moment and the wake adds exactly the time
+// since (a notice shown before the sleep included).
 void armSleep() {
     gSleptAtUs = tgc::board::rtcMicros();
     gSleepMagic = kSleepMagic;
     gDatePending = gScreen == Screen::Date && gAfterDate == Screen::Quiz;
 }
 
-// Idle timeout reached: persist, stop the radio, then sleep (battery) or blank
-// the panel (USB power). Returns only in the USB case.
-void goIdle() {
-    // Also persists the uptime carry. A store that failed to load and has no
-    // answers is not written, so a damaged file (and its .bak) stays on disk.
+// Persists the SRS, which also persists the uptime day carry, and stops the
+// portal and the home Wi-Fi. A store that failed to load and has no answers is
+// not written, so a damaged file (and its .bak) stays on disk.
+void saveAndRadiosOff() {
     if (gDirty || gSrsLoaded) {
         gSrs.save(gSrsIo);
         gDirty = 0;
@@ -2312,23 +2313,37 @@ void goIdle() {
     if (gPortal.active()) {
         gPortal.end();
         setCpuFrequencyMhz(kCpuMhz);
-        QLOG("W wifi: stopped (idle)\n");
+        QLOG("W wifi: stopped\n");
     }
-    if (gHome.state() != tgc::HomeWifi::State::Off) {
-        netRadioOff();
-        QLOG("N home wifi: stopped (idle)\n");
-    }
-    if (tgc::board::externalPower()) {
-        tgc::board::setDisplayOn(false);
-        gScreenOff = true;
-        gDimmed = false;
-        gLastPowerCheck = millis();
-        QLOG("P screen off (usb)\n");
-        return;
-    }
+    if (gHome.state() != tgc::HomeWifi::State::Off) QLOG("N home wifi: stopped\n");
+    netRadioOff();  // safe in any state
+}
+
+// What every deep sleep of the running app needs first: the state saved, the
+// radios off and the RTC timestamp the wake adds to the day clock. Used by the
+// idle sleep on battery, the sleep after unplugging a dark panel and the
+// explicit sleep. Not by the critical-battery re-sleep at boot, which keeps the
+// first sleep's timestamp, nor by halt(), where the SRS may not be loaded.
+void prepareDeepSleep() {
+    saveAndRadiosOff();
     armSleep();
-    QLOG("P deep sleep\n");
-    tgc::board::deepSleep();
+}
+
+// Idle timeout reached: on battery, deep-sleep. On USB power only the panel
+// goes dark (the serial port stays up), after the same save and radio stop;
+// powerTick() sleeps once it is unplugged. Returns only in the USB case.
+void goIdle() {
+    if (!tgc::board::externalPower()) {
+        prepareDeepSleep();
+        QLOG("P deep sleep\n");
+        tgc::board::deepSleep();
+    }
+    saveAndRadiosOff();
+    tgc::board::setDisplayOn(false);
+    gScreenOff = true;
+    gDimmed = false;
+    gLastPowerCheck = millis();
+    QLOG("P screen off (usb)\n");
 }
 
 // First input after the panel went dark or dim: restore it. A Wi-Fi screen whose
@@ -2373,15 +2388,9 @@ void showNotice(const char* title, const char* hint, uint16_t titleColor) {
 // asked for it (or the cell is about to die) -- after a short notice that says
 // how to wake up. The RTC timestamp keeps the day clock running through it.
 void sleepNow(bool critical) {
-    if (gDirty || gSrsLoaded) {
-        gSrs.save(gSrsIo);
-        gDirty = 0;
-    }
-    if (gPortal.active()) {
-        gPortal.end();
-        setCpuFrequencyMhz(kCpuMhz);
-    }
-    netRadioOff();  // Get decks may have the home Wi-Fi up
+    // Saved before the notice: the first click of a double click (power off)
+    // already gets the state onto the flash.
+    prepareDeepSleep();
     QLOG("P deep sleep (%s)\n", critical ? "battery" : "user");
     if (gScreenOff) tgc::board::setDisplayOn(true);
     tgc::board::setBrightness(gBrightness);
@@ -2392,18 +2401,20 @@ void sleepNow(bool critical) {
     delay(critical ? kBatteryNoticeMs : kSleepNoticeMs);
     gSleptCritical = critical;
     gSleepUiEs = gUi == &kUiEs;
-    armSleep();
     tgc::board::deepSleep();
 }
 
 // Called once per loop() with the current time: dims, then idles.
 void powerTick(uint32_t now) {
     if (gScreenOff) {
-        // Unplugged while dark: nothing keeps it awake any more.
+        // Unplugged while dark: nothing keeps it awake any more. The day carry
+        // kept running in RAM since goIdle() saved (a night on the charger is
+        // hours of it, maybe the 04:00 rollover), so save again first.
         if (now - gLastPowerCheck >= kPowerCheckMs) {
             gLastPowerCheck = now;
             if (!tgc::board::externalPower()) {
-                armSleep();
+                prepareDeepSleep();
+                QLOG("P deep sleep (unplugged)\n");
                 tgc::board::deepSleep();
             }
         }
