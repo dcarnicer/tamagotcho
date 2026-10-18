@@ -1,8 +1,8 @@
 # UX refresh: audit, design system and plan
 
-> **Status: proposal for the maintainer to approve (2026-10-18).** Nothing here
-> is implemented. No firmware code changed. Section 6 lists the decisions
-> needed before any code is written.
+> **Status: approved with changes (2026-10-18).** Nothing here is implemented
+> yet. Section 6 records the maintainer's answers; where they differ from §2–§4
+> (flat corners, the UI font, the side tap, the date's group), §6 wins.
 
 The roadmap item "UX refresh" asks for a more modern look and feel, a
 consistent visual language, clearer answer feedback, a lighter settings home
@@ -589,26 +589,49 @@ conflicts).**
 
 ---
 
-## 6. Decisions needed
+## 6. Decisions (answered 2026-10-18)
 
-1. **Direction.** Approve the tokens, tile states, header pill and hint bar
-   (§2), or say what to change.
-2. **Typography.** U1 only, U2 (builder guarantees Latin-1 in set 2; spec
-   change), or U3 (firmware UI font; recommended)? And which typeface: Klee
-   One or a sans?
-3. **Auto-advance** after a correct answer: offer it, its default (on/off) and
-   its delay.
-4. **Quiz header.** Should the mode pill + session progress replace the deck
-   name?
-5. **Hint bar policy.** Always, first 50 answers + idle, or never in the quiz?
-6. **Settings tree and names.** The five groups, "Hard after" instead of
-   "Speed", Stats at the top level.
-7. **Hold duration setting** (400/600/900 ms), and whether the side tap in the
-   quiz stays "next option" (recommended: keep) or becomes something else.
-8. **Catalog deck names.** The catalog line (`name lang cards bytes sha256
-   url`) has no human deck name, so "Get decks" shows file names (`n3-es`).
-   Adding a column is a catalog-format change (spec first).
-9. **Landing order.** After the four in-flight branches (power button, day
-   detection, home Wi-Fi decks, IMU rotation), or coordinated with them?
-10. **QR codes** on the Wi-Fi screen (Wi-Fi join + URL). *(Done on
-    `feature/portal-home-wifi`: join + URL in setup mode, URL in home mode.)*
+The maintainer's answers. Where they differ from §2–§4, these win.
+
+1. **Direction: approved, flat.** Tokens, tile states (idle `surface`, focus
+   `accent`, correct `ok` + ✓, wrong `err-bg` + `err` outline + ✗, dimmed
+   `text-faint`), hold progress and colour roles as in §2. Changed: **no
+   rounded corners** anywhere (tiles, rows, pills, bars; radius 0), and the
+   gap between tiles drops from 4 to 2 px so the tiles get the height. Long
+   lists scroll with a 2 px scroll bar on the right (only when the list does
+   not fit) plus a small ▲/▼ when rows are hidden above/below.
+2. **Typography: U3 with Noto Sans JP.** A firmware UI font generated from the
+   Noto Sans JP the packs already use (sans, not Klee One): Latin-1 plus
+   `· … › – —` at 18 px and digits/`%:/+-` at 32 px, 4bpp, in
+   `firmware/src/ui/UiFont.h`. No pack-format change; Spanish UI strings get
+   their accents back ("Estadísticas", "Orientación").
+3. **Auto-advance: yes, a setting, on by default.** Study › Auto-advance:
+   Off / Short (600 ms) / Normal (1 s, default). Any press skips the wait; a
+   wrong answer never auto-advances.
+4. **Quiz header: approved.** Mode pill in its colour, then the result pill on
+   reveal (`✓ GOOD · 4d`, `✓ HARD · 2d`, `✗ AGAIN`), cards left, battery icon,
+   2 px session progress; the deck name moves to the settings summary card.
+   Changed: reading questions say just **`ON`** / **`KUN`** (not `READING
+   ON`), which fits both orientations and both languages. Every pill string is
+   checked against its pixel budget in en and es.
+5. **Hint bar: proposed policy.** Always on menus; in the quiz for the first
+   50 lifetime answers, then only after 8 s idle on a question.
+6. **Settings tree: approved, date under Device.** Summary card + Decks ›,
+   Study › (New per day, Hard after, Auto-advance), Stats ›, Wi-Fi ›,
+   Device › (Orientation, Brightness, Language, Hold time, Date ›, Sleep,
+   About). "Continue" goes; "Speed" becomes "Hard after" / "Difícil tras"
+   with today's values for now (to be calibrated from `TGC_QUIZ_LOG` logs:
+   picking an option on the device is slower than in Anki).
+7. **Hold time: yes; side tap: previous option.** Device › Hold time: Short
+   400 / Normal 600 (default) / Long 900 ms; grading still uses the press
+   time. In the quiz the side tap moves the focus **up** (previous option)
+   and the front tap down: on average 1 tap instead of 1.5 to reach an option
+   (at most 2 instead of 3). Side hold (settings) and the menus' side = back
+   are unchanged.
+8. **Deck names: catalog v2.** A new catalog file with a human deck title
+   column (spec first, then builder, `decks.yml` and firmware). No backward
+   compatibility: the maintainer is the only user, so the device reads only
+   v2 and v1 is not kept. The installed-deck list reads each pack header's
+   `deck_name` (no format change).
+9. **Landing order:** moot, the four in-flight branches are on `main`.
+10. **QR codes:** done (`feature/portal-home-wifi`).
