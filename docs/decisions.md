@@ -1074,3 +1074,41 @@ Short log of non-obvious choices. Newest last.
   are unchanged; one behaviour changed: a body shorter than its announced
   `Content-Length` is now "download failed" instead of being probed and possibly
   kept as a truncated pack.
+
+## 2026-10-18 – NTP over the home Wi-Fi
+
+- **The stored offset, or nothing.** NTP yields UTC; the study day needs the
+  local offset. The NTP paths use the `tz` key the last phone sync left in NVS
+  and **skip the sync** (logged) when it is absent rather than assume UTC: a
+  wrong offset can move the 04:00 rollover across midnight and put the day off
+  by one, which the index can never take back. In practice the offset is known,
+  because the portal page that saves the home Wi-Fi also posts the browser's
+  clock. It stays a snapshot: DST or travel is only corrected by opening the
+  portal page again.
+- **No radio just for the clock, except after a power cut.** NTP runs (3 s
+  timeout, `HomeWifi::fetchUtcMs()`) when Get decks has connected, before the
+  catalog read; a failure is logged and Get decks goes on. And when the boot
+  shows the date question (power cut, or a wake that re-asks it) with a home
+  Wi-Fi and the offset saved, the date screen joins in the background, once per
+  boot: it is the one moment the day is unknown. Every other boot keeps the
+  radio off.
+- **The manual answer stays first-class.** The stepper works while the screen
+  says "Syncing via <ssid>..."; confirming or skipping stops the join, radio
+  off. Connected -> NTP (the loop blocks for at most 3 s, presses made meanwhile
+  are dropped) -> radio off -> `applyWallClock()`, which dismisses the question
+  as a phone sync does. A failed join or NTP leaves "No network (time): set it
+  by hand". Joining in the background was chosen over a blocking "syncing"
+  screen before the question: without the network that would cost the 15 s
+  join timeout every time.
+- **Power.** The CPU runs at 240 MHz only while the radio is on (`netRadioOff()`
+  on every exit). The join and its outcome count as activity for the idle
+  timers, so neither the 30 s dim nor the 2 min sleep can cut the 15 s join +
+  3 s NTP short, and the status line gets a full timeout to be read. An idle
+  timeout or an explicit sleep turns the radio off as for Get decks; a sleep
+  while the question is open still re-asks it (and retries NTP) on the wake.
+- **A new day under the settings.** `applyWallClock()` already gave an
+  unanswered question (or the done screen) way to the new queue; on the portal
+  and Get decks screens it now does the same for the screen the settings home's
+  "Continue" returns to, so a sync there does not leave a stale "all reviewed".
+- **Flash:** the StickS3 build grows by ~4 KB (the SNTP client is linked now).
+  **Not verified on hardware.**

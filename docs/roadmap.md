@@ -42,12 +42,16 @@ Scope for now: **kanji only** (no vocabulary decks).
         v1-compatible) and the day rolls over at 04:00 local, as Anki, instead of
         every 24 h from an arbitrary origin. The statistics screen, the portal
         page and `/api/stats` show the real date. `applyWallClock()` is the entry
-        point the NTP item below will reuse; the offset is kept in NVS (`tz`).
+        point the NTP item below reuses; the offset is kept in NVS (`tz`).
         Native-tested; not yet verified with a phone on hardware.
-      - [ ] Real date from NTP over the home Wi-Fi (phase 4) after a power cut,
-        with a short timeout and the manual question as the fallback. The helper
-        exists (`HomeWifi::fetchUtcMs()`, SNTP with a timeout); wiring it into
-        the SRS day clock is still to do.
+      - [x] Real date from NTP over the home Wi-Fi (2026-10-18). Get decks syncs
+        the clock once connected (3 s NTP timeout, a failure never stops it).
+        After a power cut, the date question joins the home Wi-Fi in the
+        background and answers itself from NTP, with a status line ("Syncing
+        via <ssid>..." / "No network: set it by hand"); the stepper stays usable
+        and is the fallback, and any manual answer turns the radio off. Uses the
+        UTC offset stored by the last phone sync and is skipped without it.
+        **Not verified on hardware yet.**
       - [x] Better manual fallback (2026-10-18): the date screen shows the
         last-used date and a proposed "today" with its weekday (tap +1 day, hold
         confirms, side hold -1 day, side tap cancels) instead of the 0/1/2-7/14+
@@ -74,9 +78,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       - [x] **Home Wi-Fi (station mode).** The SSID/password are entered once on
         the portal page (with nearby-network suggestions) and stored in NVS
         `net`; the password is never logged or shown back. The device joins the
-        home network only while Get decks runs (15 s join timeout, radio off
-        afterwards, CPU at 240 MHz only meanwhile), so the battery policy holds.
-        Also carries an SNTP helper for the phase-2 date work.
+        home network only on demand -- while Get decks runs, and briefly for the
+        date after a power cut (NTP, phase 2) -- with a 15 s join timeout, the
+        radio off afterwards and the CPU at 240 MHz only meanwhile, so the
+        battery policy holds.
         **Not verified on hardware yet** (built and reviewed only).
       - [x] **One-button deck download.** Decks -> "+ Get decks" joins the home
         Wi-Fi, reads the release catalog over **HTTPS** (verified against a small
