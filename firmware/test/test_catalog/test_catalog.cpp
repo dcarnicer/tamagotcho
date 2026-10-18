@@ -148,7 +148,8 @@ void test_skips_invalid_records() {
         record("a") + "\t",
         // unsafe names
         record(""), record("../evil"), record(".hidden"), record("a/b"), record("a\\b"),
-        record("a b"), record("a..b"), record(std::string(44, 'n')), record("caf\xC3\xA9"),
+        record("a b"), record("a..b"), record("a."), record(std::string(44, 'n')),
+        record("caf\xC3\xA9"),
         // lang
         record("a", "e n"), record("a", "toolonglang"),
         // numbers
@@ -246,6 +247,9 @@ void test_helpers() {
     TEST_ASSERT_FALSE(catalogNameIsSafe(nullptr, 3));
     TEST_ASSERT_FALSE(catalogNameIsSafe(".n5", 3));
     TEST_ASSERT_FALSE(catalogNameIsSafe("n5..x", 5));
+    // "x." would be saved as "x..tgc", which the portal cannot delete.
+    TEST_ASSERT_FALSE(catalogNameIsSafe("x.", 2));
+    TEST_ASSERT_TRUE(catalogNameIsSafe("x.v2", 4));
     uint8_t d[32];
     TEST_ASSERT_TRUE(parseSha256Hex(kSha, 64, d));
     TEST_ASSERT_EQUAL_HEX8(0x7c, d[24]);

@@ -1112,3 +1112,12 @@ Short log of non-obvious choices. Newest last.
   "Continue" returns to, so a sync there does not leave a stale "all reviewed".
 - **Flash:** the StickS3 build grows by ~4 KB (the SNTP client is linked now).
   **Not verified on hardware.**
+
+## 2026-10-18 – Integration review fixes
+
+Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10-18`).
+
+- **A catalog deck name may not end in '.'.** `x.` was accepted and saved as
+  `/packs/x..tgc`, which the portal's delete refuses (it rejects any ".."), so
+  the deck could never be removed again. `catalogNameIsSafe()` now refuses a
+  trailing '.' too (native test).

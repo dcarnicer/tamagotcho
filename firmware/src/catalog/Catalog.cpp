@@ -107,7 +107,9 @@ size_t schemeLen(const std::string& url) {
 
 bool catalogNameIsSafe(const char* name, size_t len) {
     if (!name || len == 0 || len > kCatalogMaxNameLen) return false;
-    if (name[0] == '.') return false;
+    // A trailing '.' would make "<name>.tgc" contain "..", which the portal's
+    // delete refuses: the deck could be downloaded but never removed again.
+    if (name[0] == '.' || name[len - 1] == '.') return false;
     for (size_t i = 0; i < len; ++i) {
         const char c = name[i];
         const bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
