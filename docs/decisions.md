@@ -631,3 +631,56 @@ Short log of non-obvious choices. Newest last.
   tap-after-wrong-answer wording and the stale "8 rows" settings-home count are
   corrected.
 
+## 2026-10-18 – Power management and the backlight buzz
+
+- **The firmware never slept.** `loop()` ran every 10 ms at 240 MHz with the
+  backlight at 50 %, forever, and the Wi-Fi portal had no timeout, so the
+  battery drained in hours even when the device sat unused.
+- **Idle policy (in `main.cpp`):** dim after 30 s without input; after 2 min
+  (5 min while the portal is up, where any HTTP request counts as activity) save
+  the SRS, stop the portal and, **on battery, deep-sleep** with the front button
+  (Select) as the ext0 wake source. On **USB power** only the panel goes dark:
+  deep sleep would drop the USB serial port and make flashing awkward, and there
+  is no battery to save; unplugging is polled every 5 s and then sleeps. The
+  press that wakes a dark panel (or the chip) is swallowed until released; a
+  press on a merely dimmed panel brightens it and acts normally.
+- **Deep sleep feeds the SRS clock.** Before sleeping the app stores the RTC
+  timer (`esp_rtc_get_time_us()`) and a magic in `RTC_DATA_ATTR` memory; a wake
+  adds the difference through the new pure `SrsStore::addElapsedMs()`. Only a
+  real power-off now leads to the "how many days?" screen, because `RTC_NOINIT`
+  survives deep sleep. A store that failed to load and has no answers is not
+  written on idle, so a damaged `srs.bin`/`.bak` is not overwritten unasked.
+- **CPU at 80 MHz** (240 MHz while the portal runs). Rendering is light and the
+  SPI/LEDC clocks come from the 80 MHz APB either way.
+- **Brightness setting** (settings row 10, NVS `tangocho`/`bri`, 12/25/50/100 %,
+  default 50 %). The settings rows keep a 1 px gap on the short landscape screen
+  so ten rows still fit the 1x font.
+- **Backlight PWM moved from 256 Hz to 25 kHz.** M5GFX drives the StickS3
+  backlight (GPIO38, LEDC ch 7, 9-bit) at 256 Hz; at partial duty the current
+  pulses made an audible buzz on USB power (through the charger's inductor),
+  which stopped when unplugged. `BoardSticks3::begin()` calls
+  `ledcChangeFrequency(7, 25000, 9)` after `M5.begin()`. Diagnosis by reading the
+  M5GFX source. **Hardware check (same day): the buzz is still audible with
+  an ear close to the device on USB**, so the 256 Hz PWM was not (or not the
+  only) cause. The change stays (25 kHz is harmless and removes an audible
+  frequency); the buzz is an open item on the roadmap.
+- **Unverified on hardware:** whether the M5PM1 keeps the rail up through a
+  long ESP32 deep sleep (if it cut power, the next start would be a power-on and
+  show the date screen: degraded but safe) and the deep-sleep current.
+
+## 2026-10-18 – Review fixes: response time, meaning→kanji, pack swap, logs
+
+- **Response time** is now question shown → hold press-down minus 400 ms per
+  navigation tap, instead of restarting the clock on every tap, which ignored
+  the thinking time before the first tap (docs/srs.md §3).
+- **Meaning→kanji options** also reject a candidate whose *own* glosses contain
+  the prompt: it would be a second correct kanji. The builder already excluded
+  these from the precomputed list; the random-walk fallback did not.
+- **`loadPack` opens the new reader next to the live one** and swaps it in only
+  after it validated (`gPack` is now a `unique_ptr`), instead of closing the
+  live pack first; the separate probe open is gone. A glyph-cache allocation
+  failure leaves a consistent "no pack" state.
+- **`TGC_QUIZ_LOG` is off in `sticks3`** (and so in releases); the new
+  `sticks3-dev` env turns it on.
+- The quiz header re-reads the battery every 30 s and redraws when it changed.
+- `docs/srs.md` §5 described a boot rule the code no longer had; rewritten.

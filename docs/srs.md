@@ -117,10 +117,12 @@ see §9.
 
 `slow_ms` default 3000, stored in the state header so it can be tuned (or set
 to 0xFFFF to disable Hard) without a firmware rebuild. Response time is
-question-drawn → the **press-down edge of the confirming hold**, with the
-clock **reset on each navigation tap** (its press-down). This excludes the
-mandatory 600 ms hold and the tap-through to the right option. The UI geometry
-still leaks into the number; see §9.
+question-drawn → the **press-down edge of the confirming hold**, minus a fixed
+**400 ms per navigation tap** (`kNavAllowanceMs` in `main.cpp`). This excludes
+the mandatory 600 ms hold and the mechanical cost of tapping through to the right
+option, but keeps the thinking time before and between taps (the earlier rule
+reset the clock on each tap, so a long think followed by quick taps graded Good).
+The UI geometry still leaks into the number; see §9.
 
 ### Formulas (FSRS-5, `w[0..18]` hardcoded)
 
@@ -264,8 +266,8 @@ verifying the CRC (which covers the whole header, new bytes included).
   `last_study_day` on load.
 - **Review time.** `addReviewMs(ms)` adds to `review_ms` and saturates at
   `0xFFFFFFFF`. The app calls it once per answer with the same response time
-  that graded it (question shown / last navigation tap → the confirming
-  press-down), so it is a pure UI measure, not a clock.
+  that graded it (question shown → the confirming press-down, minus the
+  per-tap allowance), so it is a pure UI measure, not a clock.
 
 CRC-32 (poly `0xEDB88320`, init/final `0xFFFFFFFF`). On load: size ≥ 48, magic,
 `version == 1`, `header_size == 48`, `count` consistent with file size, CRC
@@ -309,42 +311,38 @@ counter is only advanced in the file, so the loss is also visible.
 
 ## 5. Time handling without an RTC
 
-There is no RTC and no network, so "what day is it" has to be derived. We use a
-**persisted, day-granular session clock**:
+There is no RTC chip and no network, so "what day is it" has to be derived. We
+use a **persisted, day-granular clock**:
 
 - `now_day` (u16) is a monotonic day index. Absolute epoch is irrelevant; only
-  differences matter, and `0` means "never".
-- **Boot rule** (`beginSession()`): if the *previous session* had at least one
-  answer — a persisted flag set on every answer and cleared on the next boot —
-  `now_day += 1`. Rationale: a power-up that follows real use is the device's
-  only available proxy for "time has passed". A quick reboot with no answers
-  must not advance the day, or the schedule inflates with every restart.
+  differences matter (day 0 is displayed as 2026-10-17).
 - **Uptime rule** (`tick(now_ms)` from `loop()`): accumulate elapsed
   `millis()` into `ms_carry`; every 86 400 000 ms, `now_day += 1`, carry the
-  remainder. This covers a device left on for a long time.
+  remainder. `ms_carry` is persisted, so short sessions add up.
+- **Sleep rule** (`addElapsedMs(ms)` at boot): the app deep-sleeps when idle
+  (docs/decisions.md, 2026-10-18). The ESP32's RTC timer keeps counting through
+  deep sleep, so on a wake-up the app adds the slept time (RTC now minus the
+  timestamp it left in RTC memory before sleeping) to the same carry. The RTC
+  runs from the internal RC oscillator (a few % drift), which is irrelevant at
+  day granularity.
+- **Power-cut rule** (app, not the store): a full power-off clears the RTC timer
+  and RTC memory, so the elapsed time is unknown. The app detects this boot
+  (`RTC_NOINIT` magic) and **asks the user** on the date screen (0 / 1 / 2-7 /
+  14+ days); the answer goes through `advanceDays(n)`. The same screen is in
+  the settings for manual corrections.
+- `beginSession()` only resets the tick base and the new-card counter on a day
+  change; it never advances the day by itself. (An earlier "boot rule" advanced
+  it on every boot that followed a session with answers; it inflated the
+  schedule with every restart and was removed.)
 
-**Trade-off (explicit).** We cannot see powered-off time, so the day index
-counts *sessions used* and *time on*, not wall time:
+**Trade-off (explicit).** With deep sleep the day index follows wall time
+except across real power-offs, where it is only as good as the user's answer.
+FSRS recomputes S from the *observed* elapsed time every review, so a coarse
+answer ("2-7 days" adds 4) changes S by a factor, not by an order of magnitude.
 
-- roughly one review per day → the day index tracks the calendar well;
-- several power-ups in one day → days advance too fast, so intervals shrink
-  in wall-clock terms (the device thinks more time passed);
-- a device left off for a week → one day, so intervals stretch.
-
-Both errors are bounded by the interval cap (365 d) and are second-order
-because FSRS recomputes S from the *observed* elapsed time every review; a
-wrong-but-plausible elapsed time changes S by a factor, not by an order of
-magnitude. For a leisure flashcard app this is the pragmatic choice. The
-alternative — **ask the user for a date on first boot** and advance it with
-uptime — is more correct on paper but needs a two-button date picker, must be
-re-entered after every full power loss (PM1 cuts power), and drifts exactly as
-this does between those events. Rejected for phase 2; the header layout leaves
-room to add a real `epoch_day` later (u16 reserved slots) if we ever get an
-RTC or time sync in phase 4.
-
-Testability: the pure module never calls `millis()`; `beginSession()`,
-`tick(now_ms)` and a test-only `setToday()` are all the clock needs, so the
-native tests drive time explicitly.
+Testability: the pure module never calls `millis()` or the RTC; `beginSession()`,
+`tick(now_ms)`, `addElapsedMs(ms)`, `advanceDays(n)` and a test-only `setToday()`
+are all the clock needs, so the native tests drive time explicitly.
 
 ## 6. Queue building
 
@@ -391,7 +389,7 @@ New globals: `tgc::SrsStore gSrs;`, `tgc::Queue gQueue;`, `uint32_t gShownAt;`.
 |-------|--------|
 | `setup()` | after `loadPack`: `gSrs.begin(&gSrsFile)` (creates `/state`, loads, `beginSession()`), then `gQueue.rebuild(gPack, gSrs, gRng)`; replace the "random card" `newQuestion()` with a queue pop. Add a boot line to the serial log with `now_day`, `count`, due/new counts. |
 | `newQuestion()` → `nextQuestion()` | no longer picks `gRng.below(cardCount)`. Pops the next `QueueItem` (card index + mode), calls the existing `buildQuestion` with fallbacks, sets `gShownAt = millis()`, and logs `S/D/I` estimates. Returns false when the queue is exhausted → new "done" screen. |
-| `tapAction()` | when a navigation tap moves the highlight, reset the answer clock to that tap's press-down (add `gLastNavAt`). Unchanged otherwise. |
+| `tapAction()` | count the navigation tap (`gNavTaps`); the response time later subtracts a fixed allowance per tap. Unchanged otherwise. |
 | `holdAction()` | compute `correct`, `rt_ms` and `grade` (`rt >= slow_ms` → Hard), call `gSrs.grade(card.codepoint, grade, now_day)`, `gQueue.answered(cardIndex, grade)`, mark dirty, then the existing reveal. QLOG grows one line: grade, `S -> S'`, `D`, interval. |
 | `loop()` | add `gSrs.tick(millis())` and `gSrs.maybeFlush(millis(), dirtyCount)`. Keep the existing 10 ms delay. |
 | `selectPack()` / `loadPack()` | flush state before opening the new pack; after loading, `gQueue.rebuild(...)`. State is global, so progress carries across decks. |

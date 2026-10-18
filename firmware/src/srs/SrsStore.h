@@ -118,6 +118,11 @@ public:
     // `nowMs` is the app's millisecond clock (millis()); wraps are handled.
     void tick(uint32_t nowMs);
 
+    // Adds time that passed while the app was not ticking (deep sleep, measured
+    // by the RTC timer) to the same day carry as tick(). Does not touch the tick
+    // base, so it can be called before or after the first tick().
+    void addElapsedMs(uint64_t ms);
+
     uint16_t today() const { return nowDay_; }
     // Test-only override of the day index; also re-bases the tick clock.
     void setToday(uint16_t day);

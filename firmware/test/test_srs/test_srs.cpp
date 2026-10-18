@@ -585,6 +585,38 @@ void test_clock_boot_and_uptime() {
     TEST_ASSERT_EQUAL_UINT16(0, up.newIntroducedCount());
 }
 
+void test_elapsed_sleep_time() {
+    // Deep-sleep time feeds the same carry as uptime ticks.
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(5);
+    s.tick(0);
+    s.tick(kSrsMsPerDay / 2);  // 12 h awake
+    TEST_ASSERT_EQUAL_UINT16(5, s.today());
+    s.addElapsedMs(kSrsMsPerDay / 2);  // 12 h asleep completes a day
+    TEST_ASSERT_EQUAL_UINT16(6, s.today());
+    TEST_ASSERT_EQUAL_UINT32(0, s.msCarry());
+    s.addElapsedMs(3ull * kSrsMsPerDay + 7000);  // a long sleep
+    TEST_ASSERT_EQUAL_UINT16(9, s.today());
+    TEST_ASSERT_EQUAL_UINT32(7000, s.msCarry());
+    s.tick(kSrsMsPerDay / 2 + 1000);  // the tick base is untouched
+    TEST_ASSERT_EQUAL_UINT32(8000, s.msCarry());
+
+    // The day index saturates instead of wrapping.
+    s.setToday(0xFFF0);
+    s.addElapsedMs(1000ull * kSrsMsPerDay);
+    TEST_ASSERT_EQUAL_UINT16(0xFFFF, s.today());
+
+    // A new day resets the new-card counter.
+    s.setToday(20);
+    s.setNewIntroducedDay(20);
+    s.setNewIntroducedCount(3);
+    s.addElapsedMs(kSrsMsPerDay);
+    TEST_ASSERT_EQUAL_UINT16(21, s.newIntroducedDay());
+    TEST_ASSERT_EQUAL_UINT16(0, s.newIntroducedCount());
+}
+
 void test_queue_due_before_new() {
     std::vector<CardSpec> cs = {{0x65E5, "day", "ニチ", "ひ", {}},
                                 {0x6708, "month", "ゲツ", "つき", {}},
@@ -973,5 +1005,6 @@ int main() {
     RUN_TEST(test_review_ms_saturation);
     RUN_TEST(test_serialize_new_header_roundtrip);
     RUN_TEST(test_serialize_old_file_has_defaults);
+    RUN_TEST(test_elapsed_sleep_time);
     return UNITY_END();
 }

@@ -51,6 +51,22 @@ bool isCharging();
 
 void setBrightness(uint8_t level);  // 0..255
 
+// --- Power -----------------------------------------------------------------
+// True when this boot is a wake-up from deepSleep() rather than a power-on or
+// a reset.
+bool wokeFromSleep();
+// True when USB/external power is present; false if unknown. The app then only
+// blanks the panel when idle instead of sleeping (keeps the serial port up).
+bool externalPower();
+// Panel and backlight on/off without sleeping; off keeps the frame buffer.
+void setDisplayOn(bool on);
+// Blanks the panel and puts the chip in deep sleep. The Select button wakes it,
+// and the chip then boots through setup() again. Never returns.
+[[noreturn]] void deepSleep();
+// Microseconds since the RTC timer started. It keeps counting through deep
+// sleep and resets only on a power cut, so differences measure sleep time.
+uint64_t rtcMicros();
+
 // Hardware random seed.
 uint32_t randomSeed();
 

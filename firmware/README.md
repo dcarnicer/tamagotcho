@@ -22,7 +22,9 @@ pio run -e sticks3 -t uploadfs    # LittleFS image built from firmware/data/
 pio device monitor
 ```
 
-Use `-e tdisplay-s3` for the T-Display-S3.
+Use `-e tdisplay-s3` for the T-Display-S3. `-e sticks3-dev` is the StickS3 build
+with the quiz trace (`TGC_QUIZ_LOG`) on the serial monitor: every question,
+answer and grade, plus Wi-Fi and power events.
 
 ### Prebuilt images from a release
 
@@ -70,8 +72,22 @@ is revealed, a tap advances: for a correct answer straight to the next card, for
 a wrong answer it first opens the mistake **detail card** (meanings, readings,
 stroke order), and the next tap starts the following question. The side button is
 a tap shortcut; **holding it opens the settings home** (Continue / Decks / Date /
-New per day / Speed / Statistics / Wi-Fi / Orientation / Language), where a tap
-moves the selection, a hold activates the row, and the side button goes back.
+New per day / Speed / Statistics / Wi-Fi / Orientation / Language / Brightness),
+where a tap moves the selection, a hold activates the row, and the side button
+goes back.
+
+## Power
+
+After 30 s without a button press the backlight dims (the next press brightens
+it and acts as usual). After 2 min (5 min on the Wi-Fi screen, counting phone
+requests as activity) progress is saved and, **on battery, the device
+deep-sleeps**; the **front button wakes it** into a fresh question. The wake press
+itself is ignored. Time spent asleep is measured by the ESP32's RTC timer and
+advances the SRS day, so the "how many days?" question only appears after a real
+power-off. **On USB power** it only turns the panel off (the serial port stays up
+for flashing and logs); any press turns it back on, and unplugging lets it sleep.
+To flash a sleeping device on battery, wake it first. The CPU runs at 80 MHz
+(240 MHz while the Wi-Fi portal is up).
 
 | button            | StickS3          | T-Display-S3 |
 |-------------------|------------------|--------------|
