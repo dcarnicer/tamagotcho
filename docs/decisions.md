@@ -1918,3 +1918,69 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   the firmware, so v1 is dropped rather than published next to v2. Until
   there are other users, compatibility with released firmware or packs is
   not a constraint.
+
+## 2026-10-18 – UX refresh phase 1: UI font, widgets, scrolling menus
+
+- **What.** `feature/ui-foundation` delivers phase 1 of `docs/ux-refresh.md`
+  (§4, with its status list) plus the UI font of phase 4: `ui/Theme.h`,
+  `ui/Icons.h`, `ui/ListView.h`, `ui/UiFace.h` + the generated `ui/UiFont.h`,
+  `render/Widgets`, `Renderer::drawLabel()`, and the menu screens redrawn with
+  them. The quiz, the detail card and Get decks are unchanged, and so is the
+  input model.
+- **UI font: Noto Sans JP Regular**, the weight the packs use. Medium reads a
+  little bolder at 18 px in a preview, but the earlier hardware observation
+  (light ink on the dark panel looks heavier than in a preview) and the
+  wish that UI labels match a pack's set-2 text both point to Regular, and it
+  needs no new download (`fetch` gets only Regular). `--font` switches the
+  generator for a later comparison on the device.
+- **How it is stored.** A committed, generated header (`tools/ui-font/
+  gen_ui_font.py`, run in the pack builder's uv environment like the mockup
+  script) with `inline constexpr` tables: per face a sorted glyph table (10
+  bytes a glyph: code point, 16-bit offset, size, offsets, advance; binary
+  search) and one bitmap array in the pack 4bpp format, rendered by the
+  builder's own `FontRenderer`, so placement and quantisation are a pack's.
+  The firmware build needs no Python; `--check` tells whether the header is
+  current. Output depends only on the font file and the locked Pillow /
+  FreeType (named in the header). Label 18 px: ASCII, Latin-1, `· … › ‹ « »
+  – —` and ✓ ▲ ▼ (Noto Sans JP has no ✗; widgets draw all four as icons);
+  Numeral 32 px: digits, space, `%:/+-.`. 216 glyphs: 15,423 bytes of bitmaps
+  + 2,160 bytes of tables.
+- **Text metrics.** The UI faces get a compact line pitch (20 px Label, 36 px
+  Numeral; the font's line box is 27 / 48 px) with the cap height (14 / 24 px)
+  centred in it, which is what `drawLabel()` and `drawCentred()` use. The
+  ellipsis stays "..." (three periods): Noto Sans JP's U+2026 is the CJK form,
+  an em wide with the dots at mid-height. A character the UI face lacks (a
+  kanji in a network name) comes from the loaded pack's text set, else a box.
+- **Widgets on the Arduino side** (`render/Widgets`), not in `ui/`: they draw
+  into a LovyanGFX target, and `ui/` must build natively. Their pure parts
+  (list window, layout, icons, font lookup) are in `ui/` and tested there.
+- **Lists.** Rows keep the layout's height (26 / 22 / 30 px; 36 / 32 / 40 for
+  two lines) and scroll; the window moves as little as possible to keep the
+  focus visible. The 2 px scroll bar sits in the right gutter (rows keep their
+  width whether or not the list overflows), and the ▲/▼ markers sit in 4 px
+  bands above and below the rows. Lists with a second text (the loaded deck's
+  "12 due · 10 new", a zone's offsets) put it on a caption line under the
+  label on panels narrower than 200 px and as the row's value otherwise, so
+  the landscape lists show four rows instead of two.
+- **Hint bar.** "• move ▬ open ◂ back". The side word needs 6 px clear of the
+  front items, else only the icon shows: the Spanish "• mover ▬ abrir ◂ atrás"
+  fits the 135 px portrait with 2 px between the sides (ux-refresh §2.4), which
+  read as one word in a preview, so Spanish portrait shows the icon alone.
+- **Strings.** Row labels lose "»" (a chevron marks rows that open a screen)
+  and Spanish labels get their accents (Estadísticas, Orientación); headers
+  stay Font0 and ASCII. "Date: %s", "Zone: %s" and "Home: %s" became labels
+  with the date, the zone and the network as row values (the label is kept,
+  the value cut). The deck caption is "%u due · %u new" / "%u hoy · %u
+  nuevas" (19 characters fit the portrait caption line; "pend." did not).
+  The zone list's footer went: each row now shows its offsets. Settings ›
+  About lists "UI font: Noto Sans JP, SIL OFL 1.1" with the firmware.
+- **Partial pushes, tried early.** A focus move on a list that does not scroll
+  (settings home, decks, pickers, zones) pushes only the rows between the old
+  and the new focus with `presentRegion()`, so the clipped push phase 2 relies
+  on is exercised on hardware now. It is one-shot and any full `present()`
+  cancels it, so rotations, notes and screen changes always push the whole
+  frame. Under `TGC_QUIZ_LOG`, `drawScreen()` logs its time and the push's.
+- **Flash** (both with `TGC_VERSION=dev`): StickS3 1,407,837 → 1,430,457 bytes
+  (+22.6 KB: the font 17.6 KB, the rest widgets and strings), static RAM
+  54,508 → 54,692; T-Display-S3 1,248,517 → 1,271,097 bytes, static RAM
+  52,496 → 52,696. **Not verified on hardware.**

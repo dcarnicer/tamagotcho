@@ -1,8 +1,10 @@
 # UX refresh: audit, design system and plan
 
-> **Status: approved with changes (2026-10-18).** Nothing here is implemented
-> yet. Section 6 records the maintainer's answers; where they differ from §2–§4
-> (flat corners, the UI font, the side tap, the date's group), §6 wins.
+> **Status: approved with changes (2026-10-18).** Phase 1 (foundations, with
+> the UI font of Phase 4) is implemented on `feature/ui-foundation`, see §4;
+> the later phases are not. Section 6 records the maintainer's answers; where
+> they differ from §2–§4 (flat corners, the UI font, the side tap, the date's
+> group), §6 wins.
 
 The roadmap item "UX refresh" asks for a more modern look and feel, a
 consistent visual language, clearer answer feedback, a lighter settings home
@@ -514,6 +516,37 @@ portrait/landscape working.
 - Timing: under `TGC_QUIZ_LOG`, log `micros()` around each `draw*` and
   `present()`.
 
+*Status (2026-10-18, `feature/ui-foundation`; not yet verified on hardware).*
+Delivered:
+- `ui/Theme.h` (the §2.2 tokens, gutter 4, gap 2, radius 0, `layoutFor(w, h)`
+  for 135×240, 240×135, 170×320 and a derived 320×170), `ui/Icons.h` (the
+  `ICONS` shapes plus 5×3 ▲/▼ scroll markers), `ui/ListView.h`; all
+  native-tested (`test_ui`).
+- `GlcdCp437.h`: `·` → 0xF9, `•` → 0x07, `°` → 0xF8, with a test (and the
+  builder's `glcd.py` mirror).
+- The UI font of Phase 4 (U3) instead of `packCanDraw()`: `tools/ui-font/`
+  generates `ui/UiFont.h` from Noto Sans JP Regular (Label 18 px: ASCII,
+  Latin-1, `· … › ‹ « » – —`, ✓ ▲ ▼; Numeral 32 px: digits, space and
+  `%:/+-.`; ~17.6 KB of flash). The Renderer draws it with no pack
+  (`kTextUi`, `kTextUiNumeral`); `drawLabel()` centres one line on the cap
+  height and cuts it with "...".
+- `render/Widgets.{h,cpp}` (on the Arduino side, not `ui/`): `drawHeader`,
+  `drawHintBar`, `drawTile`, `drawRow`, `drawPill`, `drawProgress`, `drawList`
+  (2 px scroll bar only when the list overflows, ▲/▼ when rows are hidden)
+  and `presentRegion()`. A list focus move that does not scroll pushes only
+  the rows it changed.
+- Restyled with them: the settings home (still its 12 flat rows), the deck
+  list, the pickers (radio = saved value) and the first-boot language picker,
+  the Wi-Fi and Date submenus and the time zone list. Labels drop "»" for a
+  chevron; Spanish labels get their accents back.
+- Timing: under `TGC_QUIZ_LOG` every `drawScreen()` logs its time and the
+  push's (`F screen N: ... us, push ... us (rows)`).
+
+Not done in phase 1: `drawDate` (the stepper, Phase 3 styling), tiles and hold
+progress in the quiz (Phase 2; `drawTile` exists but nothing uses it yet), the
+settings groups and row values (Phase 3). Decisions:
+docs/decisions.md, "UX refresh phase 1: UI font, widgets, scrolling menus".
+
 **Phase 2 – Quiz, feedback, detail (M, ~2 d, medium risk: input loop).**
 - `drawQuiz`: new header (mode pill, remaining, battery, progress), tiles with
   containers, meaning options in the Label face (U1 now), the hint bar and its
@@ -545,7 +578,7 @@ conflicts).**
 - U3: `tools/ui-font/` generator → `ui/UiFont.h`, and the Renderer gains a font
   source for the UI set. Alternatively U2: the spec sentence in
   `docs/pack-format.md` first, then `build_pack` adds Latin-1 to set 2, with
-  tests.
+  tests. *(U3 done in Phase 1, see above.)*
 - Retire Font0 2×.
 
 **Phase 5 – Motion polish (S–M, 1 d, optional).**

@@ -218,7 +218,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       firmware UI font from Noto Sans JP, auto-advance after a correct answer,
       a mode pill in the quiz header, five settings groups, a hold-duration
       setting, side tap = previous option, catalog v2 with deck titles.
-      No firmware change yet.
+      **Phase 1 implemented** (`feature/ui-foundation`, not yet verified on
+      hardware): design tokens, icons, the Noto Sans JP UI font
+      (`tools/ui-font/`), flat widgets and the menu screens as scrolling lists
+      with a hint bar (ux-refresh §4). Next: the quiz, feedback and detail card
+      (phase 2).
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
       (picking an option on the device takes longer than in Anki).
 - [ ] **Learning mode** (idea, 2026-10-18). A mode for learning kanji, not
