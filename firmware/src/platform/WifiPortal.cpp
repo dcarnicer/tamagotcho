@@ -13,6 +13,7 @@
 #include "platform/NetFetch.h"
 #include "portal/PortalLogic.h"
 #include "portal/PortalText.h"
+#include "Version.h"
 
 // mDNS ("http://tangocho.local/") in home mode. Off with -DTGC_PORTAL_MDNS=0.
 #ifndef TGC_PORTAL_MDNS
@@ -1055,7 +1056,9 @@ void WifiPortal::handleApiStats() {
         st.reps ? (st.reps > st.lapses ? st.reps - st.lapses : 0) * 100u / st.reps : 0;
 
     String j;
-    j += "{\"day\":";
+    j += "{\"version\":\"";
+    j += jsonEscape(firmwareVersion());
+    j += "\",\"day\":";
     j += String((unsigned)st.day);
     j += ",\"date\":\"";
     j += jsonEscape(st.date);
@@ -1109,7 +1112,9 @@ void WifiPortal::handleStatus() {
         case CatalogState::Failed: cat = "failed"; break;
     }
     String j;
-    j += "{\"mode\":\"";
+    j += "{\"version\":\"";
+    j += jsonEscape(firmwareVersion());
+    j += "\",\"mode\":\"";
     j += mode_ == Mode::Home ? "home" : "setup";
     j += "\",\"network\":\"";
     j += jsonEscape(ssid_);

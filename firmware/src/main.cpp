@@ -28,6 +28,7 @@
 #include "srs/SrsStore.h"
 #include "srs/WallClock.h"
 #include "ui/UiLang.h"
+#include "Version.h"
 
 using tgc::board::Button;
 
@@ -3318,6 +3319,7 @@ bool mountFilesystem() {
 
 void setup() {
     Serial.begin(115200);
+    Serial.printf("Tangocho %s\n", tgc::firmwareVersion());
     tgc::board::begin();
     setCpuFrequencyMhz(kCpuMhz);
     // The press that woke the chip must not also act on the first screen.
