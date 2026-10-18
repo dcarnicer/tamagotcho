@@ -169,7 +169,7 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
   `FontRenderer`, into `firmware/src/ui/UiFont.h` (216 glyphs, ~15 KB of 4bpp
   bitmaps). That header is committed and compiled into every firmware image,
   so the firmware distributes these bitmaps; they carry the font's credit
-  (README, Settings › About "UI font").
+  (README, Settings › Device › About "UI font").
 - OFL notes: the OFL permits use, embedding and redistribution of the font and
   of output made with it; it does not require the licence of rendered output
   to change. The pre-rendered 4bpp bitmaps in a pack, and those in the
@@ -233,7 +233,7 @@ below); nothing is bundled with the firmware.
 A pack built with another `--font` credits that font instead of Noto Sans JP.
 
 The firmware shows a short form of this attribution on the device
-(**Settings › About**: the loaded deck's name, then KANJIDIC2, KanjiVG when the
+(**Settings › Device › About**: the loaded deck's name, then KANJIDIC2, KanjiVG when the
 deck has stroke order, the JLPT levels and the glyph font, each with its
 licence; "Firmware: MIT", "Decks: CC BY-SA", "UI font: Noto Sans JP, SIL OFL
 1.1" and the repository) and in the
