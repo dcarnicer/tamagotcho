@@ -54,9 +54,20 @@ struct Record {
     uint8_t lapses;         // saturating
     uint8_t modeSeen;       // bit0 meaning, bit1 reading, bit2 meaning->kanji
     uint8_t lastGrade;      // 0 Again, 1 Hard, 2 Good, 0xFF never
-    uint8_t reserved;       // 0
+    uint8_t flags;          // kRecordFlag* (0 in files written before them)
 };
 static_assert(sizeof(Record) == kSrsRecordSize, "Record must stay 16 bytes");
+
+// Record `flags` bits. bit0: the card's first review was on `lastDay`, i.e.
+// it was introduced that day (set by its first grade, cleared by a grade on a
+// later day). It makes the daily new-card cap per deck: a deck counts its own
+// cards introduced today (Queue::rebuild()).
+constexpr uint8_t kRecordFlagIntroducedOnLastDay = 0x01;
+
+// True when the card was introduced (first reviewed) on `day`.
+inline bool introducedOn(const Record& r, uint16_t day) {
+    return (r.flags & kRecordFlagIntroducedOnLastDay) != 0 && r.lastDay == day;
+}
 
 // Aggregate counters over the whole state table, for the statistics screen
 // (docs/roadmap.md "Statistics"). Pure and deterministic: no clock, no I/O.
