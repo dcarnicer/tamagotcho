@@ -321,6 +321,20 @@ void test_order_for_lang() {
     TEST_ASSERT_EQUAL(0u, none.size());
 }
 
+void test_deck_state() {
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::New),
+                      static_cast<int>(catalogDeckState(false, 0, 703123)));
+    // A missing file's size is meaningless, even when it happens to match.
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::New),
+                      static_cast<int>(catalogDeckState(false, 703123, 703123)));
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::OnDevice),
+                      static_cast<int>(catalogDeckState(true, 703123, 703123)));
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::Update),
+                      static_cast<int>(catalogDeckState(true, 703122, 703123)));
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::Update),
+                      static_cast<int>(catalogDeckState(true, 0, 703123)));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_builder_output_bare_urls);
@@ -338,5 +352,6 @@ int main() {
     RUN_TEST(test_helpers);
     RUN_TEST(test_lang_matches);
     RUN_TEST(test_order_for_lang);
+    RUN_TEST(test_deck_state);
     return UNITY_END();
 }
