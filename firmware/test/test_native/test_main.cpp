@@ -11,6 +11,7 @@
 #include "pack/Utf8.h"
 #include "quiz/Quiz.h"
 #include "render/Blend565.h"
+#include "power/BatteryGuard.h"
 #include "render/GlcdCp437.h"
 #include "ui/UiLang.h"
 
@@ -875,6 +876,61 @@ void test_ui_lang_code() {
     TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(-1, "fr"));
 }
 
+// Critical battery: three low readings trigger the sleep, only a clearly fine
+// reading or external power resets the count, and a wake after a critical sleep
+// needs a margin above the trigger. Pure (power/BatteryGuard.h).
+void test_battery_guard() {
+    using tgc::BatteryGuard;
+
+    // Three readings at or below 3 % trigger, not fewer.
+    BatteryGuard g;
+    TEST_ASSERT_FALSE(g.update(3, false));
+    TEST_ASSERT_FALSE(g.update(2, false));
+    TEST_ASSERT_TRUE(g.update(3, false));
+    TEST_ASSERT_TRUE(g.update(0, false));  // stays triggered while low
+
+    // Noise just above the threshold (4-5 %) does not reset the count...
+    BatteryGuard wobble;
+    TEST_ASSERT_FALSE(wobble.update(3, false));
+    TEST_ASSERT_FALSE(wobble.update(4, false));
+    TEST_ASSERT_FALSE(wobble.update(3, false));
+    TEST_ASSERT_FALSE(wobble.update(5, false));
+    TEST_ASSERT_TRUE(wobble.update(2, false));
+
+    // ...but a reading at 6 % or more does.
+    BatteryGuard fine;
+    fine.update(3, false);
+    fine.update(3, false);
+    TEST_ASSERT_FALSE(fine.update(6, false));
+    TEST_ASSERT_EQUAL_UINT8(0, fine.lowReadings());
+    TEST_ASSERT_FALSE(fine.update(3, false));
+    TEST_ASSERT_FALSE(fine.update(3, false));
+
+    // USB/charging is never critical and resets the count; unknown is ignored.
+    BatteryGuard usb;
+    usb.update(1, false);
+    usb.update(1, false);
+    TEST_ASSERT_FALSE(usb.update(1, true));
+    TEST_ASSERT_EQUAL_UINT8(0, usb.lowReadings());
+    BatteryGuard unknown;
+    for (int i = 0; i < 10; ++i) TEST_ASSERT_FALSE(unknown.update(-1, false));
+    unknown.update(2, false);
+    TEST_ASSERT_FALSE(unknown.update(-1, false));  // neither counts nor resets
+    TEST_ASSERT_EQUAL_UINT8(1, unknown.lowReadings());
+
+    // A full battery never triggers.
+    BatteryGuard full;
+    for (int i = 0; i < 10; ++i) TEST_ASSERT_FALSE(full.update(100, false));
+
+    // Waking after a critical sleep: hysteresis up to 6 %, USB always resumes,
+    // an unknown level does not lock the user out.
+    TEST_ASSERT_FALSE(BatteryGuard::canResume(3, false));
+    TEST_ASSERT_FALSE(BatteryGuard::canResume(5, false));
+    TEST_ASSERT_TRUE(BatteryGuard::canResume(6, false));
+    TEST_ASSERT_TRUE(BatteryGuard::canResume(0, true));
+    TEST_ASSERT_TRUE(BatteryGuard::canResume(-1, false));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_open_and_header);
@@ -899,5 +955,6 @@ int main() {
     RUN_TEST(test_mini_fixture);
     RUN_TEST(test_real_pack_if_present);
     RUN_TEST(test_ui_lang_code);
+    RUN_TEST(test_battery_guard);
     return UNITY_END();
 }

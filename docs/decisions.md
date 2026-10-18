@@ -750,3 +750,96 @@ Short log of non-obvious choices. Newest last.
   next boot, exactly as after a power-on. Unmeasured: the current saved, and
   whether the rail stays up at all. The gyroscope also runs while awake for
   nothing; turning it off is a possible follow-up.
+
+## 2026-10-18 – Power button sleeps, "Sleep" row, critical battery
+
+- **Why.** On the StickS3 the M5PM1 owns the power button. A click "resets" the
+  ESP32 and a double click powers it off, and both cut its rails (M5PM1
+  datasheet v1.9, §V.3: reset = shutdown, 500 ms, power on), which clears the RTC
+  timer and RTC memory and so leads to the "how many days?" screen. That was
+  the main way the day clock got lost.
+- **Registers** (I2C 0x6E, through M5Unified's `M5.Power.M5pm1`; the pinned
+  M5PM1 library is not needed): `Device_ID` 0x00 = 0x50 and `Device_Model`
+  0x01 = 0x20 identify the chip. Both registers arrived with PM1 firmware 6,
+  the release that added `BTN_STATUS` (older firmware has a UID there), so
+  they double as the version check. `BTN_CFG_1` 0x49 bit0 `SINGLE_RESET_DIS`
+  (factory 0x2A: double-click gap 250 ms, long press 2 s, click 250 ms,
+  `DL_LOCK` 0), `BTN_CFG_2` 0x4A bit0 `DOUBLE_POWEROFF_DIS`, `BTN_STATUS` 0x48
+  bit7 "pressed since the last read" (the read clears it), bit0 "down now".
+  Only bit0 of the config registers is changed (read-modify-write), and each
+  write is read back.
+- **What the firmware does.** At every boot `board::begin()` checks the
+  board, the PMIC type and the ID/model. It enables the double-click
+  power-off, then sets `SINGLE_RESET_DIS` and reads `BTN_STATUS` once to drop
+  a stale press. `board::powerButtonClicked()` polls `BTN_STATUS` every 100 ms
+  (a 1-byte read; M5Unified already reads `IRQ_STATUS3` on every
+  `M5.update()`). The app treats a press like "sleep now": save the SRS, stop
+  the portal, show "Sleeping / progress saved, the front button wakes me" for
+  1.5 s, store the RTC timestamp as the idle path does, deep-sleep. On a dark
+  panel (idle on USB) the press only turns the panel back on, like the other
+  buttons. The error screen (`halt()`) sleeps on a press too.
+- **The double-click power-off is kept on purpose: it is the escape hatch.**
+  A long press is not a force-off. It restarts the ESP32 into **download
+  mode** (rails cycled with BOOT held low; the green LED blinks every 500 ms).
+  The register map lists `BTN_CFG_1`/`BTN_CFG_2` as untouched by reset,
+  download mode and power-off. With both bits set, a long press (or a hung
+  app) would leave a device that no button can get back into the app: a click
+  no longer resets, a double click no longer powers off. Only a host reset
+  over USB or a flat cell would help. So a double click stays a real power-off,
+  which still forgets the day: a deliberate act, and the first press of it
+  already starts the (atomic) SRS save. The boot re-enables it if another
+  firmware turned it off, and it only disables the click reset once that
+  worked.
+- **Persistence.** The PM1 runs from the cell while the device is "off", so
+  the setting survives ESP32 resets, deep sleep, download mode and PM1
+  power-off. It returns to the factory value only on a PM1 cold start (cell
+  disconnected or flat with no USB). It is re-applied at every boot anyway.
+  Side effect: other firmware (another M5Launcher app, a reflash) inherits
+  "click does nothing" until it clears the bit. A build with
+  `-DTGC_PM1_CLICK_SLEEP=0` puts the factory button back at boot.
+- **No power-button wake.** `IRQ_STATUS1..3` only latch while a PM1 GPIO is in
+  IRQ mode, and M5Unified sets none on the StickS3. The StickS3 pin map shows
+  PM1 G1 wired to ESP32 G13 (RTC-capable), so a power-button wake from deep
+  sleep looks possible: PM1 G1 as the IRQ output, every IRQ but the click
+  masked, ext0 on G13. It is **not done**. The datasheet says that with the
+  click reset disabled and an IRQ GPIO, the PM1 LED blinks every 200 ms, and
+  it is unclear whether that is continuous. Every unmasked charge, VBUS or IMU
+  event would also wake the chip. Neither can be checked without hardware. The
+  front button stays the only wake source; a power-button press during sleep
+  does nothing and is dropped at the next boot.
+- **"Sleep" settings row** (row 11, "Sleep"/"Suspender", not "Power
+  off"/"Apagar"). It does the same as the button: a deep sleep that keeps the
+  day clock, not a power-off. Both explicit paths deep-sleep **on USB power
+  too**. They are an explicit request, unlike the idle timeout (which only
+  blanks the panel on USB to keep the serial port). Charging carries on in the
+  PM1. To flash, wake the device with the front button, or long-press for
+  download mode. Eleven rows fit: portrait 135x240 steps 19 px (was 21),
+  landscape 240x135 hits the 10 px floor and drops the 1 px gap so the
+  highlight still clears the 8 px font, T-Display-S3 steps 27 px (2x font
+  kept) and 13 px in landscape.
+- **Critical battery.** M5Unified maps the PM1's cell voltage linearly,
+  `(mV - 3300) / 8`, so 3 % is about 3.32 V and the figure is noisy under load.
+  `power/BatteryGuard.h` is pure and native-tested. It takes a reading every
+  10 s on every screen. Three readings at or below 3 %, with no reading of 6 %
+  or more in between, trigger the sleep: save, then a localised "Battery low /
+  Charge me" notice, then deep sleep with a flag in RTC memory. USB/charging is
+  never critical. On a wake after such a sleep the app takes the best of three
+  readings first. It carries on only at 6 % or more (hysteresis) or on USB.
+  Otherwise it shows the notice again and goes back to sleep **without**
+  touching the stored RTC timestamp, so the next real wake adds the whole
+  span. There is no timer wake, so it cannot flap on its own. This buys time
+  to reach a charger, no more: the PM1's own low-voltage cut (`BATT_LVP`,
+  factory 0x40 = 2.5 V) still powers off a cell left flat, and that loses the
+  day.
+- **Fail-safe.** No StickS3/PM1, an I2C error or an unknown ID/model: nothing
+  is written and `powerButtonClicked()` stays false (if an earlier boot had
+  disabled the click reset and the chip now fails to answer, the click does
+  nothing until it does; the double click still powers off). A failed write
+  puts the factory bits back (best effort). The T-Display-S3 has no PM1:
+  always false.
+- **Unverified on hardware** (no device attached): that the PM1 honours
+  `SINGLE_RESET_DIS` and still reports the press in `BTN_STATUS`; that a
+  click still **powers on** a device that is off with the bit set (the
+  datasheet treats "reset" and power-on as separate wake sources but does not
+  say); that a double click still works from download mode; the sleep notice
+  layout; the battery thresholds against a real discharge.

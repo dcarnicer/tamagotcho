@@ -84,6 +84,12 @@ Honest status — **not verified on hardware**:
 - Because of that, the reliable way to populate `/packs` under a
   launcher-installed app is the **Wi-Fi upload above**, once the firmware is
   running — it does not depend on who owns the filesystem.
+- On the StickS3 the firmware turns the power button's **click into "save and
+  sleep"** by switching off the M5PM1's click reset (see
+  [firmware/README.md](firmware/README.md#power)). The PM1 keeps that setting
+  after you leave the app, so under the launcher a click no longer restarts the
+  device. A double click still powers it off, and a click (or plugging in USB)
+  should power it back on. Not yet verified on hardware.
 
 ## Releases
 
