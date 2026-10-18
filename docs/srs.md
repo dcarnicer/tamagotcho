@@ -477,7 +477,9 @@ list. Rebuilt on boot and on every pack change.
 2. **Reviews first**, ordered by `due_day` ascending, then stability ascending
    (most overdue / weakest first). Ties broken by codepoint for determinism.
 3. **New cards**, ordered by the pack's `level` hint then codepoint — the
-   builder's "learn earlier" order, which for the N5 deck means frequency-ish.
+   builder's "learn earlier" order, which for the N5 deck means frequency-ish
+   and for the Jōyō deck is school order (grade 1..6, then 8, each by
+   frequency; `tangocho-pack build --order`, tools/pack-builder/README.md).
    Take at most `new_per_day - new_introduced_count` (and reset the counter when
    `new_introduced_day != now_day`), then append. Reviews are not capped in a
    day; the session as a whole has a soft `session_cap = 200`.
