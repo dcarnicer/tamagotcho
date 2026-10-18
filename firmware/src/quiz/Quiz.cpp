@@ -161,6 +161,9 @@ bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rn
         if (mode != QuizMode::Reading) {
             s = pickMeaning(c.meanings, rng, q.options, n);
             if (containsMeaning(target.meanings, s)) return;  // also a meaning of the target
+            // Meaning -> kanji shows the kanji, not `s`: a candidate that also
+            // means the prompt (any of its glosses) would be a second answer.
+            if (mode == QuizMode::MeaningToKanji && containsMeaning(c.meanings, answer)) return;
         } else {
             if (strict && !hasReading(c, kind)) return;
             s = readingDisplay(c, kind);

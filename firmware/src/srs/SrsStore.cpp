@@ -159,13 +159,15 @@ void SrsStore::tick(uint32_t nowMs) {
     // Unsigned subtraction is wrap-safe for a 32-bit millisecond clock.
     const uint32_t delta = nowMs - lastTickMs_;
     lastTickMs_ = nowMs;
+    addElapsedMs(delta);
+}
 
-    uint64_t carry = static_cast<uint64_t>(msCarry_) + delta;
-    while (carry >= kSrsMsPerDay) {
-        carry -= kSrsMsPerDay;
-        if (nowDay_ < 0xFFFF) ++nowDay_;
-    }
-    msCarry_ = static_cast<uint32_t>(carry);
+void SrsStore::addElapsedMs(uint64_t ms) {
+    const uint64_t carry = static_cast<uint64_t>(msCarry_) + ms;
+    const uint64_t days = carry / kSrsMsPerDay;
+    const uint32_t day = static_cast<uint32_t>(nowDay_) + (days > 0xFFFFu ? 0xFFFFu : days);
+    nowDay_ = day > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(day);
+    msCarry_ = static_cast<uint32_t>(carry % kSrsMsPerDay);
     resetNewIfNewDay();
 }
 

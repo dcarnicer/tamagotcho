@@ -623,6 +623,30 @@ void test_quiz_meaning_gloss_collisions() {
     }
 }
 
+void test_quiz_meaning_to_kanji_excludes_cards_with_the_prompt() {
+    // Meaning -> kanji: card 1's first gloss is "night", but it also means "day",
+    // so as a kanji option it would be a second correct answer for "day". It is
+    // not in the precomputed list, so this exercises the random-walk fallback.
+    std::vector<CardSpec> cs = {{0x65E5, "day", "ニチ", "", {}},
+                                {0x591C, "night; day", "ヤ", "", {}},
+                                {0x706B, "fire", "カ", "", {}},
+                                {0x6C34, "water", "スイ", "", {}},
+                                {0x6728, "tree", "モク", "", {}}};
+    std::vector<GlyphSpec> gl;
+    for (auto& c : cs) { gl.push_back({0, c.cp, 4, 4}); gl.push_back({1, c.cp, 4, 4}); }
+    auto buf = makePack(cs, gl);
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    XorShiftRng rng(9);
+    for (int iter = 0; iter < 100; ++iter) {
+        Question q;
+        TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::MeaningToKanji, rng, &q));
+        TEST_ASSERT_EQUAL(4, q.count);
+        for (int i = 0; i < q.count; ++i) TEST_ASSERT_TRUE(q.optionCard[i] != 1);
+    }
+}
+
 void test_glcd_cp437_map() {
     // ASCII maps to itself.
     TEST_ASSERT_EQUAL(0x41, glcdIndex('A'));
@@ -869,6 +893,7 @@ int main() {
     RUN_TEST(test_quiz_reading_excludes_target_readings);
     RUN_TEST(test_quiz_unavailable_and_tiny);
     RUN_TEST(test_quiz_meaning_gloss_collisions);
+    RUN_TEST(test_quiz_meaning_to_kanji_excludes_cards_with_the_prompt);
     RUN_TEST(test_glcd_cp437_map);
     RUN_TEST(test_blend);
     RUN_TEST(test_mini_fixture);

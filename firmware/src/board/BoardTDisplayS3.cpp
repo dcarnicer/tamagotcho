@@ -5,7 +5,10 @@
 
 #if defined(TGC_BOARD_TDISPLAY_S3)
 #include <Arduino.h>
+#include <driver/rtc_io.h>
 #include <esp_random.h>
+#include <esp_sleep.h>
+#include <soc/esp32s3/rtc.h>
 
 namespace tgc {
 namespace board {
@@ -84,6 +87,7 @@ struct Pin {
 };
 Pin gNext{14};
 Pin gSelect{0};
+uint8_t gBrightness = 160;
 
 Pin& pin(Button b) { return b == Button::Next ? gNext : gSelect; }
 
@@ -116,7 +120,7 @@ void begin() {
     pinMode(gSelect.gpio, INPUT_PULLUP);
     gDisplay.init();
     gDisplay.setRotation(0);  // native 170x320 portrait
-    gDisplay.setBrightness(160);
+    gDisplay.setBrightness(gBrightness);
 }
 
 void update() {
@@ -140,7 +144,38 @@ bool wasHeld(Button b) { return pin(b).holdEdge; }
 int batteryPercent() { return -1; }  // no fuel gauge; ADC divider not read yet
 bool isCharging() { return false; }
 
-void setBrightness(uint8_t level) { gDisplay.setBrightness(level); }
+void setBrightness(uint8_t level) {
+    gBrightness = level;
+    gDisplay.setBrightness(level);
+}
+
+bool wokeFromSleep() { return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0; }
+bool externalPower() { return false; }  // no VBUS sense wired up yet
+
+void setDisplayOn(bool on) {
+    if (on) {
+        gDisplay.wakeup();
+        gDisplay.setBrightness(gBrightness);
+    } else {
+        gDisplay.setBrightness(0);
+        gDisplay.sleep();
+    }
+}
+
+void deepSleep() {
+    const gpio_num_t sel = static_cast<gpio_num_t>(gSelect.gpio);  // GPIO0, active low
+    gDisplay.setBrightness(0);
+    gDisplay.sleep();
+    digitalWrite(TDisplayS3Panel::kPowerOnPin, LOW);  // cut LCD power
+    while (digitalRead(sel) == LOW) delay(10);
+    rtc_gpio_pullup_en(sel);
+    rtc_gpio_pulldown_dis(sel);
+    esp_sleep_enable_ext0_wakeup(sel, 0);
+    Serial.flush();
+    esp_deep_sleep_start();
+}
+
+uint64_t rtcMicros() { return esp_rtc_get_time_us(); }
 uint32_t randomSeed() { return esp_random(); }
 
 }  // namespace board

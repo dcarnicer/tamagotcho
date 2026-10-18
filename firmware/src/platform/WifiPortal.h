@@ -63,6 +63,8 @@ public:
     const char* url() const { return kUrl; }
     size_t uploadedPacks() const { return uploaded_; }  // this session
     const char* lastMessage() const { return msg_; }
+    // millis() of the last HTTP request (or of begin()), for the idle timeout.
+    uint32_t lastActivityMs() const { return lastActivity_; }
 
     // True once after anything that changes what the on-device screen shows
     // (upload finished, delete, download progress). Reading clears it.
@@ -100,6 +102,7 @@ private:
     void abortUpload(const char* why);
     // printf into msg_ and mark the screen dirty.
     void setMsg(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+    void touch() { lastActivity_ = millis(); }
 
     WebServer* server_ = nullptr;
     bool active_ = false;
@@ -108,6 +111,7 @@ private:
     char msg_[80] = "ready";
     bool dirty_ = false;
     size_t uploaded_ = 0;  // packs received this session
+    uint32_t lastActivity_ = 0;
 
     // Upload state, valid between UPLOAD_FILE_START and UPLOAD_FILE_END. The
     // body goes to kUploadTmp (never the destination); only the validated temp

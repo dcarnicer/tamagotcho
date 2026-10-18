@@ -187,19 +187,22 @@ bool WifiPortal::begin(const Hooks& hooks) {
 
     active_ = true;
     uploaded_ = 0;
+    touch();
     setMsg("ready");
     Serial.printf("[wifi] AP \"%s\" open at %s\n", ssid_, url());
     return true;
 }
 
 void WifiPortal::registerRoutes() {
-    server_->on("/", HTTP_GET, [this]() { handleRoot(); });
-    server_->on("/api/stats", HTTP_GET, [this]() { handleApiStats(); });
-    server_->on("/delete", HTTP_POST, [this]() { handleDelete(); });
-    server_->on("/fetch", HTTP_POST, [this]() { handleFetchRequest(); });
-    server_->on("/upload", HTTP_POST, [this]() { handleUploadDone(); },
-                [this]() { handleUploadChunk(); });
-    server_->onNotFound([this]() { handleNotFound(); });
+    // Every request counts as activity, so the app's idle timeout does not stop
+    // the portal under a phone that is still using it.
+    server_->on("/", HTTP_GET, [this]() { touch(); handleRoot(); });
+    server_->on("/api/stats", HTTP_GET, [this]() { touch(); handleApiStats(); });
+    server_->on("/delete", HTTP_POST, [this]() { touch(); handleDelete(); });
+    server_->on("/fetch", HTTP_POST, [this]() { touch(); handleFetchRequest(); });
+    server_->on("/upload", HTTP_POST, [this]() { touch(); handleUploadDone(); },
+                [this]() { touch(); handleUploadChunk(); });
+    server_->onNotFound([this]() { touch(); handleNotFound(); });
 }
 
 void WifiPortal::poll() {
@@ -217,6 +220,7 @@ void WifiPortal::poll() {
         const String url = fetchUrl_;
         fetchUrl_ = "";
         doFetch(url);
+        touch();  // the download may have taken a while
     }
 }
 

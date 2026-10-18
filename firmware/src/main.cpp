@@ -39,6 +39,13 @@ RTC_NOINIT_ATTR uint32_t gPowerMagicInv;
 constexpr uint32_t kPowerMagic = 0x7A5C1234u;
 bool gPoweredOff = false;
 
+// RTC slow memory survives deep sleep but not a power cut: when the chip went to
+// sleep, by the RTC timer, so the next boot can add the slept time to the SRS
+// day clock (see applySleepTime()).
+RTC_DATA_ATTR uint64_t gSleptAtUs = 0;
+RTC_DATA_ATTR uint32_t gSleepMagic = 0;
+constexpr uint32_t kSleepMagic = 0x51EE9A7Eu;
+
 namespace {
 
 constexpr uint16_t kBlack = 0x0000;
@@ -46,7 +53,7 @@ constexpr uint16_t kWhite = 0xFFFF;
 uint16_t kGrey, kHighlight, kGreen, kRed, kYellow;
 
 // Every user-facing on-device string. The table is chosen from the loaded
-// pack's language (gPack.header().lang) when the pack changes; English is the
+// pack's language (gPack->header().lang) when the pack changes; English is the
 // default and the fallback for any unknown code, so the error screen (which
 // runs before a pack is open) still has text.
 struct UiStrings {
@@ -54,7 +61,8 @@ struct UiStrings {
     const char* settingsTitle;
     const char* decksTitle;
     const char* backHint;
-    const char* menuRows[9];  // continue, decks, date, new/day, speed, stats, wifi, orientation, language
+    // continue, decks, date, new/day, speed, stats, wifi, orientation, language, brightness
+    const char* menuRows[10];
     const char* newPerDayTitle;
     const char* speedTitle;
     const char* speedOff;
@@ -106,12 +114,14 @@ struct UiStrings {
     // Wi-Fi portal screen.
     const char* wifiTitle;
     const char* wifiHint;
+    const char* brightTitle;
 };
 
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS", "side: back",
-    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi", "Orientation", "Language"},
+    {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi", "Orientation", "Language",
+     "Brightness"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
     "DATE", {"today (0)", "1 day", "2-7 days", "more (14)"},
@@ -127,12 +137,14 @@ const UiStrings kUiEn = {
     "streak %u/%u", "time %s", "%uh %um", "%um %us", "%us",
     "LANGUAGE", {"Auto", "English", "Español"},
     "WI-FI", "Open the URL on your phone and upload a .tgc",
+    "BRIGHTNESS",
 };
 
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS", "lateral: atrás",
-    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi", "Orientacion", "Idioma"},
+    {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi", "Orientacion", "Idioma",
+     "Brillo"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", {"hoy (0)", "1 día", "2-7 días", "más (14)"},
@@ -149,6 +161,7 @@ const UiStrings kUiEs = {
     "racha %u/%u", "tiempo %s", "%uh %um", "%um %us", "%us",
     "IDIOMA", {"Auto", "English", "Español"},
     "WI-FI", "Abre la URL en el móvil y sube un .tgc",
+    "BRILLO",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -165,7 +178,7 @@ void setUiForLang(const char* lang) {
 }
 
 lgfx::LGFX_Sprite* gCanvas = nullptr;  // full-screen back buffer in PSRAM
-tgc::PackReader gPack;
+std::unique_ptr<tgc::PackReader> gPack = std::make_unique<tgc::PackReader>();
 std::unique_ptr<tgc::FsPackSource> gSource;
 tgc::Renderer gRender;
 tgc::XorShiftRng gRng;
@@ -190,14 +203,17 @@ tgc::SrsStore gSrs;
 tgc::FsSrsFile gSrsIo;
 tgc::Queue gQueue;
 uint32_t gShownAt = 0;     // millis() when the question was drawn
-uint32_t gLastNavAt = 0;   // last navigation tap, 0 = never moved
+int gNavTaps = 0;          // navigation taps on the current question
+// Response time credited back per navigation tap: with one button, reaching
+// the 4th option costs three taps that are UI cost, not recall time.
+constexpr uint32_t kNavAllowanceMs = 400;
 uint32_t gLastAnswerAt = 0;
 int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
 
 enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi };
 // Screen::Choice is shared by the row pickers (see openChoice()).
-enum class Choice { NewPerDay, SlowMs, Orientation, UiLang };
+enum class Choice { NewPerDay, SlowMs, Orientation, UiLang, Brightness };
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
@@ -221,6 +237,30 @@ Preferences gPrefs;
 // leave for the settings home.
 tgc::WifiPortal gPortal;
 bool gWifiBootUpload = false;
+
+// Power management. After kDimAfterMs without input the backlight dims; after
+// kSleepAfterMs (kWifiIdleMs while the portal is up and no HTTP request came
+// in) the state is saved and, on battery, the chip deep-sleeps until the front
+// button wakes it. On USB power only the panel goes dark, so the serial port
+// stays usable for flashing and logs; unplugging then lets it sleep.
+constexpr uint32_t kDimAfterMs = 30000;
+constexpr uint32_t kSleepAfterMs = 120000;
+constexpr uint32_t kWifiIdleMs = 300000;
+constexpr uint32_t kPowerCheckMs = 5000;  // VBUS poll while the panel is off
+// 80 MHz is plenty for the quiz; Wi-Fi gets full speed while the portal runs.
+constexpr uint32_t kCpuMhz = 80;
+constexpr uint32_t kCpuWifiMhz = 240;
+uint8_t gBrightness = 128;      // NVS `tangocho`/`bri`
+uint32_t gLastInputAt = 0;      // millis() of the last button activity
+uint32_t gLastPowerCheck = 0;
+bool gDimmed = false;
+bool gScreenOff = false;        // idle on USB power: panel off, still running
+bool gSwallowInput = false;     // drop button events until all buttons are up
+bool gSrsLoaded = false;        // the state file loaded at boot
+// The quiz header's battery figure, re-read every kBatteryCheckMs.
+constexpr uint32_t kBatteryCheckMs = 30000;
+int gShownBattery = -2;
+uint32_t gBatteryCheckAt = 0;
 
 int W, H;
 
@@ -306,9 +346,9 @@ const char* gradeName(tgc::Grade g) {
 void packDueNew(uint32_t* due, uint32_t* fresh) {
     uint32_t d = 0, n = 0;
     const uint16_t today = gSrs.today();
-    for (uint32_t i = 0; i < gPack.cardCount(); ++i) {
+    for (uint32_t i = 0; i < gPack->cardCount(); ++i) {
         tgc::Card c;
-        if (!gPack.card(i, &c)) continue;
+        if (!gPack->card(i, &c)) continue;
         const tgc::Record* r = gSrs.find(c.codepoint);
         if (!r || r->dueDay == 0)
             ++n;
@@ -334,14 +374,14 @@ bool newQuestion() {
             gNextReadingIsKun ? tgc::ReadingKind::Kun : tgc::ReadingKind::On;
         for (int k = 0; k < kN; ++k) {
             const tgc::QuizMode mode = kModes[(static_cast<int>(item.mode) + k) % kN];
-            if (!tgc::buildQuestion(gPack, item.cardIndex, mode, gRng, &gQ, want)) continue;
+            if (!tgc::buildQuestion(*gPack, item.cardIndex, mode, gRng, &gQ, want)) continue;
             if (gQ.mode == tgc::QuizMode::Reading) gNextReadingIsKun = !gNextReadingIsKun;
             gSel = 0;
             gRevealed = false;
             gShownAt = millis();
-            gLastNavAt = 0;
+            gNavTaps = 0;
             tgc::Card c;
-            gPack.card(gQ.cardIndex, &c);
+            gPack->card(gQ.cardIndex, &c);
             const char* mk = gQ.mode == tgc::QuizMode::Reading
                                  ? (gQ.readingKind == tgc::ReadingKind::Kun ? "read-kun" : "read-on")
                                  : (gQ.mode == tgc::QuizMode::MeaningToKanji ? "k2m" : "mean");
@@ -366,8 +406,9 @@ void drawQuiz() {
     // Header: deck name left, battery right (both built-in font, size 1).
     const int headerH = 14;
     d.fillRect(0, 0, W, headerH, kGrey);
-    smallText(d, gPack.deckName(), 3, 3, kWhite, kGrey);
+    smallText(d, gPack->deckName(), 3, 3, kWhite, kGrey);
     int bat = tgc::board::batteryPercent();
+    gShownBattery = bat;
     if (bat >= 0) {
         char b[8];
         snprintf(b, sizeof b, "%d%%", bat);
@@ -378,8 +419,8 @@ void drawQuiz() {
     const bool reading = gQ.mode == tgc::QuizMode::Reading;
     const bool k2m = gQ.mode == tgc::QuizMode::MeaningToKanji;
     tgc::Card card;
-    gPack.card(gQ.cardIndex, &card);
-    const int largePx = gPack.header().largePx ? gPack.header().largePx : 64;
+    gPack->card(gQ.cardIndex, &card);
+    const int largePx = gPack->header().largePx ? gPack->header().largePx : 64;
     // Landscape: prompt in the left column, options bounded to the right one.
     const bool landscape = W > H;
     const int leftW = std::max(largePx, W * 2 / 5);
@@ -450,7 +491,7 @@ void drawQuiz() {
             d.fillRoundRect(cx, cy, cellW, cellH, 4, bg);
             if (!gRevealed && i == gSel) d.drawRoundRect(cx, cy, cellW, cellH, 4, kWhite);
             tgc::Card oc;
-            if (gPack.card(gQ.optionCard[i], &oc))
+            if (gPack->card(gQ.optionCard[i], &oc))
                 gRender.drawKanji(d, tgc::kGlyphSetSmall, oc.codepoint, cx, cy, cellW, cellH, kWhite, bg);
         }
     } else if (reading) {
@@ -520,7 +561,7 @@ void drawRow(lgfx::LovyanGFX& d, const char* label, int y, int h, bool sel) {
 
 // Settings home (hold the side button from the quiz): tap moves the highlight,
 // hold activates the row. Each row is a full-width box with a label.
-constexpr int kSettingRows = 9;
+constexpr int kSettingRows = 10;
 
 void drawMenu() {
     auto& d = *gCanvas;
@@ -537,7 +578,9 @@ void drawMenu() {
         step = (H - top - 2) / kSettingRows;
         if (step < 10) step = 10;
     }
-    const int rowH = step - 4 < 32 ? step - 4 : 32;
+    // Tight landscape steps keep only a 1 px gap so the 1x font still fits.
+    const int pad = step >= 20 ? 4 : 1;
+    const int rowH = step - pad < 32 ? step - pad : 32;
     for (int i = 0; i < kSettingRows; ++i)
         drawRow(d, ui().menuRows[i], top + i * step, rowH, i == gMenuSel);
     present();
@@ -593,6 +636,7 @@ void drawChoice() {
     const char* title = gChoice == Choice::NewPerDay  ? ui().newPerDayTitle
                         : gChoice == Choice::SlowMs   ? ui().speedTitle
                         : gChoice == Choice::Orientation ? ui().orientTitle
+                        : gChoice == Choice::Brightness  ? ui().brightTitle
                                                          : ui().langTitle;
     smallText(d, title, 3, 3, kWhite, kGrey);
     drawBackHint(d);
@@ -612,6 +656,8 @@ void drawChoice() {
             snprintf(label, sizeof label, "%s", ui().orientRows[i]);
         } else if (gChoice == Choice::UiLang) {
             snprintf(label, sizeof label, "%s", ui().langRows[i]);
+        } else if (gChoice == Choice::Brightness) {
+            snprintf(label, sizeof label, "%u%%", (unsigned)(gChoiceValues[i] * 100u / 255u));
         } else if (gChoice == Choice::SlowMs) {
             if (gChoiceValues[i] == 0xFFFF) snprintf(label, sizeof label, "%s", ui().speedOff);
             else snprintf(label, sizeof label, ui().speedSecondsFmt, gChoiceValues[i] / 1000.0f);
@@ -629,7 +675,7 @@ void drawDone() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     d.fillRect(0, 0, W, 14, kGrey);
-    smallText(d, gPack.deckName(), 3, 3, kWhite, kGrey);
+    smallText(d, gPack->deckName(), 3, 3, kWhite, kGrey);
     smallText(d, ui().doneBadge, W - 3, 3, kWhite, kGrey, lgfx::top_right);
 
     uint32_t due = 0, fresh = 0;
@@ -759,7 +805,7 @@ void drawStats() {
              (unsigned)st.streakBest);
     formatReviewTime(st.reviewMs, duration, sizeof duration);
     snprintf(timeLine, sizeof timeLine, ui().statsTimeFmt, duration);
-    snprintf(seen, sizeof seen, ui().statsSeenFmt, (unsigned)st.seen, (unsigned)gPack.cardCount());
+    snprintf(seen, sizeof seen, ui().statsSeenFmt, (unsigned)st.seen, (unsigned)gPack->cardCount());
     snprintf(dueNew, sizeof dueNew, ui().statsDueNewFmt, (unsigned)due, (unsigned)fresh);
     snprintf(answers, sizeof answers, ui().statsAnswersFmt, (unsigned)st.answers);
     snprintf(accuracy, sizeof accuracy, ui().statsAccuracyFmt, (unsigned)acc);
@@ -842,7 +888,7 @@ std::string joinReadings(const char* list) {
 // undrawn ones absent. The masks live in the same em square drawKanji uses.
 void drawDetailKanji(int boxX, int boxY, int boxW, int boxH, uint32_t cp) {
     auto& d = *gCanvas;
-    const int px = gPack.header().largePx ? gPack.header().largePx : 64;
+    const int px = gPack->header().largePx ? gPack->header().largePx : 64;
     if (!gAnimOn) {
         gRender.drawKanji(d, tgc::kGlyphSetLarge, cp, boxX, boxY, boxW, boxH, kWhite, kBlack);
         return;
@@ -868,12 +914,12 @@ void drawDetail() {
     d.fillScreen(kBlack);
     const int headerH = 14;
     d.fillRect(0, 0, W, headerH, kGrey);
-    smallText(d, gPack.deckName(), 3, 3, kWhite, kGrey);
+    smallText(d, gPack->deckName(), 3, 3, kWhite, kGrey);
     smallText(d, ui().detailTitle, W - 3, 3, kWhite, kGrey, lgfx::top_right);
 
     tgc::Card card;
-    gPack.card(gQ.cardIndex, &card);
-    const int largePx = gPack.header().largePx ? gPack.header().largePx : 64;
+    gPack->card(gQ.cardIndex, &card);
+    const int largePx = gPack->header().largePx ? gPack->header().largePx : 64;
     const bool landscape = W > H;
 
     int x, w, top, bottom, kx, ky, kw, kh;
@@ -973,10 +1019,10 @@ void drawDetail() {
 
 void showDetail() {
     tgc::Card c;
-    gPack.card(gQ.cardIndex, &c);
+    gPack->card(gQ.cardIndex, &c);
     // Start the stroke animation when the pack has stroke data for this card.
     uint16_t sc = 0;
-    gAnimOn = gPack.strokeInfo(gQ.cardIndex, &sc, nullptr) && sc > 0;
+    gAnimOn = gPack->strokeInfo(gQ.cardIndex, &sc, nullptr) && sc > 0;
     gAnimStrokes = sc;
     gAnimFrame = 0;
     gAnimNext = millis() + kStrokeMs;
@@ -991,7 +1037,7 @@ void showDetail() {
 // Rebuilds the queue and shows the quiz (or the done screen if nothing is due).
 // Used after the date screen so newly due cards appear.
 void leaveDate() {
-    gQueue.rebuild(gPack, gSrs, gRng);
+    gQueue.rebuild(*gPack, gSrs, gRng);
     if (!newQuestion()) {
         showDone();
         return;
@@ -1007,7 +1053,7 @@ void applyDate() {
     gSrs.advanceDays(kDateAdd[gDateSel]);
     gSrs.save(gSrsIo);
     gDirty = 0;
-    gQueue.rebuild(gPack, gSrs, gRng);
+    gQueue.rebuild(*gPack, gSrs, gRng);
     if (gAfterDate == Screen::Menu) {
         gScreen = Screen::Menu;
         drawScreen();
@@ -1047,28 +1093,34 @@ void applyOrientation(bool landscape) {
 }
 
 // Opens `path`, replacing the live pack only after the new one validates.
+// The new reader is opened next to the live one and swapped in only once it
+// validated, so a failure leaves the live pack (and the renderer and queue that
+// point at it) untouched.
 bool loadPack(const String& path) {
     auto src = std::make_unique<tgc::FsPackSource>(LittleFS.open(path, "r"));
     if (!src->ok()) return false;
-    {
-        tgc::PackReader probe;
-        if (probe.open(*src, tgc::psramAllocator()) != tgc::PackError::Ok) return false;
-    }
+    auto next = std::make_unique<tgc::PackReader>();
+    if (next->open(*src, tgc::psramAllocator()) != tgc::PackError::Ok) return false;
     // Progress is global (keyed by codepoint), so persist it before the swap.
     if (gDirty) {
         gSrs.save(gSrsIo);
         gDirty = 0;
     }
     gRender.end();
-    gPack.close();
+    gPack = std::move(next);  // the old reader closes before its source goes
     gSource = std::move(src);
-    if (gPack.open(*gSource, tgc::psramAllocator()) != tgc::PackError::Ok) return false;
-    if (!gRender.begin(gPack)) return false;
-    setUiForLang(gPack.header().lang);
+    if (!gRender.begin(*gPack)) {
+        // Out of memory for the glyph cache: leave a consistent "no pack" state
+        // rather than a pack the renderer cannot draw.
+        gPack->close();
+        gCurrentPack = "";
+        return false;
+    }
+    setUiForLang(gPack->header().lang);
     gCurrentPack = path;
-    gQueue.rebuild(gPack, gSrs, gRng);
-    Serial.printf("pack %s: %u cards, %u glyphs, lang %s\n", gPack.deckName(),
-                  (unsigned)gPack.cardCount(), (unsigned)gPack.glyphCount(), gPack.header().lang);
+    gQueue.rebuild(*gPack, gSrs, gRng);
+    Serial.printf("pack %s: %u cards, %u glyphs, lang %s\n", gPack->deckName(),
+                  (unsigned)gPack->cardCount(), (unsigned)gPack->glyphCount(), gPack->header().lang);
     return true;
 }
 
@@ -1085,7 +1137,7 @@ void portalFillStats(tgc::PortalStats& out) {
     out.streakCurrent = st.streakCurrent;
     out.streakBest = st.streakBest;
     out.reviewMs = st.reviewMs;
-    out.packCards = gPack.isOpen() ? gPack.cardCount() : 0;
+    out.packCards = gPack->isOpen() ? gPack->cardCount() : 0;
 }
 
 // Called by the portal after /packs changed. Rescans the folder and keeps the
@@ -1095,7 +1147,7 @@ bool portalPacksChanged() {
     listPacks(gPacks);
     if (gPacks.empty()) {
         gRender.end();
-        gPack.close();
+        gPack->close();
         gSource.reset();
         gCurrentPack = "";
         gPrefs.remove("pack");
@@ -1106,7 +1158,7 @@ bool portalPacksChanged() {
         want = gPacks[0];
     if (!loadPack(want) && !loadPack(gPacks[0])) return false;
     gPrefs.putString("pack", gCurrentPack);
-    gQueue.rebuild(gPack, gSrs, gRng);
+    gQueue.rebuild(*gPack, gSrs, gRng);
     return true;
 }
 
@@ -1117,6 +1169,7 @@ const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged
 // caller (setup sets gWifiBootUpload); opening the portal from settings never
 // makes the side button inert.
 void openWifi() {
+    setCpuFrequencyMhz(kCpuWifiMhz);
     if (!gPortal.begin(kPortalHooks))
         QLOG("W wifi: portal start failed (%s)\n", gPortal.lastMessage());
     else
@@ -1130,6 +1183,7 @@ void openWifi() {
 void closeWifi() {
     if (gWifiBootUpload) return;
     gPortal.end();
+    setCpuFrequencyMhz(kCpuMhz);
     QLOG("W wifi: stopped\n");
     gScreen = Screen::Menu;
     drawScreen();
@@ -1138,7 +1192,7 @@ void closeWifi() {
 // Builds the quiz from the pack the portal loaded and switches to it.
 void startQuizFromPortal() {
     gExtraNew = 0;
-    gQueue.rebuild(gPack, gSrs, gRng);
+    gQueue.rebuild(*gPack, gSrs, gRng);
     if (!newQuestion()) {
         showDone();
         return;
@@ -1150,8 +1204,9 @@ void startQuizFromPortal() {
 // On the boot-time upload screen, move on to the quiz once a pack is loaded.
 // True when it took over the screen.
 bool wifiUploadReadyToQuiz() {
-    if (!gWifiBootUpload || !gPack.isOpen()) return false;
+    if (!gWifiBootUpload || !gPack->isOpen()) return false;
     gPortal.end();
+    setCpuFrequencyMhz(kCpuMhz);
     gWifiBootUpload = false;
     startQuizFromPortal();
     return true;
@@ -1208,7 +1263,14 @@ void openChoice(Choice which) {
         return;
     }
     gChoiceCount = 4;
-    if (which == Choice::NewPerDay) {
+    if (which == Choice::Brightness) {
+        gChoiceValues[0] = 32;
+        gChoiceValues[1] = 64;
+        gChoiceValues[2] = 128;
+        gChoiceValues[3] = 255;
+        for (int i = 0; i < gChoiceCount; ++i)
+            if (gChoiceValues[i] == gBrightness) gChoiceSel = i;
+    } else if (which == Choice::NewPerDay) {
         gChoiceValues[0] = 3;
         gChoiceValues[1] = 5;
         gChoiceValues[2] = 10;
@@ -1237,7 +1299,16 @@ void applyChoice() {
     if (gChoice == Choice::UiLang) {
         gUiLangPref = static_cast<int>(gChoiceValues[gChoiceSel]);
         gPrefs.putInt("ui", gUiLangPref);
-        setUiForLang(gPack.header().lang);  // re-render in the chosen language
+        setUiForLang(gPack->header().lang);  // re-render in the chosen language
+        gScreen = Screen::Menu;
+        drawScreen();
+        return;
+    }
+    if (gChoice == Choice::Brightness) {
+        gBrightness = static_cast<uint8_t>(gChoiceValues[gChoiceSel]);
+        gPrefs.putUChar("bri", gBrightness);
+        tgc::board::setBrightness(gBrightness);
+        gDimmed = false;
         gScreen = Screen::Menu;
         drawScreen();
         return;
@@ -1247,7 +1318,7 @@ void applyChoice() {
         gSrs.setNewPerDay(v);
         gSrs.save(gSrsIo);
         gDirty = 0;
-        gQueue.rebuild(gPack, gSrs, gRng);  // the daily new-card cap changed
+        gQueue.rebuild(*gPack, gSrs, gRng);  // the daily new-card cap changed
     } else {
         gSrs.setSlowMs(v);
         gSrs.save(gSrsIo);
@@ -1290,6 +1361,9 @@ void activateSetting() {
             break;
         case 8:  // Idioma / Language
             openChoice(Choice::UiLang);
+            break;
+        case 9:  // Brillo / Brightness
+            openChoice(Choice::Brightness);
             break;
     }
 }
@@ -1337,9 +1411,107 @@ struct Key {
     }
 };
 
+// Adds the time spent in deep sleep (RTC timer) to the SRS day clock. Only a
+// wake-up from our own deepSleep() qualifies: after a power cut both the RTC
+// timer and RTC memory are reset, and a crash reset is not a wake-up.
+void applySleepTime() {
+    const bool slept = tgc::board::wokeFromSleep() && gSleepMagic == kSleepMagic;
+    gSleepMagic = 0;
+    if (!slept) return;
+    const uint64_t now = tgc::board::rtcMicros();
+    if (now <= gSleptAtUs) return;
+    const uint64_t ms = (now - gSleptAtUs) / 1000u;
+    gSrs.addElapsedMs(ms);
+    Serial.printf("power: woke after %lu s, day %u\n", (unsigned long)(ms / 1000u),
+                  (unsigned)gSrs.today());
+}
+
+// Idle timeout reached: persist, stop the radio, then sleep (battery) or blank
+// the panel (USB power). Returns only in the USB case.
+void goIdle() {
+    // Also persists the uptime carry. A store that failed to load and has no
+    // answers is not written, so a damaged file (and its .bak) stays on disk.
+    if (gDirty || gSrsLoaded) {
+        gSrs.save(gSrsIo);
+        gDirty = 0;
+    }
+    if (gPortal.active()) {
+        gPortal.end();
+        setCpuFrequencyMhz(kCpuMhz);
+        QLOG("W wifi: stopped (idle)\n");
+    }
+    if (tgc::board::externalPower()) {
+        tgc::board::setDisplayOn(false);
+        gScreenOff = true;
+        gDimmed = false;
+        gLastPowerCheck = millis();
+        QLOG("P screen off (usb)\n");
+        return;
+    }
+    gSleptAtUs = tgc::board::rtcMicros();
+    gSleepMagic = kSleepMagic;
+    QLOG("P deep sleep\n");
+    tgc::board::deepSleep();
+}
+
+// First input after the panel went dark or dim: restore it. A Wi-Fi screen whose
+// portal the idle timeout stopped gets its portal back.
+void wakeScreen() {
+    if (gScreenOff) {
+        tgc::board::setDisplayOn(true);
+        gScreenOff = false;
+        // The question was not visible while dark: restart its answer clock so
+        // the time away does not grade it Hard.
+        if (gScreen == Screen::Quiz && !gRevealed) {
+            gShownAt = millis();
+            gNavTaps = 0;
+        }
+        if (gScreen == Screen::Wifi && !gPortal.active()) {
+            openWifi();
+        } else {
+            drawScreen();
+        }
+    }
+    tgc::board::setBrightness(gBrightness);  // also undoes the dim level
+    gDimmed = false;
+}
+
+// Called once per loop() with the current time: dims, then idles.
+void powerTick(uint32_t now) {
+    if (gScreenOff) {
+        // Unplugged while dark: nothing keeps it awake any more.
+        if (now - gLastPowerCheck >= kPowerCheckMs) {
+            gLastPowerCheck = now;
+            if (!tgc::board::externalPower()) {
+                gSleptAtUs = tgc::board::rtcMicros();
+                gSleepMagic = kSleepMagic;
+                tgc::board::deepSleep();
+            }
+        }
+        return;
+    }
+    uint32_t idle = now - gLastInputAt;
+    if (gPortal.active()) {
+        const uint32_t http = now - gPortal.lastActivityMs();
+        if (http < idle) idle = http;
+    }
+    if (!gDimmed && idle >= kDimAfterMs) {
+        uint8_t dim = gBrightness / 4;
+        if (dim < 8) dim = 8;
+        tgc::board::setBrightness(dim);
+        gDimmed = true;
+    }
+    if (idle >= (gPortal.active() ? kWifiIdleMs : kSleepAfterMs)) goIdle();
+}
+
+// Fatal error screen. Nothing to save here (the SRS may not even be loaded), so
+// on battery it just sleeps after the usual timeout; a wake shows it again.
 void halt() {
+    const uint32_t start = millis();
     for (;;) {
         tgc::board::update();
+        if (millis() - start >= kSleepAfterMs && !tgc::board::externalPower())
+            tgc::board::deepSleep();
         delay(50);
     }
 }
@@ -1349,6 +1521,9 @@ void halt() {
 void setup() {
     Serial.begin(115200);
     tgc::board::begin();
+    setCpuFrequencyMhz(kCpuMhz);
+    // The press that woke the chip must not also act on the first screen.
+    gSwallowInput = tgc::board::wokeFromSleep();
 
     gPoweredOff = !(gPowerMagic == kPowerMagic && gPowerMagicInv == ~kPowerMagic);
     gPowerMagic = kPowerMagic;
@@ -1364,6 +1539,8 @@ void setup() {
     // and before the canvas exists, so the buffer matches the panel from boot.
     gPrefs.begin("tangocho", false);
     gUiLangPref = gPrefs.getInt("ui", tgc::kUiLangAuto);
+    gBrightness = gPrefs.getUChar("bri", gBrightness);
+    tgc::board::setBrightness(gBrightness);
     setUiForLang(nullptr);  // localise the pre-pack error screens to the choice too
     tgc::board::setOrientation(gPrefs.getBool("land", false));
     W = tgc::board::width();
@@ -1384,8 +1561,10 @@ void setup() {
     // and an AP that will not start leaves nothing to do, so that keeps the old
     // error screen.
     if (gPacks.empty()) {
-        gSrs.begin(gSrsIo);
+        gSrsLoaded = gSrs.begin(gSrsIo);
         gSrs.beginSession();
+        applySleepTime();
+        setCpuFrequencyMhz(kCpuWifiMhz);
         if (!gPortal.begin(kPortalHooks)) {
             showError(ui().errNoPack, ui().errNoPackHint);
             halt();
@@ -1406,9 +1585,11 @@ void setup() {
     gPrefs.putString("pack", gCurrentPack);
 
     const bool srsLoaded = gSrs.begin(gSrsIo);
+    gSrsLoaded = srsLoaded;
     gSrs.beginSession();
+    applySleepTime();
     gExtraNew = 0;
-    gQueue.rebuild(gPack, gSrs, gRng);  // loadPack rebuilt with an empty store
+    gQueue.rebuild(*gPack, gSrs, gRng);  // loadPack rebuilt with an empty store
     uint32_t due = 0, fresh = 0;
     packDueNew(&due, &fresh);
 
@@ -1460,7 +1641,7 @@ void tapAction() {
         return;
     }
     gSel = (gSel + 1) % gQ.count;
-    gLastNavAt = millis();  // answer clock restarts on every navigation tap
+    ++gNavTaps;
     drawScreen();
 }
 
@@ -1473,8 +1654,12 @@ void holdAction(uint32_t pressedAt) {
 
     const bool correct = gSel == gQ.correct;
     gLastCorrect = correct;
-    const uint32_t start = gLastNavAt ? gLastNavAt : gShownAt;
-    const uint32_t rt_ms = pressedAt - start;  // until the hold's press-down, not its fire
+    // From the question being drawn to the hold's press-down (not its fire),
+    // minus a fixed allowance per navigation tap. Thinking time before and
+    // between taps counts, the mechanical cost of reaching the option does not.
+    const uint32_t raw = pressedAt - gShownAt;
+    const uint32_t nav = static_cast<uint32_t>(gNavTaps) * kNavAllowanceMs;
+    const uint32_t rt_ms = raw > nav ? raw - nav : 0;
     tgc::Grade grade;
     if (!correct)
         grade = tgc::Grade::Again;
@@ -1484,7 +1669,7 @@ void holdAction(uint32_t pressedAt) {
         grade = tgc::Grade::Good;
 
     tgc::Card card;
-    gPack.card(gQ.cardIndex, &card);
+    gPack->card(gQ.cardIndex, &card);
     const float u01 = gRng.below(1000) / 1000.0f;
     gSrs.grade(card.codepoint, grade, gSrs.today(), static_cast<uint8_t>(gQ.mode), u01);
     gSrs.addReviewMs(rt_ms);
@@ -1505,8 +1690,21 @@ void loop() {
     const uint32_t t = millis();
     gSrs.tick(t);
     static Key keyA, keyB;
-    const int a = keyA.poll(tgc::board::isHeld(Button::Select), t, tgc::board::kHoldMs);
-    const int b = keyB.poll(tgc::board::isHeld(Button::Next), t, tgc::board::kHoldMs);
+    const bool downA = tgc::board::isHeld(Button::Select);
+    const bool downB = tgc::board::isHeld(Button::Next);
+    int a = keyA.poll(downA, t, tgc::board::kHoldMs);
+    int b = keyB.poll(downB, t, tgc::board::kHoldMs);
+    if (downA || downB || a || b) {
+        gLastInputAt = t;
+        // A dark panel only wakes up: that press (through its release) is
+        // dropped. A dimmed panel brightens and the press acts as usual.
+        if (gScreenOff) gSwallowInput = true;
+        if (gScreenOff || gDimmed) wakeScreen();
+    }
+    if (gSwallowInput) {
+        a = b = 0;
+        if (!downA && !downB) gSwallowInput = false;
+    }
     if (gScreen == Screen::Menu) {
         if (a == 1) {
             gMenuSel = (gMenuSel + 1) % kSettingRows;
@@ -1584,7 +1782,7 @@ void loop() {
         } else if (a || b == 1) {
             // Nothing due and the daily new cap is spent: study kMoreNew more.
             gExtraNew = static_cast<uint16_t>(gExtraNew + 10);
-            gQueue.rebuild(gPack, gSrs, gRng, gExtraNew);
+            gQueue.rebuild(*gPack, gSrs, gRng, gExtraNew);
             if (newQuestion()) {
                 gScreen = Screen::Quiz;
                 drawScreen();
@@ -1609,5 +1807,10 @@ void loop() {
         gSrs.save(gSrsIo);
         gDirty = 0;
     }
+    if (gScreen == Screen::Quiz && !gScreenOff && t - gBatteryCheckAt >= kBatteryCheckMs) {
+        gBatteryCheckAt = t;
+        if (tgc::board::batteryPercent() != gShownBattery) drawScreen();
+    }
+    powerTick(t);
     delay(10);
 }
