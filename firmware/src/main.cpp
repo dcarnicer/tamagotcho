@@ -301,7 +301,10 @@ int gNavTaps = 0;          // navigation taps on the current question
 constexpr uint32_t kNavAllowanceMs = 400;
 uint32_t gLastAnswerAt = 0;
 int gDirty = 0;            // answers not yet persisted
-uint16_t gExtraNew = 0;    // "study more" override for the daily new-card cap
+// "Study more" override for the daily new-card cap (the done screen's tap), and
+// the SRS day it was granted on: it only applies on that day (extraNewToday()).
+uint16_t gExtraNew = 0;
+uint16_t gExtraNewDay = 0;
 
 enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks };
 // Screen::Choice is shared by the row pickers (see openChoice()).
@@ -523,6 +526,14 @@ void packDueNew(uint32_t* due, uint32_t* fresh) {
     }
     if (due) *due = d;
     if (fresh) *fresh = n;
+}
+
+// The "study more" override in force. It belongs to the day it was granted, so
+// any change of the day index (uptime rollover, sleep time, a manual date, a
+// real-time sync) drops it without each of those paths having to.
+uint16_t extraNewToday() {
+    if (gExtraNewDay != gSrs.today()) gExtraNew = 0;
+    return gExtraNew;
 }
 
 // Pops the next queue item and builds a question for it, trying the item's
@@ -1731,7 +1742,7 @@ bool portalPacksChanged() {
         gBeforeMenu = Screen::Decks;
     } else if (gPack.get() != before) {
         if (gCurrentPack != pathBefore) gExtraNew = 0;  // another deck, as in selectPack()
-        gQueue.rebuild(*gPack, gSrs, gRng, gExtraNew);
+        gQueue.rebuild(*gPack, gSrs, gRng, extraNewToday());
         gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
     }
     return gPack->isOpen();
@@ -2852,8 +2863,9 @@ void loop() {
         if (b == 2) {
             openMenu();
         } else if (a || b == 1) {
-            // Nothing due and the daily new cap is spent: study kMoreNew more.
-            gExtraNew = static_cast<uint16_t>(gExtraNew + 10);
+            // Nothing due and the daily new cap is spent: study 10 more today.
+            gExtraNew = static_cast<uint16_t>(extraNewToday() + 10);
+            gExtraNewDay = gSrs.today();
             gQueue.rebuild(*gPack, gSrs, gRng, gExtraNew);
             if (newQuestion()) {
                 gScreen = Screen::Quiz;

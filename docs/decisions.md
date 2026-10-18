@@ -1173,3 +1173,13 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   below the guard's resume level (6 %, `BatteryGuard::canResume()`), with
   "Battery low" in the footer. The portal's URL download has no progress
   callback and is unchanged (it is capped at 60 s).
+- **"Study more" is for today only.** The done screen's +10 new-card override
+  (`gExtraNew`) was never reset on a day change, so the next day started with
+  yesterday's raised cap (and every further tap stacked on it). It now carries
+  the day it was granted, and `extraNewToday()` drops it once the day index
+  differs: one check at the point of use covers the uptime rollover, the sleep
+  time, a manual date and a wall-clock sync alike, instead of a reset in each
+  of those paths. Loading another deck still resets it, now also when the
+  portal or Get decks swaps the live deck. Verified on the way: the NTP merge's
+  `applyWallClock()` already gives the settings home's "Continue" a fresh
+  question when a sync on the Wi-Fi or Get decks screen starts a new day.
