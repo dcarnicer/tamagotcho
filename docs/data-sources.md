@@ -59,7 +59,16 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 - Repository licence: MIT (Copyright (c) 2019 David Gouveia).
 - That file is itself derived from KANJIDIC and from Jonathan Waller's JLPT
   Resources page (http://www.tanos.co.uk/jlpt/), which publishes its lists
-  under Creative Commons Attribution. The file also contains WaniKani-derived
+  under Creative Commons Attribution. Verified on 2026-10-18 from the site's
+  "Use my data!" page (https://www.tanos.co.uk/jlpt/sharing/, updated
+  2011-10-12): "Everything on this site (that I'm not selling), is licenced
+  under Creative Commons "BY". Basically this means... use anything here
+  however you like (commercial or non-commercial), but credit my site. (A link
+  would be nice.)" The site itself no longer resolves (DNS, 2026-10-18); the
+  quote is from the Wayback Machine copy
+  https://web.archive.org/web/20250117052055/https://www.tanos.co.uk/jlpt/sharing/.
+  CC BY material can be included in a CC BY-SA work as long as it is credited,
+  so the packs stay CC BY-SA with the attribution below. The file also contains WaniKani-derived
   fields (`wk_*`); **we read none of them** and redistribute nothing from it.
 - Required attribution: "JLPT levels from Jonathan Waller's JLPT Resources
   (tanos.co.uk), via davidluzgouveia/kanji-data."

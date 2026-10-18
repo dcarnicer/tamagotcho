@@ -1442,3 +1442,21 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   and reads the v2 `mini.tgc` against it. `fixtures/mini_v1.tgc` is the last v1
   fixture, frozen, for the v1 reader test. The byte-identity baseline of the
   no-strokes writer is now `tests/data/mini_v2_baseline.tgc`.
+
+## 2026-10-18 – JLPT level lists: licence verified (CC BY)
+
+- **The open "Before publishing" item is closed.** The N5-N1 level of each
+  kanji (`jlpt_new` from davidluzgouveia/kanji-data, MIT) comes from Jonathan
+  Waller's JLPT Resources (tanos.co.uk), whose "Use my data!" page licenses
+  everything not for sale under **Creative Commons BY**: use freely, credit the
+  site. CC BY content may go into our CC BY-SA packs with that credit, which the
+  release notes, README and docs/data-sources.md already give.
+- **Evidence is archived, not live:** tanos.co.uk no longer resolves (checked
+  2026-10-18), so docs/data-sources.md quotes the page and links the Wayback
+  Machine copy (2025-01-17 capture of a page updated 2011-10-12).
+- **No other source needed.** JLPT has published no official kanji lists since
+  2010; every N-level list is a community reconstruction, and the open ones
+  found (e.g. OpenJLPT, CC BY-SA 4.0, 2,211 kanji, the same counts per level)
+  are themselves derived from the tanos lists. KANJIDIC2's own `jlpt` field is
+  the pre-2010 four-level scale (old level 2 spans N3 and N2), so it stays the
+  fallback only.
