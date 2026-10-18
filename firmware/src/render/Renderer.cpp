@@ -7,6 +7,7 @@
 #include "pack/Utf8.h"
 #include "render/Blend565.h"
 #include "render/GlcdCp437.h"
+#include "ui/UiFont.h"
 
 namespace tgc {
 
@@ -23,6 +24,15 @@ inline bool isBuiltin(uint8_t set) {
     return set == Renderer::kTextBuiltin || set == Renderer::kTextBuiltinSmall;
 }
 inline int builtinScale(uint8_t set) { return set == Renderer::kTextBuiltin ? 2 : 1; }
+
+// The UI font face of a text style, or null for the pack sets and Font0.
+inline const UiFace* uiFace(uint8_t set) {
+    if (set == Renderer::kTextUi) return &uifont::kLabel;
+    if (set == Renderer::kTextUiNumeral) return &uifont::kNumeral;
+    return nullptr;
+}
+// Width of the box drawn for a character a UI face (and the pack) lacks.
+inline int uiMissingAdvance(const UiFace& f) { return f.px / 2 + 2; }
 }  // namespace
 
 void drawBitmap4bpp(lgfx::LovyanGFX& dst, int x, int y, const uint8_t* bits, int w, int h,
@@ -88,11 +98,22 @@ void Renderer::end() {
 
 int Renderer::lineHeight(uint8_t set) const {
     if (isBuiltin(set)) return kBuiltinGlyphH * builtinScale(set);
+    if (const UiFace* f = uiFace(set)) return f->pitch;
     return set == kGlyphSetOption ? optLineH_ : lineH_;
 }
 int Renderer::ascent(uint8_t set) const {
     if (isBuiltin(set)) return kBuiltinGlyphAscent * builtinScale(set);
+    // The baseline that centres the cap height in the compact pitch.
+    if (const UiFace* f = uiFace(set)) return (f->pitch + f->capHeight + 1) / 2;
     return set == kGlyphSetOption ? optAscent_ : ascent_;
+}
+int Renderer::capHeight(uint8_t set) const {
+    if (isBuiltin(set)) return kBuiltinGlyphAscent * builtinScale(set);
+    if (const UiFace* f = uiFace(set)) return f->capHeight;
+    if (pack_)
+        if (const Glyph* g = glyphFor(set, 'H'))
+            if (g->height) return -g->yOff;
+    return ascent(set) * 2 / 3;
 }
 
 bool Renderer::builtinCanDraw(const char* s) {
@@ -151,8 +172,18 @@ const Glyph* Renderer::glyphFor(uint8_t set, uint32_t cp) const {
     return nullptr;
 }
 
+const Glyph* Renderer::uiFallback(uint32_t cp) const {
+    // Only with a pack the renderer could start on (cache_ exists).
+    return pack_ && cache_ ? pack_->findGlyph(kGlyphSetText, cp) : nullptr;
+}
+
 int Renderer::charAdvance(uint32_t cp, uint8_t set) const {
     if (isBuiltin(set)) return kBuiltinGlyphW * builtinScale(set);
+    if (const UiFace* f = uiFace(set)) {
+        if (const UiGlyph* g = uiGlyph(*f, cp)) return g->advance;
+        if (const Glyph* g = uiFallback(cp)) return g->advance;
+        return uiMissingAdvance(*f);
+    }
     if (const Glyph* g = glyphFor(set, cp)) return g->advance;
     return textPx_ / 2 + 2;  // fallback font / '?' box width
 }
@@ -186,6 +217,23 @@ int Renderer::drawCodepoint(lgfx::LovyanGFX& dst, uint32_t cp, int x, int y, uin
         return kBuiltinGlyphW * builtinScale(set);
     }
     const int asc = ascent(set);
+    if (const UiFace* f = uiFace(set)) {
+        const int base = y + asc;
+        if (const UiGlyph* g = uiGlyph(*f, cp)) {
+            if (g->width)
+                drawBitmap4bpp(dst, x + g->xOff, base + g->yOff, uiGlyphBits(*f, *g), g->width,
+                               g->height, fg, bg);
+            return g->advance;
+        }
+        if (const Glyph* g = uiFallback(cp)) {
+            const uint8_t* bits = bitmapFor(*g);
+            if (bits) drawBitmap4bpp(dst, x + g->xOff, base + g->yOff, bits, g->width, g->height, fg, bg);
+            return g->advance;
+        }
+        const int adv = uiMissingAdvance(*f);
+        dst.drawRect(x + 1, base - f->capHeight, adv - 2, f->capHeight, fg);
+        return adv;
+    }
     if (const Glyph* g = glyphFor(set, cp)) {
         const uint8_t* bits = bitmapFor(*g);
         if (bits) drawBitmap4bpp(dst, x + g->xOff, y + asc + g->yOff, bits, g->width, g->height, fg, bg);
@@ -303,6 +351,27 @@ int Renderer::drawCentred(lgfx::LovyanGFX& dst, const char* s, int x, int y, int
         if (lines[i].ellipsis) drawRange(dst, kEllipsis, kEllipsis + 3, tx + drawn, ly, fg, bg, set);
     }
     return n;
+}
+
+int Renderer::drawLabel(lgfx::LovyanGFX& dst, const char* s, int x, int y, int w, int h,
+                        uint16_t fg, uint16_t bg, uint8_t set, Align align) {
+    Line line;
+    if (!s || wrap(s, w, 1, set, &line, 1) == 0) return 0;
+    // "Los ..." reads worse than "Los...": no space before the ellipsis.
+    if (line.ellipsis)
+        while (line.end > line.begin && line.end[-1] == ' ') --line.end;
+    const int ellW = line.ellipsis ? textWidth(kEllipsis, set) : 0;
+    const int tw = textRangeWidth(line.begin, line.end, set) + ellW;
+    int tx = x;
+    if (align == Align::Right)
+        tx = x + w - tw;
+    else if (align == Align::Centre)
+        tx = x + (w - tw) / 2;
+    if (tx < x) tx = x;
+    const int top = y + (h + capHeight(set)) / 2 - ascent(set);  // baseline - ascent
+    const int drawn = drawRange(dst, line.begin, line.end, tx, top, fg, bg, set);
+    if (line.ellipsis) drawRange(dst, kEllipsis, kEllipsis + 3, tx + drawn, top, fg, bg, set);
+    return tw;
 }
 
 void Renderer::drawKanji(lgfx::LovyanGFX& dst, uint8_t set, uint32_t cp, int boxX, int boxY,

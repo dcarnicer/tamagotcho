@@ -1,7 +1,8 @@
 #pragma once
 // The attribution the device shows (Settings > About) and the portal page
-// repeats in its footer: the licences and the data sources of the published
-// decks, from docs/data-sources.md -- keep them in step. Language-neutral; the
+// repeats in its footer: the licences, the firmware's UI font and the data
+// sources of the published decks, from docs/data-sources.md -- keep them in
+// step. Language-neutral; the
 // labels ("Kanji data:") are in each UI's string tables.
 //
 // "(c)" because the built-in font has no copyright sign (the page swaps in
@@ -19,6 +20,9 @@ constexpr const char kKanjiVg[] =
     "KanjiVG (c)" TGC_NBSP "Ulrich" TGC_NBSP "Apel, CC" TGC_NBSP "BY-SA" TGC_NBSP "3.0";
 constexpr const char kJlpt[] = "Jonathan" TGC_NBSP "Waller (tanos.co.uk), CC" TGC_NBSP "BY";
 constexpr const char kGlyphs[] = "Noto" TGC_NBSP "Sans" TGC_NBSP "JP, SIL" TGC_NBSP "OFL" TGC_NBSP "1.1";
+// The firmware's own UI font (ui/UiFont.h): glyphs pre-rendered from the
+// same font, so the same credit (About shows it with the firmware).
+constexpr const char kUiFont[] = "Noto" TGC_NBSP "Sans" TGC_NBSP "JP, SIL" TGC_NBSP "OFL" TGC_NBSP "1.1";
 constexpr const char kRepo[] = "github.com/dcarnicer/tangocho";
 
 }  // namespace credits

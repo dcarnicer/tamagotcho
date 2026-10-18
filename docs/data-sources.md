@@ -17,7 +17,10 @@ and the UX mockups in `docs/ux/*.png`. The mockups render five N5 kanji with
 their KANJIDIC2 glosses and readings (hard-coded in
 `tools/ux-mockups/render.py`), Klee One glyphs (the default font when they
 were drawn) and the KanjiVG stroke shapes of one kanji, so they carry the same
-CC BY-SA terms and attribution as a pack.
+CC BY-SA terms and attribution as a pack. The firmware itself embeds glyph
+bitmaps rendered from Noto Sans JP (`firmware/src/ui/UiFont.h`, see
+[Noto Sans JP](#noto-sans-jp-default-font) below); it contains no dictionary
+or stroke data.
 
 ## KANJIDIC2
 
@@ -160,10 +163,19 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 - Used for: rendering the kanji and text glyphs of a pack (sets 0-3) into 4bpp
   bitmaps at build time. Only the Regular weight is used: Medium clogged dense
   kanji at the 40 px option size (docs/decisions.md, 2026-10-18).
+- Also used for: **the firmware's UI font**. `tools/ui-font/gen_ui_font.py`
+  renders ASCII, Latin-1 and `· … › ‹ « » – — ✓ ▲ ▼` at 18 px and the digits
+  with `%:/+-.` at 32 px from the same Regular OTF, with the builder's
+  `FontRenderer`, into `firmware/src/ui/UiFont.h` (216 glyphs, ~15 KB of 4bpp
+  bitmaps). That header is committed and compiled into every firmware image,
+  so the firmware distributes these bitmaps; they carry the font's credit
+  (README, Settings › About "UI font").
 - OFL notes: the OFL permits use, embedding and redistribution of the font and
   of output made with it; it does not require the licence of rendered output
-  to change. The pre-rendered 4bpp bitmaps in a pack are such output (they are
-  not the font software and cannot be used to reconstruct a usable font file).
+  to change. The pre-rendered 4bpp bitmaps in a pack, and those in the
+  firmware's `UiFont.h`, are such output (they are not the font software and
+  cannot be used to reconstruct a usable font file: fixed sizes, no outlines,
+  no hinting, a few hundred characters).
   We nevertheless credit the font in README/attribution screens as a courtesy,
   and we never redistribute the `.otf` file (it stays in `cache/`). The
   reserved font name restrictions apply only to modified/redistributed font
@@ -185,12 +197,13 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 - Suggested credit for such a pack: "Glyphs rendered from Klee One,
   (c) Fontworks Inc., SIL Open Font License 1.1."
 
-## Adafruit GLCD font (built-in UI font)
+## Adafruit GLCD font (built-in caption font)
 
-- The firmware's small text and the meaning options use the built-in GLCD font
-  (Font0) from LovyanGFX/M5GFX: the classic Adafruit 5x7 font, BSD-2-Clause
-  (Copyright (c) 2012 Adafruit Industries). It is not content of a pack; no
-  attribution is required in generated packs.
+- The firmware's captions (headers, hints, values, metadata) and, until the
+  quiz is restyled, its small text and meaning options use the built-in GLCD
+  font (Font0) from LovyanGFX/M5GFX: the classic Adafruit 5x7 font,
+  BSD-2-Clause (Copyright (c) 2012 Adafruit Industries). It is not content of
+  a pack; no attribution is required in generated packs.
 - The pack builder vendors a copy of its 256-glyph bitmap in `glcd.py` so
   `tangocho-pack preview` can render the same font as the device.
 
@@ -222,7 +235,8 @@ A pack built with another `--font` credits that font instead of Noto Sans JP.
 The firmware shows a short form of this attribution on the device
 (**Settings › About**: the loaded deck's name, then KANJIDIC2, KanjiVG when the
 deck has stroke order, the JLPT levels and the glyph font, each with its
-licence; "Firmware: MIT", "Decks: CC BY-SA" and the repository) and in the
+licence; "Firmware: MIT", "Decks: CC BY-SA", "UI font: Noto Sans JP, SIL OFL
+1.1" and the repository) and in the
 footer of the Wi-Fi portal page. Both read the strings in
 `firmware/src/Credits.h`: change them together with this file. Packs carry no
 list of their sources, so the device shows these credits for any deck,
