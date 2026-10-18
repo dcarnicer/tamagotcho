@@ -1686,3 +1686,53 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   About and TextLayout 5.9 KB, portal footer 1.8 KB), static RAM 54,148 →
   54,156 bytes. **Not verified on hardware.**
 
+## 2026-10-18 – First-boot language picker
+
+- **Why.** The Language setting defaults to Auto (follow the loaded deck), so
+  a brand-new device, which has no deck, showed its first screens (the setup
+  screen's "Scan to join" and the rest) in English, and Settings cannot be
+  reached before a deck is loaded. Agreed for v0.1.0.
+- **When.** Once, at boot, when NVS `tangocho`/`ui` is **absent**
+  (`Preferences::isKey()`: "never chosen" is not a stored Auto) **and**
+  `/packs` holds no deck: a new device, or one whose flash was erased. Not
+  after a merged-image reflash of a device that still has decks (the merge
+  pads the NVS, the decks stay): Auto follows the deck there, as before. Not
+  on any later boot, since the choice is stored. The rule is
+  `firstBootLangPicker(prefStored, hasDecks)` in `ui/UiLang.h`, native-tested.
+  Accepted side effect: a device that never stored the preference (Auto was the
+  silent default) and whose decks were all deleted asks once on its next boot.
+- **What.** `Screen::FirstLang`, in the choice-screen look (`drawRow()`, top
+  40, 40 px step, shrunk above the hints in landscape): "English", preselected
+  as the default that needs no browser to guess it, and "Español"; a neutral
+  header "LANGUAGE / IDIOMA" made of both tables' `langTitle`; the button hints
+  of both tables, each in its own language ("tap: other  hold: OK", "toque:
+  otro  larga: OK"), one line each in landscape and on the T-Display, two each
+  in the StickS3 portrait, where the Spanish line is 1 px too wide. Tap moves,
+  hold chooses, the side button does nothing (nothing to go back to, as on the
+  boot screen that follows). It runs in `loop()` like every screen, so presses
+  count for the dim and sleep timers and Auto orientation turns it.
+- **Then.** The row becomes an **explicit** preference
+  (`firstBootLangPref()`: English or Spanish, never Auto), stored in `ui` and
+  applied with `setUiForLang()`; the boot goes on with `openBootUploadScreen()`
+  (the code that was inline in `setup()`): home mode with a saved network,
+  else setup mode, now in that language. Explicit rather than Auto so that a
+  Spanish speaker who downloads an English deck to learn the English meanings
+  keeps Spanish screens. Settings › Language still offers Auto / English /
+  Español. The portal page follows the setting as before: `portalUiLang()`
+  returns it, it wins over `?lang=` and Accept-Language, and the page's
+  English / Español links (shown only while the device has no language of its
+  own) no longer appear; the page's catalog and Get decks list that language's
+  decks first.
+- **Order and sleep.** With no deck there is no date question, so the picker
+  is the first screen that needs reading. The "Preparing storage..." notice of
+  an erased data partition (a few seconds, no input) still comes first, in
+  English: the device only knows it has no deck once the filesystem is mounted.
+  The SRS session starts before the picker, as it did before the setup screen.
+  A power-button sleep, the idle sleep on battery or a critical-battery sleep
+  while the picker is open leaves `ui` unset, so the wake shows the picker
+  again (no RTC flag needed); on USB the idle timeout darkens the panel and
+  the next press redraws it.
+- **Flash:** StickS3 1,395,225 → 1,396,205 bytes (+1.0 KB), static RAM 54,156
+  → 54,164 bytes (both built with `TGC_VERSION=dev`). **Not verified on
+  hardware.**
+

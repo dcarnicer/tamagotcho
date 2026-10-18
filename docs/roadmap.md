@@ -168,7 +168,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       (`lang`: en/es today, anything else falls back to English). The on-device
       language picker is done: a "Language"/"Idioma" setting chooses Auto (follow
       the pack, the default), English or Español, persisted in NVS (`ui`) and
-      applied as a pure `uiLangCodeFor` helper. Pending: more languages (the
+      applied as a pure `uiLangCodeFor` helper. The first boot of a device
+      with no decks and no stored preference asks once (English / Español)
+      and stores an explicit choice. Pending: more languages (the
       meaning language is a property of the pack, so switching packs already
       switches the meanings).
 - [x] **Menu and settings redesign.** The settings home (Seguir / Mazos / Fecha /

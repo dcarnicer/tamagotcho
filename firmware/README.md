@@ -39,8 +39,9 @@ file `pio run` produces, e.g. for M5Launcher) and a **merged**
 `tangocho-<env>-merged.bin` that `esptool write_flash 0x0 …` or a browser (ESP
 Web Tools, via the release's `manifest.json`) can flash in one go. A merged image
 carries **no filesystem**: the first boot formats the data partition when it
-holds no LittleFS (erased or foreign), so a fresh device boots into the Wi-Fi portal
-and a pack can be sent over the air. Offsets and the exact
+holds no LittleFS (erased or foreign), so a fresh device asks for its language
+(English / Español) and boots into the Wi-Fi portal, where a pack can be sent
+over the air. Offsets and the exact
 `esptool merge_bin` command are in the root README; the merged image is **not
 verified on hardware** yet (docs/decisions.md).
 
@@ -111,6 +112,14 @@ deck's name with its data credits; a tap turns the page when it needs two, the
 side button goes back. The deck list's last row, **+ Get decks**, downloads decks
 over the home Wi-Fi (tap moves, hold downloads or studies, side button
 cancels/back).
+
+**Language.** The screens are in English or Spanish. The first boot of a device
+with no decks and no saved language asks once (**English** preselected /
+**Español**; tap moves, hold chooses) and stores that as the Language setting,
+so a deck in another language does not change it. **Settings → Language**
+offers Auto (follow the loaded deck's language), English and Español. A device
+that keeps its decks through a merged-image flash, which erases the settings,
+starts in Auto.
 
 ## Orientation
 
