@@ -2259,6 +2259,7 @@ void sleepNow(bool critical) {
         gPortal.end();
         setCpuFrequencyMhz(kCpuMhz);
     }
+    netRadioOff();  // Get decks may have the home Wi-Fi up
     QLOG("P deep sleep (%s)\n", critical ? "battery" : "user");
     if (gScreenOff) tgc::board::setDisplayOn(true);
     tgc::board::setBrightness(gBrightness);
