@@ -84,6 +84,12 @@ jobs:
     defaults:
       run:
         working-directory: firmware
+    # The firmware's version string (firmware/scripts/version.py): the release
+    # tag, shown on the device (Settings > About), in the boot log and in the
+    # portal's JSON. Without it the build would describe the shallow checkout,
+    # which has no tags, as a bare commit id.
+    env:
+      TGC_VERSION: ${{ needs.resolve.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -107,6 +113,18 @@ jobs:
 
       - name: Build
         run: pio run -e ${{ matrix.env }}
+
+      # scripts/version.py replaces any character outside [0-9A-Za-z._+~-], so
+      # an odd tag would ship another string: fail instead.
+      - name: Check the version string in the image
+        env:
+          ENVNAME: ${{ matrix.env }}
+        run: |
+          if ! strings ".pio/build/${ENVNAME}/firmware.bin" | grep -qF -- "$TGC_VERSION"; then
+            echo "error: '$TGC_VERSION' is not in firmware.bin (see firmware/scripts/version.py)" >&2
+            exit 1
+          fi
+          echo "firmware.bin carries version $TGC_VERSION"
 
       # App-only image (ESP image magic 0xE9, no bootloader/partition table):
       # what M5Launcher installs and what `pio run -t upload` writes to the app

@@ -41,7 +41,8 @@
 | `imu/`        | `OrientationFilter`: accelerometer samples to a stable display rotation for the Auto orientation (hysteresis, settle time, flat and motion rejection). Pure C++, unit tested natively |
 | `power/`      | Critical-battery guard (`BatteryGuard.h`, header-only). Pure C++, unit tested natively |
 | `platform/`   | LittleFS-backed pack source and SRS state file; the on-device **Wi-Fi portal** (`WifiPortal`: an HTTP server in *setup mode* on its own open access point, or in *home mode* on the home network the app joined) with one task-oriented page: the deck catalog and its downloads (home mode, through the app), the decks on the device, and under Advanced uploading, URL downloads, the catalog URL, the home Wi-Fi and the statistics (the page also posts the phone's clock, `POST /time`, which anchors the SRS date); `HomeWifi` (home network in NVS, station mode on demand, link/IP/RSSI, SNTP time for the SRS date); `NetFetch` (atomic HTTP(S) pack download with size/SHA-256 checks and the catalog read, shared by the portal, Get decks and the network test) with the embedded root CAs in `RootCerts.h`. Arduino only |
-| `ui/`         | Screens and input state machine                              |
+| `ui/`         | Screens and input state machine. Header-only pure helpers: `UiLang.h` (the UI language) and `TextLayout.h` (line wrapping and paging for the built-in font, used by Settings › About), unit tested natively |
+| `Version.*`, `Credits.h` | `tgc::firmwareVersion()`: the release tag, `git describe` or `"dev"`, defined for `Version.cpp` only by `scripts/version.py`; the attribution strings Settings › About and the portal footer share (docs/data-sources.md) |
 
 Pure-logic modules (`pack`, `quiz`, `srs`, `imu`, `power`, `catalog`, `portal`) must build
 in the `native` PlatformIO env with no Arduino headers.

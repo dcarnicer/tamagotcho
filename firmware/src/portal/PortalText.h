@@ -199,6 +199,12 @@ struct PortalText {
     const char* reconnectFmt =
         "The device leaves the network and joins <b>%s</b>, so this page stops answering for a "
         "moment. Then open the address the device shows (it may change).";
+
+    // Page footer: the version and the credits Settings > About shows on the
+    // device. The names and licences come from Credits.h.
+    const char* footVersionFmt = "Tangochō %s &middot; MIT-licensed firmware";  // %s = version
+    const char* footDecksFmt =  // kanji data, stroke order, JLPT levels, glyphs
+        "Decks: CC BY-SA. Kanji data: %s; stroke order: %s; JLPT levels: %s; glyphs: %s.";
 };
 
 // The table for a page language: "es" selects Spanish, anything else English.

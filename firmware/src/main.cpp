@@ -27,7 +27,10 @@
 #include "srs/Queue.h"
 #include "srs/SrsStore.h"
 #include "srs/WallClock.h"
+#include "ui/TextLayout.h"
 #include "ui/UiLang.h"
+#include "Credits.h"
+#include "Version.h"
 
 using tgc::board::Button;
 
@@ -78,8 +81,8 @@ struct UiStrings {
     const char* decksTitle;
     const char* backHint;
     // continue, decks, date, new/day, speed, stats, wifi (a submenu), orientation,
-    // language, brightness, sleep
-    const char* menuRows[11];
+    // language, brightness, sleep, about
+    const char* menuRows[12];
     const char* newPerDayTitle;
     const char* speedTitle;
     const char* speedOff;
@@ -219,13 +222,27 @@ struct UiStrings {
     const char* testTimeFail;
     const char* testHoldAgain;
     const char* testNoNetworkHint;
+    // Settings > About (drawAbout()): the header title (ASCII), the label in
+    // front of each line (1x font, yellow, the value follows on the same line),
+    // the deck line's value when none is loaded, and the footer hint while a
+    // page follows. The names and licences themselves are in Credits.h.
+    const char* aboutTitle;
+    const char* aboutFirmware;  // + MIT
+    const char* aboutDecks;     // + CC BY-SA, the licence of the published decks
+    const char* aboutDeck;      // + the loaded deck's name
+    const char* aboutNoDeck;
+    const char* aboutKanji;     // + KANJIDIC2 ...
+    const char* aboutStrokes;   // + KanjiVG ...
+    const char* aboutJlpt;      // + Jonathan Waller ...
+    const char* aboutGlyphs;    // + Noto Sans JP ...
+    const char* aboutMore;      // after "1/2" in the footer
 };
 
 const UiStrings kUiEn = {
     "Tangocho",
     "SETTINGS", "DECKS", "side: back",
     {"Continue", "Decks", "Date", "New/day", "Speed", "Statistics", "Wi-Fi »", "Orientation",
-     "Language", "Brightness", "Sleep"},
+     "Language", "Brightness", "Sleep", "About"},
     "NEW/DAY", "SPEED", "no", "%.1f s",
     "MEANING", "READING", "KANJI",
     "DATE", "last used", "today", "+1 day", "+%u days", "tap +1  hold: OK", "side hold: -1",
@@ -266,13 +283,15 @@ const UiStrings kUiEn = {
     "HOME NETWORK", "Checking catalog...", "IP %s", "signal %d dBm (%s)",
     {"weak", "fair", "good", "excellent"}, "catalog: %u decks", "network time: ok",
     "network time: no answer", "hold: test again", "Wi-Fi > Setup mode: save it on the page",
+    "ABOUT", "Firmware:", "Decks:", "Deck:", "none", "Kanji data:", "Stroke order:",
+    "JLPT levels:", "Glyphs:", "tap: more",
 };
 
 const UiStrings kUiEs = {
     "Tangocho",
     "AJUSTES", "MAZOS", "lateral: atrás",
     {"Seguir", "Mazos", "Fecha", "Nuevas/día", "Velocidad", "Estadisticas", "Wi-Fi »", "Orientacion",
-     "Idioma", "Brillo", "Suspender"},
+     "Idioma", "Brillo", "Suspender", "Acerca de"},
     "NUEVAS/DIA", "VELOCIDAD", "no", "%.1f s",
     "SIGNIFICADO", "LECTURA", "KANJI",
     "FECHA", "último uso", "hoy", "+1 día", "+%u días", "toque +1  larga: OK", "lateral larga: -1",
@@ -315,6 +334,8 @@ const UiStrings kUiEs = {
     "RED DE CASA", "Comprobando catálogo...", "IP %s", "señal %d dBm (%s)",
     {"débil", "regular", "buena", "excelente"}, "catálogo: %u mazos", "hora de red: ok",
     "hora de red: sin respuesta", "larga: repetir", "Wi-Fi > Modo configuración: guárdala en la página",
+    "ACERCA DE", "Firmware:", "Mazos:", "Mazo:", "ninguno", "Datos de kanji:", "Orden de trazos:",
+    "Niveles JLPT:", "Glifos:", "toque: más",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -371,7 +392,9 @@ int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;
 uint16_t gExtraNewDay = 0;
 
-enum class Screen { Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks, WifiMenu, NetTest };
+enum class Screen {
+    Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks, WifiMenu, NetTest, About
+};
 // Screen::Choice is shared by the row pickers (see openChoice()).
 enum class Choice { NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi };
 Screen gScreen = Screen::Quiz;
@@ -887,7 +910,7 @@ void drawRow(lgfx::LovyanGFX& d, const char* label, int y, int h, bool sel) {
 
 // Settings home (hold the side button from the quiz): tap moves the highlight,
 // hold activates the row. Each row is a full-width box with a label.
-constexpr int kSettingRows = 11;
+constexpr int kSettingRows = 12;
 
 void drawMenu() {
     auto& d = *gCanvas;
@@ -905,12 +928,27 @@ void drawMenu() {
         if (step < 10) step = 10;
     }
     // Tight landscape steps keep only a 1 px gap so the 1x font still fits; at
-    // the 10 px floor (eleven rows on the 135 px landscape height) the gap goes,
-    // so the highlight's border still clears the 8 px font above and below.
+    // the 10 px floor the gap goes, so the highlight's border still clears the
+    // 8 px font above and below.
     const int pad = step >= 20 ? 4 : step > 10 ? 1 : 0;
     const int rowH = step - pad < 32 ? step - pad : 32;
-    for (int i = 0; i < kSettingRows; ++i)
-        drawRow(d, ui().menuRows[i], top + i * step, rowH, i == gMenuSel);
+    // Twelve rows do not fit the 135 px landscape height even at the floor
+    // (eleven do): the list then shows a window that follows the highlight, as
+    // the Get decks list does, with a 2 px scroll bar in the right margin.
+    int visible = (H - top) / step;
+    if (visible > kSettingRows) visible = kSettingRows;
+    if (visible < 1) visible = 1;
+    const int first = gMenuSel >= visible ? gMenuSel - visible + 1 : 0;
+    for (int i = first; i < first + visible; ++i)
+        drawRow(d, ui().menuRows[i], top + (i - first) * step, rowH, i == gMenuSel);
+    if (visible < kSettingRows) {
+        const int trackH = (visible - 1) * step + rowH;
+        int thumbH = trackH * visible / kSettingRows;
+        if (thumbH < 6) thumbH = 6;
+        const int thumbY = top + (trackH - thumbH) * first / (kSettingRows - visible);
+        d.fillRect(W - 2, top, 2, trackH, kGrey);
+        d.fillRect(W - 2, thumbY, 2, thumbH, kWhite);
+    }
     present();
 }
 
@@ -1210,6 +1248,134 @@ void drawStats() {
                             i == 0 ? kYellow : kWhite, kBlack, set);
     }
     present();
+}
+
+// Settings > About: the firmware's name, version and licence, the decks'
+// licence and where the source lives; then the loaded deck and the credits of
+// its data (Credits.h, from docs/data-sources.md). Built-in font only, so it
+// works before any deck is loaded. Two groups -- the firmware, the deck --
+// laid out by ui/TextLayout.h: everything on one page when it fits, else a
+// group that does not fit the rest of a page starts the next one. A tap turns
+// the page (after the last, back to the first); the side button goes back.
+int gAboutPage = 0;
+
+// "Tangochō" in the 2x built-in font, which has no "ō": the "o" gets a macron
+// over its top bar (Font0's "o" leaves rows 0-1 blank).
+void drawAppName(lgfx::LovyanGFX& d, int x, int y, uint16_t fg) {
+    d.setFont(&lgfx::fonts::Font0);
+    d.setTextSize(2);
+    d.setTextColor(fg, kBlack);
+    d.setTextDatum(lgfx::top_left);
+    d.drawString("Tangocho", x, y);
+    d.fillRect(x + 7 * 12 + 2, y, 6, 2, fg);  // columns 1-3 of the 8th cell, row 0
+}
+
+void drawAbout() {
+    auto& d = *gCanvas;
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    constexpr int kLineH = 10;   // Font0 1x (8 px) and 2 px leading
+    constexpr int kTitleH = 18;  // Font0 2x (16 px) and 2 px
+    constexpr int kTop = 18;     // below the 14 px header
+    constexpr int kGap = 3;      // between lines of one group
+    constexpr int kGroupGap = 8;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    smallText(d, ui().aboutTitle, 3, 3, kWhite, kGrey);
+    // "ACERCA DE" and "lateral: atrás" do not both fit the 135 px header: the
+    // hint then moves to the footer.
+    const bool hintInHeader = 3 + gRender.textWidth(ui().aboutTitle, kSmall) + 6 +
+                                  gRender.textWidth(ui().backHint, kSmall) + 3 <=
+                              W;
+    if (hintInHeader) drawBackHint(d);
+
+    struct Item {
+        const char* label;  // "" for none
+        const char* value;
+        bool title;         // drawn under "Tangochō" (the version)
+        bool newGroup;
+    };
+    namespace cr = tgc::credits;
+    const bool deckOpen = gPack->isOpen();
+    std::vector<Item> items = {
+        {"", tgc::firmwareVersion(), true, true},
+        {ui().aboutFirmware, cr::kFirmwareLicence, false, false},
+        {ui().aboutDecks, cr::kDecksLicence, false, false},
+        {"", cr::kRepo, false, false},
+        {ui().aboutDeck, deckOpen ? gPack->deckName() : ui().aboutNoDeck, false, true},
+        {ui().aboutKanji, cr::kKanjidic, false, false},
+    };
+    // KanjiVG data is in a deck only when it was built with stroke order.
+    if (!deckOpen || gPack->hasStrokeOrder())
+        items.push_back({ui().aboutStrokes, cr::kKanjiVg, false, false});
+    items.push_back({ui().aboutJlpt, cr::kJlpt, false, false});
+    items.push_back({ui().aboutGlyphs, cr::kGlyphs, false, false});
+
+    // "Label: value", wrapped to the width (6 px a character at 1x).
+    const int maxChars = (W - 6) / 6;
+    std::vector<std::string> texts;
+    std::vector<std::vector<tgc::TextSpan>> lines;
+    std::vector<tgc::PageBlock> blocks;
+    for (const Item& it : items) {
+        texts.push_back(*it.label ? std::string(it.label) + " " + it.value : std::string(it.value));
+        lines.push_back(tgc::wrapText(texts.back().c_str(), maxChars));
+        const int h = (it.title ? kTitleH : 0) + static_cast<int>(lines.back().size()) * kLineH;
+        blocks.push_back({h, it.newGroup});
+    }
+    // One page if it all fits above the footer's back hint (if any); else
+    // another footer line for the page number.
+    const int footLines = hintInHeader ? 0 : 1;
+    int pageH = H - kTop - footLines * kLineH - 2;
+    std::vector<tgc::PageSlot> slots = tgc::layoutPages(blocks, pageH, kGap, kGroupGap);
+    int pages = tgc::pageCount(slots);
+    if (pages > 1) {
+        pageH -= kLineH;
+        slots = tgc::layoutPages(blocks, pageH, kGap, kGroupGap);
+        pages = tgc::pageCount(slots);
+    }
+    if (gAboutPage >= pages) gAboutPage = 0;
+
+    const int bottom = kTop + pageH;  // a block taller than a page is cut here
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (slots[i].page != gAboutPage) continue;
+        int y = kTop + slots[i].y;
+        if (items[i].title) {
+            drawAppName(d, 3, y, kWhite);
+            y += kTitleH;
+        }
+        const std::string& t = texts[i];
+        const size_t labelLen = std::strlen(items[i].label);
+        for (const tgc::TextSpan& l : lines[i]) {
+            if (y + 8 > bottom) break;
+            int x = 3;
+            const size_t split = l.begin < labelLen ? std::min(labelLen, l.begin + l.len) : l.begin;
+            if (split > l.begin)
+                x += gRender.drawText(d, t.substr(l.begin, split - l.begin).c_str(), x, y, kYellow,
+                                      kBlack, kSmall);
+            if (l.begin + l.len > split)
+                gRender.drawText(d, t.substr(split, l.begin + l.len - split).c_str(), x, y, kWhite,
+                                 kBlack, kSmall);
+            y += kLineH;
+        }
+    }
+
+    int footY = H - kLineH;
+    if (!hintInHeader) {
+        gRender.drawCentred(d, ui().backHint, 2, footY, W - 4, kLineH, 1, kWhite, kBlack, kSmall);
+        footY -= kLineH;
+    }
+    if (pages > 1) {
+        char foot[48];
+        snprintf(foot, sizeof foot, "%u/%u%s%s", (unsigned)(gAboutPage + 1), (unsigned)pages,
+                 gAboutPage + 1 < pages ? "  " : "", gAboutPage + 1 < pages ? ui().aboutMore : "");
+        gRender.drawCentred(d, foot, 2, footY, W - 4, kLineH, 1, kWhite, kBlack, kSmall);
+    }
+    present();
+}
+
+void openAbout() {
+    gAboutPage = 0;
+    gScreen = Screen::About;
+    drawScreen();
 }
 
 // "704 KB" / "1.2 MB", or "704K" / "1.2M" when `compact`.
@@ -1925,6 +2091,7 @@ void drawScreen() {
     else if (gScreen == Screen::GetDecks) drawGetDecks();
     else if (gScreen == Screen::WifiMenu) drawWifiMenu();
     else if (gScreen == Screen::NetTest) drawNetTest();
+    else if (gScreen == Screen::About) drawAbout();
     else drawQuiz();
 }
 
@@ -2521,6 +2688,9 @@ void activateSetting() {
             break;
         case 10:  // Suspender / Sleep
             sleepNow(false);
+            break;
+        case 11:  // Acerca de / About
+            openAbout();
             break;
     }
 }
@@ -3318,6 +3488,7 @@ bool mountFilesystem() {
 
 void setup() {
     Serial.begin(115200);
+    Serial.printf("Tangocho %s\n", tgc::firmwareVersion());
     tgc::board::begin();
     setCpuFrequencyMhz(kCpuMhz);
     // The press that woke the chip must not also act on the first screen.
@@ -3607,6 +3778,15 @@ void loop() {
             }
         }
     } else if (gScreen == Screen::Stats) {
+        if (b) {  // side button returns to the settings home
+            gScreen = Screen::Menu;
+            drawScreen();
+        }
+    } else if (gScreen == Screen::About) {
+        if (a == 1) {  // next page (drawAbout() wraps after the last)
+            ++gAboutPage;
+            drawScreen();
+        }
         if (b) {  // side button returns to the settings home
             gScreen = Screen::Menu;
             drawScreen();

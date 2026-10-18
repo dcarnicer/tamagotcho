@@ -485,6 +485,14 @@ Settings                     header: "SETTINGS" · date · battery
   design-system styling (it uses today's `drawRow()` and 1x text). See
   docs/decisions.md, "Portal over the home Wi-Fi; task-oriented page; Wi-Fi
   menu".
+- **Status of `About ›` (2026-10-18, `feature/about-version`).** Implemented
+  ahead of Phase 3 for the first release: a 12th flat row, **"About"**, at the
+  end of the settings home (landscape scrolls the list now). It shows the
+  version, the firmware and deck licences, the repository and the loaded
+  deck's data credits (Noto Sans JP, the default font since this document was
+  drawn, instead of Klee One), paged by a tap. It moves under `Device ›` with
+  the group refactor. See docs/decisions.md, "About screen and firmware
+  version".
 
 ---
 

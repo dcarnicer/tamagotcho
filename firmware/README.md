@@ -14,6 +14,12 @@ pio run -e sticks3            # build for StickS3
 pio run -e tdisplay-s3        # build for T-Display-S3
 ```
 
+Each build prints `Tangocho version: ...`: `scripts/version.py` takes
+`$TGC_VERSION` (the release workflow sets the tag), else `git describe --tags
+--always --dirty --match "v[0-9]*"`, else `dev`, and compiles it into
+`src/Version.cpp` only (a new version recompiles one file). The device logs it
+on boot (`Tangocho <version>`) and shows it under Settings › About.
+
 ## Flash
 
 ```sh
@@ -96,9 +102,13 @@ a wrong answer it first opens the mistake **detail card** (meanings, readings,
 stroke order), and the next tap starts the following question. The side button is
 a tap shortcut; **holding it opens the settings home** (Continue / Decks / Date /
 New per day / Speed / Statistics / Wi-Fi » / Orientation / Language / Brightness
-/ Sleep), where a tap moves the selection, a hold activates the row, and the side
-button goes back. **Wi-Fi »** opens its own list (Web portal / Home network /
-Setup mode / Forget network) that works the same way. The deck list's last row, **+ Get decks**, downloads decks
+/ Sleep / About), where a tap moves the selection, a hold activates the row, and
+the side button goes back (in landscape the list scrolls with the selection).
+**Wi-Fi »** opens its own list (Web portal / Home network / Setup mode / Forget
+network) that works the same way. **About** shows the
+firmware version and licence, the decks' licence, the repository, and the loaded
+deck's name with its data credits; a tap turns the page when it needs two, the
+side button goes back. The deck list's last row, **+ Get decks**, downloads decks
 over the home Wi-Fi (tap moves, hold downloads or studies, side button
 cancels/back).
 

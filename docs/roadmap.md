@@ -222,8 +222,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       5 MiB cap in pack format v1) were resolved first.
 - [x] Attribution for redistributed data: README's "Releases" section,
       `docs/data-sources.md` and the release notes all carry the combined
-      KANJIDIC2 / KanjiVG / Noto Sans JP credit. (Still open: an attribution line on
-      the device itself.)
+      KANJIDIC2 / KanjiVG / Noto Sans JP credit. (On the device too since
+      2026-10-18: Settings › About, and the portal page's footer.)
 - [ ] Flash a **merged** image on a real StickS3 — ESP Web Tools in a browser and
       `esptool write_flash 0x0 …` — to confirm the documented offsets. The image
       and manifest are written and locally checked, **not verified on hardware**.
