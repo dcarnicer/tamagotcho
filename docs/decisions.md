@@ -684,3 +684,69 @@ Short log of non-obvious choices. Newest last.
   `sticks3-dev` env turns it on.
 - The quiz header re-reads the battery every 30 s and redraws when it changed.
 - `docs/srs.md` §5 described a boot rule the code no longer had; rewritten.
+
+## 2026-10-18 – Auto-rotation from the IMU
+
+- **Setting.** Orientation gains **Auto** (first row, as in the language
+  picker) on boards with an accelerometer; the T-Display-S3 keeps Portrait and
+  Landscape only. It is stored as NVS `tangocho`/`orient` (0 portrait,
+  1 landscape, 2 auto), replacing the bool `land`: the first boot reads `land`
+  once, writes `orient` and removes `land`, so landscape users keep landscape.
+  **New users still get portrait**: the axis mapping below is unconfirmed on
+  hardware, and portrait is what the docs describe. The rotation Auto picks is
+  never persisted. Auto on a board whose IMU did not start behaves as portrait.
+- **Rotations.** Auto uses 0 (portrait) and **both landscape directions** (1
+  and 3), so the text is upright whichever way the stick is turned, but **not
+  2** (portrait upside down): with the front button under the thumb below the
+  screen, upside-down poses are mostly transient (tipping the device toward
+  you, lying down), and phones leave it out for the same reason. That sector
+  keeps the current layout; the filter can allow it with one mask bit. The
+  fixed Landscape choice stays rotation 1.
+- **The buttons do not move, only the picture.** Every on-screen hint names
+  the button ("side: back", "tap/hold", "side hold: menu") instead of pointing
+  at it, and options are reached by cycling, not by position, so no hint
+  becomes wrong in rotation 1 or 3. In rotation 1 the front button is to the
+  right of the screen, in rotation 3 to the left.
+- **Filter (pure `imu/OrientationFilter`, native tests in `test_imu`).** "Up"
+  in the screen plane is θ = atan2(x, y), clockwise from the panel's top edge;
+  rotation r is centred on r·90°. A different rotation needs the pose within
+  30° of its centre (±15° hysteresis on each 45° boundary, so a turn of at
+  least 60° from the current centre) held continuously for **500 ms**. Samples
+  are ignored when the screen is within 25° of horizontal (face up or down) or
+  when |a| is outside 1 ± 0.3 g (shaking, taps), and an ignored or dead-band
+  sample, or a gap of more than 1 s between samples, restarts the settle time.
+  At boot one sample picks the nearest allowed sector at once (no settle,
+  nothing is on screen yet), falling back to portrait when flat or unclear.
+- **App.** The accelerometer is polled every 100 ms, only while Auto is on and
+  the panel is on (not while it is off on USB idle). A settled change goes
+  through the same path as the setting (rotate, new canvas, redraw the active
+  screen) but **only while no button is down**: a change that settles during a
+  press waits for the release, so tap/hold timing and the highlighted option
+  never change under the finger. Selecting Auto keeps the current picture (the
+  hold that selected it is still down); the IMU takes over after the release.
+- **A rotation is not user activity.** It does not brighten a dimmed panel or
+  reset the idle timers, as on phones: a stick turning over in a bag or pocket
+  must still dim and sleep. The picture does rotate while dimmed.
+- **Axis mapping, to be confirmed on hardware.** M5Unified remaps the StickS3's
+  BMI270 (`IMU_Class.inl`: "X=+Y, Y=-X, Z=+Z"). Applied to M5Stack's StickS3
+  axis diagram (chip X toward the USB end, Y toward the screen's right edge, Z
+  out of the screen) this gives X = screen right, Y = top (HAT) end, Z = out of
+  the screen, with the front button below the screen: exactly the frame
+  M5Stack documents for the StickC Plus2, whose MPU6886 M5Unified does not
+  remap. LovyanGFX rotation r puts the picture's top at the panel's top, right,
+  bottom or left edge (read from its software rotation in `Panel_HasBuffer`,
+  which its MADCTL tables are meant to match), so the picture is upright when
+  the +1 g reaction points r·90° clockwise from the top edge. Hence the HAL's
+  panel frame is M5Unified's frame unchanged. Confidence is moderate (two
+  diagrams and the source agree; nothing measured); the swap/sign constants
+  live only in `BoardSticks3.cpp`, and the `sticks3-dev` log prints each
+  rotation with its sample.
+- **IMU power.** M5Unified starts the BMI270 with the accelerometer and
+  gyroscope in normal mode and never suspends it: its BMI270 driver has no
+  `sleep()` and `M5.Power` does not touch the IMU. So it kept running through
+  the ESP32's deep sleep, if the M5PM1 keeps its rail up. `board::deepSleep()`
+  now writes PWR_CTRL = 0 and PWR_CONF = adv_power_save (the chip's power-on
+  reset state) first; `M5.begin()` soft-resets and re-initialises it on the
+  next boot, exactly as after a power-on. Unmeasured: the current saved, and
+  whether the rail stays up at all. The gyroscope also runs while awake for
+  nothing; turning it off is a possible follow-up.

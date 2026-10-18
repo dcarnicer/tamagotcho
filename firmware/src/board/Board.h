@@ -34,8 +34,22 @@ int height();  // height of the current rotation
 // Display rotation. Portrait is the default (begin() sets it); landscape swaps
 // the panel's width and height (e.g. 135x240 -> 240x135). width()/height()
 // follow the current rotation.
-void setOrientation(bool landscape);
+void setOrientation(bool landscape);  // setRotation(landscape ? 1 : 0)
 bool landscape();
+// Rotation 0-3 as LovyanGFX's setRotation(): the top of the picture is at the
+// panel's top (0, native portrait), right (1, landscape), bottom (2) or left
+// (3, landscape the other way) edge, as seen in rotation 0.
+void setRotation(uint8_t r);
+uint8_t rotation();
+
+// --- Accelerometer ---------------------------------------------------------
+// True when the board has a working accelerometer (StickS3: BMI270).
+bool hasAccel();
+// Latest acceleration in g in the *panel frame*: +x toward the panel's right
+// edge, +y toward its top edge, +z out of the screen, as seen in rotation 0. At
+// rest the axis that points up reads +1 g. Non-blocking; false when the board
+// has no accelerometer or no sample has arrived yet.
+bool readAccel(float* x, float* y, float* z);
 
 // True once on the press edge (this update() cycle only).
 bool wasPressed(Button b);
