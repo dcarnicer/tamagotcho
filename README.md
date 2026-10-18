@@ -39,18 +39,23 @@ The portal has two modes:
 
 ### First setup
 
-1. A device with no decks starts the portal by itself (later: hold the side
+1. A brand-new device first asks for its **language**: **English** or
+   **Español** (tap moves, hold chooses). The device screens and the portal
+   page then stay in that language, whatever the language of the decks you
+   download; **Settings → Language** changes it later (Auto follows the loaded
+   deck).
+2. A device with no decks starts the portal by itself (later: hold the side
    button for **Settings → Wi-Fi » → Setup mode**). Scan the QR code on the
    screen with the phone camera to join `Tangocho-XXXX`, then open
    `http://192.168.4.1` (or tap the device's front button and scan the second
    QR code).
-2. The page's first step is **Connect the device to your Wi-Fi**: pick the
+3. The page's first step is **Connect the device to your Wi-Fi**: pick the
    network (nearby ones are suggested), type its password (empty for an open
    network) and press **Save**.
-3. Press **Switch to my Wi-Fi**. The device leaves its own network and joins
+4. Press **Switch to my Wi-Fi**. The device leaves its own network and joins
    yours. Put the phone back on your Wi-Fi and scan the new QR code on the
    device screen (or type the address it shows).
-4. The page now lists the decks of the catalog, **your language first**: press
+5. The page now lists the decks of the catalog, **your language first**: press
    **Download** (or **Update** for a deck that is on the device in another
    build). The page and the device screen show the progress; the device's side
    button cancels. When you are done, the device's side button starts studying.
@@ -111,9 +116,10 @@ setup mode and a tap tries again.
 - An uploaded file streams straight to the filesystem (a multi-MB pack never has
   to fit in RAM) and is kept only if it is a valid pack, with room to spare.
   The URL download is **plain `http://` only** (e.g. a server on your computer).
-- The page is in the device's language (the Language setting, or the loaded
-  deck's under Auto); a device with no deck yet follows the browser's language,
-  and the page offers English / Español links.
+- The page is in the device's language (the Language setting, chosen on the
+  first boot, or the loaded deck's under Auto); a device set to Auto with no
+  deck yet follows the browser's language, and the page offers English /
+  Español links.
 - The default catalog is
   `https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog.txt`,
   the dedicated **decks release** for the pack format this firmware reads (see
@@ -244,9 +250,11 @@ press **Program**. The release also carries ESP Web Tools manifests
 page that serves the image and the manifest together, so it cannot be pointed
 at a release on its own. A merged image carries **no filesystem**:
 on the first boot the firmware finds no LittleFS on the data partition (erased,
-or left by another firmware), formats it ("Preparing storage...") and boots
-into the Wi-Fi portal's setup mode, where decks can be fetched or uploaded over
-the air.
+or left by another firmware), formats it ("Preparing storage..."), asks for the
+language (English / Español) and boots into the Wi-Fi portal's setup mode,
+where decks can be fetched or uploaded over the air. A device that still has
+its decks after a merged-image flash does not ask: its settings are gone, so
+the language follows the loaded deck (Auto) until you change it.
 
 > Status: the **esptool** path is verified — a v0.1.0 candidate's merged
 > image, written at `0x0` on a real StickS3, booted, kept its decks and

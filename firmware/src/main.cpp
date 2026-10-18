@@ -147,6 +147,11 @@ struct UiStrings {
     // table so a user can find their language whatever the current one is).
     const char* langTitle;
     const char* langRows[3];
+    // First-boot language picker (drawFirstLang()): its button hints, which the
+    // picker draws from both tables, each in its own language. 1x font; the two
+    // share a line when it fits.
+    const char* firstLangTap;
+    const char* firstLangHold;
     // Wi-Fi portal screen (the hints and status lines are 1x, see drawWifi()).
     const char* wifiTitle;
     const char* brightTitle;
@@ -260,6 +265,7 @@ const UiStrings kUiEn = {
     "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
     "streak %u/%u", "time %s", "%uh %um", "%um %us", "%us",
     "LANGUAGE", {"Auto", "English", "Español"},
+    "tap: other", "hold: OK",
     "WI-FI",
     "BRIGHTNESS",
     "Sleeping", "Progress saved. The front button wakes me.",
@@ -310,6 +316,7 @@ const UiStrings kUiEs = {
     "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
     "racha %u/%u", "tiempo %s", "%uh %um", "%um %us", "%us",
     "IDIOMA", {"Auto", "English", "Español"},
+    "toque: otro", "larga: OK",
     "WI-FI",
     "BRILLO",
     "Suspendido", "Progreso guardado. El botón frontal me despierta.",
@@ -393,7 +400,8 @@ uint16_t gExtraNew = 0;
 uint16_t gExtraNewDay = 0;
 
 enum class Screen {
-    Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks, WifiMenu, NetTest, About
+    Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks, WifiMenu, NetTest, About,
+    FirstLang
 };
 // Screen::Choice is shared by the row pickers (see openChoice()).
 enum class Choice { NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi };
@@ -426,6 +434,9 @@ Choice gChoice = Choice::NewPerDay;
 int gChoiceSel = 0;
 int gChoiceCount = 0;
 uint16_t gChoiceValues[4] = {0, 0, 0, 0};
+// The first-boot language picker (Screen::FirstLang): highlighted row, see
+// ui/UiLang.h for the rows and when it is shown.
+int gFirstLangSel = tgc::kFirstBootLangDefaultRow;
 String gCurrentPack;
 Preferences gPrefs;
 
@@ -1044,6 +1055,58 @@ void drawChoice() {
         }
         drawRow(d, label, top + i * step, rowH, i == gChoiceSel);
     }
+    present();
+}
+
+// First-boot language picker (setup(), docs/decisions.md): the choice-screen
+// look with a neutral header ("LANGUAGE / IDIOMA") and every row and hint in its
+// own language, so it reads the same whatever table is active. No back hint:
+// there is nothing to go back to yet.
+void drawFirstLang() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    d.fillRect(0, 0, W, 14, kGrey);
+    char title[40];
+    snprintf(title, sizeof title, "%s / %s", kUiEn.langTitle, kUiEs.langTitle);
+    smallText(d, title, 3, 3, kWhite, kGrey);
+
+    // Button hints along the bottom, English then Spanish: tap and hold share a
+    // line when both languages fit (landscape, T-Display), else each language
+    // takes two lines (StickS3 portrait).
+    constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
+    const int w = W - 4;
+    const UiStrings* const langs[2] = {&kUiEn, &kUiEs};
+    char line[2][48];
+    bool split = false;
+    for (int i = 0; i < 2; ++i) {
+        snprintf(line[i], sizeof line[i], "%s  %s", langs[i]->firstLangTap,
+                 langs[i]->firstLangHold);
+        if (gRender.textWidth(line[i], kSmall) > w) split = true;
+    }
+    const int hintTop = H - 2 - (split ? 2 * 20 + 4 : 2 * 10);
+    int y = hintTop;
+    for (int i = 0; i < 2; ++i) {
+        if (split) {
+            gRender.drawCentred(d, langs[i]->firstLangTap, 2, y, w, 10, 1, kWhite, kBlack, kSmall);
+            gRender.drawCentred(d, langs[i]->firstLangHold, 2, y + 10, w, 10, 1, kWhite, kBlack,
+                                kSmall);
+            y += 24;
+        } else {
+            gRender.drawCentred(d, line[i], 2, y, w, 10, 1, kWhite, kBlack, kSmall);
+            y += 10;
+        }
+    }
+
+    // The rows as on the choice screens; the step shrinks to stay above the
+    // hints on the short landscape screen.
+    const int top = 40;
+    int step = 40;
+    if (top + step * tgc::kFirstBootLangRows > hintTop - 2)
+        step = (hintTop - 2 - top) / tgc::kFirstBootLangRows;
+    const int rowH = step - 4 < 32 ? step - 4 : 32;
+    for (int i = 0; i < tgc::kFirstBootLangRows; ++i)
+        drawRow(d, ui().langRows[tgc::firstBootLangPref(i)], top + i * step, rowH,
+                i == gFirstLangSel);
     present();
 }
 
@@ -2092,6 +2155,7 @@ void drawScreen() {
     else if (gScreen == Screen::WifiMenu) drawWifiMenu();
     else if (gScreen == Screen::NetTest) drawNetTest();
     else if (gScreen == Screen::About) drawAbout();
+    else if (gScreen == Screen::FirstLang) drawFirstLang();
     else drawQuiz();
 }
 
@@ -3484,6 +3548,55 @@ bool mountFilesystem() {
     }
 }
 
+// The boot screen of a device with no deck: the Wi-Fi portal, so a deck can
+// come from a phone. With a home Wi-Fi saved, the page over it (setup mode if
+// the join fails, see wifiLoop()); without one, the device's own access point.
+// An access point that will not start leaves nothing to do: the old error
+// screen. From setup(), or once the first-boot language is chosen.
+void openBootUploadScreen() {
+    gWifiBootUpload = true;
+    openPortal(defaultPortalMode());
+    if (gPortalMode == PortalMode::Setup && gWifiStep != WifiStep::Serving) {
+        showError(ui().errNoPack, ui().errNoPackHint);
+        halt();
+    }
+    Serial.printf("wifi: no packs, upload-ready (%s %s)\n",
+                  gPortalMode == PortalMode::Home ? "joining" : "ssid",
+                  gPortalMode == PortalMode::Home ? gHome.ssid() : gPortal.ssid());
+}
+
+// First-boot language picker (ui/UiLang.h decides when): English preselected.
+// Driven by loop() like every screen, so presses count for the dim and sleep
+// timers, and a sleep while it is open leaves the preference unset: the wake
+// asks again.
+void openFirstLang() {
+    gFirstLangSel = tgc::kFirstBootLangDefaultRow;
+    gScreen = Screen::FirstLang;
+    drawScreen();
+}
+
+// Stores the choice as an explicit preference (never Auto: a later deck in
+// another language must not switch the screens), applies it and continues the
+// boot the picker interrupted, now in that language.
+void applyFirstLang() {
+    gUiLangPref = tgc::firstBootLangPref(gFirstLangSel);
+    gPrefs.putInt("ui", gUiLangPref);
+    setUiForLang(nullptr);
+    Serial.printf("ui: first boot, language %s\n", uiLangCode());
+    openBootUploadScreen();
+}
+
+// loop() on the picker: a tap moves the highlight, a hold chooses. The side
+// button does nothing, as on the boot-time upload screen that follows.
+void firstLangLoop(int a) {
+    if (a == 1) {
+        gFirstLangSel = (gFirstLangSel + 1) % tgc::kFirstBootLangRows;
+        drawScreen();
+    } else if (a == 2) {
+        applyFirstLang();
+    }
+}
+
 }  // namespace
 
 void setup() {
@@ -3507,6 +3620,8 @@ void setup() {
     // Apply the saved orientation right after board::begin() (which set portrait)
     // and before the canvas exists, so the buffer matches the panel from boot.
     gPrefs.begin("tangocho", false);
+    // Absent (never chosen) is not Auto: it may ask for the language below.
+    const bool uiPrefStored = gPrefs.isKey("ui");
     gUiLangPref = gPrefs.getInt("ui", tgc::kUiLangAuto);
     gBrightness = gPrefs.getUChar("bri", gBrightness);
     tgc::board::setBrightness(gBrightness);
@@ -3552,23 +3667,20 @@ void setup() {
     // quiz as soon as one arrives. This is the practical answer to a fresh (or
     // launcher-formatted) filesystem, including one mountFilesystem() has just
     // formatted. An AP that will not start leaves nothing to do, so that keeps
-    // the old error screen.
+    // the old error screen. A brand-new device (no language ever chosen) first
+    // asks for the language, so that screen and the page are in it; with no
+    // deck there is no date question to come before it.
     if (gPacks.empty()) {
         gSrsLoaded = gSrs.begin(gSrsIo);
         gBootDay = gSrs.today();
         gSrs.beginSession();
         applySleepTime();
-        // With a home Wi-Fi saved, the page over it (setup mode if the join
-        // fails, see wifiLoop()); without one, the device's own access point.
-        gWifiBootUpload = true;
-        openPortal(defaultPortalMode());
-        if (gPortalMode == PortalMode::Setup && gWifiStep != WifiStep::Serving) {
-            showError(ui().errNoPack, ui().errNoPackHint);
-            halt();
+        if (tgc::firstBootLangPicker(uiPrefStored, !gPacks.empty())) {
+            Serial.println("ui: first boot, asking for the language");
+            openFirstLang();
+            return;
         }
-        Serial.printf("wifi: no packs, upload-ready (%s %s)\n",
-                      gPortalMode == PortalMode::Home ? "joining" : "ssid",
-                      gPortalMode == PortalMode::Home ? gHome.ssid() : gPortal.ssid());
+        openBootUploadScreen();
         return;
     }
 
@@ -3838,6 +3950,8 @@ void loop() {
         wifiMenuLoop(a, b);
     } else if (gScreen == Screen::NetTest) {
         netTestLoop(a, b);
+    } else if (gScreen == Screen::FirstLang) {
+        firstLangLoop(a);
     } else {
         if (a == 1) tapAction();
         else if (a == 2) holdAction(keyA.downAt);
