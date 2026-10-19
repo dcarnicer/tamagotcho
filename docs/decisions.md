@@ -1105,7 +1105,8 @@ Short log of non-obvious choices. Newest last.
 - **Power.** The CPU runs at 240 MHz only while the radio is on (`netRadioOff()`
   on every exit). The join and its outcome count as activity for the idle
   timers, so neither the 30 s dim nor the 2 min sleep can cut the join
-  (25 s since 2026-10-19) + 3 s NTP short, and the status line gets a full timeout to be read. An idle
+  (up to 40 s since 2026-10-19, held off for all of it) + 3 s NTP short, and
+  the status line gets a full timeout to be read. An idle
   timeout or an explicit sleep turns the radio off as for Get decks; a sleep
   while the question is open still re-asks it (and retries NTP) on the wake.
 - **A new day under the settings.** `applyWallClock()` already gave an
@@ -2193,7 +2194,7 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
 - **Pack builder** version 0.2.0 too (it writes catalog v2 only); the
   versions are kept in step by hand, there is no shared version file.
 
-## 2026-10-19 – Home Wi-Fi: strongest access point, 25 s join
+## 2026-10-19 – Home Wi-Fi: pinned to the strongest access point, 40 s join
 
 - **Found on the StickS3** (a home network with several access points under
   one name): joins landed on a far access point (-81 dBm, a few metres from
@@ -2201,16 +2202,30 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   did not answer; one join took 13.7 s, close to the 15 s timeout.
 - **Two causes.** Arduino-ESP32 2.0.x defaults to `WIFI_FAST_SCAN`, which
   joins the first access point it hears with the name, so the signal sort
-  never applies. And the near access point ignores the first tries of a
-  client (two `AUTH_EXPIRE` drops ~6.5 s apart, then accepted; likely band
-  steering, the ESP32 being 2.4 GHz only), after which the driver may settle
-  on another one.
-- **Fix.** `WIFI_ALL_CHANNEL_SCAN` + `WIFI_CONNECT_AP_BY_SIGNAL` before
-  `WiFi.begin()` (about 1-2 s more per join), and `kConnectTimeoutMs` 15 s ->
-  25 s so three or four tries fit. Verified: six joins in a row all took the
-  near access point (-30 dBm, ~5.5 s); the first was refused twice and timed
-  out at 15 s, which the new timeout covers. Each drop is now logged with
-  the access point, the reason and the RSSI (`[net] dropped by ...`), and the
-  join line names the BSSID and channel.
-- **Still fits the power policy:** 25 s join + 3 s NTP stays under the 30 s
-  dim, and the boot-time date screen is skippable with a tap.
+  never applies. And the near access point refuses a client's first tries
+  for ~10-20 s (two or three `AUTH_EXPIRE` drops ~5.5 s apart, then accepted),
+  after which the driver may settle on another one. Likely band steering (the
+  ESP32 is 2.4 GHz only); that access point also advertises WPA2/WPA3
+  transition mode, which is not ruled out as the trigger.
+- **Not enough on their own** (tried on the StickS3 first):
+  `WIFI_ALL_CHANNEL_SCAN` + `WIFI_CONNECT_AP_BY_SIGNAL` with a 25 s timeout,
+  and then also `failure_retry_cnt = 2`, still ended on the far access point
+  now and then: the driver's own retries post no events, and once they are
+  spent it takes whichever access point it hears.
+- **Fix.** `HomeWifi::begin()` runs its own scan for the network (async,
+  120 ms a channel, at most 5 s), logs each access point seen (`[net] seen
+  <bssid> ch N, R dBm, <auth>`), and joins with the strongest one's BSSID and
+  channel pinned. The core's reconnect after `AUTH_EXPIRE` reuses that
+  config, so the refusals are retried on that access point only. After
+  `kPinnedJoinMs` (25 s) without a link it joins any access point (sorted by
+  signal), up to `kConnectTimeoutMs` 15 s -> 40 s in all. Each drop is
+  logged with the access point, the reason and the RSSI (`[net] dropped by
+  ...`), and the join line names the BSSID and channel.
+- **Verified:** five Get decks in a row, some minutes apart, all on the near
+  access point (-25 to -45 dBm): four were refused twice and joined at ~17 s,
+  one joined at 6 s, and every catalog read was fine. The any-access-point
+  step after 25 s has not run on hardware yet (no join needed it).
+- **Power:** the join can now outlast the 30 s dim, so `powerTick()` counts a
+  join in progress as activity for its whole length; the idle time runs from
+  its end. The boot-time date attempt can take up to ~43 s (40 s join + 3 s
+  NTP) and is still skippable with a tap.

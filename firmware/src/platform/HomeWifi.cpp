@@ -3,6 +3,7 @@
 
 #include <Preferences.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <esp_sntp.h>
 #include <lwip/apps/sntp.h>
 #include <sys/time.h>
@@ -61,6 +62,21 @@ bool passwordIsValid(const String& pass) {
         if (c < 0x20 || c > 0x7E) return false;
     }
     return true;
+}
+
+// The saved network ("" when none). The namespace is opened read-write, as
+// everywhere here: a read-only open of a missing namespace logs an error.
+void loadCredentials(String& ssid, String& pass) {
+    Preferences p;
+    if (!p.begin(kNs, false)) return;
+    if (p.isKey(kKeySsid)) ssid = p.getString(kKeySsid, "");
+    if (p.isKey(kKeyPass)) pass = p.getString(kKeyPass, "");
+    p.end();
+}
+
+// Overwrites a password before its String's buffer is freed.
+void wipe(String& s) {
+    if (s.length()) std::memset(const_cast<char*>(s.c_str()), 0, s.length());
 }
 
 }  // namespace
@@ -135,14 +151,8 @@ bool HomeWifi::begin() {
     if (active()) return true;
     failure_ = Failure::None;
     String ssid, pass;
-    {
-        Preferences p;
-        if (p.begin(kNs, false)) {
-            if (p.isKey(kKeySsid)) ssid = p.getString(kKeySsid, "");
-            if (p.isKey(kKeyPass)) pass = p.getString(kKeyPass, "");
-            p.end();
-        }
-    }
+    loadCredentials(ssid, pass);
+    wipe(pass);  // each join step reads it again (joinStep())
     if (ssid.isEmpty()) {
         state_ = State::Failed;
         failure_ = Failure::NoCredentials;
@@ -161,31 +171,83 @@ bool HomeWifi::begin() {
         return false;
     }
     eventId_ = static_cast<int>(WiFi.onEvent(onStaDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED));
-    // A home network often has several access points under one name (mesh,
-    // repeaters). The driver's default fast scan joins the first one it hears,
-    // which can be a far one: -81 dBm where another gave -30 dBm, and then TLS
-    // timed out (StickS3, 2026-10-19). Scan every channel and take the
-    // strongest instead, for a second or two more per join.
+    // For the unpinned step: scan every channel and take the strongest, not
+    // the first access point heard (the core's default fast scan).
     WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
     WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
-    WiFi.begin(ssid.c_str(), pass.length() ? pass.c_str() : nullptr);
-    // Do not leave the password in this String's (soon freed) buffer.
-    if (pass.length()) std::memset(const_cast<char*>(pass.c_str()), 0, pass.length());
     state_ = State::Connecting;
     startedAt_ = millis();
     Serial.printf("[net] joining \"%s\"\n", ssid_);
+    // A home network often has several access points under one name, and the
+    // strongest may refuse a client's first tries (AUTH_EXPIRE for ~15-20 s;
+    // band steering, the ESP32 being 2.4 GHz only). Left to itself the driver
+    // then settles on a far one, where TLS times out (StickS3, 2026-10-19).
+    // So: our own scan, then a join pinned to the strongest access point, whose
+    // refusals the core retries on that access point only; any access point
+    // after kPinnedJoinMs.
+    if (WiFi.scanNetworks(true, false, false, kScanMsPerChannel, 0, ssid_) == WIFI_SCAN_FAILED)
+        joinStep(false);
+    else
+        step_ = Step::Scan;
+    stepAt_ = millis();
     return true;
+}
+
+void HomeWifi::pickAccessPoint(int16_t n) {
+    static const char* const kAuth[] = {"open",     "wep",  "wpa",       "wpa2", "wpa/wpa2",
+                                        "wpa2-ent", "wpa3", "wpa2/wpa3", "wapi"};
+    int best = -1;
+    for (int16_t i = 0; i < n; ++i) {
+        if (WiFi.SSID(i) != ssid_) continue;
+        const unsigned a = static_cast<unsigned>(WiFi.encryptionType(i));
+        Serial.printf("[net] seen %s ch %d, %d dBm, %s\n", WiFi.BSSIDstr(i).c_str(),
+                      (int)WiFi.channel(i), (int)WiFi.RSSI(i),
+                      a < sizeof kAuth / sizeof kAuth[0] ? kAuth[a] : "?");
+        if (best < 0 || WiFi.RSSI(i) > WiFi.RSSI(best)) best = i;
+    }
+    if (best >= 0) {
+        std::memcpy(bssid_, WiFi.BSSID(best), sizeof bssid_);
+        channel_ = WiFi.channel(best);
+    }
+    WiFi.scanDelete();
+    joinStep(best >= 0);
+}
+
+void HomeWifi::joinStep(bool pinned) {
+    String ssid, pass;
+    loadCredentials(ssid, pass);
+    const char* pw = pass.length() ? pass.c_str() : nullptr;
+    if (pinned)
+        WiFi.begin(ssid_, pw, channel_, bssid_);
+    else
+        WiFi.begin(ssid_, pw);
+    // Do not leave the password in this String's (soon freed) buffer.
+    wipe(pass);
+    step_ = pinned ? Step::Pinned : Step::Any;
+    stepAt_ = millis();
 }
 
 HomeWifi::State HomeWifi::poll() {
     if (state_ != State::Connecting) return state_;
-    if (WiFi.status() == WL_CONNECTED) {
+    if (step_ == Step::Scan) {
+        const int16_t n = WiFi.scanComplete();
+        if (n == WIFI_SCAN_RUNNING) {
+            if (millis() - stepAt_ < kScanTimeoutMs) return state_;
+            esp_wifi_scan_stop();
+        }
+        pickAccessPoint(n);  // n < 0 (failed, too slow): any access point
+    } else if (WiFi.status() == WL_CONNECTED) {
         state_ = State::Connected;
         Serial.printf("[net] connected to \"%s\" (%s, ch %d), ip %s, rssi %d dBm, %u ms\n", ssid_,
                       WiFi.BSSIDstr().c_str(), (int)WiFi.channel(),
                       WiFi.localIP().toString().c_str(), (int)WiFi.RSSI(),
                       (unsigned)(millis() - startedAt_));
         return state_;
+    } else if (step_ == Step::Pinned && millis() - stepAt_ >= kPinnedJoinMs) {
+        Serial.printf("[net] %02X:%02X:%02X:%02X:%02X:%02X did not take us in %u s, any access point now\n",
+                      bssid_[0], bssid_[1], bssid_[2], bssid_[3], bssid_[4], bssid_[5],
+                      (unsigned)(kPinnedJoinMs / 1000));
+        joinStep(false);
     }
     if (millis() - startedAt_ >= kConnectTimeoutMs) {
         const uint8_t reason = sLastReason;

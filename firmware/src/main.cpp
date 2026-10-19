@@ -4675,7 +4675,10 @@ void powerTick(uint32_t now) {
     }
     // A download, catalog read or join counts as activity, and so does the end
     // of the date screen's network-time attempt (a new status line to read).
+    // A join holds them off for as long as it takes: up to 40 s
+    // (HomeWifi::kConnectTimeoutMs), longer than the dim.
     if (gHome.active() || gDateSync != DateSync::None) {
+        if (gHome.state() == tgc::HomeWifi::State::Connecting) gNetActivityAt = now;
         const uint32_t net = now - gNetActivityAt;
         if (net < idle) idle = net;
     }

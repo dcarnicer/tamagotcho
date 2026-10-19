@@ -27,9 +27,14 @@ public:
     // kCatalogVersion), independently of the pack format in the tag.
     static constexpr const char* kDefaultCatalogUrl =
         "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog-v2.txt";
-    // Room for three or four tries: a mesh access point may ignore the first
-    // ones (auth expire every ~6.5 s, then accepted; docs/decisions.md).
-    static constexpr uint32_t kConnectTimeoutMs = 25000;
+    // A join: a scan for the network (kScanMsPerChannel a channel, at most
+    // kScanTimeoutMs), then kPinnedJoinMs on its strongest access point, which
+    // may refuse a client's first tries for ~15-20 s (docs/decisions.md,
+    // 2026-10-19), then any access point until kConnectTimeoutMs.
+    static constexpr uint32_t kScanMsPerChannel = 120;
+    static constexpr uint32_t kScanTimeoutMs = 5000;
+    static constexpr uint32_t kPinnedJoinMs = 25000;
+    static constexpr uint32_t kConnectTimeoutMs = 40000;
     static constexpr size_t kMaxSsidLen = 32;   // 802.11 limit, in bytes
     static constexpr size_t kMaxUrlLen = 256;
 
@@ -85,11 +90,20 @@ public:
     bool fetchUtcMs(int64_t* outUtcMs, uint32_t timeoutMs);
 
 private:
+    // The steps of a join (begin(), poll()).
+    enum class Step : uint8_t { Scan, Pinned, Any };
+
+    void pickAccessPoint(int16_t scanCount);  // after the scan: pinned or any
+    void joinStep(bool pinned);
     void radioOff();
 
     State state_ = State::Off;
     Failure failure_ = Failure::None;
+    Step step_ = Step::Scan;
     uint32_t startedAt_ = 0;
+    uint32_t stepAt_ = 0;
+    uint8_t bssid_[6] = {0};  // the strongest access point seen by the scan
+    int32_t channel_ = 0;
     char ssid_[kMaxSsidLen + 1] = {0};
     int eventId_ = 0;  // Wi-Fi disconnect-event handler while joining
 };
