@@ -16,6 +16,7 @@
 #include "imu/OrientationFilter.h"
 #include "pack/PackReader.h"
 #include "platform/FsPackSource.h"
+#include "platform/FsQuiet.h"
 #include "platform/FsSrsFile.h"
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
@@ -4021,12 +4022,10 @@ void netRefreshStates() {
     gCatalogState.assign(gCatalog.size(), tgc::DeckState::New);
     for (size_t i = 0; i < gCatalog.size(); ++i) {
         const String path = catalogPath(gCatalog[i]);
-        if (!LittleFS.exists(path)) continue;
-        File f = LittleFS.open(path, "r");
-        if (!f) continue;
+        const long size = tgc::fsFileSize(path);
+        if (size < 0) continue;
         gCatalogState[i] =
-            tgc::catalogDeckState(true, static_cast<uint32_t>(f.size()), gCatalog[i].bytes);
-        f.close();
+            tgc::catalogDeckState(true, static_cast<uint32_t>(size), gCatalog[i].bytes);
     }
 }
 
@@ -4869,7 +4868,7 @@ void setup() {
     // behind (up to 5 MB), which would count against every later free-space
     // check. Nothing can be in flight at boot.
     for (const char* tmp : {tgc::kFetchTmp, tgc::WifiPortal::kUploadTmp})
-        if (LittleFS.remove(tmp)) Serial.printf("fs: removed stale %s\n", tmp);
+        if (tgc::fsRemoveIfExists(tmp)) Serial.printf("fs: removed stale %s\n", tmp);
     listPacks(gPacks);
     // The time zone first: the slept time (applySleepTime() below) is counted
     // in its study days, 23 or 25 h long across a daylight-saving change.

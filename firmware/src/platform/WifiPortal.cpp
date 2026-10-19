@@ -9,6 +9,7 @@
 #include <cstring>
 #include <utility>
 
+#include "platform/FsQuiet.h"
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
 #include "portal/PortalLogic.h"
@@ -319,11 +320,8 @@ std::vector<std::pair<String, size_t>> listPackFiles(const char* dirPath) {
 // The state of catalog deck `e` against /packs (catalog/catalogDeckState).
 DeckState deckStateOnDisk(const char* dirPath, const CatalogEntry& e) {
     const String path = String(dirPath) + "/" + e.name.c_str() + ".tgc";
-    if (!LittleFS.exists(path)) return DeckState::New;
-    File f = LittleFS.open(path, "r");
-    if (!f) return DeckState::New;
-    const size_t size = f.size();
-    f.close();
+    const long size = fsFileSize(path);
+    if (size < 0) return DeckState::New;
     return catalogDeckState(true, static_cast<uint32_t>(size), e.bytes);
 }
 
@@ -507,6 +505,9 @@ void WifiPortal::registerRoutes() {
     server_->on("/upload", HTTP_POST, [this]() { touch(); handleUploadDone(); },
                 [this]() { touch(); handleUploadChunk(); });
     server_->on("/time", HTTP_POST, [this]() { touch(); handleTime(); });
+    // Every browser asks for it; unrouted, the core logs "[E] request handler
+    // not found" for each page load before onNotFound answers.
+    server_->on("/favicon.ico", HTTP_GET, [this]() { server_->send(204); });
     server_->onNotFound([this]() { touch(); handleNotFound(); });
 }
 
@@ -571,7 +572,7 @@ void WifiPortal::poll() {
 void WifiPortal::end() {
     if (uploadFile_) uploadFile_.close();
     // A temp left by an interrupted upload is of no use to anyone.
-    LittleFS.remove(kUploadTmp);
+    fsRemoveIfExists(kUploadTmp);
     if (server_) {
         server_->stop();
         delete server_;
@@ -1513,7 +1514,7 @@ void WifiPortal::scanNearby() {
 // connection, a size cap hit or a 0-byte body always leaves the old pack usable.
 void WifiPortal::abortUpload(UploadError why) {
     if (uploadFile_) uploadFile_.close();
-    LittleFS.remove(kUploadTmp);
+    fsRemoveIfExists(kUploadTmp);
     uploadOk_ = false;
     uploadError_ = why;
     Serial.printf("[wifi] upload failed %s: error %u\n", uploadName_.c_str(), (unsigned)why);
@@ -1595,7 +1596,7 @@ void WifiPortal::handleUploadChunk() {
                 break;
             }
             const String dst = String(kPacksDir) + "/" + uploadName_;
-            if (LittleFS.exists(dst)) LittleFS.remove(dst);
+            fsRemoveIfExists(dst);
             if (!LittleFS.rename(kUploadTmp, dst)) {
                 LittleFS.remove(kUploadTmp);
                 uploadError_ = UploadError::CannotStore;
