@@ -1,6 +1,6 @@
 [project]
 name = "tangocho-pack"
-version = "0.1.0"
+version = "0.2.0"
 description = "Pack builder for Tangochō, a kanji flashcard app for the M5Stack StickS3"
 requires-python = ">=3.12"
 license = { text = "MIT" }

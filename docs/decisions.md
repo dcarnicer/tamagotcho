@@ -2174,3 +2174,21 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
 - **"+10 new" adds ten beyond today's introductions** of the loaded deck
   (`studyMoreExtra()` in `ui/DeckSummary.h`), whatever extra was in force, so
   the first press always brings cards when the deck has any left.
+
+## 2026-10-19 – v0.2.0: catalog v2 makes it a required update
+
+- **What.** The second firmware release: the UX refresh (phases 1-3), catalog
+  v2 with deck titles and the per-deck new-card cap, all checked on the
+  StickS3 on 2026-10-18 from `main`.
+- **Why now.** The second `decks.yml` run (2026-10-18) published
+  `catalog-v2.txt` and deleted `catalog.txt`, the only catalog v0.1.0 reads,
+  so v0.1.0's Get decks fails against the default URL. No compatibility copy
+  of the v1 catalog is kept (the maintainer is the only user); v0.2.0 is the
+  fix, and its notes say so.
+- **Updating from v0.1.0** needs nothing: `srs.bin` keeps its layout (the
+  record byte now used as `flags` was always written 0), the new NVS keys
+  (`adv`, `hold`) start at their defaults, and a catalog URL saved on the
+  portal page is an override that a firmware update does not touch (clear it
+  if it still points at a `catalog.txt`).
+- **Pack builder** version 0.2.0 too (it writes catalog v2 only); the
+  versions are kept in step by hand, there is no shared version file.

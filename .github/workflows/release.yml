@@ -85,7 +85,7 @@ jobs:
       run:
         working-directory: firmware
     # The firmware's version string (firmware/scripts/version.py): the release
-    # tag, shown on the device (Settings > About), in the boot log and in the
+    # tag, shown on the device (Settings > Device > About), in the boot log and in the
     # portal's JSON. Without it the build would describe the shallow checkout,
     # which has no tags, as a bare commit id.
     env:
