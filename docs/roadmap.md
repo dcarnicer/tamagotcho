@@ -98,11 +98,11 @@ Scope for now: **kanji only** (no vocabulary decks).
         the portal page (with nearby-network suggestions) and stored in NVS
         `net`; the password is never logged or shown back. The device joins the
         home network only on demand -- while Get decks runs, and briefly for the
-        date after a power cut (NTP, phase 2) -- with a 25 s join timeout, the
+        date after a power cut (NTP, phase 2) -- with a 40 s join timeout, the
         radio off afterwards and the CPU at 240 MHz only meanwhile, so the
         battery policy holds. Verified on the StickS3 (2026-10-19), which
-        found that a network with several access points needs the strongest
-        one picked and a longer join (docs/decisions.md, 2026-10-19).
+        found that a network with several access points needs the join pinned
+        to the strongest one (docs/decisions.md, 2026-10-19).
       - [x] **One-button deck download.** Decks -> "+ Get decks" joins the home
         Wi-Fi, reads the release catalog over **HTTPS** (verified against a small
         embedded root-CA set, redirects followed), lists its decks marked new /
@@ -180,7 +180,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       UX refresh (phases 1-3), catalog v2 and the per-deck new-card cap; it is
       the first that reads `catalog-v2.txt`, so v0.1.0's Get decks stopped
       working when the decks release dropped `catalog.txt` (docs/decisions.md,
-      2026-10-19). Pending: **README photos**, and the T-Display-S3 images on
+      2026-10-19). **v0.2.1** (2026-10-19) has the fixes from that day's
+      hardware test: home Wi-Fi joins pinned to the strongest access point,
+      statistics in their own section of the page, Auto orientation by default.
+      Pending: **README photos**, and the T-Display-S3 images on
       real hardware.
 
 ## Cross-cutting
