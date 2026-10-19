@@ -114,7 +114,7 @@ Scope for now: **kanji only** (no vocabulary decks).
         progress view. The open access point stays as *setup mode* (QR code to
         join), whose page saves the network and switches to home mode. The page
         is reordered around the task (first setup / Get decks / Your decks /
-        Advanced) and follows the device or browser language (en/es). Settings
+        Statistics / Advanced; Statistics left Advanced on 2026-10-19) and follows the device or browser language (en/es). Settings
         gains a **Wi-Fi »** submenu: Web portal, Home network (test), Setup
         mode, Forget network. **Not verified on hardware yet.**
       - [x] **Auto-rotation from the IMU** (2026-10-18). Use the StickS3's BMI270

@@ -217,8 +217,8 @@ private:
     void appendSetupDecks(String& h, const String& homeSsid, bool firstSetup);
     void appendHomeDecks(String& h, const PortalStats& st);
     void appendYourDecks(String& h, const PortalStats& st);
-    void appendAdvanced(String& h, const PortalStats& st, const String& homeSsid, bool firstSetup,
-                        bool open);
+    void appendStats(String& h, const PortalStats& st);
+    void appendAdvanced(String& h, const String& homeSsid, bool firstSetup, bool open);
     bool noticeInAdvanced(Notice n, bool firstSetup) const;
     void appendWifiForm(String& h, const char* formId);
     void redirect(const char* where, Notice n, const String& arg = String());
