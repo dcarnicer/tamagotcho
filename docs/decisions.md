@@ -1104,8 +1104,8 @@ Short log of non-obvious choices. Newest last.
   join timeout every time.
 - **Power.** The CPU runs at 240 MHz only while the radio is on (`netRadioOff()`
   on every exit). The join and its outcome count as activity for the idle
-  timers, so neither the 30 s dim nor the 2 min sleep can cut the 15 s join +
-  3 s NTP short, and the status line gets a full timeout to be read. An idle
+  timers, so neither the 30 s dim nor the 2 min sleep can cut the join
+  (25 s since 2026-10-19) + 3 s NTP short, and the status line gets a full timeout to be read. An idle
   timeout or an explicit sleep turns the radio off as for Get decks; a sleep
   while the question is open still re-asks it (and retries NTP) on the wake.
 - **A new day under the settings.** `applyWallClock()` already gave an
@@ -2192,3 +2192,25 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   if it still points at a `catalog.txt`).
 - **Pack builder** version 0.2.0 too (it writes catalog v2 only); the
   versions are kept in step by hand, there is no shared version file.
+
+## 2026-10-19 – Home Wi-Fi: strongest access point, 25 s join
+
+- **Found on the StickS3** (a home network with several access points under
+  one name): joins landed on a far access point (-81 dBm, a few metres from
+  one at -30 dBm), where the catalog's TLS read timed out (`http -11`) and NTP
+  did not answer; one join took 13.7 s, close to the 15 s timeout.
+- **Two causes.** Arduino-ESP32 2.0.x defaults to `WIFI_FAST_SCAN`, which
+  joins the first access point it hears with the name, so the signal sort
+  never applies. And the near access point ignores the first tries of a
+  client (two `AUTH_EXPIRE` drops ~6.5 s apart, then accepted; likely band
+  steering, the ESP32 being 2.4 GHz only), after which the driver may settle
+  on another one.
+- **Fix.** `WIFI_ALL_CHANNEL_SCAN` + `WIFI_CONNECT_AP_BY_SIGNAL` before
+  `WiFi.begin()` (about 1-2 s more per join), and `kConnectTimeoutMs` 15 s ->
+  25 s so three or four tries fit. Verified: six joins in a row all took the
+  near access point (-30 dBm, ~5.5 s); the first was refused twice and timed
+  out at 15 s, which the new timeout covers. Each drop is now logged with
+  the access point, the reason and the RSSI (`[net] dropped by ...`), and the
+  join line names the BSSID and channel.
+- **Still fits the power policy:** 25 s join + 3 s NTP stays under the 30 s
+  dim, and the boot-time date screen is skippable with a tap.

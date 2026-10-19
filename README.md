@@ -100,7 +100,7 @@ setup mode and a tap tries again.
   included: the page sends the zone's rules, not just today's offset. With a
   home Wi-Fi saved the device also takes the time from NTP whenever it joins,
   and after a power-off it **tries the network first** ("Getting the date via
-  <network>...", about 15 s at most; a tap skips it) before asking for the
+  <network>...", about 25 s at most; a tap skips it) before asking for the
   date by hand. NTP needs the time zone: the one the page last sent, or one
   chosen in **Settings → Device → Date → Zone** (a short list of zones, for when
   no phone has set one; the next page visit replaces it with the phone's).

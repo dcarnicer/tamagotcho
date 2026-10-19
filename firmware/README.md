@@ -192,7 +192,7 @@ another visit.
 After a real power-off the device has to find out the date again:
 
 - **With a home Wi-Fi and a time zone**, it first tries the network: "Getting
-  the date via <network>..." (up to 15 s to join, 3 s for NTP), then straight
+  the date via <network>..." (up to 25 s to join, 3 s for NTP), then straight
   on to the quiz. If that fails, or you **tap** to skip it, the date screen
   comes up (with the reason when it failed).
 - **Otherwise**, or then, the **date screen**: the last-used date and a

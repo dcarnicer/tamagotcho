@@ -90,7 +90,7 @@ Scope for now: **kanji only** (no vocabulary decks).
         the portal page (with nearby-network suggestions) and stored in NVS
         `net`; the password is never logged or shown back. The device joins the
         home network only on demand -- while Get decks runs, and briefly for the
-        date after a power cut (NTP, phase 2) -- with a 15 s join timeout, the
+        date after a power cut (NTP, phase 2) -- with a 25 s join timeout, the
         radio off afterwards and the CPU at 240 MHz only meanwhile, so the
         battery policy holds.
         **Not verified on hardware yet** (built and reviewed only).
