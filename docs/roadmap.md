@@ -60,7 +60,7 @@ Scope for now: **kanji only** (no vocabulary decks).
       - [x] Time zone rules, manual zone, network first (2026-10-18, v0.1.0
         hardware feedback): the page sends the browser's zone as a POSIX TZ
         rule, so the 04:00 rollover follows DST changes (23/25 h study days)
-        without another visit; Settings › Date » › Time zone offers "From
+        without another visit; Settings › Device › Date › Time zone offers "From
         phone" and 22 zones for a device no phone has set; after a power cut
         with a home Wi-Fi and a zone, "Getting the date via <network>" comes
         before the stepper (a tap skips it); the stepper's hints spell out
@@ -103,9 +103,8 @@ Scope for now: **kanji only** (no vocabulary decks).
         it on the boot-time upload screen once a home Wi-Fi is saved. The default
         catalog is in the dedicated decks release
         (`releases/download/decks-v2/catalog-v2.txt`, never marked "latest";
-        catalog format v2 with deck titles since 2026-10-18), which only answers
-        once `decks.yml` has published it; the URL can be changed on the portal
-        page. **Not verified on hardware yet**: TLS
+        catalog format v2 with deck titles since 2026-10-18, published by
+        `decks.yml`); the URL can be changed on the portal page. **Not verified on hardware yet**: TLS
         heap use, download speed and the GitHub redirect chain on a real
         StickS3 are to be confirmed (`[net]` serial lines log the heap).
       - [x] **Portal over the home Wi-Fi** (2026-10-18). With a home network
@@ -163,8 +162,12 @@ Scope for now: **kanji only** (no vocabulary decks).
       105 KB to 3.0 MB in pack format v2; Get decks and the portal download them
       on a real StickS3). The **first firmware release, v0.1.0**, followed on
       2026-10-18; its StickS3 merged image was verified with esptool and from
-      the browser (esptool-js). Pending: **README photos**, and the T-Display-S3
-      images on real hardware.
+      the browser (esptool-js). The **second, v0.2.0** (2026-10-19), ships the
+      UX refresh (phases 1-3), catalog v2 and the per-deck new-card cap; it is
+      the first that reads `catalog-v2.txt`, so v0.1.0's Get decks stopped
+      working when the decks release dropped `catalog.txt` (docs/decisions.md,
+      2026-10-19). Pending: **README photos**, and the T-Display-S3 images on
+      real hardware.
 
 ## Cross-cutting
 
@@ -263,13 +266,13 @@ Scope for now: **kanji only** (no vocabulary decks).
       hide it. The device's default Get decks catalog is now
       `releases/download/decks-v2/catalog-v2.txt` on `dcarnicer/tangocho`
       (catalog format v2, 2026-10-18); the first run published the v1
-      `catalog.txt`, so the workflow has to run again for the new default to
-      answer (that run also deletes `catalog.txt`). The former blockers (the
+      `catalog.txt`, the second (2026-10-18) published `catalog-v2.txt` and
+      deleted `catalog.txt`, which only v0.1.0 reads. The former blockers (the
       JLPT lists' licence, the 5 MiB cap in pack format v1) were resolved first.
 - [x] Attribution for redistributed data: README's "Releases" section,
       `docs/data-sources.md` and the release notes all carry the combined
       KANJIDIC2 / KanjiVG / Noto Sans JP credit. (On the device too since
-      2026-10-18: Settings › About, and the portal page's footer.)
+      2026-10-18: Settings › Device › About, and the portal page's footer.)
 - [x] Flash a **merged** image on a real StickS3 — in a browser and with
       `esptool write_flash 0x0 …` — to confirm the documented offsets. Done
       2026-10-18 for v0.1.0 (esptool, and esptool-js after Erase Flash); an

@@ -18,7 +18,7 @@ Each build prints `Tangocho version: ...`: `scripts/version.py` takes
 `$TGC_VERSION` (the release workflow sets the tag), else `git describe --tags
 --always --dirty --match "v[0-9]*"`, else `dev`, and compiles it into
 `src/Version.cpp` only (a new version recompiles one file). The device logs it
-on boot (`Tangocho <version>`) and shows it under Settings › About.
+on boot (`Tangocho <version>`) and shows it under Settings › Device › About.
 
 ## Flash
 
