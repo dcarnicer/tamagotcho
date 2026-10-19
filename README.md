@@ -81,10 +81,10 @@ setup mode and a tap tries again.
 - **Settings → Wi-Fi → Web portal** joins your Wi-Fi and shows the address
   and QR code; open it from any phone or laptop on that network. The page has
   **Get decks** (download or update), **Your decks** (the one being studied is
-  marked; delete) and, folded under **Advanced**: upload a `.tgc` file,
-  download one from a plain `http://` URL, the deck catalog URL, the home Wi-Fi
-  (change, forget, reconnect), the statistics and the JSON at `/api/stats` and
-  `/api/status`. The side button on the device stops the portal.
+  marked; delete), **Statistics** and, folded under **Advanced**: upload a
+  `.tgc` file, download one from a plain `http://` URL, the deck catalog URL,
+  the home Wi-Fi (change, forget, reconnect), the free space and the JSON at
+  `/api/stats` and `/api/status`. The side button on the device stops the portal.
 - Without the phone: **Settings → Decks → Get decks** joins the home Wi-Fi and
   lists the catalog's decks by title on the device screen (a check marks a deck
   that is here, a download mark one that is here in another build; tap moves,
@@ -100,7 +100,7 @@ setup mode and a tap tries again.
   included: the page sends the zone's rules, not just today's offset. With a
   home Wi-Fi saved the device also takes the time from NTP whenever it joins,
   and after a power-off it **tries the network first** ("Getting the date via
-  <network>...", about 15 s at most; a tap skips it) before asking for the
+  <network>...", about 25 s at most; a tap skips it) before asking for the
   date by hand. NTP needs the time zone: the one the page last sent, or one
   chosen in **Settings → Device → Date → Zone** (a short list of zones, for when
   no phone has set one; the next page visit replaces it with the phone's).

@@ -9,6 +9,7 @@
 #include <cstring>
 #include <utility>
 
+#include "platform/FsQuiet.h"
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
 #include "portal/PortalLogic.h"
@@ -319,11 +320,8 @@ std::vector<std::pair<String, size_t>> listPackFiles(const char* dirPath) {
 // The state of catalog deck `e` against /packs (catalog/catalogDeckState).
 DeckState deckStateOnDisk(const char* dirPath, const CatalogEntry& e) {
     const String path = String(dirPath) + "/" + e.name.c_str() + ".tgc";
-    if (!LittleFS.exists(path)) return DeckState::New;
-    File f = LittleFS.open(path, "r");
-    if (!f) return DeckState::New;
-    const size_t size = f.size();
-    f.close();
+    const long size = fsFileSize(path);
+    if (size < 0) return DeckState::New;
     return catalogDeckState(true, static_cast<uint32_t>(size), e.bytes);
 }
 
@@ -507,6 +505,9 @@ void WifiPortal::registerRoutes() {
     server_->on("/upload", HTTP_POST, [this]() { touch(); handleUploadDone(); },
                 [this]() { touch(); handleUploadChunk(); });
     server_->on("/time", HTTP_POST, [this]() { touch(); handleTime(); });
+    // Every browser asks for it; unrouted, the core logs "[E] request handler
+    // not found" for each page load before onNotFound answers.
+    server_->on("/favicon.ico", HTTP_GET, [this]() { server_->send(204); });
     server_->onNotFound([this]() { touch(); handleNotFound(); });
 }
 
@@ -571,7 +572,7 @@ void WifiPortal::poll() {
 void WifiPortal::end() {
     if (uploadFile_) uploadFile_.close();
     // A temp left by an interrupted upload is of no use to anyone.
-    LittleFS.remove(kUploadTmp);
+    fsRemoveIfExists(kUploadTmp);
     if (server_) {
         server_->stop();
         delete server_;
@@ -775,7 +776,8 @@ void WifiPortal::handleRoot() {
     else
         appendHomeDecks(h, st);
     appendYourDecks(h, st);
-    appendAdvanced(h, st, homeSsid, firstSetup, advOpen);
+    if (!firstSetup) appendStats(h, st);
+    appendAdvanced(h, homeSsid, firstSetup, advOpen);
 
     h += "<p class=\"muted\">";
     if (mode_ == Mode::Home)
@@ -980,11 +982,61 @@ void WifiPortal::appendYourDecks(String& h, const PortalStats& st) {
     h += "</table>";
 }
 
+// The study statistics, in the open after the decks: they were under Advanced
+// until the 2026-10-19 hardware test found them hidden there.
+void WifiPortal::appendStats(String& h, const PortalStats& st) {
+    const PortalText& t = portalText(pageLang());
+    const uint32_t acc =
+        st.reps ? (st.reps > st.lapses ? st.reps - st.lapses : 0) * 100u / st.reps : 0;
+    h += "<h2 id=\"stats\">";
+    h += t.statsTitle;
+    h += "</h2><ul><li>";
+    h += t.statDate;
+    h += " <span id=\"dt\">";
+    h += st.date;
+    h += "</span> <span id=\"dtn\" class=\"muted\">";
+    if (!st.dateSynced) h += t.statEstimated;
+    h += "</span> &middot; ";
+    h += t.statDay;
+    h += " ";
+    h += String((unsigned)st.day);
+    h += "</li><li>";
+    h += t.statStreak;
+    h += " ";
+    h += String((unsigned)st.streakCurrent);
+    h += " / ";
+    h += String((unsigned)st.streakBest);
+    h += "</li><li>";
+    h += t.statTime;
+    h += " ";
+    h += formatDuration(st.reviewMs);
+    h += "</li><li>";
+    h += t.statSeen;
+    h += " ";
+    h += String((unsigned)st.seen);
+    h += " / ";
+    h += String((unsigned)st.packCards);
+    h += " ";
+    h += t.statCards;
+    h += "</li><li>";
+    h += t.statAnswers;
+    h += " ";
+    h += String((unsigned)st.answers);
+    h += "</li><li>";
+    h += t.statAccuracy;
+    h += " ";
+    h += String((unsigned)acc);
+    h += "%</li><li>";
+    h += t.statLearned;
+    h += " ";
+    h += String((unsigned)st.learned);
+    h += "</li></ul>";
+}
+
 // Everything that is not the main task, collapsed: upload, URL download, the
-// catalog URL, the home Wi-Fi, the statistics. Opened when the last action was
-// one of these, so its result is in view.
-void WifiPortal::appendAdvanced(String& h, const PortalStats& st, const String& homeSsid,
-                                bool firstSetup, bool open) {
+// catalog URL, the home Wi-Fi, the free space and the JSON endpoints. Opened
+// when the last action was one of these, so its result is in view.
+void WifiPortal::appendAdvanced(String& h, const String& homeSsid, bool firstSetup, bool open) {
     const PortalText& t = portalText(pageLang());
     h += open ? "<details id=\"adv\" open><summary>" : "<details id=\"adv\"><summary>";
     h += t.advanced;
@@ -1049,51 +1101,7 @@ void WifiPortal::appendAdvanced(String& h, const PortalStats& st, const String& 
         }
     }
 
-    const uint32_t acc =
-        st.reps ? (st.reps > st.lapses ? st.reps - st.lapses : 0) * 100u / st.reps : 0;
-    h += "<h3>";
-    h += t.statsTitle;
-    h += "</h3><ul><li>";
-    h += t.statDate;
-    h += " <span id=\"dt\">";
-    h += st.date;
-    h += "</span> <span id=\"dtn\" class=\"muted\">";
-    if (!st.dateSynced) h += t.statEstimated;
-    h += "</span> &middot; ";
-    h += t.statDay;
-    h += " ";
-    h += String((unsigned)st.day);
-    h += "</li><li>";
-    h += t.statStreak;
-    h += " ";
-    h += String((unsigned)st.streakCurrent);
-    h += " / ";
-    h += String((unsigned)st.streakBest);
-    h += "</li><li>";
-    h += t.statTime;
-    h += " ";
-    h += formatDuration(st.reviewMs);
-    h += "</li><li>";
-    h += t.statSeen;
-    h += " ";
-    h += String((unsigned)st.seen);
-    h += " / ";
-    h += String((unsigned)st.packCards);
-    h += " ";
-    h += t.statCards;
-    h += "</li><li>";
-    h += t.statAnswers;
-    h += " ";
-    h += String((unsigned)st.answers);
-    h += "</li><li>";
-    h += t.statAccuracy;
-    h += " ";
-    h += String((unsigned)acc);
-    h += "%</li><li>";
-    h += t.statLearned;
-    h += " ";
-    h += String((unsigned)st.learned);
-    h += "</li></ul><p>";
+    h += "<p>";
     h += fmt(t.freeSpaceFmt, formatSize(fsFreeBytes()).c_str(),
              formatSize(LittleFS.totalBytes()).c_str());
     h += "</p><p class=\"muted\">JSON: <a href=\"/api/stats\">/api/stats</a> &middot; ";
@@ -1513,7 +1521,7 @@ void WifiPortal::scanNearby() {
 // connection, a size cap hit or a 0-byte body always leaves the old pack usable.
 void WifiPortal::abortUpload(UploadError why) {
     if (uploadFile_) uploadFile_.close();
-    LittleFS.remove(kUploadTmp);
+    fsRemoveIfExists(kUploadTmp);
     uploadOk_ = false;
     uploadError_ = why;
     Serial.printf("[wifi] upload failed %s: error %u\n", uploadName_.c_str(), (unsigned)why);
@@ -1595,7 +1603,7 @@ void WifiPortal::handleUploadChunk() {
                 break;
             }
             const String dst = String(kPacksDir) + "/" + uploadName_;
-            if (LittleFS.exists(dst)) LittleFS.remove(dst);
+            fsRemoveIfExists(dst);
             if (!LittleFS.rename(kUploadTmp, dst)) {
                 LittleFS.remove(kUploadTmp);
                 uploadError_ = UploadError::CannotStore;

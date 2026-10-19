@@ -24,11 +24,12 @@ public:
     // .github/workflows/decks.yml. A format bump publishes `decks-v<N+1>` and
     // changes this URL, so older firmware keeps the decks it can open. The file
     // is named after the catalog format this firmware reads (catalog-v2.txt,
-    // kCatalogVersion), independently of the pack format in the tag. Answers
-    // 404 until that release carries it.
+    // kCatalogVersion), independently of the pack format in the tag.
     static constexpr const char* kDefaultCatalogUrl =
         "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog-v2.txt";
-    static constexpr uint32_t kConnectTimeoutMs = 15000;
+    // Room for three or four tries: a mesh access point may ignore the first
+    // ones (auth expire every ~6.5 s, then accepted; docs/decisions.md).
+    static constexpr uint32_t kConnectTimeoutMs = 25000;
     static constexpr size_t kMaxSsidLen = 32;   // 802.11 limit, in bytes
     static constexpr size_t kMaxUrlLen = 256;
 

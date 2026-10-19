@@ -7,6 +7,7 @@
 
 #include <vector>
 
+#include "platform/FsQuiet.h"
 #include "srs/SrsStore.h"
 
 namespace tgc {
@@ -36,13 +37,13 @@ public:
         f.close();
         if (n != data.size()) return false;
 
-        if (LittleFS.exists(kPath)) LittleFS.rename(kPath, kBak);  // else nothing to keep
+        if (fsExists(kPath)) LittleFS.rename(kPath, kBak);  // else nothing to keep
         return LittleFS.rename(kTmp, kPath);
     }
 
 private:
     static bool readFile(const char* path, std::vector<uint8_t>& out) {
-        if (!LittleFS.exists(path)) return false;  // avoids a noisy VFS error
+        if (!fsExists(path)) return false;  // open() would log a missing file
         File f = LittleFS.open(path, "r");
         if (!f) return false;
         const size_t n = f.size();

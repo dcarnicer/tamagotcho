@@ -14,6 +14,7 @@
 
 #include "pack/PackReader.h"
 #include "platform/FsPackSource.h"
+#include "platform/FsQuiet.h"
 #include "platform/RootCerts.h"
 
 // The TLS handshake (certificate parsing, RSA/ECDSA verification) runs on the
@@ -176,7 +177,7 @@ FetchResult fetchPackFile(const PackFetchRequest& req) {
     LittleFS.mkdir(kPacksDir);
     // Discard a temp left by an interrupted run before measuring the space, or
     // its size would count against this download.
-    LittleFS.remove(kFetchTmp);
+    fsRemoveIfExists(kFetchTmp);
 
     // Space first, before any network traffic: the reserve must stay free, and
     // a catalog size that cannot fit is refused without downloading it.
@@ -271,8 +272,7 @@ FetchResult fetchPackFile(const PackFetchRequest& req) {
         return res;
     }
 
-    const bool hadDst = LittleFS.exists(dst);
-    if (hadDst) LittleFS.remove(dst);
+    const bool hadDst = fsRemoveIfExists(dst);
     if (!LittleFS.rename(kFetchTmp, dst)) {
         LittleFS.remove(kFetchTmp);
         // The old pack was already removed, so /packs did change: the app must

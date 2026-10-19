@@ -29,10 +29,13 @@ Scope for now: **kanji only** (no vocabulary decks).
           A long press only enters download mode and the PM1 keeps its button
           config through resets, so the double click is the only hardware
           escape hatch.
-        - [ ] Hardware checks: the PM1 honours `SINGLE_RESET_DIS` and reports
-          the press; a click still powers on a device that is off; a double
-          click still leaves download mode; sleep notice layout; battery
-          thresholds on a real discharge.
+        - [x] Hardware checks (StickS3, 2026-10-18/19): the PM1 honours
+          `SINGLE_RESET_DIS` and reports the press (a click sleeps, the front
+          button wakes it, `power: woke after 45 s`); a click powers on a
+          device that is off; a long press enters download mode and a double
+          click leaves it; the sleep notice reads well.
+        - [ ] Battery thresholds on a real discharge (3 % sleep, resume at 6 %
+          or on USB).
         - [ ] Maybe: wake from deep sleep with the power button through the
           PM1 IRQ output (PM1 G1 is wired to ESP32 G13). Held back because the
           datasheet says the PM1 LED then blinks while the click reset is off.
@@ -43,7 +46,8 @@ Scope for now: **kanji only** (no vocabulary decks).
         every 24 h from an arbitrary origin. The statistics screen, the portal
         page and `/api/stats` show the real date. `applyWallClock()` is the entry
         point the NTP item below reuses; the offset is kept in NVS (`tz`).
-        Native-tested; not yet verified with a phone on hardware.
+        Verified with a phone on the StickS3 (2026-10-19: the page posts the
+        date, offset and zone rule on every load).
       - [x] Real date from NTP over the home Wi-Fi (2026-10-18). Get decks syncs
         the clock once connected (3 s NTP timeout, a failure never stops it).
         After a power cut, the date question joins the home Wi-Fi in the
@@ -52,7 +56,8 @@ Scope for now: **kanji only** (no vocabulary decks).
         and is the fallback, and any manual answer turns the radio off. Uses the
         UTC offset stored by the last phone sync and is skipped without it.
         (Since then: a visible network-first screen and a zone rule, below.)
-        **Not verified on hardware yet.**
+        Verified on the StickS3 (2026-10-19): Get decks and the portal sync
+        the clock from NTP once joined.
       - [x] Better manual fallback (2026-10-18): the date screen shows the
         last-used date and a proposed "today" with its weekday (tap +1 day, hold
         confirms, side hold -1 day, side tap cancels) instead of the 0/1/2-7/14+
@@ -66,7 +71,10 @@ Scope for now: **kanji only** (no vocabulary decks).
         before the stepper (a tap skips it); the stepper's hints spell out
         both directions. Native-tested (`test_tz`), the page's rule checked
         against tzdata for 597 zones (`scripts/check_tz_rules.py`).
-        **Not verified on hardware yet.**
+        Verified on the StickS3 (2026-10-18/19): the zone rule from the phone
+        (Europe/Madrid, +120 min in October), and after a real power-off the
+        network-first screen answers by itself, or a tap leads to the stepper.
+        Not yet tried: choosing a zone by hand on the device.
 - [~] **Phase 3 – Better cards.** Distractors done for visual similarity,
       shared classical radicals and confusable readings; meaning→kanji questions
       done; the mistake detail card is done (a tap after a wrong answer opens a
@@ -90,10 +98,11 @@ Scope for now: **kanji only** (no vocabulary decks).
         the portal page (with nearby-network suggestions) and stored in NVS
         `net`; the password is never logged or shown back. The device joins the
         home network only on demand -- while Get decks runs, and briefly for the
-        date after a power cut (NTP, phase 2) -- with a 15 s join timeout, the
+        date after a power cut (NTP, phase 2) -- with a 25 s join timeout, the
         radio off afterwards and the CPU at 240 MHz only meanwhile, so the
-        battery policy holds.
-        **Not verified on hardware yet** (built and reviewed only).
+        battery policy holds. Verified on the StickS3 (2026-10-19), which
+        found that a network with several access points needs the strongest
+        one picked and a longer join (docs/decisions.md, 2026-10-19).
       - [x] **One-button deck download.** Decks -> "+ Get decks" joins the home
         Wi-Fi, reads the release catalog over **HTTPS** (verified against a small
         embedded root-CA set, redirects followed), lists its decks marked new /
@@ -104,9 +113,11 @@ Scope for now: **kanji only** (no vocabulary decks).
         catalog is in the dedicated decks release
         (`releases/download/decks-v2/catalog-v2.txt`, never marked "latest";
         catalog format v2 with deck titles since 2026-10-18, published by
-        `decks.yml`); the URL can be changed on the portal page. **Not verified on hardware yet**: TLS
-        heap use, download speed and the GitHub redirect chain on a real
-        StickS3 are to be confirmed (`[net]` serial lines log the heap).
+        `decks.yml`); the URL can be changed on the portal page. Verified on
+        the StickS3 (2026-10-19): the GitHub redirect chain works, a TLS
+        session costs about 45 KB of internal heap (248 KB free before, 164 KB
+        largest block after), and N3 (541 KB) downloaded in 11.8 s, about
+        46 KB/s.
       - [x] **Portal over the home Wi-Fi** (2026-10-18). With a home network
         saved, the portal joins it and serves the page on the station IP (QR
         code on the device, `tangocho.local` over mDNS), so the phone keeps its
@@ -114,16 +125,19 @@ Scope for now: **kanji only** (no vocabulary decks).
         progress view. The open access point stays as *setup mode* (QR code to
         join), whose page saves the network and switches to home mode. The page
         is reordered around the task (first setup / Get decks / Your decks /
-        Advanced) and follows the device or browser language (en/es). Settings
-        gains a **Wi-Fi »** submenu: Web portal, Home network (test), Setup
-        mode, Forget network. **Not verified on hardware yet.**
+        Statistics / Advanced; Statistics left Advanced on 2026-10-19) and
+        follows the device or browser language (en/es). Settings gains a
+        **Wi-Fi »** submenu: Web portal, Home network (test), Setup mode,
+        Forget network. Verified on the StickS3 (2026-10-19): the page by IP
+        and by `tangocho.local`, the catalog with deck titles.
       - [x] **Auto-rotation from the IMU** (2026-10-18). Use the StickS3's BMI270
         accelerometer to switch portrait/landscape as the device is turned, with
         hysteresis and a short settle time so it does not flicker; the
         Orientation setting gains "Auto" next to the fixed choices. The
         T-Display-S3 has no IMU and keeps the fixed setting. Auto uses portrait
-        and both landscape directions (pure `imu/OrientationFilter`). Pending:
-        confirm the accelerometer axis mapping on hardware.
+        and both landscape directions (pure `imu/OrientationFilter`); upside
+        down keeps the layout, as phones do. Axis mapping confirmed on the
+        StickS3 (2026-10-19), and Auto is now the default there.
       - [ ] IMU input (tilt to choose).
       - [x] **WaniKani importer** (user's own token, unlocked kanji only). The
         builder can build a pack from the kanji a user has unlocked on their own
@@ -198,7 +212,7 @@ Scope for now: **kanji only** (no vocabulary decks).
 - [x] **Landscape orientation.** The panel is natively portrait (135x240); a
       horizontal layout (240x135) gives much more room, especially for menus and
       the four options. Selectable from the settings home and persisted in NVS
-      (portrait is the default and is unchanged). Landscape puts the quiz prompt
+      (portrait was the default until Auto took over, below). Landscape puts the quiz prompt
       in a left column and the options on the right, and shrinks the list rows to
       fit the shorter screen.
 
@@ -206,9 +220,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       after 2 min on battery (front button wakes; panel-off only on USB), 5 min
       Wi-Fi portal timeout, CPU at 80 MHz (240 while the portal or the home
       Wi-Fi runs), a brightness setting, power button and "Sleep" row = save +
-      deep sleep, a critical-battery sleep. Pending: hardware checks (does the
-      M5PM1 keep the rail up through deep sleep, sleep current, battery life),
-      and the **USB buzz**: still audible up close after moving the backlight
+      deep sleep, a critical-battery sleep. Verified on the StickS3
+      (2026-10-18/19): the dim, the 2 min sleep on battery and the wake with
+      the front button where it left off. Pending: sleep current and battery
+      life (no battery figure is shown, only the header icon), and the **USB
+      buzz**: still audible up close after moving the backlight
       PWM to 25 kHz, so the backlight was not (or not the only) cause; to
       investigate.
 - [ ] **UX refresh.** A review to give the device UI a more modern look and feel:

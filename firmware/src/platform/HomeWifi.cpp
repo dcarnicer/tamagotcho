@@ -30,7 +30,13 @@ constexpr int64_t kMinPlausibleUtcMs = 1767225600000LL;
 volatile uint8_t sLastReason = 0;
 
 void onStaDisconnected(arduino_event_t* event) {
-    sLastReason = event->event_info.wifi_sta_disconnected.reason;
+    const wifi_event_sta_disconnected_t& d = event->event_info.wifi_sta_disconnected;
+    sLastReason = d.reason;
+    // Which access point refused us, and why: with several under one name the
+    // driver may try one, fail and settle on another.
+    Serial.printf("[net] dropped by %02X:%02X:%02X:%02X:%02X:%02X, reason %u, rssi %d dBm\n",
+                  d.bssid[0], d.bssid[1], d.bssid[2], d.bssid[3], d.bssid[4], d.bssid[5],
+                  (unsigned)d.reason, (int)d.rssi);
 }
 
 // Wrong-password style reasons. A WPA2 network with a bad passphrase usually
@@ -155,6 +161,13 @@ bool HomeWifi::begin() {
         return false;
     }
     eventId_ = static_cast<int>(WiFi.onEvent(onStaDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED));
+    // A home network often has several access points under one name (mesh,
+    // repeaters). The driver's default fast scan joins the first one it hears,
+    // which can be a far one: -81 dBm where another gave -30 dBm, and then TLS
+    // timed out (StickS3, 2026-10-19). Scan every channel and take the
+    // strongest instead, for a second or two more per join.
+    WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+    WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
     WiFi.begin(ssid.c_str(), pass.length() ? pass.c_str() : nullptr);
     // Do not leave the password in this String's (soon freed) buffer.
     if (pass.length()) std::memset(const_cast<char*>(pass.c_str()), 0, pass.length());
@@ -168,7 +181,8 @@ HomeWifi::State HomeWifi::poll() {
     if (state_ != State::Connecting) return state_;
     if (WiFi.status() == WL_CONNECTED) {
         state_ = State::Connected;
-        Serial.printf("[net] connected to \"%s\", ip %s, rssi %d dBm, %u ms\n", ssid_,
+        Serial.printf("[net] connected to \"%s\" (%s, ch %d), ip %s, rssi %d dBm, %u ms\n", ssid_,
+                      WiFi.BSSIDstr().c_str(), (int)WiFi.channel(),
                       WiFi.localIP().toString().c_str(), (int)WiFi.RSSI(),
                       (unsigned)(millis() - startedAt_));
         return state_;

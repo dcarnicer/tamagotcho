@@ -16,6 +16,7 @@
 #include "imu/OrientationFilter.h"
 #include "pack/PackReader.h"
 #include "platform/FsPackSource.h"
+#include "platform/FsQuiet.h"
 #include "platform/FsSrsFile.h"
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
@@ -659,7 +660,7 @@ Preferences gPrefs;
 // the IMU then picks rotation 0, 1 or 3 (imu/OrientationFilter) and the picked
 // rotation is never persisted. Values double as orientRows indexes.
 enum OrientPref : uint8_t { kOrientPortrait = 0, kOrientLandscape = 1, kOrientAuto = 2 };
-uint8_t gOrientPref = kOrientPortrait;
+uint8_t gOrientPref = kOrientAuto;
 tgc::OrientationFilter gOrient;
 constexpr uint32_t kImuPollMs = 100;  // accelerometer poll while Auto is on
 uint32_t gImuPollAt = 0;
@@ -3256,13 +3257,14 @@ uint8_t fixedRotation() { return gOrientPref == kOrientLandscape ? 1 : 0; }
 
 // The orientation setting. Up to 2026-10-18 it was the bool `land`; that key
 // is read once, rewritten as `orient` and removed, so a landscape user keeps
-// landscape. New users get portrait.
+// landscape. New users get Auto (2026-10-19, once the axes were confirmed on
+// the StickS3), which a board without an accelerometer draws as portrait.
 uint8_t loadOrientPref() {
     if (gPrefs.isKey("orient")) {
-        const uint8_t v = gPrefs.getUChar("orient", kOrientPortrait);
-        return v <= kOrientAuto ? v : kOrientPortrait;
+        const uint8_t v = gPrefs.getUChar("orient", kOrientAuto);
+        return v <= kOrientAuto ? v : kOrientAuto;
     }
-    const uint8_t v = gPrefs.getBool("land", false) ? kOrientLandscape : kOrientPortrait;
+    const uint8_t v = gPrefs.getBool("land", false) ? kOrientLandscape : kOrientAuto;
     gPrefs.putUChar("orient", v);
     gPrefs.remove("land");
     return v;
@@ -4021,12 +4023,10 @@ void netRefreshStates() {
     gCatalogState.assign(gCatalog.size(), tgc::DeckState::New);
     for (size_t i = 0; i < gCatalog.size(); ++i) {
         const String path = catalogPath(gCatalog[i]);
-        if (!LittleFS.exists(path)) continue;
-        File f = LittleFS.open(path, "r");
-        if (!f) continue;
+        const long size = tgc::fsFileSize(path);
+        if (size < 0) continue;
         gCatalogState[i] =
-            tgc::catalogDeckState(true, static_cast<uint32_t>(f.size()), gCatalog[i].bytes);
-        f.close();
+            tgc::catalogDeckState(true, static_cast<uint32_t>(size), gCatalog[i].bytes);
     }
 }
 
@@ -4869,7 +4869,7 @@ void setup() {
     // behind (up to 5 MB), which would count against every later free-space
     // check. Nothing can be in flight at boot.
     for (const char* tmp : {tgc::kFetchTmp, tgc::WifiPortal::kUploadTmp})
-        if (LittleFS.remove(tmp)) Serial.printf("fs: removed stale %s\n", tmp);
+        if (tgc::fsRemoveIfExists(tmp)) Serial.printf("fs: removed stale %s\n", tmp);
     listPacks(gPacks);
     // The time zone first: the slept time (applySleepTime() below) is counted
     // in its study days, 23 or 25 h long across a daylight-saving change.
