@@ -660,7 +660,7 @@ Preferences gPrefs;
 // the IMU then picks rotation 0, 1 or 3 (imu/OrientationFilter) and the picked
 // rotation is never persisted. Values double as orientRows indexes.
 enum OrientPref : uint8_t { kOrientPortrait = 0, kOrientLandscape = 1, kOrientAuto = 2 };
-uint8_t gOrientPref = kOrientPortrait;
+uint8_t gOrientPref = kOrientAuto;
 tgc::OrientationFilter gOrient;
 constexpr uint32_t kImuPollMs = 100;  // accelerometer poll while Auto is on
 uint32_t gImuPollAt = 0;
@@ -3257,13 +3257,14 @@ uint8_t fixedRotation() { return gOrientPref == kOrientLandscape ? 1 : 0; }
 
 // The orientation setting. Up to 2026-10-18 it was the bool `land`; that key
 // is read once, rewritten as `orient` and removed, so a landscape user keeps
-// landscape. New users get portrait.
+// landscape. New users get Auto (2026-10-19, once the axes were confirmed on
+// the StickS3), which a board without an accelerometer draws as portrait.
 uint8_t loadOrientPref() {
     if (gPrefs.isKey("orient")) {
-        const uint8_t v = gPrefs.getUChar("orient", kOrientPortrait);
-        return v <= kOrientAuto ? v : kOrientPortrait;
+        const uint8_t v = gPrefs.getUChar("orient", kOrientAuto);
+        return v <= kOrientAuto ? v : kOrientAuto;
     }
-    const uint8_t v = gPrefs.getBool("land", false) ? kOrientLandscape : kOrientPortrait;
+    const uint8_t v = gPrefs.getBool("land", false) ? kOrientLandscape : kOrientAuto;
     gPrefs.putUChar("orient", v);
     gPrefs.remove("land");
     return v;

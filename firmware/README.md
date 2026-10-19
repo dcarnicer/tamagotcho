@@ -127,13 +127,15 @@ starts in Auto.
 
 ## Orientation
 
-Settings → Orientation: **Portrait** (default), **Landscape**, or, on the
-StickS3, **Auto**, which follows the accelerometer: upright for portrait,
-turned either way for landscape (the text is upright in both directions).
+Settings › Device › Orientation: on the StickS3, **Auto** (the default),
+which follows the accelerometer: upright for portrait, turned either way for
+landscape (the text is upright in both directions); or a fixed **Portrait**
+or **Landscape**.
 Upside down and lying flat keep the current layout. A turn takes effect after
 about half a second, never in the middle of a button press, and does not count
 as activity for dimming or sleep. Only the picture turns; the buttons keep their
-roles. The T-Display-S3 has no IMU and offers only the fixed choices.
+roles. The T-Display-S3 has no IMU and offers only the fixed choices (portrait
+by default).
 
 ## Power
 

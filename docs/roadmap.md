@@ -122,8 +122,9 @@ Scope for now: **kanji only** (no vocabulary decks).
         hysteresis and a short settle time so it does not flicker; the
         Orientation setting gains "Auto" next to the fixed choices. The
         T-Display-S3 has no IMU and keeps the fixed setting. Auto uses portrait
-        and both landscape directions (pure `imu/OrientationFilter`). Pending:
-        confirm the accelerometer axis mapping on hardware.
+        and both landscape directions (pure `imu/OrientationFilter`); upside
+        down keeps the layout, as phones do. Axis mapping confirmed on the
+        StickS3 (2026-10-19), and Auto is now the default there.
       - [ ] IMU input (tilt to choose).
       - [x] **WaniKani importer** (user's own token, unlocked kanji only). The
         builder can build a pack from the kanji a user has unlocked on their own
@@ -198,7 +199,7 @@ Scope for now: **kanji only** (no vocabulary decks).
 - [x] **Landscape orientation.** The panel is natively portrait (135x240); a
       horizontal layout (240x135) gives much more room, especially for menus and
       the four options. Selectable from the settings home and persisted in NVS
-      (portrait is the default and is unchanged). Landscape puts the quiz prompt
+      (portrait was the default until Auto took over, below). Landscape puts the quiz prompt
       in a left column and the options on the right, and shrinks the list rows to
       fit the shorter screen.
 
