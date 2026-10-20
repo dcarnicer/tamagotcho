@@ -8,3 +8,4 @@ __pycache__/
 .venv/
 tools/pack-builder/cache/
 tools/pack-builder/out/
+tools/screenshots/out/

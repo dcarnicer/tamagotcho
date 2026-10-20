@@ -1,0 +1,24 @@
+# A tour of the settings that changes nothing: it opens each screen, takes a
+# shot and goes back. Start on the quiz (before answering) or the done screen;
+# it ends where it started.
+#   uv run tools/screenshots/remote.py --scale 3 -f tools/screenshots/scenarios/tour.txt
+
+shot:start
+hold-side      shot:settings      # settings home, "Decks" focused
+hold           shot:decks         # deck list (a hold here would load a deck)
+tap-side
+tap hold       shot:study         # Study page (a hold on a row opens its choices)
+tap-side
+tap hold       shot:stats         # statistics
+tap-side
+tap hold       shot:wifi          # Wi-Fi menu (a hold on a row starts it)
+tap-side
+tap hold       shot:device        # Device page
+tap:4 hold     shot:date-menu     # Device > Date
+hold           shot:date          # the stepper (a hold here would set the date)
+tap-side                          # cancel: back to the Date menu
+tap-side                          # back to the Device page, "Date" focused
+tap:2 hold     shot:about         # About: the two taps pass over "Sleep"
+tap            shot:about-2
+tap-side tap-side tap-side        # Device page, settings home, out
+shot:end
