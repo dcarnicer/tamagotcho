@@ -53,6 +53,10 @@ class Card:
     # these too. Empty = the same as `onyomi`/`kunyomi`. Not stored in the pack.
     valid_onyomi: list[str] = field(default_factory=list)
     valid_kunyomi: list[str] = field(default_factory=list)
+    # Every meaning the kanji has in the card's language, before the builder's
+    # caps (`--meaning-order`, which can also change the ones kept): meaning
+    # distractors are kept away from these too. Empty = `meanings`. Not stored.
+    valid_meanings: list[str] = field(default_factory=list)
 
     @property
     def char(self) -> str:
@@ -171,10 +175,13 @@ def make_cards(
     grades: set[int] | None = None,
     new_jlpt: dict[int, int] | None = None,
     order: str = "jlpt",
+    keep_all_meanings: bool = False,
 ) -> list[Card]:
     """Select and convert kanji to cards, ordered easiest-first (level hint).
 
     `order` is one of ORDERS (see there); it decides each card's `level`.
+    `keep_all_meanings` (`--meaning-order`) records each card's uncapped list
+    in `Card.valid_meanings`.
     """
     if order not in ORDERS:
         raise ValueError(f"unknown card order {order!r} (expected one of {', '.join(ORDERS)})")
@@ -191,6 +198,7 @@ def make_cards(
         if not ms:
             ms = list(en)
             fallback = lang != "en"
+        every = list(ms)
         # The non-English lists can carry extra, derived senses the canonical
         # English list does not (母: "madre", "base", "cimientos"); keep at most
         # as many as English has.
@@ -212,6 +220,7 @@ def make_cards(
                 fallback_en=fallback,
                 valid_onyomi=list(k.all_onyomi or []),
                 valid_kunyomi=list(k.all_kunyomi or []),
+                valid_meanings=every if keep_all_meanings else [],
             )
         )
     if order == "grade":

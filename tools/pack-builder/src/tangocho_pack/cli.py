@@ -14,8 +14,37 @@ from .kanjidic import ORDERS
 
 def cmd_fetch(a) -> int:
     from .fetch import fetch_all
-    fetch_all(force=a.force, klee_one=a.klee_one, readings=a.readings)
+    fetch_all(force=a.force, klee_one=a.klee_one, readings=a.readings, meanings=a.meanings)
     return 0
+
+
+def _meaning_order(raw: list, lang: str) -> list | None:
+    """`build --meaning-order`: the `lang` meanings in the order of the English
+    ones (docs/meaning-order.md); None after printing an error. Only for a
+    language in meanings.LANGS: English is the reference, and fr/pt have no
+    dictionary (the flag still keeps meaning distractors away from the meanings
+    the pack leaves out, in every language: cmd_build)."""
+    from .meanings import LANGS, MeaningOrder, load_freedict, reorder_raw
+
+    if lang == "en":
+        print("meaning order: English is the reference order, nothing to reorder; meaning "
+              "distractors avoid every meaning of a card")
+        return raw
+    if lang not in LANGS:
+        print(f"warning: --meaning-order has no dictionary for {lang!r}: its meanings keep "
+              "KANJIDIC2's order (meaning distractors avoid every meaning of a card)",
+              file=sys.stderr)
+        return raw
+    if not paths.FREEDICT_ENG_SPA.exists():
+        print(f"error: --meaning-order needs {paths.FREEDICT_ENG_SPA.name}: run "
+              "`tangocho-pack fetch --meanings`", file=sys.stderr)
+        return None
+    try:
+        order = MeaningOrder(load_freedict(paths.FREEDICT_ENG_SPA))
+    except (ValueError, OSError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return None
+    return reorder_raw(raw, order, lang)[0]
 
 
 def _common_readings(raw: list) -> tuple[list, object] | None:
@@ -54,6 +83,10 @@ def cmd_build(a) -> int:
         if a.common_readings:
             print("error: --common-readings orders KANJIDIC2 readings; a WaniKani pack already "
                   "lists each kind's primary reading first", file=sys.stderr)
+            return 2
+        if a.meaning_order:
+            print("error: --meaning-order orders KANJIDIC2 meanings; WaniKani's are English "
+                  "only, in WaniKani's order", file=sys.stderr)
             return 2
         from .wanikani import WaniKaniError, default_wanikani_name, wanikani_cards
 
@@ -99,7 +132,20 @@ def cmd_build(a) -> int:
             if got is None:
                 return 2
             raw = got[0]
-        cards = make_cards(raw, a.lang, jlpt, grades, new, order=order)
+        from .meanings import LANGS as MEANING_LANGS
+        reorder_meanings = a.meaning_order and a.lang in MEANING_LANGS
+        meanings_before = {k.codepoint: k.meanings.get(a.lang, []) for k in raw}
+        if a.meaning_order:
+            got = _meaning_order(raw, a.lang)
+            if got is None:
+                return 2
+            raw = got
+        # The pack keeps at most three meanings (no more than English has), and
+        # the reordered list can keep other ones than KANJIDIC2's order: with
+        # the flag, every meaning of a card keeps meaning distractors away, in
+        # every language.
+        cards = make_cards(raw, a.lang, jlpt, grades, new, order=order,
+                           keep_all_meanings=a.meaning_order)
         if not cards:
             print("error: no cards selected", file=sys.stderr)
             return 1
@@ -112,6 +158,12 @@ def cmd_build(a) -> int:
             print(f"common readings: first on'yomi changed for {on} and first kun'yomi for "
                   f"{kun} of {len(cards)} cards; on'yomi dropped for {on_drop}, kun'yomi "
                   f"for {kun_drop} (nothing worth asking)")
+        if reorder_meanings:
+            own = [(c.meanings, meanings_before[c.codepoint]) for c in cards if not c.fallback_en]
+            first = sum(1 for n, o in own if n[0] != o[0])
+            kept = sum(1 for n, o in own if set(n) != set(o[:len(n)]))
+            print(f"meaning order ({a.lang}): first meaning changed for {first} of {len(cards)} "
+                  f"cards; the pack keeps other meanings for {kept}")
         name = a.name or default_deck_name(jlpt, grades, joyo=a.joyo)
     if not name.isascii():
         print(f"warning: deck name {name!r} is not ASCII; the device draws the deck name "
@@ -292,6 +344,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="also download what `build --common-readings` needs into "
                         "cache/readings/: JMdict, JmdictFurigana, wordfreq's Japanese list, "
                         "Tatoeba's Japanese indices and the official Jōyō table (PDF)")
+    s.add_argument("--meanings", action="store_true",
+                   help="also download what `build --meaning-order` needs into "
+                        "cache/meanings/: FreeDict's English-Spanish dictionary (WikDict, "
+                        "from Wiktionary; pinned release)")
     s.set_defaults(fn=cmd_fetch)
 
     s = sub.add_parser("build", help="build a .tgc pack (KANJIDIC2 or your own WaniKani account)")
@@ -329,6 +385,14 @@ def main(argv: list[str] | None = None) -> int:
                         "approved readings first, then the most common first (word "
                         "frequencies), so the device asks a common reading; every reading is "
                         "kept. Needs `fetch --readings` (docs/common-readings.md)")
+    s.add_argument("--meaning-order", action="store_true",
+                   help="order each kanji's Spanish meanings like its English ones (most "
+                        "common first): every Spanish gloss is matched to the English gloss it "
+                        "translates with an English-Spanish dictionary, unmatched ones last; "
+                        "the device shows the first. No glosses are added or removed. English "
+                        "is the reference (unchanged); fr/pt keep KANJIDIC2's order. In every "
+                        "language, meaning distractors also avoid the meanings the pack leaves "
+                        "out. Needs `fetch --meanings` for es (docs/meaning-order.md)")
     s.add_argument("--name", help="deck name (default derived from filters)")
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(fn=cmd_build)

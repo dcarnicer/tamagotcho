@@ -87,12 +87,31 @@ READINGS_SOURCES: list[tuple[str, Path]] = [
 ]
 
 
+# The English-Spanish dictionary for `build --meaning-order`
+# (docs/meaning-order.md), opt-in with `fetch --meanings`: FreeDict's release of
+# WikDict's eng-spa (from Wiktionary via DBnary, CC BY-SA 3.0), pinned to a
+# dated release and checked against SHA256 (FreeDict publishes a SHA512 in
+# https://freedict.org/freedict-database.json; the archive holds the TEI and
+# the licence, COPYING).
+FREEDICT_ENG_SPA_RELEASE = "2025.11.23"
+SHA256[paths.FREEDICT_ENG_SPA] = "dd724fb48c5701395c15d7d648a9e6f6b75d6ff4269e465dce6d3a292700198d"
+MEANINGS_SOURCES: list[tuple[str, Path]] = [
+    (
+        f"https://download.freedict.org/dictionaries/eng-spa/{FREEDICT_ENG_SPA_RELEASE}/"
+        f"freedict-eng-spa-{FREEDICT_ENG_SPA_RELEASE}.src.tar.xz",
+        paths.FREEDICT_ENG_SPA,
+    ),
+]
+
+
 class ChecksumError(RuntimeError):
     pass
 
 
-def fetch_all(force: bool = False, klee_one: bool = False, readings: bool = False) -> None:
-    extra = (KLEE_SOURCES if klee_one else []) + (READINGS_SOURCES if readings else [])
+def fetch_all(force: bool = False, klee_one: bool = False, readings: bool = False,
+              meanings: bool = False) -> None:
+    extra = ((KLEE_SOURCES if klee_one else []) + (READINGS_SOURCES if readings else [])
+             + (MEANINGS_SOURCES if meanings else []))
     for url, dest in SOURCES + extra:
         want = SHA256.get(dest)
         if dest.exists() and not force:

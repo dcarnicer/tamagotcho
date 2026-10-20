@@ -15,6 +15,9 @@ uv run tangocho-pack build --joyo --lang es --strokes -o out/joyo-es.tgc
 uv run tangocho-pack fetch --readings # optional: word data for --common-readings -> cache/readings/
 uv run tangocho-pack build --jlpt 5 --lang es --common-readings -o out/n5-es-common.tgc
 uv run python scripts/common_readings_report.py   # what --common-readings changes
+uv run tangocho-pack fetch --meanings # optional: English-Spanish dictionary for --meaning-order
+uv run tangocho-pack build --jlpt 5 --lang es --meaning-order -o out/n5-es-meanings.tgc
+uv run python scripts/meaning_order_report.py     # what --meaning-order changes
 uv run tangocho-pack build --wanikani-token "$WANIKANI_TOKEN" -o out/wanikani.tgc
 uv run tangocho-pack build --wanikani-level 1 --wanikani-level 2 -o out/wanikani-l1-2.tgc
 uv run tangocho-pack inspect out/n5-es.tgc
@@ -26,7 +29,7 @@ uv run pytest
 
 ## Commands
 
-- `fetch [--force] [--klee-one] [--readings]` downloads into `cache/` (git-ignored):
+- `fetch [--force] [--klee-one] [--readings] [--meanings]` downloads into `cache/` (git-ignored):
   KANJIDIC2, the JLPT table, Noto Sans JP Regular (the default font, pinned to
   the noto-cjk `Sans2.004` release, with its OFL `LICENSE`, in `cache/noto/`)
   and the pinned KanjiVG release zip. `--klee-one` also gets Klee One (the
@@ -36,7 +39,10 @@ uv run pytest
   `build --common-readings` reads: JMdict, JmdictFurigana, wordfreq's Japanese
   list, Tatoeba's Japanese sentence indices, the official Jōyō kanji table
   (PDF) and the tanos.co.uk JLPT vocabulary lists (Internet Archive copies,
-  pinned and checked against SHA256). Licences in docs/data-sources.md.
+  pinned and checked against SHA256). `--meanings` also gets, into
+  `cache/meanings/` (3.7 MB), what `build --meaning-order` reads: FreeDict's
+  English-Spanish dictionary (WikDict, from Wiktionary; the `2025.11.23`
+  release, checked against SHA256). Licences in docs/data-sources.md.
 - `build --jlpt N [--jlpt M ...] [--grade G ... | --joyo] [--order jlpt|grade]
   --lang en|es|fr|pt
   [--font PATH] [--large-px 96] [--small-px 40] [--text-px 18] [--option-px 20]
@@ -74,6 +80,24 @@ uv run pytest
   changes for JLPT N5-N1 and the Jōyō kanji; `scripts/check_reading_distractors.py
   out/*.tgc` checks built packs (the reading-distractor invariant against the
   full KANJIDIC2 readings, and how often a precomputed list is short).
+  `--meaning-order` (needs `fetch --meanings` for Spanish, adds ~1 s) puts each
+  card's Spanish meanings in the order of its English ones, since KANJIDIC2
+  lists English most common first and Spanish often not (持 "duración;
+  propiedad" becomes "sostener; mantener"): each Spanish gloss is matched to
+  the English gloss it translates (FreeDict's dictionary, then related forms:
+  a shared stem, a cognate, head words, a near-synonym), unmatched glosses
+  last, ties in KANJIDIC2's order (docs/meaning-order.md). The caps (as many
+  meanings as English, at most three) apply afterwards, so the pack keeps the
+  glosses that match. English is the reference and `fr`/`pt` have no
+  dictionary: their order is unchanged (a warning says so). In every language
+  the flag also keeps meaning distractors away from all of a card's KANJIDIC2
+  meanings, not only the stored ones. Without the flag the output is unchanged;
+  it cannot be combined with `--wanikani-token`.
+  `scripts/meaning_order_report.py` prints what it changes for JLPT N5-N1 and
+  the Jōyō kanji (totals, a sanity table, every N5 change, the cases to
+  double-check); `scripts/check_meaning_distractors.py out/*.tgc` checks built
+  packs (no meaning distractor shows a meaning of its card, or has the card's
+  first meaning among its own, against KANJIDIC2's full lists).
 - `build --wanikani-token TOKEN [--wanikani-level N ...]` builds from **your own
   WaniKani account** instead of KANJIDIC2 (so no `--jlpt`/`--grade`, and
   `fetch` is only needed for the font). It imports only the kanji you have

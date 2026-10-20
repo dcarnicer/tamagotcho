@@ -28,3 +28,7 @@ TATOEBA_JPN = READINGS_DIR / "jpn_indices.tar.bz2"
 JLPT_VOCAB = {n: READINGS_DIR / "jlpt" / f"n{n}-vocab-kanji-hiragana.anki" for n in (5, 4, 3, 2, 1)}
 # The official Jōyō table, read only by scripts/common_readings_report.py.
 JOYO_PDF = READINGS_DIR / "joyokanjihyo_20101130.pdf"
+# Input of `build --meaning-order` (docs/meaning-order.md): only
+# `fetch --meanings` gets it. FreeDict's English-Spanish dictionary (WikDict).
+MEANINGS_DIR = CACHE / "meanings"
+FREEDICT_ENG_SPA = MEANINGS_DIR / "freedict-eng-spa-2025.11.23.src.tar.xz"

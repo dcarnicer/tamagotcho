@@ -11,6 +11,8 @@ Two lists per card, both plain lists of card indices, best first:
 
 Cards sharing a meaning with the target are excluded from the meaning list: the
 quiz shows one gloss per option, so an overlap would make two options correct.
+With `--meaning-order` the meanings the builder's caps leave out of the pack
+count too (`Card.valid_meanings`).
 """
 
 from __future__ import annotations
@@ -76,12 +78,22 @@ def _similarity(a: tuple[float, ...], b: tuple[float, ...]) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
+def _first_and_all(c) -> tuple[str, set[str]]:
+    """A card's first meaning (what the device shows) and every meaning it has,
+    including those the pack does not store (`--meaning-order`), lower case."""
+    stored = [m.lower() for m in c.meanings]
+    every = set(stored) | {m.lower() for m in getattr(c, "valid_meanings", None) or []}
+    return (stored[0] if stored else ""), every
+
+
 def meaning_distractors(cards: list, visual: list[int], k: int = MAX_DISTRACTORS,
                         seed: int = 1) -> list[list[int]]:
     result: list[list[int]] = []
+    shown = [_first_and_all(c) for c in cards]
     for i, c in enumerate(cards):
         rng = random.Random(seed * 1_000_003 + c.codepoint)
         mine = {m.lower() for m in c.meanings}
+        my_first, my_all = shown[i]
         my_radicals = set(c.radicals)
         scored = []
         for j, o in enumerate(cards):
@@ -89,6 +101,13 @@ def meaning_distractors(cards: list, visual: list[int], k: int = MAX_DISTRACTORS
                 continue
             if mine & {m.lower() for m in o.meanings}:
                 continue  # would make two options correct
+            # The device shows one card's first meaning against the other card
+            # (an option, or the meaning -> kanji prompt): neither may be a
+            # meaning of the other, stored or not. Without `valid_meanings` this
+            # is the check above.
+            their_first, their_all = shown[j]
+            if (their_first and their_first in my_all) or (my_first and my_first in their_all):
+                continue
             # Scoring key, best (smallest) first:
             #   1. same JLPT level first        -> level always outranks radicals
             #   2. shared classical radical     -> same dictionary family (氵, 木, 口…)
