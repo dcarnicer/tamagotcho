@@ -75,7 +75,7 @@ Scope for now: **kanji only** (no vocabulary decks).
         Verified on the StickS3 (2026-10-18/19): the zone rule from the phone
         (Europe/Madrid, +120 min in October), and after a real power-off the
         network-first screen answers by itself, or a tap leads to the stepper.
-        Not yet tried: choosing a zone by hand on the device.
+        Choosing a zone by hand checked on the StickS3 too (2026-10-20).
       - [x] Date stepper in both directions (2026-10-20, StickS3 feedback: with
         the network time failing there was no visible way to go back a day,
         and the side tap cancelled): side tap -1 day, side hold cancel, both
@@ -83,8 +83,10 @@ Scope for now: **kanji only** (no vocabulary decks).
         on a second row in portrait). Below the current day the index is kept
         and the anchor moves back, like a `Reanchored` sync; only on a device
         that has had a real-time date once (docs/srs.md §5). Native-tested
-        (`test_srs`, `test_quizui`, `test_settings`). Not yet verified on
-        hardware.
+        (`test_srs`, `test_quizui`, `test_settings`). Verified on the StickS3
+        (2026-10-20): through the serial remote in portrait and Spanish (from
+        Settings, and the boot-time question with the join failing), then by
+        hand in landscape and English.
 - [~] **Phase 3 – Better cards.** Distractors done for visual similarity,
       shared classical radicals and confusable readings; meaning→kanji questions
       done; the mistake detail card is done (a tap after a wrong answer opens a
@@ -95,17 +97,26 @@ Scope for now: **kanji only** (no vocabulary decks).
       Pending: preferring *common* readings — KANJIDIC2's reading order is not by
       frequency (e.g. 九's first kun reading is the rare ここの), so this needs a
       reading-frequency source or an on'yomi preference for some kanji.
-      Done on `feature/common-readings` (2026-10-20, docs/common-readings.md):
-      `build --common-readings` puts the Jōyō table's approved readings first,
-      then those of the easiest JLPT vocabulary, then the most frequent (JMdict,
-      JmdictFurigana, wordfreq, Tatoeba), and leaves a kind with nothing worth
-      asking empty, so 気 and 百 are asked their on'yomi. `decks.yml` is
-      prepared to use it; to run after the maintainer's review of the N5 list.
+      Done (2026-10-20, docs/common-readings.md): `build --common-readings`
+      puts the Jōyō table's approved readings first, then those of the easiest
+      JLPT vocabulary, then the most frequent (JMdict, JmdictFurigana,
+      wordfreq, Tatoeba), and leaves a kind with nothing worth asking empty,
+      so 気 and 百 are asked their on'yomi; the firmware keeps the on/kun turn
+      and the detail card right for such cards (checked on the StickS3,
+      2026-10-20). The N5 list was reviewed by the maintainer; the reading
+      order's credits are on About and the portal footer.
+      - [ ] Rebuild the published decks with it: `decks.yml` is prepared, not
+        run yet (it replaces `decks-v2` in place; v0.2.1 reads the new packs).
       - [ ] Follow-up: let a few common readings the Jōyō table does not
         approve be asked (等 など, 経 た.つ, 被 かぶ.る), e.g. for learners outside
         the school curriculum.
-      - [ ] Follow-up: an About row for the reading-order credits
-        (`credits::kReadings`, today only in the portal footer).
+      - [ ] **Spanish meanings in a useful order** (2026-10-20). KANJIDIC2's
+        Spanish meanings are often ordered worse than its English ones, and the
+        device shows the first ones: 持 "duración; propiedad" (en "hold;
+        have"), 界 "borde; frontera" (en "world; boundary"), 題 "objeto; tema"
+        (en "topic; subject"). Order them by the English order (match each
+        Spanish gloss to its English counterpart), possibly with the JLPT
+        vocabulary signal used for readings.
       Invariant enforced: **no option may be another valid reading or meaning of
       the target** (otherwise two options are correct); checked in `Quiz.cpp`
       and in the builder's distractor lists.
@@ -123,7 +134,12 @@ Scope for now: **kanji only** (no vocabulary decks).
         radio off afterwards and the CPU at 240 MHz only meanwhile, so the
         battery policy holds. Verified on the StickS3 (2026-10-19), which
         found that a network with several access points needs the join pinned
-        to the strongest one (docs/decisions.md, 2026-10-19).
+        to the strongest one (docs/decisions.md, 2026-10-19). The step that
+        falls back to any access point after 25 s ran on hardware on
+        2026-10-20 (serial remote hook `f`): it joined the strongest one at
+        31 s and NTP answered.
+        - [ ] Once, an NTP request right after a join got no answer in 3 s
+          (2026-10-19); maybe retry once before giving up.
       - [x] **One-button deck download.** Decks -> "+ Get decks" joins the home
         Wi-Fi, reads the release catalog over **HTTPS** (verified against a small
         embedded root-CA set, redirects followed), lists its decks marked new /
@@ -207,6 +223,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       Pending: **README photos** (`tools/screenshots` takes the screen
       captures from a StickS3 since 2026-10-20), and the T-Display-S3 images on
       real hardware.
+      - [ ] `release.yml` writes generic notes only: the "What's new" section
+        is added by hand after each release; let the workflow take it from a
+        file or the tag message.
+      - [ ] CI: also build `sticks3-shots` (the serial remote), so its code
+        keeps compiling.
 
 ## Cross-cutting
 
@@ -252,7 +273,7 @@ Scope for now: **kanji only** (no vocabulary decks).
       buzz**: still audible up close after moving the backlight
       PWM to 25 kHz, so the backlight was not (or not the only) cause; to
       investigate.
-- [ ] **UX refresh.** A review to give the device UI a more modern look and feel:
+- [~] **UX refresh.** A review to give the device UI a more modern look and feel:
       typography and spacing, a consistent visual language across quiz, menus
       and detail card, clearer feedback and transitions on answers, a less
       text-heavy settings home (fewer rows or grouping), and an on-screen hint of
@@ -282,7 +303,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       pickers), the deck list from pack headers, and the date, stats, done,
       Get decks, Wi-Fi portal, About and error screens in the flat style.
       Phases 1-3 are on `main`, checked on the StickS3 (2026-10-18). Left:
-      phase 5 polish (kanji fade-in, maybe slides).
+      phase 5 polish (kanji fade-in, maybe slides), and two values cut short
+      in portrait seen on 2026-10-20: the Date row's "2026-…" in
+      Settings › Device › Date, and "Modo conf…" (Setup mode) in the Spanish
+      Wi-Fi menu.
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
       (picking an option on the device takes longer than in Anki).
 - [ ] **Learning mode** (idea, 2026-10-18). A mode for learning kanji, not

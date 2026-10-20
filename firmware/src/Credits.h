@@ -24,8 +24,7 @@ constexpr const char kKanjiVg[] =
 // The kanji's JLPT levels and the vocabulary lists behind the reading order.
 constexpr const char kJlpt[] = "Jonathan" TGC_NBSP "Waller (tanos.co.uk), CC" TGC_NBSP "BY";
 // The rest of the reading order's sources (docs/common-readings.md); ASCII so
-// the built-in font can draw it. The portal footer shows it; About does not
-// (yet): it would need a row in main.cpp.
+// the built-in font can draw it.
 constexpr const char kReadings[] =
     "JmdictFurigana, CC" TGC_NBSP "BY-SA; wordfreq (c)" TGC_NBSP "Robyn" TGC_NBSP "Speer, CC"
     TGC_NBSP "BY-SA" TGC_NBSP "4.0; Tatoeba, CC" TGC_NBSP "BY" TGC_NBSP "2.0" TGC_NBSP

@@ -2275,7 +2275,8 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   2026-01-01, the earliest date a sync accepts, so the anchor never reaches
   `0` ("none").
 - **Flash:** StickS3 1,450,977 → 1,451,497 bytes (+520), static RAM
-  unchanged (55,004 bytes). **Not verified on hardware.**
+  unchanged (55,004 bytes). Verified on the StickS3 the same day (serial
+  remote, then by hand).
 
 ## 2026-10-20 – Serial remote for UI checks and screenshots
 
