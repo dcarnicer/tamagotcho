@@ -251,11 +251,13 @@ Scope for now: **kanji only** (no vocabulary decks).
       learned count. Single-card accuracy is on the mistake detail card. The
       Wi-Fi portal shows the same counters on its page and as JSON at
       `/api/stats`. Pending: an aggregate per-kanji accuracy view.
-      Deleting progress (2026-10-20, `feature/delete-deck-progress`, not yet
-      verified on hardware): deleting a deck on the portal forgets its kanji
-      that no other installed deck has; Settings › Study › Delete progress
-      resets the loaded deck or everything, statistics included; the accuracy
-      is a lifetime counter now (docs/srs.md §2.1).
+      Deleting progress (2026-10-20, `feature/delete-deck-progress`): deleting
+      a deck on the portal forgets its kanji that no other installed deck has;
+      Settings › Study › Delete progress resets the loaded deck or everything,
+      statistics included; the accuracy is a lifetime counter now (docs/srs.md
+      §2.1). Verified on the StickS3 (2026-10-20, portrait and landscape,
+      en/es): this deck, everything, "Nothing to delete"; the portal's delete
+      was not run on hardware (native-tested, same forget code).
 - [~] **Multilingual.** On-device strings are localised to the pack language
       (`lang`: en/es today, anything else falls back to English). The on-device
       language picker is done: a "Language"/"Idioma" setting chooses Auto (follow
