@@ -89,6 +89,15 @@ public:
     // a study day with the saved UTC offset (applyWallClock in main.cpp).
     bool fetchUtcMs(int64_t* outUtcMs, uint32_t timeoutMs);
 
+#if defined(TGC_REMOTE)
+    // Test hook for the serial remote (main.cpp; never in a release): the next
+    // begin() pins its join to an access point that does not exist, for the
+    // pinned step only (BadPin: any access point after kPinnedJoinMs) or for
+    // the whole join (NoJoin: it fails after kConnectTimeoutMs).
+    enum class TestFault : uint8_t { None, BadPin, NoJoin };
+    static void setTestFault(TestFault f);
+#endif
+
 private:
     // The steps of a join (begin(), poll()).
     enum class Step : uint8_t { Scan, Pinned, Any };
@@ -106,6 +115,9 @@ private:
     int32_t channel_ = 0;
     char ssid_[kMaxSsidLen + 1] = {0};
     int eventId_ = 0;  // Wi-Fi disconnect-event handler while joining
+#if defined(TGC_REMOTE)
+    TestFault fault_ = TestFault::None;  // this join's (setTestFault())
+#endif
 };
 
 }  // namespace tgc
