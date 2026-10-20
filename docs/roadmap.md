@@ -95,6 +95,12 @@ Scope for now: **kanji only** (no vocabulary decks).
       Pending: preferring *common* readings — KANJIDIC2's reading order is not by
       frequency (e.g. 九's first kun reading is the rare ここの), so this needs a
       reading-frequency source or an on'yomi preference for some kanji.
+      Researched on `feature/common-readings` (2026-10-20,
+      docs/common-readings.md): an opt-in `build --common-readings` orders
+      readings by word frequency (JMdict, JmdictFurigana, wordfreq, Tatoeba)
+      with the Jōyō table's approved readings first. To decide: use it for the
+      decks, and a `flags` extension so kanji with no reading of a kind worth
+      asking (気 いき, 百 もも) ask the other kind.
       Invariant enforced: **no option may be another valid reading or meaning of
       the target** (otherwise two options are correct); checked in `Quiz.cpp`
       and in the builder's distractor lists.

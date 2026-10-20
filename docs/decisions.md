@@ -2316,3 +2316,29 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   run. With `f` the any-access-point step of the 2026-10-19 entry ran on
   hardware for the first time: after 25 s on the missing access point it
   joined the strongest one (-25 dBm) at 31 s in all, and NTP answered.
+
+## 2026-10-20 – Common readings: sources and an opt-in builder flag
+
+Branch `feature/common-readings`; details and numbers in docs/common-readings.md.
+
+- **Order, not format.** The device asks the first reading of a kind and treats
+  every listed reading as valid, so reordering readings inside a kind changes
+  the asked reading with no pack-format or firmware change, and the "no option
+  is another valid reading" invariant is unaffected. No reading is dropped.
+- **Sources: JMdict + JmdictFurigana + wordfreq + Tatoeba, then the Jōyō
+  table.** No open source has per-reading frequencies; BCCWJ does but forbids
+  redistribution (research/education only), and WaniKani/jpdb are not
+  licensed. The score is assembled from CC BY-SA 4.0 / CC BY sources (word
+  frequency, homograph readings, per-kanji furigana), so packs stay CC BY-SA.
+  KANJIDIC2's `r_status`/`on_type` attributes are declared but unused (0 in the
+  file).
+- **Approved readings first.** Pure frequency asks special readings that one
+  frequent word inflates (弟 ダイ from 兄弟, 納 ナッ from 納得). The official
+  Jōyō table (public domain in Japan, Copyright Act art. 13) marks those as
+  indented; its approved readings form the first tier. The PDF is read with
+  pypdf (a new builder dependency), not with a committed transcription: the
+  only machine-readable one with marks (joyodb) has no licence.
+- **Opt-in.** `fetch --readings` + `build --common-readings`; the default build,
+  `decks.yml` and the published decks are unchanged until the maintainer
+  decides. A pack-format extension (`flags` bits 1-2: "do not ask on/kun") for
+  the 465 Jōyō kanji with no approved kun'yomi is proposed, not implemented.
