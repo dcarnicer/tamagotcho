@@ -71,12 +71,19 @@ inline bool introducedOn(const Record& r, uint16_t day) {
 
 // Aggregate counters over the whole state table, for the statistics screen
 // (docs/roadmap.md "Statistics"). Pure and deterministic: no clock, no I/O.
+//
+// `answers` and `again` are lifetime header counters: the accuracy is
+// (answers - again) / answers, so forgetting records (a deleted deck, a deck
+// reset) leaves it as it was. `seen`, `learned`, `reps` and `lapses` are
+// derived from the records, so they describe the kanji still tracked and drop
+// with forgotten records (docs/srs.md section 2.1).
 struct Stats {
     uint32_t seen;           // records in the table (distinct kanji reviewed)
     uint32_t learned;        // records whose stability >= kLearnedStabilityDays
     uint32_t answers;        // lifetime answers (header counter)
-    uint32_t reps;           // sum of every card's review count
-    uint32_t lapses;         // sum of every card's Again count
+    uint32_t again;          // lifetime Again answers (header counter), <= answers
+    uint32_t reps;           // sum of every tracked card's review count
+    uint32_t lapses;         // sum of every tracked card's Again count
     uint32_t streakCurrent;  // current day streak (header field)
     uint32_t streakBest;     // best day streak (header field)
     uint32_t reviewMs;       // total time spent on questions, ms (header field)
@@ -229,6 +236,20 @@ public:
     size_t count() const { return records_.size(); }
     const std::vector<Record>& records() const { return records_; }
 
+    // --- forgetting (docs/srs.md section 2.1) ----------------------------
+    // Removes the records of `codepoints` (any order, duplicates allowed; a
+    // code point without a record is skipped): those kanji are new again.
+    // Only records go: the lifetime counters (answers, Again answers, time
+    // on questions, the day streak and the best one) stay as they are.
+    // Returns the number of records removed.
+    size_t forget(const uint32_t* codepoints, size_t n);
+    // The "Everything" reset: every record and the lifetime statistics go
+    // (answers, Again answers, time on questions, both streaks, the "has
+    // studied" flag, today's new-card counter); the clock (day index, carry,
+    // wall-clock anchor) and the knobs (new per day, Hard after, maximum
+    // interval) stay. Returns the number of records removed.
+    size_t resetProgress();
+
     // Walks the table once and sums the counters above. O(n), no allocation.
     Stats stats() const;
 
@@ -247,6 +268,9 @@ public:
     void setNewPerDay(uint16_t v) { newPerDay_ = v; }
     uint32_t answeredTotal() const { return answeredTotal_; }
     void setAnsweredTotal(uint32_t v) { answeredTotal_ = v; }
+    // Lifetime Again answers (header bytes 44..47, docs/srs.md section 4.1);
+    // never more than answeredTotal().
+    uint32_t againTotal() const { return againTotal_; }
     uint16_t newIntroducedDay() const { return newIntroducedDay_; }
     void setNewIntroducedDay(uint16_t v) { newIntroducedDay_ = v; }
     uint16_t newIntroducedCount() const { return newIntroducedCount_; }
@@ -282,6 +306,7 @@ private:
     uint16_t nowDay_ = 0;
     uint32_t msCarry_ = 0;  // milliseconds toward the next day index
     uint32_t answeredTotal_ = 0;
+    uint32_t againTotal_ = 0;  // lifetime Again answers
     uint16_t slowMs_ = kSrsDefaultSlowMs;
     uint16_t newPerDay_ = kSrsDefaultNewPerDay;
     uint16_t newIntroducedDay_ = 0;

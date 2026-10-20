@@ -2474,3 +2474,60 @@ caer la noche…). Decided and implemented the same day on `feature/es-meanings`
   first meaning is the sense learners meet at the kanji's level.
 - No firmware change: the new sources (JMdict, the JLPT lists) were already
   credited, and `kMeanings` (FreeDict) is unchanged.
+
+## 2026-10-20 – Deleting a deck deletes its progress; Delete progress in the settings
+
+Branch `feature/delete-deck-progress`; the rules are docs/srs.md §2.1.
+
+- **Why.** Progress is per kanji and global (`/state/srs.bin`), so a deck
+  deleted on the portal and downloaded again came back with all its progress.
+  The maintainer expects a delete to delete the progress, so that a new
+  download starts from scratch.
+- **A delete forgets the kanji no other deck has.** The portal's delete forgets
+  the records of the deck's kanji that no deck still in `/packs` has, read from
+  the other packs' card tables (`readPackCodepoints()`, no full open). N5's
+  kanji are all in the Jōyō deck: their progress is shared and stays while that
+  deck is installed. Updating a deck in place (Get decks, a page download or
+  upload over the same file name) keeps everything: only an explicit delete
+  forgets. The page's confirmation and the notice after it say so ("Deleted
+  n5-en.tgc and the progress of 79 kanji").
+- **Save first, then remove.** The records are forgotten and `srs.bin` saved
+  (temp + rename) before the pack file is removed. A power cut in between
+  leaves the deck without that progress, and deleting it again finishes the
+  job; the other order could leave records of a deck that is gone, which the
+  next download would pick up -- the very bug. A failed save (a full
+  filesystem, which is when decks get deleted) is retried after the removal.
+  The app does the whole delete (`WifiPortal::Hooks::onDeleteDeck`, like
+  `onTime` for the clock); the handler only checks the name.
+- **Lifetime statistics stay; the accuracy becomes a lifetime counter.**
+  Answers, time on questions and both streaks are header counters and stay.
+  The accuracy was summed from the records' `reps` and `lapses`, so forgetting
+  records would have changed it: it is now `(answered_total - again_total) /
+  answered_total`, with a new lifetime `again_total` (u32 in the header's last
+  free bytes, 44..47; v1-compatible, an older file starts it from the records'
+  lapses). Kanji seen and learned, and the `reps`/`lapses` sums of
+  `/api/stats` (which gains `again`), are per record and drop with them.
+- **Settings › Study › Delete progress.** Two rows: **This deck** forgets all
+  the loaded deck's kanji, shared ones too (an explicit reset of that deck, so
+  it may affect another deck; the confirmation says "Joyo kanji shares 12 of
+  them: they reset there too", or "Other decks share ..." when several do), and
+  **Everything** forgets every record and the lifetime statistics (answers,
+  Again answers, time, streaks, the "has studied" flag); the clock, the
+  wall-clock anchor, the knobs, decks and settings stay. A hold on a row opens
+  a confirmation with the numbers, where only a hold on its one row (the
+  hold-progress fill) deletes and the side button cancels; then the Study page
+  with a note, the queue rebuilt and a fresh question (or the done screen) for
+  when the settings close. The quiz hints come back after Everything (they
+  follow the lifetime answers).
+- **Label.** "Delete progress" (130 px) and "Borrar progreso" (133 px) do not
+  fit a portrait page row's 107 px (the reason "Auto next" is not
+  "Auto-advance"): the row says **Delete** / **Borrar** over the value line
+  **progress** / **progreso**, and the screen's header spells it out. A
+  native test (`test_ui`) checks the new labels and captions against the
+  budget.
+- **Not on the portal page.** The two resets are left off the page's Advanced
+  section: the page has no password, so anyone on the home network (or in range
+  in setup mode) could wipe the statistics with one request, and a JS
+  `confirm()` is no hold. Deleting a deck there already deletes its progress.
+- **Cost.** sticks3 flash 1,452,049 -> 1,461,329 B (+9.3 KB, 69.7 % of the
+  2 MB app slot).

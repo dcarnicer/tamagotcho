@@ -306,6 +306,27 @@ void test_ui_font_numeral() {
     TEST_ASSERT_TRUE(f.capHeight > uifont::kLabel.capHeight);
 }
 
+// Settings > Study > Delete progress (main.cpp's UiStrings; these are copies):
+// every row label fits a portrait page row's 107 px in both languages, which
+// "Delete progress" (130 px) and "Borrar progreso" (133 px) do not -- the
+// Study row says "Delete" over a "progress" caption -- and every caption fits
+// the 19 Font0 cells (6 px each) under a portrait row's label.
+void test_delete_progress_labels() {
+    const UiFace& f = uifont::kLabel;
+    constexpr int kPageLabelPx = 107;
+    for (const char* label : {"Delete", "Borrar", "This deck", "Este mazo", "Everything", "Todo"})
+        TEST_ASSERT_TRUE_MESSAGE(uiTextWidth(f, label, 0) <= kPageLabelPx, label);
+    TEST_ASSERT_TRUE(uiTextWidth(f, "Delete progress", 0) > kPageLabelPx);
+    TEST_ASSERT_TRUE(uiTextWidth(f, "Borrar progreso", 0) > kPageLabelPx);
+    constexpr int kCaptionCells = 19;
+    for (const char* caption : {"progress", "progreso", "and the statistics", "y las estadísticas",
+                                "no deck loaded", "ningún mazo cargado"}) {
+        int cells = 0;
+        for (const char* p = caption; utf8Next(&p);) ++cells;
+        TEST_ASSERT_TRUE_MESSAGE(cells <= kCaptionCells, caption);
+    }
+}
+
 // ---------------------------------------------------------------- InputPrefs
 
 static void test_input_prefs() {
@@ -334,6 +355,7 @@ int main() {
     RUN_TEST(test_icons_packing);
     RUN_TEST(test_ui_font_label);
     RUN_TEST(test_ui_font_numeral);
+    RUN_TEST(test_delete_progress_labels);
     RUN_TEST(test_input_prefs);
     return UNITY_END();
 }

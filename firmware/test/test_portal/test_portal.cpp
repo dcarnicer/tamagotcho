@@ -149,6 +149,23 @@ void test_page_footer_formats() {
     }
 }
 
+// The delete notices take what handleDelete()'s notice passes: the deck name,
+// then (once its progress went) the number of kanji forgotten, in that order.
+void test_page_delete_formats() {
+    for (const char* lang : {"en", "es"}) {
+        const PortalText& t = portalText(lang);
+        TEST_ASSERT_EQUAL(1, countConversions(t.deletedFmt));
+        TEST_ASSERT_NOT_NULL(std::strstr(t.deletedFmt, "%s"));
+        TEST_ASSERT_EQUAL(2, countConversions(t.deletedProgressFmt));
+        const char* name = std::strstr(t.deletedProgressFmt, "%s");
+        const char* count = std::strstr(t.deletedProgressFmt, "%u");
+        TEST_ASSERT_NOT_NULL(name);
+        TEST_ASSERT_NOT_NULL(count);
+        TEST_ASSERT_TRUE(name < count);
+        TEST_ASSERT_EQUAL(0, countConversions(t.deleteConfirm));  // a plain JS confirm()
+    }
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_wifi_qr_escape);
@@ -160,5 +177,6 @@ int main() {
     RUN_TEST(test_rssi_quality);
     RUN_TEST(test_page_text_complete);
     RUN_TEST(test_page_footer_formats);
+    RUN_TEST(test_page_delete_formats);
     return UNITY_END();
 }

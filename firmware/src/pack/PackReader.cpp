@@ -122,6 +122,26 @@ PackError peekPackInfo(PackSource& src, PackInfo* out) {
     return PackError::Ok;
 }
 
+PackError readPackCodepoints(PackSource& src, std::vector<uint32_t>* out) {
+    out->clear();
+    PackHeader hd;
+    const PackError e = readHeader(src, &hd);
+    if (e != PackError::Ok) return e;
+    out->reserve(hd.cardCount);
+    // The card table a chunk at a time: the code point is a card's first field.
+    constexpr uint32_t kChunk = 32;
+    uint8_t buf[kChunk * kCardSize];
+    for (uint32_t i = 0; i < hd.cardCount; i += kChunk) {
+        const uint32_t n = hd.cardCount - i < kChunk ? hd.cardCount - i : kChunk;
+        if (!src.read(hd.cardsOff + i * kCardSize, buf, n * kCardSize)) {
+            out->clear();
+            return PackError::Io;
+        }
+        for (uint32_t k = 0; k < n; ++k) out->push_back(rd32(buf + k * kCardSize));
+    }
+    return PackError::Ok;
+}
+
 PackError PackReader::open(PackSource& src, Allocator alloc) {
     close();
     alloc_ = alloc;

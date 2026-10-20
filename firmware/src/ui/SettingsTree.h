@@ -32,6 +32,7 @@ enum class Item : uint8_t {
     NewPerDay,
     HardAfter,
     AutoAdvance,
+    DeleteProgress,  // a screen: this deck or everything, then a confirmation
     // Device ›
     Orientation,
     Brightness,
@@ -41,11 +42,12 @@ enum class Item : uint8_t {
     Sleep,
     About,
 };
-constexpr int kItemCount = 15;
+constexpr int kItemCount = 16;
 
 inline constexpr Item kHomeItems[] = {Item::Decks, Item::Study, Item::Stats, Item::Wifi,
                                       Item::Device};
-inline constexpr Item kStudyItems[] = {Item::NewPerDay, Item::HardAfter, Item::AutoAdvance};
+inline constexpr Item kStudyItems[] = {Item::NewPerDay, Item::HardAfter, Item::AutoAdvance,
+                                       Item::DeleteProgress};
 inline constexpr Item kDeviceItems[] = {Item::Orientation, Item::Brightness, Item::Language,
                                         Item::HoldTime,    Item::Date,       Item::Sleep,
                                         Item::About};
@@ -118,13 +120,16 @@ constexpr const Icon* itemIcon(Item i) {
 
 // ---------------------------------------------------------------- values
 
-// Accuracy in percent over every grade ever recorded, (reps - lapses) / reps
-// rounded down (lapses never exceed reps; a saturated count reads as 0 %).
-// -1 when nothing was answered yet.
-constexpr int accuracyPercent(uint32_t reps, uint32_t lapses) {
-    return reps == 0 ? -1
-                     : static_cast<int>(
-                           static_cast<uint64_t>(reps > lapses ? reps - lapses : 0) * 100u / reps);
+// Accuracy in percent over every answer ever given, (answers - again) /
+// answers rounded down, from the store's lifetime counters (Stats::answers,
+// Stats::again), so forgetting records leaves it as it was (docs/srs.md
+// section 2.1). Again never exceeds the answers; if it did it reads 0 %. -1
+// when nothing was answered yet.
+constexpr int accuracyPercent(uint32_t answers, uint32_t again) {
+    return answers == 0
+               ? -1
+               : static_cast<int>(static_cast<uint64_t>(answers > again ? answers - again : 0) *
+                                  100u / answers);
 }
 
 // Milliseconds as seconds with at most one decimal: "1.5 s", "3 s", "0.4 s";

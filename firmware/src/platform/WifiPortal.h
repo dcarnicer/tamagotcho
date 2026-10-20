@@ -45,7 +45,10 @@ struct PortalStats {
     uint32_t day = 0;
     char date[12] = "";       // "YYYY-MM-DD" of `day` (docs/srs.md section 5.1)
     bool dateSynced = false;  // the date comes from a real clock, not the fixed base
-    uint32_t seen = 0, learned = 0, answers = 0, reps = 0, lapses = 0;
+    // `answers` and `again` (Again answers) are lifetime counters; `seen`,
+    // `learned`, `reps` and `lapses` come from the per-kanji records, so they
+    // drop when a deck's progress is deleted (docs/srs.md section 2.1).
+    uint32_t seen = 0, learned = 0, answers = 0, again = 0, reps = 0, lapses = 0;
     uint32_t streakCurrent = 0, streakBest = 0;
     uint32_t reviewMs = 0;
     uint32_t packCards = 0;   // cards in the loaded pack, 0 when none is open
@@ -103,6 +106,14 @@ public:
         // serviceDownload() from its progress callback so the page can follow,
         // and rescans /packs. Null hides the page's download buttons.
         DeckDownloadResult (*onDeckDownload)(const CatalogEntry& entry, bool update) = nullptr;
+        // POST /delete: delete pack `path` ("/packs/<name>.tgc") and the progress
+        // of its kanji that no other deck still in /packs has (docs/srs.md
+        // section 2.1), then rescan /packs as onPacksChanged does. The app
+        // saves the state file before it removes the pack. Returns false when
+        // the file could not be removed; `*forgotten` is the number of kanji
+        // whose progress went. Null: the portal removes the file itself and
+        // calls onPacksChanged (no progress is deleted).
+        bool (*onDeleteDeck)(const char* path, uint32_t* forgotten) = nullptr;
     };
 
     WifiPortal() = default;
@@ -221,7 +232,7 @@ private:
     void appendAdvanced(String& h, const String& homeSsid, bool firstSetup, bool open);
     bool noticeInAdvanced(Notice n, bool firstSetup) const;
     void appendWifiForm(String& h, const char* formId);
-    void redirect(const char* where, Notice n, const String& arg = String());
+    void redirect(const char* where, Notice n, const String& arg = String(), uint32_t count = 0);
     String catalogProblem() const;
     String downloadOutcome() const;
 
@@ -260,6 +271,7 @@ private:
 
     Notice notice_ = Notice::None;
     String noticeArg_;
+    uint32_t noticeCount_ = 0;  // Deleted: the kanji whose progress went
 
     // Upload state, valid between UPLOAD_FILE_START and UPLOAD_FILE_END. The
     // body goes to kUploadTmp (never the destination); only the validated temp

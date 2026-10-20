@@ -41,7 +41,8 @@ learner. Knowing 日 does not reset when you switch from `n5-en.tgc` to
 packs. Consequences, all intended:
 
 - Switching decks keeps progress; cards you already know arrive as reviews,
-  not as new.
+  not as new. So does updating a deck in place. Deleting a deck deletes the
+  progress of its kanji that no other installed deck has (§2.1).
 - The deck menu can show `N due / M new` per pack by joining the pack's card
   table against this table.
 - The file grows with the number of *distinct kanji seen*, not with the number
@@ -77,6 +78,51 @@ In memory: `std::vector<Record>` kept sorted by codepoint, held in PSRAM on
 device (`psramAllocator`-style) — ~40 KB for a 2 500-card collection. The file
 is a straight dump of that vector, so load and save are both O(n) with no
 `std::map` overhead and no heap churn.
+
+### 2.1 Record lifecycle
+
+A record is created by the first answer to its kanji (`grade()`) and changed by
+every later one. Nothing else touches it: switching decks, a deck that is not
+loaded, and **updating a deck in place** (Get decks, or the portal downloading
+or uploading a file of the same name over it) all keep every record. Records
+are removed in three cases only, each an explicit request (docs/decisions.md,
+2026-10-20):
+
+| request | what goes | what stays |
+|---------|-----------|------------|
+| **Deleting a deck** (the portal page's *Your decks*, `POST /delete`) | the records of its kanji that **no other deck in `/packs`** has | the kanji another installed deck also has: N5's kanji are in the Jōyō deck too, so their progress is shared and stays while that deck is installed |
+| **Settings › Study › Delete progress › This deck** | the records of **all** the loaded deck's kanji, shared ones too (an explicit reset of that deck; its confirmation says how many of them other installed decks have, and names the deck when only one does) | every other record |
+| **Settings › Study › Delete progress › Everything** | every record **and** the lifetime statistics: `answered_total`, `again_total`, `review_ms`, both streaks, `last_study_day`, the "has studied" flag, the new-card counter | the clock (`now_day`, `ms_carry`, `epoch_anchor`), the knobs (`new_per_day`, `slow_ms`, `max_interval_days`), decks and settings |
+
+A deck's kanji are the code points of its card table, read without opening the
+pack (`readPackCodepoints()` in `pack/`). The pure part is `srs/DeckProgress`
+(`forgetOnDelete()`: the deck minus the other decks; `deckResetPreview()`: the
+deck's kanji with a record and how many of them the others share) and
+`SrsStore::forget()` / `resetProgress()`, tested in `test_srs`. A forgotten
+kanji is new again: it has no record, the queue offers it under the new-card
+cap (and the cap of today counts it no more), and its next answer is a first
+review.
+
+**Statistics.** Deleting a deck and resetting one remove records only; the
+header's lifetime counters stay as they are: answers, Again answers, time on
+questions, the day streak and the best one. The **accuracy** is computed from
+two of them, `(answered_total - again_total) / answered_total` (§4.1), so it
+stays too. What is derived from the records describes the kanji still tracked
+and drops with them: kanji seen and learned (statistics screen, `/api/stats`),
+the records' `reps`/`lapses` sums (`/api/stats`), and a deck's due, new and seen
+counts. Nothing can go negative: no counter is decremented, and the derived
+values are recomputed from the table.
+
+**Save order when a deck is deleted.** The records are forgotten and the state
+file is saved through the atomic path (§4) **before** the pack file is removed.
+A power cut between the two leaves the deck installed without that progress --
+deleting it again finishes the job -- but never records of a deck that is gone,
+which a later download of it would pick up again (exactly what deleting is meant
+to prevent). If that save fails (a full filesystem, and deleting a deck is how
+space is made), it is tried again once the pack is gone. A pack whose card table
+does not read forgets nothing, since its kanji are unknown. The two resets in the
+settings save at once as well. The previous file stays as `/state/srs.bak` until
+the next save; it is read only when `srs.bin` fails its checks.
 
 ## 3. Scheduling algorithm
 
@@ -244,16 +290,16 @@ Header (little-endian):
 | 36  | u16    | last_study_day        | SRS day of the last answer; 0 = never         |
 | 38  | u16    | epoch_anchor          | days since 1970-01-01 of SRS day 0; 0 = never synced (§4.1, §5.1) |
 | 40  | u32    | review_ms             | lifetime time on questions, ms (saturates)    |
-| 44  | u32    | (unused)              | 0                                             |
+| 44  | u32    | again_total           | lifetime Again answers (the accuracy, §4.1)   |
 
 #### 4.1 Header extension in the reserved bytes (v1-compatible)
 
 Bytes 32..47 were `reserved[4] = 0` in the first v1 writer and are not
-validated, so the streak, time and wall-clock fields reuse them **without a
-version bump**: `0` keeps meaning "absent", so a file written by the older
-firmware loads with zeroed streak/time and no anchor, and an older reader
-ignores the new fields while still verifying the CRC (which covers the whole
-header, new bytes included). Bytes 44..47 are still unused (0).
+validated, so the streak, time, wall-clock and Again fields reuse them
+**without a version bump**: `0` keeps meaning "absent", so a file written by
+the older firmware loads with zeroed streak/time and no anchor, and an older
+reader ignores the new fields while still verifying the CRC (which covers the
+whole header, new bytes included). All 16 bytes are in use now.
 
 - **Day streak.** A day streak over the SRS day index (§5), not wall time. In
   `grade(codepoint, grade, day, ...)`: when `day != last_study_day` (or nothing
@@ -271,6 +317,15 @@ header, new bytes included). Bytes 44..47 are still unused (0).
   `0xFFFFFFFF`. The app calls it once per answer with the same response time
   that graded it (question shown → the confirming press-down, minus the
   per-tap allowance), so it is a pure UI measure, not a clock.
+- **Again answers.** `again_total` (u32 at 44) counts every Again answer next
+  to `answered_total`, and only while that one still counts, so it never
+  exceeds it. The **accuracy** shown on the statistics screen, the settings
+  home and the portal page is `(answered_total - again_total) /
+  answered_total`: lifetime counters, so forgetting records (§2.1) leaves it as
+  it was (it used to be summed from the records' `reps` and `lapses`). A file
+  written before the counter has `0` there: the load starts it from the sum of
+  the records' `lapses`, the same count unless a record's 255 saturated (a true
+  `0` gives `0` too, and nothing was forgotten before the counter existed).
 - **Wall-clock anchor.** `epoch_anchor` (u16 at 38) is the calendar day, counted
   in days since 1970-01-01, that SRS day `0` corresponds to; the date shown for
   any SRS day `d` is `epoch_anchor + d`. It is written by the first real-time
@@ -600,6 +655,8 @@ New globals: `tgc::SrsStore gSrs;`, `tgc::Queue gQueue;`, `uint32_t gShownAt;`.
 | `loop()` | add `gSrs.tick(millis())` and `gSrs.maybeFlush(millis(), dirtyCount)`. Keep the existing 10 ms delay. |
 | `applyWallClock()` | real time from the portal's `POST /time` (through `portalTime()`, which first stores the page's zone in NVS `tzr`/`tzn`/`tz`) or from NTP over the home Wi-Fi (Get decks, the portal in home mode, the network test, the boot-time date question): `gSrs.syncWallClock(utc, zone)`, save, rebuild the queue when the day moved, and dismiss the boot-time date question (§5.1). `loadTimeZone()` reads the zone at boot (before the slept time is added) and after a change, and hands it to `gSrs.setTimeZone()`. |
 | `selectPack()` / `loadPack()` | flush state before opening the new pack; after loading, `gQueue.rebuild(...)`. State is global, so progress carries across decks. |
+| `portalDeleteDeck()` | the portal's `POST /delete` (`WifiPortal::Hooks::onDeleteDeck`): forget the deleted deck's kanji that no other installed deck has, save, then remove the pack and `portalPacksChanged()` (§2.1, save order). |
+| `applyReset()` | Settings › Study › Delete progress: `forget()` the loaded deck's kanji or `resetProgress()`, save, rebuild the queue and build a fresh question for when the settings close (§2.1). |
 | `openMenu()`/`drawMenu()` | optional: append `due/new` counts per pack (a `gSrs.countDue(gPack, now_day)` helper) and a small progress line in the quiz header. |
 | `showError()` | a corrupt state file is *not* an error screen; log and start empty. |
 
