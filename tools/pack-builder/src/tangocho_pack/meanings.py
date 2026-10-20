@@ -1,11 +1,27 @@
-"""Spanish meanings in the order of the English ones (`build --meaning-order`).
+"""Meanings in a useful order (`build --meaning-order`, docs/meaning-order.md).
 
-KANJIDIC2 lists a kanji's English meanings most common first, but its Spanish
-list often is not (持: "duración; propiedad; cargo; sostener; mantener" against
-"hold; have"), and the device shows the first meaning: as the quiz option, in
-the "which kanji means ..." prompt and first on the detail card. This module
-matches each Spanish gloss to the English gloss it translates and sorts the
-Spanish list by the English order (docs/meaning-order.md):
+The device shows a card's first meaning: as the quiz option, in the "which
+kanji means ..." prompt and first on the detail card. KANJIDIC2's order is not
+always the useful one: its English list has quirks (機 "loom; mechanism;
+machine", 私 "private; I; me", 原 "meadow; original"), and its Spanish list
+often follows neither (持: "duración; propiedad; cargo; sostener; mantener"
+against "hold; have"). Three steps:
+
+A. **English, by a learner signal** (EnglishOrder): every KANJIDIC2 English
+   meaning is scored by the JLPT vocabulary words that contain the kanji
+   (Jonathan Waller's lists, as for the readings), through those words'
+   JMdict glosses, weighted by the word's level (N5 most), by how much of the
+   word is the kanji, and by the gloss's place in the entry. 私: the N5 word
+   私 "I; me" puts "I" first; 機: 飛行機 "airplane" and 機械 "machine". The
+   list is sorted by score, KANJIDIC2's order breaking ties; a meaning with too
+   little evidence scores 0.
+B. **Spanish, by the English order** (MeaningOrder), below: each Spanish gloss
+   is matched to the English gloss it translates.
+C. **Overrides**: a short project-authored table
+   (`data/meaning_overrides.tsv`) puts one of KANJIDIC2's own meanings first
+   where A and B still go wrong (機 máquina). Never new text.
+
+Matching Spanish to English (B):
 
 1. **Normalisation**, both languages: lower case, no parentheses, no leading
    "to"/"to be" (English) or article (Spanish), accents ignored; a Spanish
@@ -323,28 +339,267 @@ class MeaningOrder:
         return [g for g, _ in self.ranked(glosses, english)]
 
 
+# --- English: the learner signal (A) ------------------------------------------------
+
+# A word's weight by its JLPT list (5 = N5), as for the readings' learner key.
+LEVEL_WEIGHT = {5: 16.0, 4: 8.0, 3: 4.0, 2: 2.0, 1: 1.5}
+SENSES = 3          # a word's first senses that count; sense s weighs 1/(1+s)
+GLOSS_STEP = 0.2    # the p-th gloss of a sense weighs 1/(1 + 0.2 p)
+PARTIAL = 0.25      # the meaning is part of a longer gloss (next <- next week)
+STEM = 0.5          # one-word meaning and gloss of one family (original <- origin)
+MIN_SCORE = 2.0     # less evidence than this counts as none (an N3 compound's first gloss: 2)
+
+
+def _stem(w: str) -> str:
+    """A crude English stem, applied to both sides of a comparison: going/go,
+    studies/study, comes/come, places/place."""
+    if w.endswith("ing") and len(w) >= 5:
+        w = w[:-3]
+    elif w.endswith(("ied", "ies")) and len(w) >= 5:
+        w = w[:-3] + "y"
+    elif w.endswith("ed") and len(w) >= 5:
+        w = w[:-2]
+    elif w.endswith("es") and len(w) >= 5:
+        w = w[:-2]
+    elif w.endswith("s") and len(w) >= 4 and not w.endswith("ss"):
+        w = w[:-1]
+    return w[:-1] if w.endswith("e") and len(w) > 3 else w
+
+
+def gloss_tokens(s: str) -> tuple[str, ...]:
+    """The stemmed content words of an English meaning or gloss ("to come
+    (spatially or temporally)" -> ("com",)); a meaning made only of small
+    words keeps them ("in")."""
+    ws = _WORD.findall(norm_en(s))
+    return tuple(_stem(w) for w in ws if w not in EN_STOP) or tuple(ws)
+
+
+def gloss_match(meaning: tuple[str, ...], gloss: tuple[str, ...]) -> float:
+    """How well a KANJIDIC2 meaning matches a word's gloss (token tuples)."""
+    if not meaning or not gloss:
+        return 0.0
+    if meaning == gloss:
+        return 1.0
+    if set(meaning) <= set(gloss):
+        return PARTIAL / max(1, len(gloss) - len(meaning))
+    if len(meaning) == 1 and len(gloss) == 1 and same_stem(meaning[0], gloss[0]):
+        return STEM
+    return 0.0
+
+
+@dataclass(frozen=True)
+class VocabWord:
+    word: str                         # as written, with kanji (飛行機)
+    reading: str
+    level: int                        # 5 = N5 .. 1 = N1
+    senses: tuple[tuple[str, ...], ...]  # JMdict's English glosses, by sense
+
+
+def parse_jmdict_glosses(source: str | Path | bytes, kebs: set[str] | None = None
+                         ) -> dict[tuple[str, str], list[list[str]]]:
+    """(kanji form, reading) -> the English glosses of its senses, in order,
+    from JMdict (all entries with that pair; senses restricted to other forms
+    or readings left out). Only the forms in `kebs`, when given."""
+    from .readings import _read_maybe_gz
+
+    data = _read_maybe_gz(source)
+    out: dict[tuple[str, str], list[list[str]]] = defaultdict(list)
+    for _, el in ET.iterparse(io.BytesIO(data), events=("end",)):
+        if el.tag != "entry":
+            continue
+        forms = [k.findtext("keb") or "" for k in el.findall("k_ele")]
+        if kebs is not None:
+            forms = [f for f in forms if f in kebs]
+        if forms:
+            rebs = [(r.findtext("reb") or "", {x.text for x in r.findall("re_restr")})
+                    for r in el.findall("r_ele") if r.find("re_nokanji") is None]
+            senses = []
+            for s in el.findall("sense"):
+                gl = [g.text for g in s.findall("gloss") if g.text]
+                if gl:
+                    senses.append(({x.text for x in s.findall("stagk")},
+                                   {x.text for x in s.findall("stagr")}, gl))
+            for keb in forms:
+                for reb, restr in rebs:
+                    if restr and keb not in restr:
+                        continue
+                    ss = [gl for sk, sr, gl in senses
+                          if (not sk or keb in sk) and (not sr or reb in sr)]
+                    if ss:
+                        out[(keb, reb)].extend(ss)
+        el.clear()
+    return dict(out)
+
+
+def load_learner_vocab(jlpt_vocab: dict[tuple[str, str], int],
+                       jmdict: str | Path | bytes) -> list[VocabWord]:
+    """The JLPT vocabulary words written with kanji, with their JMdict glosses
+    (by word and reading; a word whose reading JMdict does not pair with it
+    takes its form's first entry)."""
+    from .readings import is_kanji
+
+    words = {w for w, _ in jlpt_vocab if any(is_kanji(c) for c in w)}
+    glosses = parse_jmdict_glosses(jmdict, words)
+    by_form: dict[str, list[list[str]]] = {}
+    for (keb, _), ss in glosses.items():
+        by_form.setdefault(keb, ss)
+    out = []
+    for (w, r), level in sorted(jlpt_vocab.items()):
+        if w not in words:
+            continue
+        ss = glosses.get((w, r)) or by_form.get(w)
+        if ss:
+            out.append(VocabWord(w, r, level, tuple(tuple(s) for s in ss)))
+    return out
+
+
+class EnglishOrder:
+    """Orders a kanji's KANJIDIC2 English meanings by the learner signal."""
+
+    def __init__(self, vocab: list[VocabWord]):
+        from .readings import is_kanji
+
+        self.by_kanji: dict[str, list[tuple[VocabWord, int]]] = defaultdict(list)
+        for v in vocab:
+            ks = {c for c in v.word if is_kanji(c)}
+            for c in ks:
+                self.by_kanji[c].append((v, len(ks)))
+        self._tokens: dict[str, tuple[str, ...]] = {}
+
+    def _tok(self, s: str) -> tuple[str, ...]:
+        t = self._tokens.get(s)
+        if t is None:
+            t = self._tokens[s] = gloss_tokens(s)
+        return t
+
+    def scores(self, kanji: str, english: list[str]) -> list[float]:
+        """Each meaning's score: over the JLPT words with the kanji, the word's
+        level weight / its number of kanji x its best match (sense and gloss
+        position weighted). Below MIN_SCORE: 0."""
+        mts = [self._tok(m) for m in english]
+        sc = [0.0] * len(english)
+        for v, nk in self.by_kanji.get(kanji, ()):
+            best = [0.0] * len(english)
+            for s, gl in enumerate(v.senses[:SENSES]):
+                for p, g in enumerate(gl):
+                    w = 1.0 / ((1 + s) * (1 + GLOSS_STEP * p))
+                    gt = self._tok(g)
+                    for i, mt in enumerate(mts):
+                        x = w * gloss_match(mt, gt)
+                        if x > best[i]:
+                            best[i] = x
+            weight = LEVEL_WEIGHT.get(v.level, 1.0) / nk
+            for i in range(len(english)):
+                sc[i] += weight * best[i]
+        return [x if x >= MIN_SCORE else 0.0 for x in sc]
+
+    def order(self, kanji: str, english: list[str]) -> list[str]:
+        sc = self.scores(kanji, english)
+        return [english[i] for i in sorted(range(len(english)), key=lambda i: (-sc[i], i))]
+
+
+# --- overrides (C) -------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Override:
+    kanji: str
+    lang: str
+    order: tuple[str, ...]   # these KANJIDIC2 meanings first, in this order
+    reason: str
+    line: int
+
+
+def load_overrides(source: str | Path) -> dict[tuple[str, str], Override]:
+    """The override table: tab-separated `kanji, lang, first, [order], reason`;
+    `order` (optional) lists more meanings, `; `-separated, to follow `first`.
+    `#` starts a comment line. Raises ValueError on a malformed line."""
+    out: dict[tuple[str, str], Override] = {}
+    for n, line in enumerate(Path(source).read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip() or line.startswith("#"):
+            continue
+        cols = line.split("\t")
+        if len(cols) != 5:
+            raise ValueError(f"meaning overrides line {n}: {len(cols)} columns, expected 5")
+        kanji, lang, first, rest, reason = (c.strip() for c in cols)
+        if len(kanji) != 1 or lang not in ("en", "es", "fr", "pt") or not first or not reason:
+            raise ValueError(f"meaning overrides line {n}: bad kanji, language, meaning or reason")
+        order = (first,) + tuple(m.strip() for m in rest.split(";") if m.strip())
+        if len(set(order)) != len(order):
+            raise ValueError(f"meaning overrides line {n}: a meaning is listed twice")
+        if (kanji, lang) in out:
+            raise ValueError(f"meaning overrides line {n}: {kanji} {lang} is already overridden")
+        out[(kanji, lang)] = Override(kanji, lang, order, reason, n)
+    return out
+
+
+def check_overrides(overrides: dict[tuple[str, str], Override], raw: list) -> list[str]:
+    """Every override names a kanji of KANJIDIC2 and only meanings it has in
+    that language (no new text)."""
+    meanings = {chr(k.codepoint): k.meanings for k in raw}
+    errors = []
+    for (kanji, lang), ov in sorted(overrides.items(), key=lambda x: x[1].line):
+        have = meanings.get(kanji, {}).get(lang)
+        if not have:
+            errors.append(f"line {ov.line}: {kanji} has no {lang} meanings in KANJIDIC2")
+            continue
+        missing = [m for m in ov.order if m not in have]
+        if missing:
+            errors.append(f"line {ov.line}: {kanji} {lang}: not a KANJIDIC2 meaning: "
+                          + ", ".join(repr(m) for m in missing))
+    return errors
+
+
+def apply_override(glosses: list[str], ov: Override | None) -> list[str]:
+    if ov is None:
+        return list(glosses)
+    return list(ov.order) + [g for g in glosses if g not in ov.order]
+
+
+# --- all together ---------------------------------------------------------------------
+
 @dataclass
 class MeaningStats:
-    kanji: int = 0           # kanji with meanings in the language and in English
+    kanji: int = 0           # kanji with meanings in the language (and English)
     first_changed: int = 0   # ... whose first meaning changed
     glosses: int = 0
-    matched: int = 0         # glosses matched to an English gloss
+    matched: int = 0         # glosses matched to an English gloss (B)
+    overridden: int = 0
 
 
-def reorder_raw(raw: list, order: MeaningOrder, lang: str) -> tuple[list, MeaningStats]:
-    """Copies of the RawKanji with their `lang` meanings in the English order."""
+def reorder_raw(raw: list, lang: str, english: EnglishOrder | None = None,
+                spanish: MeaningOrder | None = None,
+                overrides: dict[tuple[str, str], Override] | None = None
+                ) -> tuple[list, MeaningStats]:
+    """Copies of the RawKanji with their English meanings in the learner order
+    (A, when `english` is given) and their `lang` meanings in the order of the
+    (new) English ones (B, when `spanish` is given), overrides applied (C)."""
+    overrides = overrides or {}
     st = MeaningStats()
     out = []
     for k in raw:
-        xs, en = k.meanings.get(lang, []), k.meanings.get("en", [])
-        if not xs or not en:
-            out.append(k)
-            continue
-        ranked = order.ranked(xs, en)
-        new = [g for g, _ in ranked]
-        st.kanji += 1
-        st.first_changed += new[0] != xs[0]
-        st.glosses += len(xs)
-        st.matched += sum(1 for _, m in ranked if m)
-        out.append(replace(k, meanings={**k.meanings, lang: new}))
+        ch = chr(k.codepoint)
+        ms = dict(k.meanings)
+        en = ms.get("en", [])
+        if en:
+            new_en = english.order(ch, en) if english else list(en)
+            ov = overrides.get((ch, "en"))
+            ms["en"] = apply_override(new_en, ov)
+            if lang == "en":
+                st.kanji += 1
+                st.first_changed += ms["en"][0] != en[0]
+                st.overridden += ov is not None
+        xs = ms.get(lang, [])
+        if lang != "en" and xs:
+            st.kanji += 1
+            new = list(xs)
+            if spanish and ms.get("en"):
+                ranked = spanish.ranked(xs, ms["en"])
+                new = [g for g, _ in ranked]
+                st.glosses += len(xs)
+                st.matched += sum(1 for _, m in ranked if m)
+            ov = overrides.get((ch, lang))
+            ms[lang] = apply_override(new, ov)
+            st.overridden += ov is not None
+            st.first_changed += ms[lang][0] != xs[0]
+        out.append(replace(k, meanings=ms) if ms != k.meanings else k)
     return out, st

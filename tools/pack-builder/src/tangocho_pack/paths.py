@@ -32,3 +32,7 @@ JOYO_PDF = READINGS_DIR / "joyokanjihyo_20101130.pdf"
 # `fetch --meanings` gets it. FreeDict's English-Spanish dictionary (WikDict).
 MEANINGS_DIR = CACHE / "meanings"
 FREEDICT_ENG_SPA = MEANINGS_DIR / "freedict-eng-spa-2025.11.23.src.tar.xz"
+# Project-authored data, committed (not downloaded): the hand-checked meaning
+# overrides of `build --meaning-order`.
+DATA = ROOT / "data"
+MEANING_OVERRIDES = DATA / "meaning_overrides.tsv"

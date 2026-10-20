@@ -1,0 +1,36 @@
+# Meaning overrides for `tangocho-pack build --meaning-order` (docs/meaning-order.md).
+# Authored by the Tangocho project; distributed with the packs under CC BY-SA
+# (docs/data-sources.md). Only for clear errors in JLPT N5-N3 that the learner
+# signal and the English-Spanish matching leave; each line puts one of
+# KANJIDIC2's own meanings for that kanji and language first (never new text).
+# An English line also steers the Spanish order, which follows the English one.
+#
+# Columns (tab-separated): kanji, language (en/es), the meaning to put first,
+# more meanings to follow it ("; "-separated, may be empty), the reason.
+中	es	dentro		JLPT words favour "middle" (centro); keep "inside" (中に), as in the English list
+事	en	matter		"business" comes from compounds (仕事); 事 is a thing or matter
+意	en	idea		"care" comes from one compound (注意); 意 is idea, mind (意味, 意見)
+家	en	house		"family" comes from compounds (家族); 家 alone is house, home
+屋	en	shop		KANJIDIC2 lists "roof" first; 屋 is the shop of 本屋, 花屋 (and 部屋)
+早	en	early		JMdict merges 早い (early) with 速い (fast)
+不	en	negative		"bad" comes from compounds (不便); 不 is the negative prefix
+転	en	revolve		"change" comes from rare compounds; 転 turns, rolls (回転, 運転, 転ぶ)
+計	es	medir		"plan" (計画) has no Spanish gloss but "pensar"; 計 measures (時計, 計算)
+図	es	dibujo		"plan" (planear) overtakes the drawing / map sense
+勉	es	esforzarse		"ejercitarse" relates to "exertion"; 勉 is effort (勉強)
+位	en	rank		"about" is ぐらい (位); 位 is rank, grade
+機	en	machine		"airplane" comes from 飛行機; 機 is machine, mechanism (機械)
+刻	en	engrave		JMdict lists "mince" first for 刻む; 刻 is carve, engrave (時刻: time)
+息	en	breath		"son" comes from 息子; 息 alone is breath
+助	en	help		JMdict lists "rescue" first for 助ける; 助 is help (手助け, 助手)
+申	es	decir		the English list has no "say"; 申す is the humble "say"
+過	es	pasar		"error" (過ち) overtakes pass, exceed (過ぎる, 過去)
+御	es	prefijo honorífico		the honorific prefix (御飯, 御手洗い) matches no English gloss
+構	es	construir		"poner" is matched to "stance" through a synonym; 構 is build, posture (構造)
+合	es	adecuado		"sentar bien" is a narrow sense of "suit"; 合 fits, matches (合う)
+収	en	income		"store" comes from 収める; 収 is income, obtain (収入)
+突	en	sudden		"collision" comes from 衝突; learners meet 突 in 突然 (sudden)
+組	es	grupo		the English list has no "group"; 組 is a group, a class (組, 番組)
+確	es	seguro		"afirmar" (affirm) is matched to "firm"; 確 is certain, sure (確か)
+説	es	explicar		"teoría" ties with "explicar" and comes first; 説 explains (説明)
+演	es	representar		"realizar" relates to "performance"; 演 performs, acts (演技, 演劇)

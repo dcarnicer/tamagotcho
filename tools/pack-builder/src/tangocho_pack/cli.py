@@ -19,32 +19,41 @@ def cmd_fetch(a) -> int:
 
 
 def _meaning_order(raw: list, lang: str) -> list | None:
-    """`build --meaning-order`: the `lang` meanings in the order of the English
-    ones (docs/meaning-order.md); None after printing an error. Only for a
-    language in meanings.LANGS: English is the reference, and fr/pt have no
-    dictionary (the flag still keeps meaning distractors away from the meanings
-    the pack leaves out, in every language: cmd_build)."""
-    from .meanings import LANGS, MeaningOrder, load_freedict, reorder_raw
+    """`build --meaning-order` (docs/meaning-order.md): English meanings in the
+    learner order (JLPT vocabulary + JMdict glosses), Spanish ones in the order
+    of the new English ones (FreeDict's dictionary), then the project's
+    overrides; None after printing an error. fr/pt have no dictionary: they
+    keep KANJIDIC2's order (the flag still reorders the English meanings their
+    fallback cards show, and keeps meaning distractors away from the meanings
+    the pack leaves out: cmd_build)."""
+    from .meanings import (LANGS, EnglishOrder, MeaningOrder, check_overrides, load_freedict,
+                           load_learner_vocab, load_overrides, reorder_raw)
+    from .readings import load_jlpt_vocab
 
-    if lang == "en":
-        print("meaning order: English is the reference order, nothing to reorder; meaning "
-              "distractors avoid every meaning of a card")
-        return raw
-    if lang not in LANGS:
-        print(f"warning: --meaning-order has no dictionary for {lang!r}: its meanings keep "
-              "KANJIDIC2's order (meaning distractors avoid every meaning of a card)",
-              file=sys.stderr)
-        return raw
-    if not paths.FREEDICT_ENG_SPA.exists():
-        print(f"error: --meaning-order needs {paths.FREEDICT_ENG_SPA.name}: run "
-              "`tangocho-pack fetch --meanings`", file=sys.stderr)
+    need = [paths.JMDICT_GZ, *paths.JLPT_VOCAB.values()]
+    if lang in LANGS:
+        need.append(paths.FREEDICT_ENG_SPA)
+    missing = [p for p in need if not p.exists()]
+    if missing:
+        print("error: --meaning-order needs " + ", ".join(p.name for p in missing)
+              + ": run `tangocho-pack fetch --readings --meanings`", file=sys.stderr)
         return None
     try:
-        order = MeaningOrder(load_freedict(paths.FREEDICT_ENG_SPA))
+        overrides = load_overrides(paths.MEANING_OVERRIDES)
+        errors = check_overrides(overrides, raw)
+        if errors:
+            raise ValueError(f"{paths.MEANING_OVERRIDES.name}: " + "; ".join(errors))
+        english = EnglishOrder(load_learner_vocab(load_jlpt_vocab(paths.JLPT_VOCAB),
+                                                  paths.JMDICT_GZ))
+        spanish = MeaningOrder(load_freedict(paths.FREEDICT_ENG_SPA)) if lang in LANGS else None
     except (ValueError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return None
-    return reorder_raw(raw, order, lang)[0]
+    if lang != "en" and lang not in LANGS:
+        print(f"warning: --meaning-order has no dictionary for {lang!r}: its meanings keep "
+              "KANJIDIC2's order (meaning distractors avoid every meaning of a card)",
+              file=sys.stderr)
+    return reorder_raw(raw, lang, english, spanish, overrides)[0]
 
 
 def _common_readings(raw: list) -> tuple[list, object] | None:
@@ -133,7 +142,7 @@ def cmd_build(a) -> int:
                 return 2
             raw = got[0]
         from .meanings import LANGS as MEANING_LANGS
-        reorder_meanings = a.meaning_order and a.lang in MEANING_LANGS
+        reorder_meanings = a.meaning_order and (a.lang == "en" or a.lang in MEANING_LANGS)
         meanings_before = {k.codepoint: k.meanings.get(a.lang, []) for k in raw}
         if a.meaning_order:
             got = _meaning_order(raw, a.lang)
@@ -386,13 +395,14 @@ def main(argv: list[str] | None = None) -> int:
                         "frequencies), so the device asks a common reading; every reading is "
                         "kept. Needs `fetch --readings` (docs/common-readings.md)")
     s.add_argument("--meaning-order", action="store_true",
-                   help="order each kanji's Spanish meanings like its English ones (most "
-                        "common first): every Spanish gloss is matched to the English gloss it "
-                        "translates with an English-Spanish dictionary, unmatched ones last; "
-                        "the device shows the first. No glosses are added or removed. English "
-                        "is the reference (unchanged); fr/pt keep KANJIDIC2's order. In every "
-                        "language, meaning distractors also avoid the meanings the pack leaves "
-                        "out. Needs `fetch --meanings` for es (docs/meaning-order.md)")
+                   help="put each kanji's most useful meaning first (the device shows the "
+                        "first): English meanings by the JLPT vocabulary words that use the "
+                        "kanji (their JMdict glosses, easier levels first), Spanish ones in the "
+                        "order of the English ones they translate (an English-Spanish "
+                        "dictionary), then a short hand-checked override table. No meaning is "
+                        "added or removed; fr/pt keep KANJIDIC2's order. In every language, "
+                        "meaning distractors also avoid the meanings the pack leaves out. Needs "
+                        "`fetch --readings --meanings` (docs/meaning-order.md)")
     s.add_argument("--name", help="deck name (default derived from filters)")
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(fn=cmd_build)

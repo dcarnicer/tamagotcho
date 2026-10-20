@@ -15,7 +15,7 @@ uv run tangocho-pack build --joyo --lang es --strokes -o out/joyo-es.tgc
 uv run tangocho-pack fetch --readings # optional: word data for --common-readings -> cache/readings/
 uv run tangocho-pack build --jlpt 5 --lang es --common-readings -o out/n5-es-common.tgc
 uv run python scripts/common_readings_report.py   # what --common-readings changes
-uv run tangocho-pack fetch --meanings # optional: English-Spanish dictionary for --meaning-order
+uv run tangocho-pack fetch --meanings # optional: English-Spanish dictionary for --meaning-order (with --readings)
 uv run tangocho-pack build --jlpt 5 --lang es --meaning-order -o out/n5-es-meanings.tgc
 uv run python scripts/meaning_order_report.py     # what --meaning-order changes
 uv run tangocho-pack build --wanikani-token "$WANIKANI_TOKEN" -o out/wanikani.tgc
@@ -80,22 +80,27 @@ uv run pytest
   changes for JLPT N5-N1 and the Jōyō kanji; `scripts/check_reading_distractors.py
   out/*.tgc` checks built packs (the reading-distractor invariant against the
   full KANJIDIC2 readings, and how often a precomputed list is short).
-  `--meaning-order` (needs `fetch --meanings` for Spanish, adds ~1 s) puts each
-  card's Spanish meanings in the order of its English ones, since KANJIDIC2
-  lists English most common first and Spanish often not (持 "duración;
-  propiedad" becomes "sostener; mantener"): each Spanish gloss is matched to
-  the English gloss it translates (FreeDict's dictionary, then related forms:
-  a shared stem, a cognate, head words, a near-synonym), unmatched glosses
-  last, ties in KANJIDIC2's order (docs/meaning-order.md). The caps (as many
-  meanings as English, at most three) apply afterwards, so the pack keeps the
-  glosses that match. English is the reference and `fr`/`pt` have no
-  dictionary: their order is unchanged (a warning says so). In every language
-  the flag also keeps meaning distractors away from all of a card's KANJIDIC2
-  meanings, not only the stored ones. Without the flag the output is unchanged;
-  it cannot be combined with `--wanikani-token`.
+  `--meaning-order` (needs `fetch --readings --meanings`, adds ~2 s) puts each
+  card's most useful meaning first, the one the device shows
+  (docs/meaning-order.md). English: each KANJIDIC2 meaning is scored by the
+  JLPT vocabulary words that contain the kanji, through their JMdict glosses
+  (easier levels and words that are more of the kanji count more), so 私
+  "private; I; me" becomes "I; me; private". Spanish: each gloss is matched to
+  the English gloss it translates (FreeDict's dictionary, then related forms: a
+  shared stem, a cognate, head words, a near-synonym) and follows the new
+  English order, unmatched glosses last, ties in KANJIDIC2's order (持
+  "duración; propiedad" becomes "sostener; mantener"). Last, the project's
+  `data/meaning_overrides.tsv` puts a hand-checked KANJIDIC2 meaning first
+  where both still go wrong (機 "machine"); the builder refuses an override that
+  names a meaning KANJIDIC2 lacks. The caps (as many meanings as English, at
+  most three) apply afterwards. `fr`/`pt` have no dictionary: their order is
+  unchanged (a warning says so). In every language the flag also keeps meaning
+  distractors away from all of a card's KANJIDIC2 meanings, not only the stored
+  ones. Without the flag the output is unchanged; it cannot be combined with
+  `--wanikani-token`.
   `scripts/meaning_order_report.py` prints what it changes for JLPT N5-N1 and
-  the Jōyō kanji (totals, a sanity table, every N5 change, the cases to
-  double-check); `scripts/check_meaning_distractors.py out/*.tgc` checks built
+  the Jōyō kanji (totals per language and level, a sanity table, every N5-N3
+  change, the overrides, the cases to double-check); `scripts/check_meaning_distractors.py out/*.tgc` checks built
   packs (no meaning distractor shows a meaning of its card, or has the card's
   first meaning among its own, against KANJIDIC2's full lists).
 - `build --wanikani-token TOKEN [--wanikani-level N ...]` builds from **your own

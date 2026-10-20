@@ -1,9 +1,12 @@
-"""`build --meaning-order`: Spanish meanings in the order of the English ones.
-The dictionary and kanji here are hand-written miniatures in the sources'
-formats (FreeDict TEI, KANJIDIC2) with invented glosses, not copied from them."""
+"""`build --meaning-order`: English meanings by the learner signal, Spanish ones
+in the order of the English ones, and the overrides. The dictionary, JMdict
+entries, vocabulary lists and kanji here are hand-written miniatures in the
+sources' formats (FreeDict TEI, JMdict, Anki decks, KANJIDIC2) with invented
+glosses, not copied from them."""
 
 import io
 import json
+import sqlite3
 import tarfile
 
 import pytest
@@ -12,18 +15,30 @@ from tangocho_pack import build, cli, fetch, paths
 from tangocho_pack.distractors import meaning_distractors
 from tangocho_pack.kanjidic import Card, RawKanji, make_cards, parse_kanjidic
 from tangocho_pack.meanings import (
+    MIN_SCORE,
+    EnglishOrder,
     MeaningOrder,
+    Override,
+    VocabWord,
+    apply_override,
+    check_overrides,
     cognate,
     en_heads,
     en_variants,
     es_heads,
     es_variants,
+    gloss_match,
+    gloss_tokens,
     load_freedict,
+    load_learner_vocab,
+    load_overrides,
     norm_en,
     norm_es,
+    parse_jmdict_glosses,
     reorder_raw,
     same_stem,
 )
+from tangocho_pack.readings import load_jlpt_vocab
 
 # --- a miniature FreeDict TEI --------------------------------------------------------
 
@@ -40,6 +55,8 @@ ENTRIES = {
     "bright": ["claro", "brillante"],
     "rise": ["levantarse"],
     "bird": ["pájaro", "ave"],
+    "i": ["yo"],
+    "private": ["privado"],
 }
 
 
@@ -170,16 +187,173 @@ def test_head_words_and_synonyms(order):
     assert order.order(["superior", "debajo"], ["below", "superior"]) == ["superior", "debajo"]
 
 
-def test_reorder_raw_only_reorders(order):
-    k = RawKanji(0x6301, {"en": ["hold", "have"], "es": ["periodo", "sostener", "poseer"],
-                          "fr": ["porter", "tenir"]}, [], [], 0, 3, 9, 0)
+# --- English: the learner signal -----------------------------------------------------------
+
+JMDICT = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE JMdict [
+<!ELEMENT JMdict (entry*)>
+<!ENTITY n "noun (common) (futsuumeishi)">
+<!ENTITY v5t "Godan verb with 'tsu' ending">
+]>
+<JMdict>
+<entry><ent_seq>1</ent_seq><k_ele><keb>私</keb></k_ele>
+<r_ele><reb>わたし</reb></r_ele><r_ele><reb>わたくし</reb></r_ele>
+<sense><pos>&n;</pos><gloss>I</gloss><gloss>me</gloss></sense>
+<sense><stagr>わたくし</stagr><gloss>privacy</gloss></sense></entry>
+<entry><ent_seq>2</ent_seq><k_ele><keb>私立</keb></k_ele><r_ele><reb>しりつ</reb></r_ele>
+<sense><gloss>private (establishment)</gloss></sense></entry>
+<entry><ent_seq>3</ent_seq><k_ele><keb>持つ</keb></k_ele><r_ele><reb>もつ</reb></r_ele>
+<sense><pos>&v5t;</pos><gloss>to hold (in one's hand)</gloss><gloss>to take</gloss></sense>
+<sense><gloss>to have</gloss><gloss>to own</gloss></sense></entry>
+<entry><ent_seq>4</ent_seq><k_ele><keb>機械</keb></k_ele><r_ele><reb>きかい</reb></r_ele>
+<sense><gloss>machine</gloss></sense></entry>
+</JMdict>"""
+
+
+def anki_deck(path, rows):
+    """A miniature Anki 1.x deck: the two tables load_jlpt_vocab reads."""
+    con = sqlite3.connect(path)
+    con.execute("create table fieldModels (id integer, name text, ordinal integer)")
+    con.execute("create table fields (factId integer, fieldModelId integer, ordinal integer, "
+                "value text)")
+    con.executemany("insert into fieldModels values (?, ?, ?)", [(7, "Front", 0), (8, "Back", 1)])
+    for i, (front, back) in enumerate(rows):
+        con.execute("insert into fields values (?, 7, 0, ?)", (i, front))
+        con.execute("insert into fields values (?, 8, 1, ?)", (i, back))
+    con.commit()
+    con.close()
+    return path
+
+
+VOCAB = {5: [("私", "わたし"), ("持つ", "もつ")], 4: [], 3: [("私立", "しりつ")], 2: [],
+         1: [("機械", "きかい")]}
+
+
+def vocab_files(tmp_path):
+    return {n: anki_deck(tmp_path / f"n{n}.anki", rows) for n, rows in VOCAB.items()}
+
+
+def test_gloss_tokens_and_match():
+    assert gloss_tokens("to come (spatially or temporally)") == gloss_tokens("come") == ("com",)
+    assert gloss_tokens("going") == gloss_tokens("to go") == ("go",)
+    assert gloss_tokens("in") == ("in",)                    # only small words: kept
+    assert gloss_match(gloss_tokens("next"), gloss_tokens("next")) == 1.0
+    assert gloss_match(gloss_tokens("next"), gloss_tokens("next week")) == 0.25
+    assert gloss_match(gloss_tokens("next"), gloss_tokens("year after next")) == 0.125
+    assert gloss_match(gloss_tokens("original"), gloss_tokens("origin")) == 0.5
+    assert gloss_match(gloss_tokens("machine"), gloss_tokens("mechanism")) == 0.0
+
+
+def test_parse_jmdict_glosses_restrictions():
+    g = parse_jmdict_glosses(JMDICT.encode())
+    assert g[("私", "わたし")] == [["I", "me"]]
+    assert g[("私", "わたくし")] == [["I", "me"], ["privacy"]]   # stagr
+    assert parse_jmdict_glosses(JMDICT.encode(), {"機械"}).keys() == {("機械", "きかい")}
+
+
+def test_load_learner_vocab(tmp_path):
+    vocab = load_learner_vocab(load_jlpt_vocab(vocab_files(tmp_path)), JMDICT.encode())
+    by = {v.word: v for v in vocab}
+    assert by["私"].level == 5 and by["私"].senses == (("I", "me"),)
+    assert by["機械"].level == 1 and set(by) == {"私", "持つ", "私立", "機械"}
+
+
+def test_english_order_scores():
+    eo = EnglishOrder([VocabWord("私", "わたし", 5, (("I", "me"),)),
+                       VocabWord("私立", "しりつ", 3, (("private (establishment)",),)),
+                       VocabWord("機械", "きかい", 1, (("machine",),))])
+    # N5 word of the kanji alone: 16; second gloss 16 / 1.2; N3 two-kanji word: 4 / 2.
+    assert eo.scores("私", ["private", "I", "me"]) == pytest.approx([2.0, 16.0, 16 / 1.2])
+    assert eo.order("私", ["private", "I", "me"]) == ["I", "me", "private"]
+    # An N1 two-kanji word gives 1.5 / 2 < MIN_SCORE: no evidence, KANJIDIC2's order.
+    assert 1.5 / 2 < MIN_SCORE
+    assert eo.order("機", ["loom", "machine"]) == ["loom", "machine"]
+    assert eo.order("持", ["hold", "have"]) == ["hold", "have"]       # no words: unchanged
+
+
+# --- overrides ---------------------------------------------------------------------------
+
+def test_load_and_apply_overrides(tmp_path):
+    f = tmp_path / "o.tsv"
+    f.write_text("# comment\n持\tes\tposesión\tsostener; periodo\tbecause\n"
+                 "私\ten\tI\t\tthe N5 word\n", encoding="utf-8")
+    ov = load_overrides(f)
+    assert ov[("持", "es")].order == ("posesión", "sostener", "periodo")
+    assert apply_override(["sostener", "periodo", "posesión", "x"], ov[("持", "es")]) == [
+        "posesión", "sostener", "periodo", "x"]
+    assert apply_override(["me", "I"], ov[("私", "en")]) == ["I", "me"]
+    assert apply_override(["a"], None) == ["a"]
+
+
+@pytest.mark.parametrize("line", ["持\tes\tposesión\treason",            # 4 columns
+                                  "持\tes\t\t\treason",                   # no meaning
+                                  "持\txx\tposesión\t\treason",           # language
+                                  "持つ\tes\tposesión\t\treason",         # not one kanji
+                                  "持\tes\tposesión\tposesión\treason",   # listed twice
+                                  "持\tes\tposesión\t\t"])                # no reason
+def test_overrides_reject_malformed_lines(tmp_path, line):
+    f = tmp_path / "o.tsv"
+    f.write_text(line + "\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_overrides(f)
+
+
+def test_overrides_reject_a_second_line_for_a_kanji(tmp_path):
+    f = tmp_path / "o.tsv"
+    f.write_text("持\tes\ta\t\tr\n持\tes\tb\t\tr\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_overrides(f)
+
+
+def test_check_overrides_only_kanjidic2_meanings():
+    raw = [RawKanji(0x6301, {"en": ["hold"], "es": ["sostener", "periodo"]}, [], [], 0, 3, 9, 0)]
+    ok = {("持", "es"): Override("持", "es", ("periodo",), "r", 1)}
+    assert check_overrides(ok, raw) == []
+    bad = {("持", "es"): Override("持", "es", ("tener",), "r", 1),
+           ("持", "fr"): Override("持", "fr", ("tenir",), "r", 2),
+           ("私", "en"): Override("私", "en", ("I",), "r", 3)}
+    errors = check_overrides(bad, raw)
+    assert len(errors) == 3 and "'tener'" in errors[0]
+
+
+def test_committed_overrides_parse():
+    ov = load_overrides(paths.MEANING_OVERRIDES)
+    assert 0 < len(ov) <= 40
+    assert {lang for _, lang in ov} <= {"en", "es"}
+
+
+@pytest.mark.skipif(not paths.KANJIDIC_GZ.exists(), reason="run `tangocho-pack fetch`")
+def test_committed_overrides_use_kanjidic2_meanings():
+    assert check_overrides(load_overrides(paths.MEANING_OVERRIDES),
+                           parse_kanjidic(paths.KANJIDIC_GZ)) == []
+
+
+# --- all together ------------------------------------------------------------------------
+
+def test_reorder_raw_english_then_spanish_then_overrides(order):
+    eo = EnglishOrder([VocabWord("私", "わたし", 5, (("I", "me"),))])
+    shi = RawKanji(0x79C1, {"en": ["private", "I", "me"], "es": ["privado", "yo"],
+                            "fr": ["privé", "je"]}, [], [], 0, 6, 7, 0)
+    ji = RawKanji(0x6301, {"en": ["hold", "have"], "es": ["periodo", "sostener", "poseer"]},
+                  [], [], 0, 3, 9, 0)
     no_es = RawKanji(0x4E00, {"en": ["one"]}, [], [], 0, 1, 1, 0)
-    out, st = reorder_raw([k, no_es], order, "es")
-    assert out[0].meanings["es"] == ["sostener", "poseer", "periodo"]
-    assert out[0].meanings["en"] == ["hold", "have"] and out[0].meanings["fr"] == ["porter", "tenir"]
-    assert k.meanings["es"] == ["periodo", "sostener", "poseer"]     # the input is not changed
-    assert out[1] is no_es
-    assert (st.kanji, st.first_changed, st.glosses, st.matched) == (1, 1, 3, 2)
+    out, st = reorder_raw([shi, ji, no_es], "es", eo, order)
+    assert out[0].meanings["en"] == ["I", "me", "private"]
+    assert out[0].meanings["es"] == ["yo", "privado"]               # by the new English order
+    assert out[0].meanings["fr"] == ["privé", "je"]
+    assert out[1].meanings["es"] == ["sostener", "poseer", "periodo"]
+    assert shi.meanings["en"] == ["private", "I", "me"]              # the input is not changed
+    assert out[2] is no_es
+    assert (st.kanji, st.first_changed, st.glosses, st.matched) == (2, 2, 5, 4)
+    ov = {("持", "es"): Override("持", "es", ("periodo",), "r", 1),
+          ("私", "en"): Override("私", "en", ("me",), "r", 2)}
+    out, st = reorder_raw([shi, ji], "es", eo, order, ov)
+    assert out[1].meanings["es"] == ["periodo", "sostener", "poseer"] and st.overridden == 1
+    assert out[0].meanings["en"] == ["me", "I", "private"]
+    out, st = reorder_raw([shi, ji], "en", eo, None, ov)
+    assert out[0].meanings["en"] == ["me", "I", "private"]
+    assert out[0].meanings["es"] == ["privado", "yo"]
+    assert (st.kanji, st.first_changed, st.overridden) == (2, 1, 1)
 
 
 # --- cards and distractors ------------------------------------------------------------
@@ -189,7 +363,7 @@ def test_cap_applies_after_reordering_and_valid_meanings(order):
                  ["ジ"], [], 0, 3, 9, 0)
     plain = make_cards([k], "es")[0]
     assert plain.meanings == ["periodo", "posesión"] and plain.valid_meanings == []
-    out, _ = reorder_raw([k], order, "es")
+    out, _ = reorder_raw([k], "es", None, order)
     card = make_cards(out, "es", keep_all_meanings=True)[0]
     assert card.meanings == ["sostener", "periodo"]
     assert card.valid_meanings == ["sostener", "periodo", "posesión"]
@@ -225,6 +399,13 @@ KD2 = """<?xml version="1.0" encoding="UTF-8"?><kanjidic2>
 <meaning m_lang="es">sostener</meaning>
 <meaning m_lang="fr">porter</meaning><meaning m_lang="fr">tenir</meaning>
 </rmgroup></reading_meaning></character>
+<character><literal>私</literal><codepoint><cp_value cp_type="ucs">79c1</cp_value></codepoint>
+<misc><grade>6</grade><stroke_count>7</stroke_count></misc>
+<reading_meaning><rmgroup><reading r_type="ja_on">シ</reading>
+<meaning>private</meaning><meaning>I</meaning><meaning>me</meaning>
+<meaning m_lang="es">privado</meaning><meaning m_lang="es">yo</meaning>
+<meaning m_lang="fr">privé</meaning><meaning m_lang="fr">je</meaning>
+</rmgroup></reading_meaning></character>
 </kanjidic2>"""
 
 
@@ -233,9 +414,16 @@ def fake_inputs(monkeypatch, tmp_path):
     kd = tmp_path / "kanjidic2.xml"
     kd.write_text(KD2, encoding="utf-8")
     levels = tmp_path / "kanji.json"
-    levels.write_text(json.dumps({"持": {"jlpt_new": 4}}), encoding="utf-8")
+    levels.write_text(json.dumps({"持": {"jlpt_new": 4}, "私": {"jlpt_new": 4}}), encoding="utf-8")
+    jm = tmp_path / "JMdict_e"
+    jm.write_text(JMDICT, encoding="utf-8")
+    ov = tmp_path / "overrides.tsv"
+    ov.write_text("# none\n", encoding="utf-8")
     monkeypatch.setattr(paths, "KANJIDIC_GZ", kd)
     monkeypatch.setattr(paths, "KANJI_JSON", levels)
+    monkeypatch.setattr(paths, "JMDICT_GZ", jm)
+    monkeypatch.setattr(paths, "JLPT_VOCAB", vocab_files(tmp_path))
+    monkeypatch.setattr(paths, "MEANING_OVERRIDES", ov)
     monkeypatch.setattr(paths, "FREEDICT_ENG_SPA", tar_xz(tmp_path / "eng-spa.src.tar.xz", tei()))
     seen = {}
 
@@ -250,39 +438,63 @@ def fake_inputs(monkeypatch, tmp_path):
 def build_cards(seen, tmp_path, *args):
     with pytest.raises(_Stop):
         cli.main(["build", "--jlpt", "4", *args, "-o", str(tmp_path / "x.tgc")])
-    return seen["cards"]
+    return {c.char: c for c in seen["cards"]}
 
 
 def test_cli_meaning_order(fake_inputs, tmp_path, capsys):
-    (card,) = build_cards(fake_inputs, tmp_path, "--lang", "es", "--meaning-order")
-    assert card.meanings == ["sostener", "periodo"]
-    assert card.valid_meanings == ["sostener", "periodo", "posesión"]
-    assert "first meaning changed for 1 of 1 cards; the pack keeps other meanings for 1" in \
+    cards = build_cards(fake_inputs, tmp_path, "--lang", "es", "--meaning-order")
+    assert cards["持"].meanings == ["sostener", "periodo"]
+    assert cards["持"].valid_meanings == ["sostener", "periodo", "posesión"]
+    assert cards["私"].meanings == ["yo", "privado"]
+    assert "first meaning changed for 2 of 2 cards; the pack keeps other meanings for 1" in \
         capsys.readouterr().out
 
 
+def test_cli_meaning_order_english(fake_inputs, tmp_path, capsys):
+    cards = build_cards(fake_inputs, tmp_path, "--lang", "en", "--meaning-order")
+    assert cards["私"].meanings == ["I", "me", "private"]
+    assert cards["持"].meanings == ["hold", "have"]
+    assert "meaning order (en): first meaning changed for 1 of 2 cards" in capsys.readouterr().out
+
+
+def test_cli_meaning_order_overrides(fake_inputs, tmp_path):
+    paths.MEANING_OVERRIDES.write_text("持\tes\tposesión\t\tinvented\n", encoding="utf-8")
+    cards = build_cards(fake_inputs, tmp_path, "--lang", "es", "--meaning-order")
+    assert cards["持"].meanings == ["posesión", "sostener"]
+
+
+def test_cli_meaning_order_rejects_bad_overrides(fake_inputs, tmp_path, capsys):
+    paths.MEANING_OVERRIDES.write_text("持\tes\ttener\t\tnot a KANJIDIC2 meaning\n",
+                                       encoding="utf-8")
+    rc = cli.main(["build", "--jlpt", "4", "--lang", "es", "--meaning-order",
+                   "-o", str(tmp_path / "x.tgc")])
+    assert rc == 2 and "'tener'" in capsys.readouterr().err
+    assert "cards" not in fake_inputs
+
+
 def test_cli_default_keeps_kanjidic2_order(fake_inputs, tmp_path):
-    (card,) = build_cards(fake_inputs, tmp_path, "--lang", "es")
-    assert card.meanings == ["periodo", "posesión"] and card.valid_meanings == []
+    cards = build_cards(fake_inputs, tmp_path, "--lang", "es")
+    assert cards["持"].meanings == ["periodo", "posesión"] and cards["持"].valid_meanings == []
+    cards = build_cards(fake_inputs, tmp_path, "--lang", "en")
+    assert cards["私"].meanings == ["private", "I", "me"]
 
 
-@pytest.mark.parametrize("lang, meanings", [("en", ["hold", "have"]), ("fr", ["porter", "tenir"])])
-def test_cli_meaning_order_other_languages_keep_their_order(fake_inputs, tmp_path, monkeypatch,
-                                                            capsys, lang, meanings):
+def test_cli_meaning_order_french_keeps_its_order(fake_inputs, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(paths, "FREEDICT_ENG_SPA", tmp_path / "missing.tar.xz")  # not read
-    (card,) = build_cards(fake_inputs, tmp_path, "--lang", lang, "--meaning-order")
+    cards = build_cards(fake_inputs, tmp_path, "--lang", "fr", "--meaning-order")
     # Not reordered, but every meaning still keeps meaning distractors away.
-    assert card.meanings == meanings and card.valid_meanings == meanings
-    out = capsys.readouterr()
-    assert ("nothing to reorder" in out.out) if lang == "en" else ("no dictionary" in out.err)
+    assert cards["持"].meanings == ["porter", "tenir"]
+    assert cards["持"].valid_meanings == ["porter", "tenir"]
+    assert "no dictionary" in capsys.readouterr().err
 
 
-def test_cli_meaning_order_needs_fetch(fake_inputs, monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(paths, "FREEDICT_ENG_SPA", tmp_path / "missing.tar.xz")
+@pytest.mark.parametrize("missing", ["FREEDICT_ENG_SPA", "JMDICT_GZ"])
+def test_cli_meaning_order_needs_fetch(fake_inputs, monkeypatch, tmp_path, capsys, missing):
+    monkeypatch.setattr(paths, missing, tmp_path / "missing")
     rc = cli.main(["build", "--jlpt", "4", "--lang", "es", "--meaning-order",
                    "-o", str(tmp_path / "x.tgc")])
     assert rc == 2
-    assert "fetch --meanings" in capsys.readouterr().err
+    assert "fetch --readings --meanings" in capsys.readouterr().err
     assert "cards" not in fake_inputs
 
 
@@ -300,15 +512,27 @@ def test_fetch_pins_the_dictionary():
     assert len(fetch.SHA256[dest]) == 64
 
 
-# --- the real data (skipped without `fetch --meanings`) ----------------------------------
+# --- the real data (skipped without `fetch --readings --meanings`) ------------------------
 
-@pytest.mark.skipif(not (paths.KANJIDIC_GZ.exists() and paths.FREEDICT_ENG_SPA.exists()),
-                    reason="run `tangocho-pack fetch --meanings`")
+REAL = [paths.KANJIDIC_GZ, paths.FREEDICT_ENG_SPA, paths.JMDICT_GZ, *paths.JLPT_VOCAB.values()]
+
+
+@pytest.mark.skipif(not all(p.exists() for p in REAL),
+                    reason="run `tangocho-pack fetch --readings --meanings`")
 def test_real_data_sanity():
-    raw = [k for k in parse_kanjidic(paths.KANJIDIC_GZ) if chr(k.codepoint) in "持界題食書下人"]
-    out, _ = reorder_raw(raw, MeaningOrder(load_freedict(paths.FREEDICT_ENG_SPA)), "es")
-    first = {chr(k.codepoint): k.meanings["es"][0] for k in out}
-    assert first == {"持": "sostener", "界": "frontera", "題": "tema", "食": "comer",
-                     "書": "escribir", "下": "debajo", "人": "persona"}
-    for k, o in zip(raw, out):
-        assert sorted(k.meanings["es"]) == sorted(o.meanings["es"])
+    raw = parse_kanjidic(paths.KANJIDIC_GZ)
+    eo = EnglishOrder(load_learner_vocab(load_jlpt_vocab(paths.JLPT_VOCAB), paths.JMDICT_GZ))
+    mo = MeaningOrder(load_freedict(paths.FREEDICT_ENG_SPA))
+    ov = load_overrides(paths.MEANING_OVERRIDES)
+    some = [k for k in raw if chr(k.codepoint) in "持界題食書下人私明原機申中"]
+    out, _ = reorder_raw(some, "es", eo, mo, ov)
+    first = {chr(k.codepoint): (k.meanings["en"][0], k.meanings["es"][0]) for k in out}
+    assert first == {"持": ("hold", "sostener"), "界": ("world", "frontera"),
+                     "題": ("subject", "tema"), "食": ("eat", "comer"), "書": ("write", "escribir"),
+                     "下": ("down", "debajo"), "人": ("person", "persona"), "私": ("I", "yo"),
+                     "明": ("light", "luz"), "原": ("original", "origen"),
+                     "機": ("machine", "máquina"), "申": ("have the honor to", "decir"),
+                     "中": ("middle", "dentro")}
+    for k, o in zip(some, out):
+        for lang in ("en", "es"):
+            assert sorted(k.meanings[lang]) == sorted(o.meanings[lang])
