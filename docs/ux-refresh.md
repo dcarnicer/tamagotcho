@@ -353,6 +353,22 @@ sprite canvas.
   optionally with a word. While a hold is in progress, the ▬ item lights up.
   Budget: about 20 characters in total. Spanish `• mover ▬ abrir ◂ atrás`
   fits portrait with 2 px to spare.
+  *Two side actions (2026-10-20).* A screen whose side tap and side hold do
+  different things (the date stepper: `◂ -1 day`, `▬ cancel`) adds a
+  side-hold item, the ▬ mark and a word, at the right end after the side
+  icon and its word, so the side group reads like the front one (tap, then
+  hold). One row when both groups fit with 6 px between them (landscape:
+  `• +1 day ▬ OK      ◂ -1 day ▬ cancel`, 189 px; Spanish 201 px); else the
+  bar takes a second 12 px row **above** the front row, with the side group
+  right-aligned on it, and the screen reserves 24 px
+  (`widgets::hintBarHeight()`; the 135 px and 170 px portraits). The front row
+  stays where it is on every other screen. The side group keeps its words in
+  both forms (the point of the item is to say what the side tap does). An
+  unavailable side tap (the stepper at its floor) is drawn in `text-faint`
+  instead of disappearing, so the bar does not change shape while stepping.
+  Without a side-hold word nothing changes: one row, the side word only when
+  it fits. The layout is pure (`ui/HintBar.h`) and every string is checked
+  at 135, 170, 240 and 320 px in `test_quizui`.
 - **Option tile.** States: *idle* (`surface`), *focus* (`accent`), *holding*
   (`accent-press` filling left→right), *correct* (`ok` + ✓), *wrong* (`err-bg`
   + 2 px `err` + ✗), *dimmed* (no fill, `text-faint`). Labels are
@@ -451,7 +467,7 @@ Settings                     header: "SETTINGS" · date · battery
 ├─ Study ›            10/day
 │   ├─ New per day           3 / 5 / 10 (default) / 20
 │   ├─ Hard after            1.5 / 3 (default) / 5 s / off        (was "Speed")
-│   └─ Date ›                stepper: tap +1 day, hold confirm    (feature/day-detection)
+│   └─ Date ›                stepper: tap +1 day, side tap -1 day, hold confirm, side hold cancel
 ├─ Stats ›            87%    accuracy ring + tiles
 ├─ Wi-Fi ›            off    portal: QR join + QR URL, uploads, "time synced" from the phone
 │                            (POST /time, feature/day-detection)
@@ -649,7 +665,12 @@ Delivered:
   update / new with a check, a download mark or the size, the download bar in
   the row, cancel in the hint bar.
 - Date stepper: calendar tile, `+N days` pill, the notice and the network
-  status, hints in the hint bar; input unchanged.
+  status, hints in the hint bar; input unchanged. *Changed 2026-10-20 (StickS3
+  feedback: going back a day was neither possible at "today" nor visible):*
+  side tap = -1 day, side hold = cancel, both in the hint bar (§2.4, two
+  side actions); the pill also reads `-1 day` / `-N days`, and the date can go
+  below the current day on a device with a real-time anchor (docs/srs.md §5).
+  The line under the pill no longer explains the buttons.
 - Stats: accuracy ring (`fillArc`), six tiles, seen/total bar. Done: check,
   "All caught up", tomorrow's due count, streak, "+10 new". About: label-face
   headings, paging kept. Wi-Fi portal screen: the QR codes as before, the

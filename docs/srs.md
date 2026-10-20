@@ -274,7 +274,8 @@ header, new bytes included). Bytes 44..47 are still unused (0).
 - **Wall-clock anchor.** `epoch_anchor` (u16 at 38) is the calendar day, counted
   in days since 1970-01-01, that SRS day `0` corresponds to; the date shown for
   any SRS day `d` is `epoch_anchor + d`. It is written by the first real-time
-  sync and moved only by a sync (§5.1). `0` means "never synced": the display
+  sync (§5.1) and moved by a later sync or by a date set below the current day
+  on the date screen (§5, power-cut rule). `0` means "never synced": the display
   then falls back to the fixed base of the first firmware (SRS day 0 =
   2026-10-17, epoch day 20743), exactly as before. Epoch day 0 (1970-01-01) can
   never be a real anchor, because syncs before 2026 are refused, so `0` is
@@ -347,21 +348,41 @@ use a **persisted, day-granular clock**:
   and RTC memory, so the elapsed time is unknown. The app detects this boot
   (`RTC_NOINIT` magic) and **asks the user** on the date screen: it shows the
   last-used date (the persisted `now_day` at boot) and a proposed "today" that
-  starts there; a tap adds a day, a side-button hold takes one back (never below
-  the current day), a hold confirms and a side tap skips the question (the
-  hints say so: "tap: +1 day  hold: OK", "side hold: -1 day  side: cancel"). The
-  confirmed difference `n` goes through `advanceDaysManual(n)`, which is
-  `advanceDays(n)` plus, for `n > 0`, `ms_carry = 0`: the time of day is unknown
-  after a power cut, so the next rollover comes a full day after the answer.
-  That is late rather than early on purpose: an early rollover would hand out a
-  day that cannot be taken back (the index never rewinds), a late one is fixed
-  by the next answer or sync. The same screen is in the settings (Settings ›
-  Date › Date) for manual corrections. A real-time sync (§5.1) answers the
-  question instead, so it is not asked when the time is already known and it
-  is dismissed if a sync arrives while it is shown. With a home Wi-Fi and a
-  time zone known, the network comes first: the screen says "Getting the date
-  via <network>" while it joins and asks NTP, and the stepper only appears when
-  that fails or a press skips it (§5.1).
+  starts there; a tap adds a day, a side tap takes one away, a hold confirms
+  and a side hold skips the question. The hint bar says so: "• +1 day ▬ OK"
+  for the front button and "◂ -1 day ▬ cancel" for the side one (the side tap
+  is "previous", as in the quiz; docs/ux-refresh.md §2.4). The confirmed
+  difference `n` (negative = earlier) goes through `setDateManual(n)`:
+  - `n > 0`: `advanceDaysManual(n)`, which is `advanceDays(n)` plus
+    `ms_carry = 0`.
+  - `n < 0`: the device is ahead of the real date (an overshoot confirmed
+    earlier, a wrongly counted gap, the RC oscillator running fast through a
+    long sleep). The index never rewinds, so this is the manual twin of a
+    `Reanchored` sync (§5.1): `now_day` is kept and `epoch_anchor` moves back
+    by `-n`, so the current day shows the confirmed date; also `ms_carry = 0`.
+    Due days, the streak and the new-card counter are index-based and do not
+    change. **Only with an anchor.** A never-synced store shows the fixed base
+    plus the index, a day count rather than a date, so it has no date to
+    correct: its floor is the current day (stepping back only undoes the
+    forward steps of the same screen), and the first sync re-bases its display
+    anyway. Anchoring it from the stepper would trust that day count as a real
+    date, and a later sync would then advance the index by the whole error.
+    With an anchor the floor is 2026-01-01, the earliest date a sync accepts
+    (the anchor then stays above `0`).
+  - `n = 0`: nothing changes, the carry included.
+
+  The `ms_carry = 0` of both directions: the time of day is unknown after a
+  power cut, so the next rollover comes a full day after the answer. That is
+  late rather than early on purpose: an early rollover would hand out a day
+  that cannot be taken back (the index never rewinds), a late one is fixed by
+  the next answer or sync. The same screen is in the settings (Settings ›
+  Device › Date › Date) for manual corrections, with the same buttons; there
+  the side hold goes back to the Date submenu. A real-time sync (§5.1)
+  answers the question instead, so it is not asked when the time is already
+  known and it is dismissed if a sync arrives while it is shown. With a home
+  Wi-Fi and a time zone known, the network comes first: the screen says
+  "Getting the date via <network>" while it joins and asks NTP, and the
+  stepper only appears when that fails or a press skips it (§5.1).
   On the StickS3 a click of the power
   button used to be such a cut: the M5PM1's "reset" cycles the chip's power. The
   click now saves and deep-sleeps instead, and so does a critical battery
@@ -383,6 +404,7 @@ magnitude.
 
 Testability: the pure module never calls `millis()` or the RTC; `beginSession()`,
 `tick(now_ms)`, `addElapsedMs(ms)`, `advanceDays(n)`, `advanceDaysManual(n)`,
+`setDateManual(n)` (with its range, `manualStepsMin()` / `manualStepsMax()`),
 `syncWallClock(utc_ms, zone)` (or a bare `tz_offset_min`), `setTimeZone(zone)`
 and a test-only `setToday()` are all the clock needs, so the native tests
 drive time explicitly. Time zone rules and the study-day arithmetic live in
@@ -466,7 +488,8 @@ roll the day over at the next 04:00 local.
   that overshot, or the RC oscillator running fast through a long deep sleep),
   the *display* is re-based and the index stays: due days are index days, and
   rewinding would make already-reviewed cards look reviewed in the future.
-  From then on index and real date advance together.
+  From then on index and real date advance together. A date set below the
+  current day by hand does the same (§5, power-cut rule).
 - **Counters.** An `Advanced` sync goes through `advanceDays`, so the new-card
   counter resets exactly as on any other day change. The streak compares the
   SRS days of answers, and a sync only moves the day the next answer is

@@ -892,6 +892,7 @@ Short log of non-obvious choices. Newest last.
   +N: a wrap either caps how long an absence can be entered or makes an overshoot
   cost a full cycle of taps. On the other sub-screens any side press is "back";
   here the side hold is the minus key, and the bottom hint line says so.
+  (Changed on 2026-10-20: side tap -1 day, side hold cancel, see below.)
 - **A manual advance restarts the carry** (`advanceDaysManual`): after a power
   cut the time of day is unknown, and carry 0 rolls over a full day after the
   answer -- late, never early. An early rollover would hand out a day the index
@@ -2229,3 +2230,45 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   join in progress as activity for its whole length; the idle time runs from
   its end. The boot-time date attempt can take up to ~43 s (40 s join + 3 s
   NTP) and is still skippable with a tap.
+
+## 2026-10-20 – Date stepper: side tap -1 day, side hold cancel, below today
+
+- **Found on the StickS3:** with the network time failing at boot, there was
+  no way to go back a day. A side hold did nothing at "today" (it only undid
+  the screen's own forward steps), only the explanation line mentioned it,
+  and the side tap, the obvious "back" press and the quiz's "previous
+  option", cancelled the screen.
+- **Mapping:** front tap +1 day, front hold OK, **side tap -1 day**, **side
+  hold cancel** (back to the Date submenu, or at boot straight into the quiz
+  with the day unchanged). The side tap is "previous" as in the quiz; cancel
+  is the rarer action and gets the hold. This replaces the 2026-10-18 "side
+  hold -1 day, side tap cancels".
+- **Both side actions in the hint bar.** `widgets::Hints` gains a side-hold
+  word (`sideHold`), drawn with the ▬ mark at the right end after the side
+  icon and its word: `◂ -1 day ▬ cancel`. Both groups on one row need
+  189 px in English and 201 px in Spanish, so landscape keeps one row; the
+  135 px portrait (and the T-Display's 170 px one) puts the side group on a
+  second row above the front one, and the screen reserves 24 px for the
+  bar. Dropping
+  the side tap's word to stay on one row was rejected: that word is the
+  point of the fix. Screens without a side hold word draw exactly as before.
+  At the floor the side tap item is dimmed rather than hidden, so the bar
+  keeps its shape. The line under the pill now only says "Hold when it shows
+  today." (it no longer explains buttons the bar already shows).
+- **Below the current day** (`SrsStore::setDateManual(n)`, `n < 0`): the
+  device can be ahead of the real date (an overshoot confirmed earlier, a
+  wrongly counted gap). The index never rewinds, so it is the manual twin of
+  a `Reanchored` sync: the index is kept, `epoch_anchor` moves back by `-n`,
+  and the carry restarts (late, never early), as for a forward step.
+- **Only with an anchor.** A never-synced store shows the fixed 2026-10-17
+  base plus the index: a day count, not a date. Writing an anchor from the
+  stepper would trust that count as a real date; a user who steps back only to
+  undo an overshoot, on a device whose fixed-base date was months behind,
+  would get an index advanced by the whole difference at the first sync.
+  Without an anchor the first sync already re-bases the display without
+  touching the index, which is what the step back would have done. So a
+  never-synced device keeps "today" as its floor (stepping back undoes the
+  screen's own forward steps), and `/api/stats`'s `dateSynced` keeps meaning
+  "a real clock set the date at least once". With an anchor the floor is
+  2026-01-01, the earliest date a sync accepts, so the anchor never reaches
+  `0` ("none").
