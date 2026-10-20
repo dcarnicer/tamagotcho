@@ -2,6 +2,7 @@
 // Design: docs/srs.md sections 2, 4 and 5.
 #include "srs/SrsStore.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -35,6 +36,7 @@ constexpr size_t kOffStreakBest = 34;
 constexpr size_t kOffLastStudyDay = 36;
 constexpr size_t kOffEpochAnchor = 38;  // 0 = never synced (section 5.1)
 constexpr size_t kOffReviewMs = 40;
+constexpr size_t kOffAgainTotal = 44;  // 0 in an older file: recovered from the records
 
 inline uint16_t rd16(const uint8_t* p) {
     return static_cast<uint16_t>(p[0] | (p[1] << 8));
@@ -110,6 +112,7 @@ void SrsStore::reset() {
     nowDay_ = 0;
     msCarry_ = 0;
     answeredTotal_ = 0;
+    againTotal_ = 0;
     slowMs_ = kSrsDefaultSlowMs;
     newPerDay_ = kSrsDefaultNewPerDay;
     newIntroducedDay_ = 0;
@@ -308,6 +311,7 @@ Stats SrsStore::stats() const {
     Stats s{};
     s.seen = static_cast<uint32_t>(records_.size());
     s.answers = answeredTotal_;
+    s.again = againTotal_;
     s.streakCurrent = streakCurrent_;
     s.streakBest = streakBest_;
     s.reviewMs = reviewMs_;
@@ -317,6 +321,43 @@ Stats SrsStore::stats() const {
         s.lapses += r.lapses;
     }
     return s;
+}
+
+size_t SrsStore::forget(const uint32_t* codepoints, size_t n) {
+    if (!codepoints || n == 0 || records_.empty()) return 0;
+    // A sorted view of the list, so each record is one binary search.
+    std::vector<uint32_t> sorted;
+    const uint32_t* first = codepoints;
+    const uint32_t* last = codepoints + n;
+    if (!std::is_sorted(first, last)) {
+        sorted.assign(first, last);
+        std::sort(sorted.begin(), sorted.end());
+        first = sorted.data();
+        last = first + sorted.size();
+    }
+    const size_t before = records_.size();
+    records_.erase(std::remove_if(records_.begin(), records_.end(),
+                                  [&](const Record& r) {
+                                      return std::binary_search(first, last, r.codepoint);
+                                  }),
+                   records_.end());
+    return before - records_.size();
+}
+
+size_t SrsStore::resetProgress() {
+    const size_t n = records_.size();
+    records_.clear();
+    records_.shrink_to_fit();
+    answeredTotal_ = 0;
+    againTotal_ = 0;
+    reviewMs_ = 0;
+    streakCurrent_ = 0;
+    streakBest_ = 0;
+    lastStudyDay_ = 0;
+    flags_ = static_cast<uint16_t>(flags_ & ~kSrsFlagHasStudied);
+    newIntroducedDay_ = nowDay_;
+    newIntroducedCount_ = 0;
+    return n;
 }
 
 Record& SrsStore::getOrCreate(uint32_t codepoint) {
@@ -418,7 +459,12 @@ void SrsStore::grade(uint32_t codepoint, Grade g, uint16_t day, uint8_t mode, fl
     r->lastGrade = static_cast<uint8_t>(static_cast<uint8_t>(g) - 1u);
 
     noteStudyDay(day);
-    if (answeredTotal_ < 0xFFFFFFFFu) ++answeredTotal_;
+    // Both saturate; Again only while the answers can still count, so it
+    // never exceeds them.
+    if (answeredTotal_ < 0xFFFFFFFFu) {
+        ++answeredTotal_;
+        if (g == Grade::Again) ++againTotal_;
+    }
     if (first) noteNewIntroduced(day);
 }
 
@@ -446,6 +492,7 @@ bool SrsStore::serialize(std::vector<uint8_t>& out) const {
     wr16(out.data() + kOffLastStudyDay, lastStudyDay_);
     wr16(out.data() + kOffEpochAnchor, epochAnchor_);
     wr32(out.data() + kOffReviewMs, reviewMs_);
+    wr32(out.data() + kOffAgainTotal, againTotal_);
 
     uint8_t* p = out.data() + kSrsHeaderSize;
     for (const Record& r : records_) {
@@ -495,6 +542,17 @@ bool SrsStore::deserialize(const uint8_t* data, size_t len) {
     lastStudyDay_ = rd16(data + kOffLastStudyDay);
     epochAnchor_ = rd16(data + kOffEpochAnchor);  // 0 (old file): never synced
     reviewMs_ = rd32(data + kOffReviewMs);
+    againTotal_ = rd32(data + kOffAgainTotal);
+    // A file written before the Again counter left bytes 44..47 zero: the
+    // records' lapses are the same count (short of a saturated record), so
+    // start from them. A real zero gives zero lapses too, and nothing has been
+    // forgotten before this counter existed.
+    if (againTotal_ == 0) {
+        uint64_t lapses = 0;
+        for (const Record& r : records_) lapses += r.lapses;
+        againTotal_ = static_cast<uint32_t>(lapses < answeredTotal_ ? lapses : answeredTotal_);
+    }
+    if (againTotal_ > answeredTotal_) againTotal_ = answeredTotal_;
     // A file written before the "has studied" flag existed still records a
     // non-zero last study day whenever the streak logic ran, so recover the flag
     // from it; otherwise a continuing streak would be reset to 1.
