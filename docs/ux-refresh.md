@@ -467,6 +467,7 @@ Settings                     header: "SETTINGS" · date · battery
 ├─ Study ›            10/day
 │   ├─ New per day           3 / 5 / 10 (default) / 20
 │   ├─ Hard after            1.5 / 3 (default) / 5 s / off        (was "Speed")
+│   ├─ Delete progress ›     This deck / Everything, then a confirmation held to delete (2026-10-20)
 │   └─ Date ›                stepper: tap +1 day, side tap -1 day, hold confirm, side hold cancel
 ├─ Stats ›            87%    accuracy ring + tiles
 ├─ Wi-Fi ›            off    portal: QR join + QR URL, uploads, "time synced" from the phone
@@ -526,6 +527,25 @@ Settings                     header: "SETTINGS" · date · battery
   row leaves 93), and a home row shows its value only when label and value fit
   whole (Spanish "Estudio" and "Progreso" go without in portrait). See
   docs/decisions.md, "UX refresh phase 3: settings tree and secondary screens".
+- **Status of `Study › Delete progress ›` (2026-10-20,
+  `feature/delete-deck-progress`).** A fourth Study row. "Delete progress"
+  (130 px) and "Borrar progreso" (133 px) do not fit a portrait page row's
+  107 px, so the row reads **"Delete"** / **"Borrar"** over the value line
+  **"progress"** / **"progreso"**; the screen's header spells it out
+  ("DELETE PROGRESS" / "BORRAR PROGRESO"). The screen is a two-row list in the
+  flat style: **This deck** / **Este mazo** (caption: the loaded deck's name)
+  and **Everything** / **Todo** (caption: "and the statistics" / "y las
+  estadísticas"); tap moves, a hold opens the confirmation, the side button
+  goes back to the Study page. The confirmation names what goes (the deck, or
+  Everything, in warn colour), says how many kanji (for a deck, how many of
+  them other installed decks share, naming the deck when only one does; for
+  Everything, that the statistics go too) and has one row, **Delete** /
+  **Borrar**, that only a hold confirms (the hold-progress fill shows on it);
+  a tap does nothing and the side button cancels. Then the Study page with a
+  note ("Deleted: 45 kanji", "Progress deleted") until the next press. With
+  nothing to delete (or no deck loaded) the hold leaves a note on the list
+  instead. What goes is docs/srs.md §2.1; see docs/decisions.md, "Deleting a
+  deck deletes its progress".
 
 ---
 

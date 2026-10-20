@@ -71,8 +71,9 @@ device with no pack boots straight into the portal: home mode with a saved
 network (setup mode if the join fails), else setup mode. In setup mode the page
 saves the home Wi-Fi and then offers **Switch to my Wi-Fi**; in home mode it
 lists the deck catalog and downloads a deck with a progress view, and in both it
-uploads or deletes packs, downloads one from an `http://` URL and shows the
-statistics. Uploads and downloads are validated before they are kept, and the
+uploads or deletes packs (deleting one also deletes the progress of its kanji
+that no other installed deck has; docs/srs.md §2.1), downloads one from an
+`http://` URL and shows the statistics. Uploads and downloads are validated before they are kept, and the
 side button stops the portal. See the root README for the security trade-off
 (no password: anyone in range, or on the home network, while the screen is
 open).
@@ -113,6 +114,10 @@ New per day / Speed / Statistics / Wi-Fi » / Orientation / Language / Brightnes
 / Sleep / About), where a tap moves the selection, a hold activates the row, and
 the side button goes back (in landscape the list scrolls with the selection).
 The screen headers no longer say so: going back is always the side button.
+**Settings › Study › Delete progress** (the row reads "Delete" over "progress")
+resets the loaded deck's progress (**This deck**, shared kanji included) or all
+of it and the statistics (**Everything**), after a confirmation that only a
+hold accepts (docs/srs.md §2.1).
 **Wi-Fi »** opens its own list (Web portal / Home network / Setup mode / Forget
 network) that works the same way, and so does **Date »** (Date / Time zone, see
 [Date](#date)). **About** shows the
