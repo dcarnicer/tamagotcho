@@ -167,8 +167,10 @@ bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rn
         } else {
             if (strict && !hasReading(c, kind)) return;
             s = readingDisplay(c, kind);
-            const char* list = (kind == ReadingKind::On) ? target.onyomi : target.kunyomi;
-            if (containsReading(list, s)) return;  // also a reading of the target
+            // Also a reading of the target: checked against both kinds, since
+            // the relaxed pass offers a card's other kind (an on'yomi in a
+            // kun'yomi question) and that may be one of the target's own.
+            if (containsReading(target.onyomi, s) || containsReading(target.kunyomi, s)) return;
         }
         if (s.empty()) return;
         for (int i = 0; i < n; ++i)

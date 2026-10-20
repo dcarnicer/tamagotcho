@@ -70,7 +70,8 @@ ReadingKind readingKindOf(const Card& c);
 // in this mode (no meaning / no reading) or fewer than 2 distinct options exist.
 // Distractors: the card's precomputed list first (cards with a reading of the
 // asked kind in Reading mode), then random cards of the same kind, then random
-// cards of any kind.
+// cards of any kind (a card without the asked kind offers its other one). A
+// reading distractor is never one of the target's readings, of either kind.
 // For Reading mode, `readingKind` is the kind to ask for; if the card has none
 // of that kind, its primary kind is used instead (so kanji with only on'yomi or
 // only kun'yomi can still be asked). None means the card's primary kind.

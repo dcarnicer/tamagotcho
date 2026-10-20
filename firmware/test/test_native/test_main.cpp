@@ -247,6 +247,31 @@ bool isMeaningOf(const std::string& s, const char* list) {
     return false;
 }
 
+// True if `s` is one of the "、"-separated readings in `list` (dots removed).
+bool isReadingOf(const std::string& s, const char* list) {
+    std::string item;
+    for (const char* p = list;; ++p) {
+        if (*p == 0 || std::strncmp(p, "、", 3) == 0) {
+            if (item == s) return true;
+            if (*p == 0) return false;
+            item.clear();
+            p += 2;
+        } else if (*p != '.') {
+            item += *p;
+        }
+    }
+}
+
+// Glyph sets 0 and 1 for every card (all a quiz test needs).
+std::vector<GlyphSpec> cardGlyphs(const std::vector<CardSpec>& cs) {
+    std::vector<GlyphSpec> gl;
+    for (auto& c : cs) {
+        gl.push_back({0, c.cp, 4, 4});
+        gl.push_back({1, c.cp, 4, 4});
+    }
+    return gl;
+}
+
 }  // namespace
 
 // ------------------------------------------------------------------- tests
@@ -670,6 +695,40 @@ void test_quiz_reading_excludes_target_readings() {
         TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Reading, rng, &q, ReadingKind::On));
         TEST_ASSERT_EQUAL_STRING("ニチ", q.options[q.correct].c_str());
         for (int i = 0; i < q.count; ++i) TEST_ASSERT_TRUE(q.optionCard[i] != 2);
+    }
+}
+
+void test_quiz_relaxed_pass_excludes_target_readings_of_both_kinds() {
+    // Too few cards of the asked kind, so the relaxed pass offers a card's other
+    // kind. Card 2's on'yomi ジツ (katakana in a kun'yomi question) and card 3's
+    // kun'yomi か (hiragana in an on'yomi question) are readings of 日 as well:
+    // either would be a second correct option. Cards 4 and 5 are fine fillers.
+    std::vector<CardSpec> cs = {{0x65E5, "day", "ニチ、ジツ", "ひ、か", {}},
+                                {0x6708, "month", "ゲツ", "つき", {}},
+                                {0x5B9F, "truth", "ジツ、シツ", "", {}},  // on only
+                                {0x868A, "mosquito", "", "か", {}},       // kun only
+                                {0x706B, "fire", "カ", "", {}},           // on only
+                                {0x4E2D, "middle", "", "なか", {}}};      // kun only
+    auto buf = makePack(cs, cardGlyphs(cs));
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    XorShiftRng rng(31);
+    Card t;
+    TEST_ASSERT_TRUE(r.card(0, &t));
+    for (int iter = 0; iter < 200; ++iter) {
+        const ReadingKind want = (iter & 1) ? ReadingKind::On : ReadingKind::Kun;
+        Question q;
+        TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Reading, rng, &q, want));
+        TEST_ASSERT_EQUAL(want, q.readingKind);
+        TEST_ASSERT_EQUAL_STRING(want == ReadingKind::Kun ? "ひ" : "ニチ", q.options[q.correct].c_str());
+        TEST_ASSERT_EQUAL(4, q.count);  // the relaxed pass still fills: カ or なか
+        for (int i = 0; i < q.count; ++i) {
+            if (i == q.correct) continue;
+            TEST_ASSERT_FALSE(isReadingOf(q.options[i], t.onyomi));
+            TEST_ASSERT_FALSE(isReadingOf(q.options[i], t.kunyomi));
+            TEST_ASSERT_TRUE(q.optionCard[i] != (want == ReadingKind::Kun ? 2 : 3));
+        }
     }
 }
 
@@ -1234,6 +1293,7 @@ int main() {
     RUN_TEST(test_quiz_distractor_priority_and_shuffle);
     RUN_TEST(test_quiz_reading_kinds);
     RUN_TEST(test_quiz_reading_excludes_target_readings);
+    RUN_TEST(test_quiz_relaxed_pass_excludes_target_readings_of_both_kinds);
     RUN_TEST(test_quiz_unavailable_and_tiny);
     RUN_TEST(test_quiz_meaning_gloss_collisions);
     RUN_TEST(test_quiz_meaning_to_kanji_excludes_cards_with_the_prompt);
