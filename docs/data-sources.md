@@ -367,7 +367,7 @@ it; the decks published so far use none of it.
 ### Meaning overrides (project-authored)
 
 - File: `tools/pack-builder/data/meaning_overrides.tsv`, committed in this
-  repository (not downloaded): a short hand-checked table (27 lines) that puts
+  repository (not downloaded): a short hand-checked table (39 lines) that puts
   one of KANJIDIC2's own meanings first for a kanji and language where the
   steps above go wrong (機 "machine", 申 "decir"), with the reason.
 - Authored by the Tangochō project. Licence: it is distributed with the packs

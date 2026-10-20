@@ -83,7 +83,7 @@ used: the build is reproducible and offline once the cache is filled.
 | **JMdict** (`JMdict_e`, English; already fetched by `fetch --readings`) | the English glosses of those words, by sense | CC BY-SA 4.0 (EDRDG), its Japanese and English parts | **used** (learner signal): 7,184 of the words found |
 | wordfreq (already in the cache) | word frequencies | CC BY-SA 4.0 | tried as an extra weight, no gain on the test cases: **not used** |
 | **FreeDict eng-spa** (WikDict) | 64,258 English headwords with their Spanish translations, per sense, from Wiktionary via DBnary | **CC BY-SA 3.0** (the TEI header and `COPYING`); a later version (4.0) is allowed for adaptations (§4(b)) | **used** (Spanish by English): a dated release (`2025.11.23`), 3.7 MB, SHA256-pinned |
-| **the override table** (`tools/pack-builder/data/meaning_overrides.tsv`) | 27 hand-checked first meanings | written by the project, distributed with the packs under CC BY-SA | **used** (last step) |
+| **the override table** (`tools/pack-builder/data/meaning_overrides.tsv`) | 39 hand-checked first meanings | written by the project, distributed with the packs under CC BY-SA | **used** (last step) |
 | WikDict SQLite (`en-es`, `es-en`, `en-fr`, `en-pt`) | the same data, newer, both directions and French/Portuguese | CC BY-SA | not used: one unversioned URL regenerated in place, cannot be pinned. Only used to estimate fr/pt (below) |
 | kaikki.org (wiktextract) | English Wiktionary | Wiktionary's (CC BY-SA, GFDL) | not used: 1.05 GB for the Spanish file, 24 GB raw, regenerated weekly at fixed URLs |
 | **full multilingual JMdict** (`JMdict.gz`) | 68,452 Spanish glosses next to the English ones | **unclear**: the EDRDG licence covers "the Japanese and English components (the translational equivalents in other languages, e.g. German, French, Dutch, etc. are covered by separate copyright held by the compilers of that material)" | **not usable** (prototyped: 281 more Spanish glosses matched) |
@@ -162,13 +162,19 @@ it translates, now against the reordered English list:
 
 ### C. Overrides
 
-`tools/pack-builder/data/meaning_overrides.tsv`, 27 lines, written by the
+`tools/pack-builder/data/meaning_overrides.tsv`, 39 lines, written by the
 project for clear errors left in N5-N3: kanji, language, the meaning to put
 first, optionally more to follow it, and the reason. Every listed meaning must
 be one of KANJIDIC2's own meanings for that kanji and language (no new text):
 the builder checks it and refuses to build otherwise, and a test checks the
 committed file against KANJIDIC2. An English override comes before step B, so
 the Spanish order follows it (機 en "machine" gives es "máquina").
+
+The maintainer's review of the doubtful N5-N3 cases added 12 lines: 学
+estudiar (the verb; KANJIDIC2 has no "aprender"), 円 yen, 着 wear / vestir
+(N4: the clothing sense comes first), 去 past / pasado (去年), 料 fee / precio
+(料金), 好 gustar, 曲 melody / melodía (a tune; "music" is 楽's). 台 keeps
+"pedestal" (an N4 kanji here) and 主 "jefe".
 
 Then the builder's existing caps apply (as many as English has, at most
 three). Nothing is added, removed or rewritten.
@@ -247,20 +253,20 @@ of 1,944 Portuguese first meanings.
 (JLPT N5-N1 ∪ Jōyō).
 
 - **English**: first meaning changed for 524 kanji, stored meanings for 258;
-  14 English overrides.
+  19 English overrides.
 - **Spanish** (2,310 kanji with Spanish meanings): 5,457 of 8,124 glosses
   matched to an English gloss; first meaning changed for 707 (against
-  KANJIDIC2), stored meanings for 616; 13 Spanish overrides. Against the first
-  version, the first Spanish meaning differs for 295.
+  KANJIDIC2), stored meanings for 615; 20 Spanish overrides. Against the first
+  version, the first Spanish meaning differs for 298.
 
 | | N5 | N4 | N3 | N2 | N1 | no level |
 |---|---:|---:|---:|---:|---:|---:|
 | kanji | 79 | 166 | 367 | 367 | 1,232 | 172 |
-| English first meaning changed | 14 | 50 | 163 | 125 | 157 | 15 |
+| English first meaning changed | 14 | 49 | 164 | 125 | 157 | 15 |
 | English stored meanings changed | 7 | 30 | 98 | 52 | 66 | 5 |
-| Spanish first meaning changed | 13 | 45 | 130 | 115 | 370 | 34 |
-| Spanish stored meanings changed | 15 | 41 | 135 | 90 | 311 | 24 |
-| Spanish first differs from the first version | 5 | 30 | 98 | 69 | 89 | 4 |
+| Spanish first meaning changed | 14 | 45 | 129 | 115 | 370 | 34 |
+| Spanish stored meanings changed | 15 | 40 | 135 | 90 | 311 | 24 |
+| Spanish first differs from the first version | 6 | 30 | 100 | 69 | 89 | 4 |
 
 **Sanity table.** First meaning, KANJIDIC2 → `--meaning-order`; *v1*: the first
 version's Spanish; the stored lists.

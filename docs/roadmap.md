@@ -120,11 +120,11 @@ Scope for now: **kanji only** (no vocabulary decks).
         orders the English meanings by the JLPT vocabulary words that use the
         kanji (their JMdict glosses), the Spanish ones by the English ones they
         translate (FreeDict's English-Spanish dictionary, CC BY-SA 3.0), then
-        applies a 27-line project-authored override table; 524 English and 707
-        Spanish first meanings change (N5: 14 and 13), English decks included,
+        applies a 39-line project-authored override table; 524 English and 707
+        Spanish first meanings change (N5: 14 and 14), English decks included,
         and in every language meaning distractors also avoid the meanings a
-        pack leaves out. Pending: the maintainer's review of the N5-N3 lists,
-        then a decks run (`decks.yml` is prepared).
+        pack leaves out. The maintainer reviewed the N5-N3 doubtful cases
+        (2026-10-20). Pending: merge, then a decks run (`decks.yml` is prepared).
       - [ ] Follow-up: French and Portuguese meanings in the English order too
         (about as many changes as Spanish), once a pinned English-French /
         English-Portuguese dictionary under a compatible licence exists.

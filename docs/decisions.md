@@ -2459,15 +2459,18 @@ caer la noche…). Decided and implemented the same day on `feature/es-meanings`
 - **English decks too**: the same problem (機 "loom" shown today), so the flag
   reorders English for `--lang en` as well; it keeps its name,
   `--meaning-order`, since it now orders meanings in general. 524 English and
-  707 Spanish first meanings change against KANJIDIC2 (295 Spanish ones
+  707 Spanish first meanings change against KANJIDIC2 (298 Spanish ones
   against the first version).
 - **Overrides**: a project-authored table,
-  `tools/pack-builder/data/meaning_overrides.tsv` (27 lines, N5-N3 only), puts
+  `tools/pack-builder/data/meaning_overrides.tsv` (39 lines, N5-N3 only), puts
   one of KANJIDIC2's own meanings first where the signal or the matching still
   goes wrong (機 machine, 申 decir, 中 dentro, 早 early: JMdict merges 早い and
   速い). The builder and a test check that every override names a KANJIDIC2
   meaning of that kanji and language; it is distributed with the packs under
   CC BY-SA (docs/data-sources.md). An English override comes before the
-  Spanish step, so Spanish follows it.
+  Spanish step, so Spanish follows it. The maintainer's review of the doubtful
+  N5-N3 cases added 12 of the lines (学 estudiar, 円 yen, 着 wear / vestir,
+  去 past / pasado, 料 fee / precio, 好 gustar, 曲 melody / melodía): the
+  first meaning is the sense learners meet at the kanji's level.
 - No firmware change: the new sources (JMdict, the JLPT lists) were already
   credited, and `kMeanings` (FreeDict) is unchanged.
