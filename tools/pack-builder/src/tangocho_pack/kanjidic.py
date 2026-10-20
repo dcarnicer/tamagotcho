@@ -65,6 +65,10 @@ class RawKanji:
     strokes: int
     freq: int
     radicals: list[int] = field(default_factory=list)
+    # Kun'yomi (as cleaned, in `kunyomi`) that KANJIDIC2 only lists as a prefix
+    # or suffix (`うわ-`, `-び`): bound forms, used only inside compounds. Only
+    # `--common-readings` looks at it (readings.py); the pack does not store it.
+    kun_bound: frozenset[str] = frozenset()
 
 
 def clean_kun(r: str) -> str:
@@ -105,6 +109,7 @@ def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
         meanings: dict[str, list[str]] = {}
         on: list[str] = []
         kun: list[str] = []
+        free: set[str] = set()
         for rm in ch.iter("reading_meaning"):
             for r in rm.iter("reading"):
                 text = (r.text or "").strip()
@@ -112,6 +117,8 @@ def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
                     on.append(text)
                 elif r.get("r_type") == "ja_kun":
                     kun.append(clean_kun(text))
+                    if "-" not in text:
+                        free.add(text)
             for m in rm.iter("meaning"):
                 meanings.setdefault(m.get("m_lang", "en"), []).append((m.text or "").strip())
 
@@ -131,6 +138,7 @@ def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
                 strokes=num("misc/stroke_count"),
                 freq=num("misc/freq"),
                 radicals=radicals,
+                kun_bound=frozenset(k for k in kun if k and k not in free),
             )
         )
     return out

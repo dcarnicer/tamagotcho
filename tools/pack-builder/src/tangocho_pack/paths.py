@@ -17,3 +17,12 @@ KLEE_ONE = FONT_DIR / "KleeOne-SemiBold.ttf"
 KANJIVG_DIR = CACHE / "kanjivg"
 KANJIVG_ZIP = KANJIVG_DIR / "kanjivg-20260714-main.zip"
 KANJIVG_LICENCE = KANJIVG_DIR / "COPYING"
+# Inputs of `build --common-readings` (docs/common-readings.md): only
+# `fetch --readings` gets them.
+READINGS_DIR = CACHE / "readings"
+JMDICT_GZ = READINGS_DIR / "JMdict_e.gz"
+JMDICT_FURIGANA = READINGS_DIR / "JmdictFurigana.txt"
+WORDFREQ_JA = READINGS_DIR / "large_ja.msgpack.gz"
+TATOEBA_JPN = READINGS_DIR / "jpn_indices.tar.bz2"
+# The official Jōyō table, read only by scripts/common_readings_report.py.
+JOYO_PDF = READINGS_DIR / "joyokanjihyo_20101130.pdf"

@@ -40,8 +40,38 @@ KLEE_SOURCES: list[tuple[str, Path]] = [
 ]
 
 
-def fetch_all(force: bool = False, klee_one: bool = False) -> None:
-    for url, dest in SOURCES + (KLEE_SOURCES if klee_one else []):
+# Word data for `build --common-readings` (docs/common-readings.md), opt-in with
+# `fetch --readings`. JMdict and Tatoeba's indices have no versioned URL (the
+# EDRDG file is rebuilt daily, like KANJIDIC2; Tatoeba exports weekly);
+# JmdictFurigana is pinned to a monthly release built from JMdict, wordfreq to
+# its last tag (its data is frozen since 2021). The Jōyō table PDF is the
+# official notice; only scripts/common_readings_report.py reads it.
+JMDICT_FURIGANA_RELEASE = "2.3.1%2B2026-09-25"
+WORDFREQ_TAG = "v3.2"
+READINGS_SOURCES: list[tuple[str, Path]] = [
+    ("https://www.edrdg.org/pub/Nihongo/JMdict_e.gz", paths.JMDICT_GZ),
+    (
+        "https://github.com/Doublevil/JmdictFurigana/releases/download/"
+        f"{JMDICT_FURIGANA_RELEASE}/JmdictFurigana.txt",
+        paths.JMDICT_FURIGANA,
+    ),
+    (
+        f"https://raw.githubusercontent.com/rspeer/wordfreq/{WORDFREQ_TAG}/"
+        "wordfreq/data/large_ja.msgpack.gz",
+        paths.WORDFREQ_JA,
+    ),
+    ("https://downloads.tatoeba.org/exports/jpn_indices.tar.bz2", paths.TATOEBA_JPN),
+    (
+        "https://www.bunka.go.jp/kokugo_nihongo/sisaku/joho/joho/kijun/naikaku/pdf/"
+        "joyokanjihyo_20101130.pdf",
+        paths.JOYO_PDF,
+    ),
+]
+
+
+def fetch_all(force: bool = False, klee_one: bool = False, readings: bool = False) -> None:
+    extra = (KLEE_SOURCES if klee_one else []) + (READINGS_SOURCES if readings else [])
+    for url, dest in SOURCES + extra:
         if dest.exists() and not force:
             print(f"have  {dest.relative_to(paths.ROOT)}")
             continue

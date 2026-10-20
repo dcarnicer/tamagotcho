@@ -12,6 +12,9 @@ uv run tangocho-pack build --jlpt 5 --lang es --strokes -o out/n5-es-strokes.tgc
 uv run tangocho-pack fetch --klee-one # optional: Klee One (textbook style) -> cache/fonts/
 uv run tangocho-pack build --jlpt 5 --font cache/fonts/KleeOne-SemiBold.ttf -o out/n5-en-klee.tgc
 uv run tangocho-pack build --joyo --lang es --strokes -o out/joyo-es.tgc
+uv run tangocho-pack fetch --readings # optional: word data for --common-readings -> cache/readings/
+uv run tangocho-pack build --jlpt 5 --lang es --common-readings -o out/n5-es-common.tgc
+uv run python scripts/common_readings_report.py   # what --common-readings changes
 uv run tangocho-pack build --wanikani-token "$WANIKANI_TOKEN" -o out/wanikani.tgc
 uv run tangocho-pack build --wanikani-level 1 --wanikani-level 2 -o out/wanikani-l1-2.tgc
 uv run tangocho-pack inspect out/n5-es.tgc
@@ -23,12 +26,16 @@ uv run pytest
 
 ## Commands
 
-- `fetch [--force] [--klee-one]` downloads into `cache/` (git-ignored):
+- `fetch [--force] [--klee-one] [--readings]` downloads into `cache/` (git-ignored):
   KANJIDIC2, the JLPT table, Noto Sans JP Regular (the default font, pinned to
   the noto-cjk `Sans2.004` release, with its OFL `LICENSE`, in `cache/noto/`)
   and the pinned KanjiVG release zip. `--klee-one` also gets Klee One (the
   textbook-style font that was the default before 2026-10-18) into
   `cache/fonts/`, for `build --font cache/fonts/KleeOne-SemiBold.ttf`.
+  `--readings` also gets, into `cache/readings/` (~30 MB), what
+  `build --common-readings` reads: JMdict, JmdictFurigana, wordfreq's Japanese
+  list, Tatoeba's Japanese sentence indices and the official Jōyō kanji table
+  (PDF). Licences in docs/data-sources.md.
 - `build --jlpt N [--jlpt M ...] [--grade G ... | --joyo] [--order jlpt|grade]
   --lang en|es|fr|pt
   [--font PATH] [--large-px 96] [--small-px 40] [--text-px 18] [--option-px 20]
@@ -52,6 +59,14 @@ uv run pytest
   pack about a third to a quarter of its v1 size. Firmware older than v2
   support refuses these packs ("unsupported pack version"); it keeps reading its
   v1 packs.
+  `--common-readings` (needs `fetch --readings`, adds ~8 s) reorders each
+  kanji's on'yomi and kun'yomi so the device, which asks the first reading of a
+  kind, asks a common one: the Jōyō table's approved readings first, then by
+  word frequency (docs/common-readings.md). Every reading is kept, so the
+  distractor invariant is unaffected; without the flag the order is
+  KANJIDIC2's. It cannot be combined with `--wanikani-token` (WaniKani already
+  lists its primary reading first). `scripts/common_readings_report.py` prints
+  what it changes for JLPT N5-N1 and the Jōyō kanji.
 - `build --wanikani-token TOKEN [--wanikani-level N ...]` builds from **your own
   WaniKani account** instead of KANJIDIC2 (so no `--jlpt`/`--grade`, and
   `fetch` is only needed for the font). It imports only the kanji you have
@@ -163,7 +178,9 @@ compatibility while the maintainer is the only user (docs/decisions.md,
   and 4bpp; `pack.py` writer, reader and validator; `kanjivg.py` stroke masks
   (KanjiVG); `distractors.py` distractor strategies (visual similarity for
   meanings, confusable readings for readings); `preview.py` UI mock;
-  `catalog.py` the line-oriented device catalog; `build.py` orchestration.
+  `catalog.py` the line-oriented device catalog; `build.py` orchestration;
+  `readings.py` reading scores and order for `--common-readings`, with
+  `joyo_table.py` the parse of the official Jōyō table PDF.
 
 ## Conventions (where the spec leaves room)
 
