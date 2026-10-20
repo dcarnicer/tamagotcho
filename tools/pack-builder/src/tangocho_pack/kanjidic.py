@@ -48,6 +48,11 @@ class Card:
     level: int = 0
     distractors: list[int] = field(default_factory=list)
     distractors_reading: list[int] = field(default_factory=list)
+    # Every reading the kanji has, when `onyomi`/`kunyomi` hold fewer (a kind
+    # emptied by `--common-readings`): reading distractors are kept away from
+    # these too. Empty = the same as `onyomi`/`kunyomi`. Not stored in the pack.
+    valid_onyomi: list[str] = field(default_factory=list)
+    valid_kunyomi: list[str] = field(default_factory=list)
 
     @property
     def char(self) -> str:
@@ -65,6 +70,13 @@ class RawKanji:
     strokes: int
     freq: int
     radicals: list[int] = field(default_factory=list)
+    # Kun'yomi (as cleaned, in `kunyomi`) that KANJIDIC2 only lists as a prefix
+    # or suffix (`うわ-`, `-び`): bound forms, used only inside compounds. Only
+    # `--common-readings` looks at it (readings.py); the pack does not store it.
+    kun_bound: frozenset[str] = frozenset()
+    # Set by readings.reorder_raw when it empties a kind: the readings before.
+    all_onyomi: list[str] | None = None
+    all_kunyomi: list[str] | None = None
 
 
 def clean_kun(r: str) -> str:
@@ -73,7 +85,9 @@ def clean_kun(r: str) -> str:
 
 
 def _dedupe(items: list[str]) -> list[str]:
-    return list(dict.fromkeys(i for i in items if i))
+    """Distinct readings in order, without empty ones (or ones that are only
+    okurigana dots): a pack's reading list never has an empty item."""
+    return list(dict.fromkeys(i for i in items if i.replace(".", "")))
 
 
 def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
@@ -105,6 +119,7 @@ def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
         meanings: dict[str, list[str]] = {}
         on: list[str] = []
         kun: list[str] = []
+        free: set[str] = set()
         for rm in ch.iter("reading_meaning"):
             for r in rm.iter("reading"):
                 text = (r.text or "").strip()
@@ -112,6 +127,8 @@ def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
                     on.append(text)
                 elif r.get("r_type") == "ja_kun":
                     kun.append(clean_kun(text))
+                    if "-" not in text:
+                        free.add(text)
             for m in rm.iter("meaning"):
                 meanings.setdefault(m.get("m_lang", "en"), []).append((m.text or "").strip())
 
@@ -131,6 +148,7 @@ def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
                 strokes=num("misc/stroke_count"),
                 freq=num("misc/freq"),
                 radicals=radicals,
+                kun_bound=frozenset(k for k in kun if k and k not in free),
             )
         )
     return out
@@ -192,6 +210,8 @@ def make_cards(
                 freq=min(k.freq, 65535),
                 radicals=list(k.radicals),
                 fallback_en=fallback,
+                valid_onyomi=list(k.all_onyomi or []),
+                valid_kunyomi=list(k.all_kunyomi or []),
             )
         )
     if order == "grade":

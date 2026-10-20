@@ -479,6 +479,12 @@ def read_pack(raw: bytes) -> Pack:
                     continue
                 if (2, ord(ch)) not in present:
                     errs.append(f"card {i} {what}: U+{ord(ch):04X} {ch!r} missing from set 2")
+        # A reading list is empty, or has no empty item and a first reading
+        # that is more than okurigana dots (the device asks the first one).
+        for what, txt in (("onyomi", c.onyomi), ("kunyomi", c.kunyomi)):
+            items = txt.split(READING_SEP) if txt else []
+            if any(not r.replace(".", "") for r in items):
+                errs.append(f"card {i} {what}: empty reading in {txt!r}")
     for ch in pack.deck_name:
         if not 0x20 <= ord(ch) <= 0x7E and (2, ord(ch)) not in present:
             errs.append(f"deck name: U+{ord(ch):04X} missing from set 2")

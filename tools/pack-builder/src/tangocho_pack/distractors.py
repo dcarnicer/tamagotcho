@@ -122,7 +122,10 @@ def reading_distractors(cards: list, k: int = MAX_DISTRACTORS, seed: int = 1) ->
     for i, c in enumerate(cards):
         rng = random.Random(seed * 1_000_003 + c.codepoint)
         target = {"on": display_reading(c.onyomi), "kun": display_reading(c.kunyomi)}
-        t_sets = {"on": _readings(c.onyomi), "kun": _readings(c.kunyomi)}
+        # Every reading the kanji has, including a kind the pack leaves empty
+        # (`--common-readings`): the device cannot exclude what is not in the pack.
+        t_sets = {"on": _readings(c.onyomi) | _readings(getattr(c, "valid_onyomi", None)),
+                  "kun": _readings(c.kunyomi) | _readings(getattr(c, "valid_kunyomi", None))}
         scored = []
         for j, o in enumerate(cards):
             if j == i:

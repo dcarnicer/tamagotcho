@@ -135,17 +135,17 @@ static int countConversions(const char* f) {
 }
 
 // The footer's templates take exactly the arguments pageFooter() passes (the
-// version; the four credits), in every language: a missing or extra "%s"
+// version; the five credits), in every language: a missing or extra "%s"
 // would read garbage.
 void test_page_footer_formats() {
     for (const char* lang : {"en", "es"}) {
         const PortalText& t = portalText(lang);
         TEST_ASSERT_EQUAL(1, countConversions(t.footVersionFmt));
         TEST_ASSERT_NOT_NULL(std::strstr(t.footVersionFmt, "%s"));
-        TEST_ASSERT_EQUAL(4, countConversions(t.footDecksFmt));
+        TEST_ASSERT_EQUAL(5, countConversions(t.footDecksFmt));
         int s = 0;
         for (const char* p = std::strstr(t.footDecksFmt, "%s"); p; p = std::strstr(p + 2, "%s")) ++s;
-        TEST_ASSERT_EQUAL(4, s);
+        TEST_ASSERT_EQUAL(5, s);
     }
 }
 

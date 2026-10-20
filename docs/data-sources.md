@@ -207,6 +207,110 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 - The pack builder vendors a copy of its 256-glyph bitmap in `glcd.py` so
   `tangocho-pack preview` can render the same font as the device.
 
+## Reading order (optional: `fetch --readings`, `build --common-readings`)
+
+`build --common-readings` reorders each card's on'yomi and kun'yomi so the
+reading the device asks is a useful one, and leaves a kind with nothing worth
+asking empty (docs/common-readings.md). The six inputs below are downloaded
+only by `tangocho-pack fetch --readings`, into `cache/readings/`, and read only
+with that flag (and by the scripts in `tools/pack-builder/scripts/`). A pack
+built with it contains no word data from them, only KANJIDIC2's own readings in
+a different order (some kinds left out), but it is derived from them, so it
+carries their attribution (below). `decks.yml` is prepared to build the
+published decks with it; the decks published so far use none of them.
+
+### JMdict
+
+- URL: https://www.edrdg.org/pub/Nihongo/JMdict_e.gz (rebuilt daily; not pinned).
+- Owner: EDRDG. Licence: CC BY-SA 4.0 (https://www.edrdg.org/edrdg/licence.html),
+  the same terms and attribution as KANJIDIC2 ("This package uses the JMdict
+  and KANJIDIC2 files…").
+- Used for: the list of words (kanji form + reading) and their priority tags
+  (`nfXX`, `news1`, `ichi1`…), as a prior for how common each word is.
+
+### JmdictFurigana
+
+- URL: https://github.com/Doublevil/JmdictFurigana, release
+  `2.3.1+2026-09-25`, asset `JmdictFurigana.txt` (pinned in `fetch.py`).
+- Owner: Doublevil. Licence: "distributed under the same licence as JMDict
+  (Creative Commons Attribution-ShareAlike Licence)" (README); the code is MIT.
+- Used for: which part of each JMdict word's reading belongs to each kanji
+  (学校 = 学:がっ + 校:こう).
+
+### wordfreq (Japanese list)
+
+- URL: https://github.com/rspeer/wordfreq, tag `v3.2`, file
+  `wordfreq/data/large_ja.msgpack.gz` (pinned in `fetch.py`).
+- Owner: Robyn Speer. Licence: the code is Apache-2.0; the data files "may be
+  redistributed under a Creative Commons Attribution-ShareAlike 4.0 license"
+  (README, "License"). The Japanese list is built from Wikipedia, OpenSubtitles
+  2018 ("may be used with attribution to OpenSubtitles"), OSCAR web text,
+  Twitter and Reddit, tokenised with MeCab/IPAdic. A frozen snapshot (~2021).
+- Required attribution: wordfreq by Robyn Speer, CC BY-SA 4.0, which includes
+  data from OpenSubtitles (http://www.opensubtitles.org/).
+- Used for: how often each word's written form (and a verb's inflection stems)
+  occurs. Read with a small MessagePack decoder in `readings.py`; the
+  `wordfreq` package is not a dependency.
+
+### Tatoeba Japanese indices
+
+- URL: https://downloads.tatoeba.org/exports/jpn_indices.tar.bz2 (weekly
+  export; not pinned).
+- Owner: the Tatoeba Project (the indices of the Tanaka Corpus, which Tatoeba
+  maintains). Licence: CC BY 2.0 FR (https://tatoeba.org/en/downloads: "These
+  files are released under CC BY 2.0 FR"; the corpus moved from the public
+  domain to CC BY in 2009, https://www.edrdg.org/wiki/Tanaka_Corpus.html).
+  CC BY material may be used in a CC BY-SA work with attribution.
+- Required attribution: "Sentence indices from the Tatoeba Project
+  (https://tatoeba.org), CC BY 2.0 FR."
+- Used for: counts of each JMdict headword per reading in ~150,000 sentences
+  (上(うえ) vs 上(じょう)), to split a homograph's frequency among its readings.
+  No sentence text is used.
+
+### Jōyō kanji table (常用漢字表)
+
+- URL: https://www.bunka.go.jp/kokugo_nihongo/sisaku/joho/joho/kijun/naikaku/pdf/joyokanjihyo_20101130.pdf
+  (Agency for Cultural Affairs; the table of Cabinet notice No. 2 of
+  2010-11-30).
+- Licence: not subject to copyright in Japan: Copyright Act art. 13(ii)
+  excludes "notifications, instructions, circular notices, and other similar
+  materials issued by a national or local government agency"
+  (https://www.japaneselawtranslation.go.jp/en/laws/view/4207). The Agency's
+  site also puts its content under the MEXT terms (公共データ利用規約 1.0,
+  compatible with CC BY 4.0, https://www.mext.go.jp/b_menu/1351168.htm).
+- Suggested credit: "Jōyō kanji table (常用漢字表), Agency for Cultural
+  Affairs, 2010."
+- Used for: which readings the table approves for each kanji and which it
+  indents as special or of narrow use (`joyo_table.py`, read with pypdf):
+  approved readings come first, and a Jōyō kanji's kind with no approved
+  reading is left empty. The PDF stays in `cache/`.
+
+### JLPT vocabulary lists (tanos.co.uk)
+
+- URLs: the Internet Archive's captures of
+  `http://www.tanos.co.uk/jlpt/jlpt{N}/vocab/n{N}-vocab-kanji-hiragana.anki`
+  for N = 5..1, taken 2011-07-22, fetched through Wayback `id_` URLs (which
+  return the archived bytes unchanged) and pinned in `fetch.py` by capture
+  timestamp and SHA256. tanos.co.uk itself no longer resolves; the 2025
+  captures of the N1-N3 files have the same digests.
+- Owner: Jonathan Waller (JLPT Resources). Licence: CC BY, from the same "Use
+  my data!" page as the JLPT kanji levels above ("Everything on this site (that
+  I'm not selling), is licenced under Creative Commons "BY"…"); the vocabulary
+  lists were free downloads, not sold.
+- Required attribution: "JLPT vocabulary lists from Jonathan Waller's JLPT
+  Resources (tanos.co.uk), CC BY."
+- Format: Anki 1.x decks (SQLite files; `Front` = the word in kanji, `Back` =
+  its reading), read with Python's `sqlite3`. 7,270 entries, 7,224 (word,
+  reading) pairs after expanding alternatives and skipping notes.
+- Used for: the learner signal: a reading met in an easier JLPT list's word
+  comes first (docs/common-readings.md).
+
+Test fixtures: `tools/pack-builder/tests/test_readings.py` holds hand-written
+miniatures of each format (a few JMdict-style entries such as 九つ/ここのつ, a
+furigana line per word, a three-token wordfreq list, two Tatoeba index lines,
+a few rows shaped like the Jōyō table's text and two-table Anki decks with a
+handful of words). They are not copied from the files above.
+
 ## Root CA certificates (firmware)
 
 `firmware/src/platform/RootCerts.h` embeds eleven public root CA certificates
@@ -231,13 +335,23 @@ below); nothing is bundled with the firmware.
 > packs built with `--strokes`). This pack is licensed CC BY-SA.
 
 A pack built with another `--font` credits that font instead of Noto Sans JP.
+A pack built with `--common-readings` says "JLPT levels and vocabulary lists
+from Jonathan Waller's JLPT Resources (tanos.co.uk, CC BY)" and adds:
+
+> Reading order from JMdict (EDRDG, CC BY-SA 4.0), JmdictFurigana (CC BY-SA),
+> wordfreq (Robyn Speer, CC BY-SA 4.0, with data from OpenSubtitles), the
+> Tatoeba Project's sentence indices (CC BY 2.0 FR) and the Jōyō kanji table
+> (Agency for Cultural Affairs, 2010).
+
+The decks release notes in `decks.yml` carry this text.
 
 The firmware shows a short form of this attribution on the device
-(**Settings › Device › About**: the loaded deck's name, then KANJIDIC2, KanjiVG when the
-deck has stroke order, the JLPT levels and the glyph font, each with its
+(**Settings › Device › About**: the loaded deck's name, then KANJIDIC2 and JMdict, KanjiVG
+when the deck has stroke order, the JLPT levels and the glyph font, each with its
 licence; "Firmware: MIT", "Decks: CC BY-SA", "UI font: Noto Sans JP, SIL OFL
 1.1" and the repository) and in the
-footer of the Wi-Fi portal page. Both read the strings in
+footer of the Wi-Fi portal page, which also lists the other reading-order
+sources (`credits::kReadings`; About would need a row in `main.cpp` for it). Both read the strings in
 `firmware/src/Credits.h`: change them together with this file. Packs carry no
 list of their sources, so the device shows these credits for any deck,
 including one built with another font or from WaniKani (docs/decisions.md,

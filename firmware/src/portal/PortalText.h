@@ -205,8 +205,9 @@ struct PortalText {
     // Page footer: the version and the credits Settings > About shows on the
     // device. The names and licences come from Credits.h.
     const char* footVersionFmt = "Tangochō %s &middot; MIT-licensed firmware";  // %s = version
-    const char* footDecksFmt =  // kanji data, stroke order, JLPT levels, glyphs
-        "Decks: CC BY-SA. Kanji data: %s; stroke order: %s; JLPT levels: %s; glyphs: %s.";
+    const char* footDecksFmt =  // kanji data, stroke order, JLPT levels, glyphs, reading order
+        "Decks: CC BY-SA. Kanji data: %s; stroke order: %s; JLPT levels: %s; glyphs: %s; "
+        "reading order: %s.";
 };
 
 // The table for a page language: "es" selects Spanish, anything else English.

@@ -14,8 +14,31 @@ from .kanjidic import ORDERS
 
 def cmd_fetch(a) -> int:
     from .fetch import fetch_all
-    fetch_all(force=a.force, klee_one=a.klee_one)
+    fetch_all(force=a.force, klee_one=a.klee_one, readings=a.readings)
     return 0
+
+
+def _common_readings(raw: list) -> tuple[list, object] | None:
+    """`build --common-readings`: KANJIDIC2 readings reordered most common
+    first (docs/common-readings.md), or None after printing an error."""
+    need = [paths.JMDICT_GZ, paths.JMDICT_FURIGANA, paths.WORDFREQ_JA, paths.TATOEBA_JPN,
+            paths.JOYO_PDF, *paths.JLPT_VOCAB.values()]
+    missing = [p for p in need if not p.exists()]
+    if missing:
+        print("error: --common-readings needs " + ", ".join(p.name for p in missing)
+              + ": run `tangocho-pack fetch --readings`", file=sys.stderr)
+        return None
+    from .joyo_table import load_pdf
+    from .readings import compute_scores, load_jlpt_vocab, reorder_raw
+
+    try:
+        joyo = load_pdf(paths.JOYO_PDF)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return None
+    scores = compute_scores(raw, paths.JMDICT_GZ, paths.JMDICT_FURIGANA, paths.WORDFREQ_JA,
+                            paths.TATOEBA_JPN, load_jlpt_vocab(paths.JLPT_VOCAB))
+    return reorder_raw(raw, scores, joyo, drop=True)
 
 
 def cmd_build(a) -> int:
@@ -28,6 +51,10 @@ def cmd_build(a) -> int:
     # or written to cache/.
     token = a.wanikani_token or os.environ.get("WANIKANI_TOKEN")
     if token:
+        if a.common_readings:
+            print("error: --common-readings orders KANJIDIC2 readings; a WaniKani pack already "
+                  "lists each kind's primary reading first", file=sys.stderr)
+            return 2
         from .wanikani import WaniKaniError, default_wanikani_name, wanikani_cards
 
         levels = set(a.wanikani_level) if a.wanikani_level else None
@@ -64,11 +91,27 @@ def cmd_build(a) -> int:
         # The order becomes the new-card order on the device: school order for
         # the Jōyō deck, N5-first for everything else unless --order says so.
         order = a.order or ("grade" if a.joyo else "jlpt")
-        cards = make_cards(parse_kanjidic(paths.KANJIDIC_GZ), a.lang, jlpt, grades, new,
-                           order=order)
+        raw = parse_kanjidic(paths.KANJIDIC_GZ)
+        before = None
+        if a.common_readings:
+            before = {k.codepoint: k for k in raw}
+            got = _common_readings(raw)
+            if got is None:
+                return 2
+            raw = got[0]
+        cards = make_cards(raw, a.lang, jlpt, grades, new, order=order)
         if not cards:
             print("error: no cards selected", file=sys.stderr)
             return 1
+        if before is not None:
+            def changed(kind: str) -> tuple[int, int]:
+                new = [(getattr(c, kind), getattr(before[c.codepoint], kind)) for c in cards]
+                return (sum(1 for n, o in new if n and n[0] != o[0]),
+                        sum(1 for n, o in new if o and not n))
+            (on, on_drop), (kun, kun_drop) = changed("onyomi"), changed("kunyomi")
+            print(f"common readings: first on'yomi changed for {on} and first kun'yomi for "
+                  f"{kun} of {len(cards)} cards; on'yomi dropped for {on_drop}, kun'yomi "
+                  f"for {kun_drop} (nothing worth asking)")
         name = a.name or default_deck_name(jlpt, grades, joyo=a.joyo)
     if not name.isascii():
         print(f"warning: deck name {name!r} is not ASCII; the device draws the deck name "
@@ -245,6 +288,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="also download Klee One (textbook-style font, the default before "
                         "2026-10-18) into cache/fonts/; build with it via "
                         "--font cache/fonts/KleeOne-SemiBold.ttf")
+    s.add_argument("--readings", action="store_true",
+                   help="also download what `build --common-readings` needs into "
+                        "cache/readings/: JMdict, JmdictFurigana, wordfreq's Japanese list, "
+                        "Tatoeba's Japanese indices and the official Jōyō table (PDF)")
     s.set_defaults(fn=cmd_fetch)
 
     s = sub.add_parser("build", help="build a .tgc pack (KANJIDIC2 or your own WaniKani account)")
@@ -277,6 +324,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="include KanjiVG stroke-order masks (needs `tangocho-pack fetch`)")
     s.add_argument("--strokes-px", type=int,
                    help="em square for stroke masks; must equal --large-px (the default)")
+    s.add_argument("--common-readings", action="store_true",
+                   help="order each kanji's on'yomi and kun'yomi with the Jōyō table's "
+                        "approved readings first, then the most common first (word "
+                        "frequencies), so the device asks a common reading; every reading is "
+                        "kept. Needs `fetch --readings` (docs/common-readings.md)")
     s.add_argument("--name", help="deck name (default derived from filters)")
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(fn=cmd_build)

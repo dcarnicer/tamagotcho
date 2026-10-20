@@ -4,7 +4,11 @@ version = "0.2.0"
 description = "Pack builder for Tangochō, a kanji flashcard app for the M5Stack StickS3"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-dependencies = ["Pillow>=10.3", "fonttools>=4.50"]
+dependencies = [
+    "Pillow>=10.3",
+    "fonttools>=4.50",
+    "pypdf>=6.0",
+]
 
 [project.scripts]
 tangocho-pack = "tangocho_pack.cli:main"

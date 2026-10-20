@@ -108,9 +108,14 @@ jobs:
             *) echo "error: the release notes credit Noto Sans JP, but the builder's default font is $font; update decks.yml" >&2; exit 1 ;;
           esac
 
-      - name: Fetch data sources (KANJIDIC2, JLPT levels, font, KanjiVG)
-        run: uv run tangocho-pack fetch
+      # --readings adds what --common-readings needs (JMdict, JmdictFurigana,
+      # wordfreq, Tatoeba's indices, the Jōyō table, the JLPT vocabulary lists).
+      - name: Fetch data sources (KANJIDIC2, JLPT levels, font, KanjiVG, reading data)
+        run: uv run tangocho-pack fetch --readings
 
+      # --common-readings: each kind's most useful reading first (the one the
+      # device asks), and a kind with nothing worth asking left empty
+      # (docs/common-readings.md).
       - name: Build packs
         env:
           LEVELS: ${{ steps.inputs.outputs.levels }}
@@ -121,10 +126,12 @@ jobs:
           mkdir -p out
           for lang in $LANGS; do
             for n in $LEVELS; do
-              uv run tangocho-pack build --jlpt "$n" --lang "$lang" --strokes -o "out/n${n}-${lang}.tgc"
+              uv run tangocho-pack build --jlpt "$n" --lang "$lang" --strokes --common-readings \
+                -o "out/n${n}-${lang}.tgc"
             done
             if [ "$JOYO" = "true" ]; then
-              uv run tangocho-pack build --joyo --lang "$lang" --strokes -o "out/joyo-${lang}.tgc"
+              uv run tangocho-pack build --joyo --lang "$lang" --strokes --common-readings \
+                -o "out/joyo-${lang}.tgc"
             fi
           done
 
@@ -169,6 +176,11 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=decks-v$version" >> "$GITHUB_OUTPUT"
           echo "pack format v$version -> release decks-v$version"
+
+      # No reading distractor may be another reading of its card, including a
+      # kind --common-readings left empty (checked against KANJIDIC2's lists).
+      - name: Check reading distractors
+        run: uv run python scripts/check_reading_distractors.py out/*.tgc
 
       # The device lists decks in catalog order (its own language first), so the
       # catalog follows the build order: per language N5 .. N1, then Joyo. The
@@ -272,7 +284,10 @@ jobs:
 
           JLPT decks introduce new kanji by school grade, then frequency; the Jōyō
           deck goes grade by grade (1-6, then the secondary-school kanji), each by
-          newspaper frequency.
+          newspaper frequency. Reading questions ask a common reading: the ones the
+          Jōyō table approves first, then those of the easiest JLPT vocabulary,
+          then the most frequent; a kanji with no reading of a kind worth asking
+          (気 いき, 百 もも) is asked the other kind.
 
           ## Install
 
@@ -295,12 +310,16 @@ jobs:
           order, from KanjiVG, and are therefore licensed **CC BY-SA 4.0**.
 
           > Kanji data from KANJIDIC2 (c) EDRDG, CC BY-SA 4.0,
-          > https://www.edrdg.org/edrdg/licence.html. JLPT levels from Jonathan
-          > Waller's JLPT Resources (tanos.co.uk, CC BY) via
-          > davidluzgouveia/kanji-data (MIT). Glyphs rendered from Noto Sans JP (c) 2014-2021 Adobe,
-          > SIL OFL 1.1. Stroke order data from KanjiVG (c) Ulrich Apel,
-          > CC BY-SA 3.0, https://kanjivg.tagaini.net. These packs are licensed
-          > CC BY-SA.
+          > https://www.edrdg.org/edrdg/licence.html. JLPT levels and vocabulary
+          > lists from Jonathan Waller's JLPT Resources (tanos.co.uk, CC BY), the
+          > kanji levels via davidluzgouveia/kanji-data (MIT). Glyphs rendered from
+          > Noto Sans JP (c) 2014-2021 Adobe, SIL OFL 1.1. Stroke order data from
+          > KanjiVG (c) Ulrich Apel, CC BY-SA 3.0, https://kanjivg.tagaini.net.
+          > Reading order from JMdict (EDRDG, CC BY-SA 4.0), JmdictFurigana
+          > (CC BY-SA), wordfreq (Robyn Speer, CC BY-SA 4.0, with data from
+          > OpenSubtitles), the Tatoeba Project's sentence indices (CC BY 2.0 FR)
+          > and the Jōyō kanji table (Agency for Cultural Affairs, 2010). These
+          > packs are licensed CC BY-SA.
           MD
           } > notes.md
           cat notes.md
