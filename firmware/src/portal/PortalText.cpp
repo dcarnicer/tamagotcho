@@ -71,8 +71,8 @@ PortalText makeSpanish() {
     t.onDevice = "En el dispositivo";
     t.studying = "estudiando";
     t.deckNote =
-        "Descargar y actualizar conservan tu progreso (es de cada kanji, no del mazo). Una "
-        "actualización necesita sitio para las dos copias un momento.";
+        "Actualizar conserva tu progreso (es de cada kanji, así que los mazos que comparten un "
+        "kanji lo comparten). Una actualización necesita sitio para las dos copias un momento.";
 
     t.dlStartingFmt = "Empezando la descarga de <b>%s</b>...";
     t.dlProgressFmt = "Descargando <b>%s</b>: %u %%";
@@ -95,8 +95,11 @@ PortalText makeSpanish() {
     t.yoursTitle = "Tus mazos";
     t.yoursEmpty = "Aún no hay mazos.";
     t.deleteButton = "Borrar";
-    t.deleteConfirm = "¿Borrar este mazo? Tu progreso se conserva.";
+    t.deleteConfirm =
+        "¿Borrar este mazo y su progreso? Los kanji que también tiene otro mazo del dispositivo "
+        "conservan el suyo.";
     t.deletedFmt = "Borrado <b>%s</b>.";
+    t.deletedProgressFmt = "Borrado <b>%s</b> y el progreso de %u kanji.";
     t.deleteFailed = "No se pudo borrar.";
     t.badName = "Nombre de mazo no válido.";
 

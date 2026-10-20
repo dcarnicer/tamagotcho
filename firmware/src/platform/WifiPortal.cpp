@@ -145,6 +145,15 @@ String fmt(const char* f, ...) {
     return String(buf);
 }
 
+// Accuracy in percent over every answer ever given, from the lifetime counters
+// (docs/srs.md section 2.1: forgotten records leave it as it was); 0 before the
+// first answer.
+uint32_t accuracyOf(const PortalStats& st) {
+    if (st.answers == 0) return 0;
+    const uint32_t right = st.answers > st.again ? st.answers - st.again : 0;
+    return static_cast<uint32_t>(static_cast<uint64_t>(right) * 100u / st.answers);
+}
+
 // Strict decimal: an optional '-' and 1..15 digits (Date.now() has 13). Anything
 // else, including an empty field, is refused rather than read as 0.
 bool parseDecimal(const String& in, int64_t* out) {
@@ -656,9 +665,10 @@ void WifiPortal::rememberLangHint() {
 
 // --- pages -----------------------------------------------------------------
 
-void WifiPortal::redirect(const char* where, Notice n, const String& arg) {
+void WifiPortal::redirect(const char* where, Notice n, const String& arg, uint32_t count) {
     notice_ = n;
     noticeArg_ = arg;
+    noticeCount_ = count;
     server_->sendHeader("Location", where, true);
     server_->send(303, "text/plain", "");
 }
@@ -691,7 +701,10 @@ void WifiPortal::appendNotice(String& h) {
         case Notice::Forgotten: text = mode_ == Mode::Home ? t.forgottenHome : t.forgotten; break;
         case Notice::CatalogSaved: text = t.catalogUrlSaved; break;
         case Notice::CatalogBad: text = t.catalogUrlBad; ok = false; break;
-        case Notice::Deleted: text = fmt(t.deletedFmt, arg.c_str()); break;
+        case Notice::Deleted:
+            text = noticeCount_ ? fmt(t.deletedProgressFmt, arg.c_str(), (unsigned)noticeCount_)
+                                : fmt(t.deletedFmt, arg.c_str());
+            break;
         case Notice::DeleteFailed: text = t.deleteFailed; ok = false; break;
         case Notice::BadName: text = t.badName; ok = false; break;
         case Notice::UrlStarted: text = fmt(t.urlStartedFmt, arg.c_str()); break;
@@ -987,8 +1000,7 @@ void WifiPortal::appendYourDecks(String& h, const PortalStats& st) {
 // until the 2026-10-19 hardware test found them hidden there.
 void WifiPortal::appendStats(String& h, const PortalStats& st) {
     const PortalText& t = portalText(pageLang());
-    const uint32_t acc =
-        st.reps ? (st.reps > st.lapses ? st.reps - st.lapses : 0) * 100u / st.reps : 0;
+    const uint32_t acc = accuracyOf(st);
     h += "<h2 id=\"stats\">";
     h += t.statsTitle;
     h += "</h2><ul><li>";
@@ -1151,8 +1163,7 @@ void WifiPortal::handleApiStats() {
     const size_t total = LittleFS.totalBytes();
     const size_t used = LittleFS.usedBytes();
     const size_t freeB = total > used ? total - used : 0;
-    const uint32_t acc =
-        st.reps ? (st.reps > st.lapses ? st.reps - st.lapses : 0) * 100u / st.reps : 0;
+    const uint32_t acc = accuracyOf(st);
 
     String j;
     j += "{\"version\":\"";
@@ -1175,6 +1186,8 @@ void WifiPortal::handleApiStats() {
     j += String((unsigned)st.learned);
     j += ",\"answers\":";
     j += String((unsigned)st.answers);
+    j += ",\"again\":";
+    j += String((unsigned)st.again);
     j += ",\"reps\":";
     j += String((unsigned)st.reps);
     j += ",\"lapses\":";
@@ -1283,11 +1296,21 @@ void WifiPortal::handleDelete() {
         redirect("/#yours", Notice::BadName);
         return;
     }
-    const bool ok = LittleFS.remove(String(kPacksDir) + "/" + name);
-    Serial.printf("[wifi] delete %s: %s\n", name.c_str(), ok ? "ok" : "failed");
+    // The app deletes the file and the progress that goes with it, and rescans
+    // /packs (docs/srs.md section 2.1); without that hook, only the file.
+    const String path = String(kPacksDir) + "/" + name;
+    uint32_t forgotten = 0;
+    bool ok;
+    if (hooks_.onDeleteDeck) {
+        ok = hooks_.onDeleteDeck(path.c_str(), &forgotten);
+    } else {
+        ok = LittleFS.remove(path);
+        if (hooks_.onPacksChanged) hooks_.onPacksChanged();
+    }
+    Serial.printf("[wifi] delete %s: %s, progress of %u kanji forgotten\n", name.c_str(),
+                  ok ? "ok" : "failed", (unsigned)forgotten);
     setMsg(ok ? "deleted %s" : "delete failed", name.c_str());
-    if (hooks_.onPacksChanged) hooks_.onPacksChanged();
-    redirect("/#yours", ok ? Notice::Deleted : Notice::DeleteFailed, name);
+    redirect("/#yours", ok ? Notice::Deleted : Notice::DeleteFailed, name, forgotten);
 }
 
 // --- home Wi-Fi and catalog URL ----------------------------------------------

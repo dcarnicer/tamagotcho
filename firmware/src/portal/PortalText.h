@@ -72,8 +72,8 @@ struct PortalText {
     const char* onDevice = "On the device";
     const char* studying = "studying";
     const char* deckNote =
-        "Downloads and updates keep your progress (it belongs to each kanji, not to the deck). "
-        "An update needs room for both copies for a moment.";
+        "Updates keep your progress (it belongs to each kanji, so decks that share a kanji share "
+        "it). An update needs room for both copies for a moment.";
 
     // A deck download from the page.
     const char* dlStartingFmt = "Starting the download of <b>%s</b>...";
@@ -97,8 +97,11 @@ struct PortalText {
     const char* yoursTitle = "Your decks";
     const char* yoursEmpty = "No decks yet.";
     const char* deleteButton = "Delete";
-    const char* deleteConfirm = "Delete this deck? Your progress is kept.";
+    const char* deleteConfirm =
+        "Delete this deck and its progress? Kanji that another deck on the device also has "
+        "keep theirs.";
     const char* deletedFmt = "Deleted <b>%s</b>.";
+    const char* deletedProgressFmt = "Deleted <b>%s</b> and the progress of %u kanji.";
     const char* deleteFailed = "Could not delete it.";
     const char* badName = "Bad deck name.";
 

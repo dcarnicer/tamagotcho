@@ -6,6 +6,7 @@
 // v2's compressed bitmaps are decoded on the way (pack/Rle.h).
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "pack/PackSource.h"
 #include "pack/Rle.h"  // glyph and mask encoding constants, decoders
@@ -170,5 +171,12 @@ struct PackInfo {
     uint16_t version;
 };
 PackError peekPackInfo(PackSource& src, PackInfo* out);
+
+// The code points of a pack's cards (the first field of each card), in table
+// order, after the same header checks as PackReader::open(): what deleting a
+// deck or resetting its progress needs to know (docs/srs.md section 2.1),
+// without loading the glyph table or the strings. The card table is read 1 KB
+// at a time. `out` is replaced; it is left empty on failure.
+PackError readPackCodepoints(PackSource& src, std::vector<uint32_t>* out);
 
 }  // namespace tgc

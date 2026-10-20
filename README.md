@@ -24,7 +24,7 @@ with **multiple-choice reviews** and spaced repetition, fully offline.
 4. Hold the side button for the **settings**: a summary of the loaded deck
    (due and new cards, how much of it you have seen) and five groups --
    **Decks** (switch decks, Get decks), **Study** (new cards per day, Hard
-   after, auto-advance), **Stats**, **Wi-Fi** and **Device** (orientation,
+   after, auto-advance, delete progress), **Stats**, **Wi-Fi** and **Device** (orientation,
    brightness, language, hold time, date and time zone, sleep, About). In
    every menu a tap moves, a hold opens or chooses, and the side button goes
    back; the bar at the bottom of the screen says what each does. The date
@@ -83,7 +83,8 @@ setup mode and a tap tries again.
 - **Settings → Wi-Fi → Web portal** joins your Wi-Fi and shows the address
   and QR code; open it from any phone or laptop on that network. The page has
   **Get decks** (download or update), **Your decks** (the one being studied is
-  marked; delete), **Statistics** and, folded under **Advanced**: upload a
+  marked; delete, which deletes its progress too: see [Progress](#progress)),
+  **Statistics** and, folded under **Advanced**: upload a
   `.tgc` file, download one from a plain `http://` URL, the deck catalog URL,
   the home Wi-Fi (change, forget, reconnect), the free space and the JSON at
   `/api/stats` and `/api/status`. The side button on the device stops the portal.
@@ -106,6 +107,19 @@ setup mode and a tap tries again.
   date by hand. NTP needs the time zone: the one the page last sent, or one
   chosen in **Settings → Device → Date → Zone** (a short list of zones, for when
   no phone has set one; the next page visit replaces it with the phone's).
+
+### Progress
+
+Progress belongs to each **kanji**, not to a deck: decks that share a kanji
+share its progress, switching decks keeps it, and so does updating a deck.
+**Deleting a deck** on the page also deletes the progress of its kanji, except
+those another deck on the device has (N5's kanji keep theirs while the Jōyō
+deck is installed), so downloading it again starts from scratch; the answers,
+accuracy, time and streaks stay. On the device, **Settings → Study → Delete
+progress** resets **This deck** (all of its kanji, shared ones too: the
+confirmation says how many other decks share) or **Everything** (all progress
+and the statistics; decks and settings stay). Both ask first, and only a hold
+on the confirmation deletes.
 
 ### Changing networks
 

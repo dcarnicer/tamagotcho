@@ -11,6 +11,7 @@
 #include "pack/MemorySource.h"
 #include "pack/PackReader.h"
 #include "quiz/Quiz.h"
+#include "srs/DeckProgress.h"
 #include "srs/Queue.h"
 #include "srs/Srs.h"
 #include "srs/SrsStore.h"
@@ -1065,6 +1066,298 @@ void test_serialize_old_file_has_defaults() {
     TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(b.count()));
 }
 
+// ------------------------------------- forgetting progress (section 2.1)
+
+namespace {
+
+// 日 月 火 水 木 金 土: the kanji of the forgetting tests.
+constexpr uint32_t kHi = 0x65E5, kTsuki = 0x6708, kKa = 0x706B, kMizu = 0x6C34, kKi = 0x6728,
+                   kKin = 0x91D1, kDo = 0x571F;
+
+// A store with records for 日 月 火 水 木 over three study days: 月 and 木
+// missed once, a little time on questions.
+void studied(SrsStore& s) {
+    MemoryIo none;
+    s.begin(none);
+    const uint32_t cps[] = {kHi, kTsuki, kKa, kMizu, kKi};
+    for (uint16_t day = 1; day <= 3; ++day)
+        for (uint32_t cp : cps) s.grade(cp, Grade::Good, day, 0, 0.5f);
+    s.grade(kTsuki, Grade::Again, 3, 1, 0.5f);
+    s.grade(kKi, Grade::Again, 3, 1, 0.5f);
+    s.addReviewMs(45000);
+    s.setToday(3);
+}
+
+}  // namespace
+
+// The lifetime Again counter: one per Again answer, never above the answers,
+// at header offset 44 and back from a save.
+void test_again_total() {
+    SrsStore s;
+    studied(s);
+    const Stats st = s.stats();
+    TEST_ASSERT_EQUAL_UINT32(17, st.answers);
+    TEST_ASSERT_EQUAL_UINT32(2, st.again);
+    TEST_ASSERT_EQUAL_UINT32(2, s.againTotal());
+    TEST_ASSERT_EQUAL_UINT32(st.reps, st.answers);  // nothing forgotten yet
+    TEST_ASSERT_EQUAL_UINT32(st.lapses, st.again);
+    MemoryIo io;
+    TEST_ASSERT_TRUE(s.save(io));
+    TEST_ASSERT_EQUAL_UINT8(2, io.bytes[44]);
+    TEST_ASSERT_EQUAL_UINT8(0, io.bytes[45]);
+    SrsStore b;
+    TEST_ASSERT_TRUE(b.begin(io));
+    TEST_ASSERT_EQUAL_UINT32(2, b.againTotal());
+
+    // A file from before the counter (bytes 44..47 zero: a store whose records
+    // carry lapses its header never counted) starts it from the records'
+    // lapses, at most the answers.
+    SrsStore legacy;
+    MemoryIo none;
+    legacy.begin(none);
+    legacy.getOrCreate(kTsuki).lapses = 3;
+    legacy.getOrCreate(kTsuki).reps = 5;
+    legacy.getOrCreate(kKi).lapses = 1;
+    legacy.getOrCreate(kKi).reps = 4;
+    legacy.setAnsweredTotal(9);
+    MemoryIo oldIo;
+    TEST_ASSERT_TRUE(legacy.save(oldIo));
+    for (size_t i = 44; i < 48; ++i) TEST_ASSERT_EQUAL_UINT8(0, oldIo.bytes[i]);
+    SrsStore fix;
+    TEST_ASSERT_TRUE(fix.begin(oldIo));
+    TEST_ASSERT_EQUAL_UINT32(4, fix.againTotal());
+    TEST_ASSERT_EQUAL_UINT32(4, fix.stats().again);
+    legacy.setAnsweredTotal(2);
+    MemoryIo oldIo2;
+    TEST_ASSERT_TRUE(legacy.save(oldIo2));
+    SrsStore fix2;
+    TEST_ASSERT_TRUE(fix2.begin(oldIo2));
+    TEST_ASSERT_EQUAL_UINT32(2, fix2.againTotal());
+}
+
+// forget(): any order, duplicates and kanji without a record are fine; only
+// those records go, the table stays sorted, and the lifetime counters stay.
+void test_forget_set() {
+    SrsStore s;
+    studied(s);
+    const Stats before = s.stats();
+    const Record mizu = *s.find(kMizu);
+
+    const uint32_t gone[] = {kKi, kTsuki, kDo, kTsuki};  // unsorted, a duplicate, 土 unseen
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(s.forget(gone, 4)));
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(s.count()));
+    TEST_ASSERT_NULL(s.find(kTsuki));
+    TEST_ASSERT_NULL(s.find(kKi));
+    TEST_ASSERT_NOT_NULL(s.find(kHi));
+    TEST_ASSERT_NOT_NULL(s.find(kKa));
+    TEST_ASSERT_EQUAL_MEMORY(&mizu, s.find(kMizu), sizeof mizu);  // untouched
+    for (size_t i = 1; i < s.records().size(); ++i)
+        TEST_ASSERT_TRUE(s.records()[i - 1].codepoint < s.records()[i].codepoint);
+
+    // The lifetime statistics are as they were; the per-record ones describe
+    // the kanji still tracked.
+    const Stats after = s.stats();
+    TEST_ASSERT_EQUAL_UINT32(before.answers, after.answers);
+    TEST_ASSERT_EQUAL_UINT32(before.again, after.again);
+    TEST_ASSERT_EQUAL_UINT32(before.streakCurrent, after.streakCurrent);
+    TEST_ASSERT_EQUAL_UINT32(before.streakBest, after.streakBest);
+    TEST_ASSERT_EQUAL_UINT32(before.reviewMs, after.reviewMs);
+    TEST_ASSERT_EQUAL_UINT32(3, after.seen);
+    TEST_ASSERT_EQUAL_UINT32(9, after.reps);  // 日 火 水, three each
+    TEST_ASSERT_EQUAL_UINT32(0, after.lapses);
+    TEST_ASSERT_TRUE(after.again <= after.answers);
+    TEST_ASSERT_TRUE(s.hasStudied());
+    TEST_ASSERT_EQUAL_UINT16(3, s.today());
+
+    // A forgotten kanji is new again: its next answer is a first review.
+    s.grade(kTsuki, Grade::Good, 3, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT8(1, s.find(kTsuki)->reps);
+    TEST_ASSERT_EQUAL_UINT8(0, s.find(kTsuki)->lapses);
+    TEST_ASSERT_TRUE(introducedOn(*s.find(kTsuki), 3));
+
+    // Nothing to forget: no change.
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(s.forget(gone, 0)));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(s.forget(nullptr, 3)));
+    const uint32_t unseen[] = {kDo, kKin};
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(s.forget(unseen, 2)));
+    TEST_ASSERT_EQUAL_UINT32(4, static_cast<uint32_t>(s.count()));
+}
+
+// Deleting a deck file forgets only the kanji no installed deck still has; the
+// code points come from the packs' card tables.
+void test_forget_on_delete_keeps_shared() {
+    // "N5": 日 月 火 水 (and 日 twice, as a broken pack might); "Jouyou": 月 火 木.
+    std::vector<CardSpec> n5 = {{kHi, "day", "ニチ", "ひ", {}, {}},
+                                {kTsuki, "month", "ゲツ", "つき", {}, {}},
+                                {kKa, "fire", "カ", "ひ", {}, {}},
+                                {kMizu, "water", "スイ", "みず", {}, {}},
+                                {kHi, "day", "ニチ", "ひ", {}, {}}};
+    std::vector<CardSpec> joyo = {{kKi, "tree", "モク", "き", {}, {}},
+                                  {kTsuki, "month", "ゲツ", "つき", {}, {}},
+                                  {kKa, "fire", "カ", "ひ", {}, {}}};
+    const auto bn5 = makePack(n5, glyphsFor(n5));
+    const auto bjoyo = makePack(joyo, glyphsFor(joyo));
+    MemorySource sn5(bn5), sjoyo(bjoyo);
+    std::vector<uint32_t> deck, keep;
+    TEST_ASSERT_EQUAL(static_cast<int>(PackError::Ok),
+                      static_cast<int>(readPackCodepoints(sn5, &deck)));
+    TEST_ASSERT_EQUAL_UINT32(5, static_cast<uint32_t>(deck.size()));
+    TEST_ASSERT_EQUAL_HEX32(kHi, deck[0]);  // table order
+    TEST_ASSERT_EQUAL_HEX32(kMizu, deck[3]);
+    sortUnique(deck);
+    TEST_ASSERT_EQUAL_UINT32(4, static_cast<uint32_t>(deck.size()));
+    TEST_ASSERT_EQUAL(static_cast<int>(PackError::Ok),
+                      static_cast<int>(readPackCodepoints(sjoyo, &keep)));
+    sortUnique(keep);
+
+    SrsStore s;
+    studied(s);  // 日 月 火 水 木
+    s.getOrCreate(kDo).reps = 1;  // 土: from a deck deleted long ago
+    const Stats before = s.stats();
+
+    // Delete N5 while Jouyou stays: 日 and 水 go, 月 and 火 are Jouyou's too.
+    const std::vector<uint32_t> gone = forgetOnDelete(deck, keep);
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(gone.size()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(s.forget(gone.data(), gone.size())));
+    TEST_ASSERT_NULL(s.find(kHi));
+    TEST_ASSERT_NULL(s.find(kMizu));
+    TEST_ASSERT_NOT_NULL(s.find(kTsuki));
+    TEST_ASSERT_NOT_NULL(s.find(kKa));
+    TEST_ASSERT_NOT_NULL(s.find(kKi));
+    TEST_ASSERT_NOT_NULL(s.find(kDo));  // not this deck's: never touched
+
+    // Then delete Jouyou with no deck left: all of its kanji go.
+    const std::vector<uint32_t> rest = forgetOnDelete(keep, {});
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(s.forget(rest.data(), rest.size())));
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(s.count()));  // 土
+
+    // Statistics: lifetime counters unchanged, nothing negative.
+    const Stats after = s.stats();
+    TEST_ASSERT_EQUAL_UINT32(before.answers, after.answers);
+    TEST_ASSERT_EQUAL_UINT32(before.again, after.again);
+    TEST_ASSERT_EQUAL_UINT32(before.reviewMs, after.reviewMs);
+    TEST_ASSERT_EQUAL_UINT32(before.streakBest, after.streakBest);
+    TEST_ASSERT_EQUAL_UINT32(1, after.seen);
+    TEST_ASSERT_EQUAL_UINT32(0, after.learned);
+
+    // A pack that does not read gives nothing to forget.
+    std::vector<uint8_t> bad = bn5;
+    bad[0] = 'X';
+    MemorySource sbad(bad);
+    std::vector<uint32_t> none = {1, 2, 3};
+    TEST_ASSERT_EQUAL(static_cast<int>(PackError::BadMagic),
+                      static_cast<int>(readPackCodepoints(sbad, &none)));
+    TEST_ASSERT_TRUE(none.empty());
+    std::vector<uint8_t> cut(bn5.begin(), bn5.begin() + 64 + 32 * 2);  // card table cut short
+    MemorySource scut(cut);
+    TEST_ASSERT_NOT_EQUAL(static_cast<int>(PackError::Ok),
+                          static_cast<int>(readPackCodepoints(scut, &none)));
+    TEST_ASSERT_TRUE(none.empty());
+}
+
+// The "This deck" preview: the deck's kanji with a record, and how many of
+// them another installed deck has.
+void test_deck_reset_preview() {
+    SrsStore s;
+    studied(s);  // 日 月 火 水 木
+    std::vector<uint32_t> deck = {kHi, kTsuki, kKa, kDo};  // 土 never studied
+    std::vector<uint32_t> others = {kTsuki, kKin, kKa};
+    sortUnique(deck);
+    sortUnique(others);
+    DeckReset r = deckResetPreview(s, deck, others);
+    TEST_ASSERT_EQUAL_UINT32(3, r.records);
+    TEST_ASSERT_EQUAL_UINT32(2, r.shared);
+    r = deckResetPreview(s, deck, {});
+    TEST_ASSERT_EQUAL_UINT32(3, r.records);
+    TEST_ASSERT_EQUAL_UINT32(0, r.shared);
+    // Resetting the deck forgets all of them, the shared ones too.
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(s.forget(deck.data(), deck.size())));
+    r = deckResetPreview(s, deck, others);
+    TEST_ASSERT_EQUAL_UINT32(0, r.records);
+    TEST_ASSERT_EQUAL_UINT32(0, r.shared);
+    TEST_ASSERT_NOT_NULL(s.find(kMizu));
+    TEST_ASSERT_NOT_NULL(s.find(kKi));
+}
+
+// "Everything": every record and the lifetime statistics go; the clock and the
+// knobs stay, and the next answer starts a streak of 1.
+void test_reset_progress() {
+    SrsStore s;
+    studied(s);
+    // 2026-10-20 10:00 UTC, 12:00 at UTC+2.
+    const int64_t noon = static_cast<int64_t>(daysFromCivil(2026, 10, 20)) * kSrsMsPerDay +
+                         10 * 3600000LL;
+    TEST_ASSERT_TRUE(s.syncWallClock(noon, 120).kind == ClockSync::Anchored);
+    s.setNewPerDay(5);
+    s.setSlowMs(5000);
+    s.setToday(3);
+    const uint16_t anchor = s.epochAnchor();
+    const uint32_t carry = s.msCarry();
+
+    TEST_ASSERT_EQUAL_UINT32(5, static_cast<uint32_t>(s.resetProgress()));
+    const Stats st = s.stats();
+    TEST_ASSERT_EQUAL_UINT32(0, st.seen);
+    TEST_ASSERT_EQUAL_UINT32(0, st.learned);
+    TEST_ASSERT_EQUAL_UINT32(0, st.answers);
+    TEST_ASSERT_EQUAL_UINT32(0, st.again);
+    TEST_ASSERT_EQUAL_UINT32(0, st.reps);
+    TEST_ASSERT_EQUAL_UINT32(0, st.lapses);
+    TEST_ASSERT_EQUAL_UINT32(0, st.streakCurrent);
+    TEST_ASSERT_EQUAL_UINT32(0, st.streakBest);
+    TEST_ASSERT_EQUAL_UINT32(0, st.reviewMs);
+    TEST_ASSERT_FALSE(s.hasStudied());
+    TEST_ASSERT_EQUAL_UINT16(0, s.lastStudyDay());
+    TEST_ASSERT_EQUAL_UINT16(0, s.newIntroducedCount());
+    // Kept: the day, the carry, the anchor and the knobs.
+    TEST_ASSERT_EQUAL_UINT16(3, s.today());
+    TEST_ASSERT_EQUAL_UINT16(anchor, s.epochAnchor());
+    TEST_ASSERT_EQUAL_UINT32(carry, s.msCarry());
+    TEST_ASSERT_EQUAL_UINT16(5, s.newPerDay());
+    TEST_ASSERT_EQUAL_UINT16(5000, s.slowMs());
+
+    // Survives a save and a load.
+    MemoryIo io;
+    TEST_ASSERT_TRUE(s.save(io));
+    SrsStore b;
+    TEST_ASSERT_TRUE(b.begin(io));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(b.count()));
+    TEST_ASSERT_EQUAL_UINT32(0, b.answeredTotal());
+    TEST_ASSERT_EQUAL_UINT32(0, b.againTotal());
+    TEST_ASSERT_FALSE(b.hasStudied());
+    TEST_ASSERT_EQUAL_UINT16(anchor, b.epochAnchor());
+    TEST_ASSERT_EQUAL_UINT16(3, b.today());
+
+    // A fresh start: the next answer, the day after the old last study day,
+    // starts a streak of 1 rather than extending the forgotten one.
+    b.grade(kHi, Grade::Good, 4, 0, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(1, b.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(1, b.streakBest());
+    TEST_ASSERT_EQUAL_UINT32(1, b.answeredTotal());
+}
+
+// Forgetting survives a save and a load: the file holds exactly the records
+// that are left, and the lifetime counters.
+void test_forget_roundtrip() {
+    SrsStore s;
+    studied(s);
+    const uint32_t gone[] = {kHi, kKi};
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(s.forget(gone, 2)));
+    MemoryIo io;
+    TEST_ASSERT_TRUE(s.save(io));
+    TEST_ASSERT_EQUAL_UINT32(48 + 3 * 16 + 4, static_cast<uint32_t>(io.bytes.size()));
+    SrsStore b;
+    TEST_ASSERT_TRUE(b.begin(io));
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(b.count()));
+    TEST_ASSERT_EQUAL_MEMORY(s.records().data(), b.records().data(), 3 * sizeof(Record));
+    TEST_ASSERT_EQUAL_UINT32(s.answeredTotal(), b.answeredTotal());
+    TEST_ASSERT_EQUAL_UINT32(s.againTotal(), b.againTotal());
+    TEST_ASSERT_EQUAL_UINT32(2, b.againTotal());  // 木's miss is still counted
+    TEST_ASSERT_EQUAL_UINT32(s.reviewMs(), b.reviewMs());
+    TEST_ASSERT_EQUAL_UINT16(s.streakCurrent(), b.streakCurrent());
+    TEST_ASSERT_NULL(b.find(kHi));
+    TEST_ASSERT_NULL(b.find(kKi));
+}
+
 // ------------------------------------------------ wall clock (section 5.1)
 
 namespace {
@@ -1636,6 +1929,12 @@ int main() {
     RUN_TEST(test_review_ms_saturation);
     RUN_TEST(test_serialize_new_header_roundtrip);
     RUN_TEST(test_serialize_old_file_has_defaults);
+    RUN_TEST(test_again_total);
+    RUN_TEST(test_forget_set);
+    RUN_TEST(test_forget_on_delete_keeps_shared);
+    RUN_TEST(test_deck_reset_preview);
+    RUN_TEST(test_reset_progress);
+    RUN_TEST(test_forget_roundtrip);
     RUN_TEST(test_elapsed_sleep_time);
     RUN_TEST(test_civil_dates);
     RUN_TEST(test_wall_clock_plausibility);

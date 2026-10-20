@@ -26,6 +26,7 @@
 #include "quiz/Quiz.h"
 #include "render/Renderer.h"
 #include "render/Widgets.h"
+#include "srs/DeckProgress.h"
 #include "srs/Queue.h"
 #include "srs/SrsStore.h"
 #include "srs/WallClock.h"
@@ -296,7 +297,7 @@ struct UiStrings {
     // caption line under the label, so its label gets 107 px. Landscape rows
     // are wider: 110 px on the home, 212 on a page.
     const char* groupRows[5];   // decks, study, stats, Wi-Fi, device
-    const char* studyRows[3];   // new per day, hard after, auto-advance
+    const char* studyRows[4];   // new per day, hard after, auto-advance, delete (progress)
     const char* deviceRows[7];  // orientation, brightness, language, hold time, date, sleep, about
     const char* studyTitle;     // headers (Font0, ASCII)
     const char* deviceTitle;
@@ -366,6 +367,27 @@ struct UiStrings {
     const char* hintStop;    // hint bar: the side button stops the portal
     const char* deckCardsFmt;  // the deck list's caption of a deck not loaded: %u cards
     const char* aboutReadings;  // About: + JmdictFurigana, wordfreq ... (the reading order)
+    // Settings > Study > Delete progress (docs/srs.md section 2.1). The Study
+    // row is studyRows[3] ("Delete") over deleteRowValue ("progress"):
+    // "Delete progress" (130 px) and "Borrar progreso" (133 px) do not fit a
+    // portrait page row's 107 px. Its screen: the header (Font0, ASCII), two
+    // rows (label face) with a caption (19 characters in the 135 px
+    // portrait), the confirmation's text (captions, wrapped), the one row its
+    // hold confirms on and the notes (captions, 21 characters).
+    const char* deleteRowValue;
+    const char* resetTitle;
+    const char* resetRows[2];        // this deck, everything
+    const char* resetAllCaption;     // under "Everything"
+    const char* resetNoDeck;         // under "This deck" while no deck is loaded
+    const char* resetNothing;        // note: there is no progress to delete
+    const char* resetDeckFmt;        // %u = the deck's kanji with progress
+    const char* resetSharedOneFmt;   // %s = the other deck, %u = kanji it shares
+    const char* resetSharedManyFmt;  // %u = kanji other decks share
+    const char* resetAllFmt;         // %u = every kanji with progress
+    const char* resetConfirmRow;
+    const char* hintDelete;          // hint bar: the confirmation's hold
+    const char* resetDoneFmt;        // Study page note after a deck: %u kanji
+    const char* resetAllDone;        // Study page note after Everything
 };
 
 const UiStrings kUiEn = {
@@ -422,7 +444,7 @@ const UiStrings kUiEn = {
     "answer", "next", "details",
     "stroke %u/%u",
     {"Decks", "Study", "Stats", "Wi-Fi", "Device"},
-    {"New per day", "Hard after", "Auto next"},
+    {"New per day", "Hard after", "Auto next", "Delete"},
     {"Orientation", "Brightness", "Language", "Hold time", "Date", "Sleep", "About"},
     "STUDY", "DEVICE", "AUTO NEXT", "HOLD TIME",
     "%u/day", "off", ".",
@@ -454,6 +476,21 @@ const UiStrings kUiEn = {
     "%s · %u decks", "on device", "stop",
     "%u kanji",
     "Readings:",
+    "progress",
+    "DELETE PROGRESS",
+    {"This deck", "Everything"},
+    "and the statistics",
+    "no deck loaded",
+    "Nothing to delete",
+    "Forgets %u kanji: they start again as new.",
+    "%s shares %u of them: they reset there too.",
+    "Other decks share %u of them: they reset there too.",
+    "Forgets %u kanji and the statistics: answers, accuracy, time, streaks. Decks and settings "
+    "stay.",
+    "Delete",
+    "delete",
+    "Deleted: %u kanji",
+    "Progress deleted",
 };
 
 const UiStrings kUiEs = {
@@ -511,7 +548,7 @@ const UiStrings kUiEs = {
     "responder", "siguiente", "detalles",
     "trazo %u/%u",
     {"Mazos", "Estudio", "Progreso", "Wi-Fi", "Dispositivo"},
-    {"Nuevas/día", "Difícil tras", "Pasar solo"},
+    {"Nuevas/día", "Difícil tras", "Pasar solo", "Borrar"},
     {"Orientación", "Brillo", "Idioma", "Pulsación", "Fecha", "Suspender", "Acerca de"},
     "ESTUDIO", "DISPOSITIVO", "PASAR SOLO", "PULSACION",
     "%u/día", "apagado", ",",
@@ -543,6 +580,21 @@ const UiStrings kUiEs = {
     "%s · %u mazos", "en el equipo", "parar",
     "%u kanji",
     "Lecturas:",
+    "progreso",
+    "BORRAR PROGRESO",
+    {"Este mazo", "Todo"},
+    "y las estadísticas",
+    "ningún mazo cargado",
+    "Nada que borrar",
+    "Olvida %u kanji: vuelven a ser nuevos.",
+    "%s comparte %u: allí también se reinician.",
+    "Otros mazos comparten %u: allí también se reinician.",
+    "Olvida %u kanji y las estadísticas: respuestas, precisión, tiempo, rachas. Mazos y ajustes "
+    "se quedan.",
+    "Borrar",
+    "borrar",
+    "Borrados: %u kanji",
+    "Progreso borrado",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -610,7 +662,7 @@ uint16_t gExtraNewDay = 0;
 
 enum class Screen {
     Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks, WifiMenu, NetTest, About,
-    FirstLang, DateMenu, TzList
+    FirstLang, DateMenu, TzList, Reset, ResetConfirm
 };
 // Screen::Choice is shared by the row pickers (see openChoice()).
 enum class Choice {
@@ -946,6 +998,8 @@ void applyRotation(uint8_t r);
 void drawGetDecks();
 void drawWifiMenu();
 void drawNetTest();
+void drawReset();
+void drawResetConfirm();
 void openNetTest();
 void formatDate(uint16_t days, char* out, size_t n);
 [[noreturn]] void sleepNow(bool critical);
@@ -1422,6 +1476,7 @@ void presentList(const tgc::ListView& list) {
 namespace st = tgc::settings;
 st::Page gMenuPage = st::Page::Home;
 tgc::ListView gMenuLists[st::kPageCount];  // each page keeps its focus
+char gMenuNote[32] = "";  // a page's note (after Delete progress), until the next press
 tgc::ListView& menuList() { return gMenuLists[static_cast<int>(gMenuPage)]; }
 
 // One row of a settings page: its label, its value (none when `value` is null
@@ -1533,8 +1588,10 @@ void drawMenu() {
         wg::drawList(d, list, l.rowsX, l.rowsW, row);
     } else {
         menuHeader(d, gMenuPage == st::Page::Study ? ui().studyTitle : ui().deviceTitle);
-        layoutList(list, kHeaderH, H - kHintH, wideRows() ? layout().row1H : layout().row2H);
+        layoutList(list, kHeaderH, H - kHintH - (gMenuNote[0] ? kNoteH : 0),
+                   wideRows() ? layout().row1H : layout().row2H);
         wg::drawList(d, list, listX(), listW(), row);
+        menuNote(d, gMenuNote, tgc::theme::kOkHi);
     }
     menuHints(d, ui().hintOpen);
     presentList(list);
@@ -2218,7 +2275,7 @@ void drawStats() {
     const tgc::layout::Stats l = tgc::layout::statsFor(W, H);
     const tgc::Stats stats = gSrs.stats();
     const tgc::DeckSummary s = deckCounts();
-    const int acc = st::accuracyPercent(stats.reps, stats.lapses);
+    const int acc = st::accuracyPercent(stats.answers, stats.again);
 
     // The ring: a track, the accuracy clockwise from 12 o'clock, the number in
     // the hole ("87" in the numeral face, "%" in the label face, on one
@@ -3242,6 +3299,8 @@ void drawScreen() {
     else if (gScreen == Screen::NetTest) drawNetTest();
     else if (gScreen == Screen::About) drawAbout();
     else if (gScreen == Screen::FirstLang) drawFirstLang();
+    else if (gScreen == Screen::Reset) drawReset();
+    else if (gScreen == Screen::ResetConfirm) drawResetConfirm();
     else drawQuiz();
     // Frame cost (docs/ux-refresh.md §4, phase 1): the whole redraw and, in
     // it, the push to the panel (rows: H, or fewer for a partial push). A hold
@@ -3364,6 +3423,7 @@ void portalFillStats(tgc::PortalStats& out) {
     out.seen = st.seen;
     out.learned = st.learned;
     out.answers = st.answers;
+    out.again = st.again;
     out.reps = st.reps;
     out.lapses = st.lapses;
     out.streakCurrent = st.streakCurrent;
@@ -3412,6 +3472,73 @@ bool portalPacksChanged() {
         gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
     }
     return gPack->isOpen();
+}
+
+// --- Deleting progress (docs/srs.md section 2.1) ----------------------------
+
+// Writes the state file through the safe path (temp + rename). False when it
+// failed; the answers not yet saved then stay counted for the next flush.
+bool saveProgress() {
+    if (!gSrs.save(gSrsIo)) {
+        Serial.printf("srs: save failed\n");
+        return false;
+    }
+    gDirty = 0;
+    return true;
+}
+
+// The code points of the pack at `path`, sorted and unique; none when it does
+// not read (its kanji cannot be known, so nothing of it is forgotten).
+std::vector<uint32_t> packCodepoints(const String& path) {
+    std::vector<uint32_t> cps;
+    tgc::FsPackSource src(LittleFS.open(path, "r"));
+    if (src.ok()) tgc::readPackCodepoints(src, &cps);
+    tgc::sortUnique(cps);
+    return cps;
+}
+
+// The code points of every pack in /packs but `except`, sorted and unique.
+std::vector<uint32_t> otherDecksCodepoints(const String& except) {
+    std::vector<String> packs;
+    listPacks(packs);
+    std::vector<uint32_t> all;
+    for (const String& p : packs) {
+        if (p == except) continue;
+        const std::vector<uint32_t> cps = packCodepoints(p);
+        all.insert(all.end(), cps.begin(), cps.end());
+    }
+    tgc::sortUnique(all);
+    return all;
+}
+
+// The portal's POST /delete (WifiPortal::Hooks::onDeleteDeck): deletes pack
+// `path` and the progress of its kanji that no other deck in /packs has, so a
+// later download of it starts from scratch; N5's kanji keep theirs while the
+// Jouyou deck is installed. The lifetime statistics stay (docs/srs.md 2.1).
+// Order: the records are forgotten and the state file saved (temp + rename)
+// *before* the pack is removed. A power cut in between leaves the deck
+// installed without that progress (deleting it again finishes the job), never
+// records of a deck that is gone, which a new download of it would pick up
+// again. A failed save (a full filesystem: deleting a deck is how space is
+// made) is tried again once the pack is gone. Then the folder is rescanned as
+// after any other change: a deleted loaded deck gives way to the first one
+// left, and the queue is rebuilt (portalPacksChanged()).
+bool portalDeleteDeck(const char* path, uint32_t* forgotten) {
+    *forgotten = 0;
+    const String p(path);
+    if (!tgc::fsExists(p)) return false;
+    const std::vector<uint32_t> deck = packCodepoints(p);
+    const std::vector<uint32_t> gone = tgc::forgetOnDelete(deck, otherDecksCodepoints(p));
+    const size_t n = gSrs.forget(gone.data(), gone.size());
+    const bool saved = n == 0 || saveProgress();
+    const bool removed = LittleFS.remove(p);
+    if (!saved) saveProgress();
+    Serial.printf("delete %s: %s; progress of %u of its %u kanji forgotten, %u kanji left\n",
+                  path, removed ? "ok" : "failed", (unsigned)n, (unsigned)deck.size(),
+                  (unsigned)gSrs.count());
+    portalPacksChanged();
+    *forgotten = static_cast<uint32_t>(n);
+    return removed;
 }
 
 // Writes an NVS string only when it changed: the page posts on every load.
@@ -3511,9 +3638,9 @@ tgc::DeckDownloadResult portalDeckDownload(const tgc::CatalogEntry& e, bool upda
     return downloadCatalogDeck(e);
 }
 
-const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats, portalPacksChanged, portalTime,
-                                             wifiToGetDecks,  portalUiLang,       portalSwitchToHome,
-                                             portalDeckDownload};
+const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats,    portalPacksChanged, portalTime,
+                                             wifiToGetDecks,     portalUiLang,       portalSwitchToHome,
+                                             portalDeckDownload, portalDeleteDeck};
 
 // The mode the portal opens in: home once a network is saved, else setup.
 PortalMode defaultPortalMode() {
@@ -3894,6 +4021,209 @@ void openStats() {
     drawScreen();
 }
 
+// --- Settings > Study > Delete progress (docs/srs.md section 2.1) ----------
+// A two-row list -- "This deck" (the loaded deck's kanji, shared ones too) and
+// "Everything" (every record and the lifetime statistics) -- whose hold opens
+// a confirmation: what goes, in numbers, over one row that only a hold
+// confirms (the hold-progress fill shows on it); the side button cancels. Then
+// back to the Study page with a note; the queue, the summary card and every
+// count follow the store.
+tgc::ListView gResetList;
+tgc::ListView gResetConfirmList;  // the confirmation's one row
+char gResetNote[32] = "";         // the list's note ("Nothing to delete")
+bool gResetAll = false;           // the confirmation is for Everything
+std::vector<uint32_t> gResetCps;  // This deck: its kanji, sorted and unique
+tgc::DeckReset gResetPreview;     // This deck: its kanji with progress, shared ones
+int gResetSharedDecks = 0;        // other installed decks that share some of them
+String gResetSharedName;          // the one such deck's name, when only one
+constexpr int kResetRows = 2;
+
+void openReset(bool fresh) {
+    if (fresh) {
+        gResetList.setCount(kResetRows);
+        gResetList.reset(0);
+    }
+    gResetNote[0] = 0;
+    gScreen = Screen::Reset;
+    drawScreen();
+}
+
+void drawReset() {
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    menuHeader(d, ui().resetTitle);
+    const bool wide = wideRows();
+    gResetList.setCount(kResetRows);
+    layoutList(gResetList, kHeaderH, H - kHintH - (gResetNote[0] ? kNoteH : 0),
+               wide ? layout().row1H : layout().row2H);
+    wg::drawList(d, gResetList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
+        wg::Row row;
+        row.label = ui().resetRows[i];
+        row.focused = f;
+        const char* second = i == 1 ? ui().resetAllCaption
+                                    : (gPack->isOpen() ? gPack->deckName() : ui().resetNoDeck);
+        if (wide) {
+            row.value = second;
+            row.keepLabel = true;
+        } else {
+            row.caption = second;
+        }
+        if (i == 0 && !gPack->isOpen()) row.muted = true;
+        wg::drawRow(d, gRender, x, y, w, h, row);
+    });
+    menuNote(d, gResetNote, tgc::theme::kWarn);
+    menuHints(d, ui().hintChoose);
+    presentList(gResetList);
+}
+
+// The other installed decks' share of the loaded deck's kanji with progress:
+// how many of them (over all those decks) and, when a single deck shares any,
+// its name.
+void resetSharedPreview() {
+    gResetSharedDecks = 0;
+    gResetSharedName = "";
+    std::vector<String> packs;
+    listPacks(packs);
+    std::vector<uint32_t> all;
+    for (const String& p : packs) {
+        if (p == gCurrentPack) continue;
+        const std::vector<uint32_t> cps = packCodepoints(p);
+        if (tgc::deckResetPreview(gSrs, gResetCps, cps).shared == 0) continue;
+        if (++gResetSharedDecks == 1) {
+            tgc::PackInfo info;
+            tgc::FsPackSource src(LittleFS.open(p, "r"));
+            const bool named = src.ok() && tgc::peekPackInfo(src, &info) == tgc::PackError::Ok &&
+                               info.name[0];
+            gResetSharedName = named ? String(info.name) : packFileStem(p);
+        }
+        all.insert(all.end(), cps.begin(), cps.end());
+    }
+    tgc::sortUnique(all);
+    gResetPreview = tgc::deckResetPreview(gSrs, gResetCps, all);
+}
+
+// A hold on a row: the confirmation, or a note when there is nothing to delete.
+void openResetConfirm() {
+    gResetAll = gResetList.focus() == 1;
+    gResetNote[0] = 0;
+    if (gResetAll) {
+        if (gSrs.count() == 0 && gSrs.answeredTotal() == 0 && gSrs.reviewMs() == 0 &&
+            !gSrs.hasStudied())
+            snprintf(gResetNote, sizeof gResetNote, "%s", ui().resetNothing);
+    } else if (!gPack->isOpen()) {
+        snprintf(gResetNote, sizeof gResetNote, "%s", ui().summaryNoDeck);
+    } else {
+        gResetCps = packCodepoints(gCurrentPack);
+        resetSharedPreview();
+        if (gResetPreview.records == 0)
+            snprintf(gResetNote, sizeof gResetNote, "%s", ui().resetNothing);
+    }
+    if (gResetNote[0]) {
+        drawScreen();
+        return;
+    }
+    gResetConfirmList.setCount(1);
+    gResetConfirmList.reset(0);
+    gScreen = Screen::ResetConfirm;
+    drawScreen();
+}
+
+void drawResetConfirm() {
+    using namespace tgc::theme;
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    menuHeader(d, ui().resetTitle);
+    // What goes: the deck (or "Everything") in the label face, then in numbers.
+    const char* what = gResetAll ? ui().resetRows[1] : gPack->deckName();
+    gRender.drawLabel(d, what, kGutter, kHeaderH + 4, W - 2 * kGutter, 20, kWarn, kBlack,
+                      tgc::Renderer::kTextUi, tgc::Align::Centre);
+    const int rowH = layout().row1H;
+    const int rowsTop = H - kHintH - rowH - 2 * kMarkerBand;
+    const int textTop = kHeaderH + 28;
+    char text[200];
+    if (gResetAll)
+        snprintf(text, sizeof text, ui().resetAllFmt, (unsigned)gSrs.count());
+    else
+        snprintf(text, sizeof text, ui().resetDeckFmt, (unsigned)gResetPreview.records);
+    const int used = drawCaptionLines(d, text, kGutter, textTop, W - 2 * kGutter,
+                                      std::max(0, (rowsTop - textTop) / 10), kWhite);
+    // Kanji other decks share go too: said in warn colour, under a small gap.
+    const int sharedTop = textTop + 10 * used + 6;
+    if (!gResetAll && gResetPreview.shared > 0 && rowsTop - sharedTop >= 10) {
+        if (gResetSharedDecks == 1)
+            snprintf(text, sizeof text, ui().resetSharedOneFmt, gResetSharedName.c_str(),
+                     (unsigned)gResetPreview.shared);
+        else
+            snprintf(text, sizeof text, ui().resetSharedManyFmt, (unsigned)gResetPreview.shared);
+        drawCaptionLines(d, text, kGutter, sharedTop, W - 2 * kGutter, (rowsTop - sharedTop) / 10,
+                         kWarn);
+    }
+    gResetConfirmList.setCount(1);
+    layoutList(gResetConfirmList, rowsTop, H - kHintH, rowH);
+    wg::drawList(d, gResetConfirmList, listX(), listW(),
+                 [&](int, int x, int y, int w, int h, bool f) {
+                     wg::Row row;
+                     row.label = ui().resetConfirmRow;
+                     row.focused = f;
+                     wg::drawRow(d, gRender, x, y, w, h, row);
+                 });
+    wg::Hints hints;
+    hints.hold = ui().hintDelete;
+    hints.side = &tgc::kIconBack;
+    hints.sideWord = ui().hintCancel;
+    wg::drawHintBar(d, gRender, W, H, hints);
+    present();
+}
+
+// The confirmation's hold: forget, save (temp + rename), and let the queue and
+// the screen the settings return to follow, as after a deck change: the
+// question kept for them may be a card whose progress just went.
+void applyReset() {
+    size_t n = 0;
+    if (gResetAll) {
+        n = gSrs.resetProgress();
+        snprintf(gMenuNote, sizeof gMenuNote, "%s", ui().resetAllDone);
+    } else {
+        n = gSrs.forget(gResetCps.data(), gResetCps.size());
+        snprintf(gMenuNote, sizeof gMenuNote, ui().resetDoneFmt, (unsigned)n);
+    }
+    saveProgress();
+    Serial.printf("progress: %s: %u kanji forgotten, %u left, %u answers\n",
+                  gResetAll ? "everything" : gCurrentPack.c_str(), (unsigned)n,
+                  (unsigned)gSrs.count(), (unsigned)gSrs.answeredTotal());
+    gExtraNew = 0;
+    gQueue.rebuild(*gPack, gSrs, gRng);
+    if (gPack->isOpen()) gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
+    gResetCps.clear();
+    gResetCps.shrink_to_fit();
+    gMenuPage = st::Page::Study;
+    gScreen = Screen::Menu;
+    drawScreen();
+}
+
+void resetLoop(int a, int b) {
+    if (a == 1) {
+        const bool note = gResetNote[0] != 0;
+        gResetNote[0] = 0;
+        moveListFocus(gResetList);
+        if (note) dropPartialPush();  // the note goes: the whole frame
+        drawScreen();
+    } else if (a == 2) {
+        openResetConfirm();
+    }
+    if (b && gScreen == Screen::Reset) backToMenu();  // the Study page
+}
+
+// Only a hold deletes; a tap does nothing, the side button cancels.
+void resetConfirmLoop(int a, int b) {
+    if (a == 2) {
+        applyReset();
+    } else if (b) {
+        gScreen = Screen::Reset;
+        drawScreen();
+    }
+}
+
 // Every settings row: its label (UiStrings), its value and what a hold does.
 // A page lists its rows in ui/SettingsTree.h; a new setting gets an st::Item,
 // a place on a page there and an entry here.
@@ -3909,7 +4239,7 @@ const MenuItem& menuItem(st::Item id) {
         {I::Stats, [] { return ui().groupRows[2]; },
          [](char* o, size_t n) {
              const tgc::Stats s = gSrs.stats();
-             const int acc = st::accuracyPercent(s.reps, s.lapses);
+             const int acc = st::accuracyPercent(s.answers, s.again);
              if (acc >= 0) snprintf(o, n, "%d%%", acc);
          },
          openStats},
@@ -3933,6 +4263,9 @@ const MenuItem& menuItem(st::Item id) {
              snprintf(o, n, "%s", ui().advanceRows[gAdvancePref % tgc::kAdvanceChoices]);
          },
          [] { openChoice(Choice::AutoAdvance); }},
+        {I::DeleteProgress, [] { return ui().studyRows[3]; },
+         [](char* o, size_t n) { snprintf(o, n, "%s", ui().deleteRowValue); },
+         [] { openReset(true); }},
         // --- Device
         {I::Orientation, [] { return ui().deviceRows[0]; },
          [](char* o, size_t n) { snprintf(o, n, "%s", ui().orientRows[gOrientPref % 3]); },
@@ -3970,8 +4303,11 @@ void activateSetting() {
 // loop() on the settings tree: tap moves, hold activates, the side button goes
 // from a page back to the home and from the home out of the settings.
 void menuLoop(int a, int b) {
+    const bool note = gMenuNote[0] != 0;
+    if (a || b) gMenuNote[0] = 0;  // a page's note lasts until the next press
     if (a == 1) {
         moveListFocus(menuList());
+        if (note) dropPartialPush();  // the note goes: the whole frame
         drawScreen();
     } else if (a == 2) {
         activateSetting();
@@ -5442,6 +5778,10 @@ void loop() {
         netTestLoop(a, b);
     } else if (gScreen == Screen::FirstLang) {
         firstLangLoop(a);
+    } else if (gScreen == Screen::Reset) {
+        resetLoop(a, b);
+    } else if (gScreen == Screen::ResetConfirm) {
+        resetConfirmLoop(a, b);
     } else {
         quizLoop(a, b, keyA.downAt, t, downA || downB);
     }

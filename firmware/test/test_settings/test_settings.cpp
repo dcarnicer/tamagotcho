@@ -11,6 +11,7 @@
 
 #include "pack/MemorySource.h"
 #include "pack/PackReader.h"
+#include "srs/DeckProgress.h"
 #include "srs/SrsStore.h"
 #include "ui/DeckSummary.h"
 #include "ui/ScreenLayout.h"
@@ -137,10 +138,11 @@ void test_tree_pages() {
     TEST_ASSERT_TRUE(home.items[3] == Item::Wifi);
     TEST_ASSERT_TRUE(home.items[4] == Item::Device);
     const settings::PageItems study = settings::pageItems(Page::Study);
-    TEST_ASSERT_EQUAL(3, study.count);
+    TEST_ASSERT_EQUAL(4, study.count);
     TEST_ASSERT_TRUE(study.items[0] == Item::NewPerDay);
     TEST_ASSERT_TRUE(study.items[1] == Item::HardAfter);
     TEST_ASSERT_TRUE(study.items[2] == Item::AutoAdvance);
+    TEST_ASSERT_TRUE(study.items[3] == Item::DeleteProgress);
     const settings::PageItems device = settings::pageItems(Page::Device);
     TEST_ASSERT_EQUAL(7, device.count);
     TEST_ASSERT_TRUE(device.items[0] == Item::Orientation);
@@ -166,7 +168,7 @@ void test_tree_every_item_once() {
     for (int i = 0; i < settings::kItemCount; ++i) TEST_ASSERT_EQUAL(1, seen[i]);
     TEST_ASSERT_EQUAL(-1, settings::rowOf(Page::Home, Item::Sleep));
     // Out of range rows clamp.
-    TEST_ASSERT_TRUE(settings::itemAt(Page::Study, 9) == Item::AutoAdvance);
+    TEST_ASSERT_TRUE(settings::itemAt(Page::Study, 9) == Item::DeleteProgress);
     TEST_ASSERT_TRUE(settings::itemAt(Page::Study, -1) == Item::NewPerDay);
 }
 
@@ -396,6 +398,24 @@ void test_deck_summary() {
     srs.grade(0x4E94, Grade::Good, 10, 0, 0.5f);
     srs.grade(0x9998, Grade::Good, 10, 0, 0.5f);
     TEST_ASSERT_EQUAL_UINT32(1, deckSummary(pack, srs).introducedToday);
+
+    // Delete progress > This deck (docs/srs.md section 2.1): the deck's kanji go
+    // back to new, its cap of new cards for today is free again, and another
+    // deck's record stays.
+    std::vector<uint32_t> cps;
+    TEST_ASSERT_EQUAL(static_cast<int>(PackError::Ok),
+                      static_cast<int>(readPackCodepoints(src, &cps)));
+    sortUnique(cps);
+    TEST_ASSERT_EQUAL_UINT32(5, static_cast<uint32_t>(srs.forget(cps.data(), cps.size())));
+    s = deckSummary(pack, srs);
+    TEST_ASSERT_EQUAL_UINT32(5, s.fresh);
+    TEST_ASSERT_EQUAL_UINT32(0, s.seen());
+    TEST_ASSERT_EQUAL_UINT32(0, s.due);
+    TEST_ASSERT_EQUAL_UINT32(0, s.introducedToday);
+    TEST_ASSERT_NOT_NULL(srs.find(0x9999));
+    // Everything: no records left at all; the accuracy shows "--" again.
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(srs.resetProgress()));
+    TEST_ASSERT_EQUAL(-1, settings::accuracyPercent(srs.stats().answers, srs.stats().again));
 }
 
 void test_study_more_extra() {
