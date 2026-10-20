@@ -83,8 +83,8 @@ version bump). Version 2 changed the stroke block layout (see below).
 |-----|------|---------------|------------------------------------------------------------|
 | 0   | u32  | codepoint     | the kanji (Unicode scalar). Stable card identity.          |
 | 4   | u32  | meanings      | absolute file offset into the string pool. Meanings separated by `"; "`, most common first |
-| 8   | u32  | onyomi        | string offset, katakana, readings separated by `"、"`. May be empty `""` |
-| 12  | u32  | kunyomi       | string offset, hiragana, separated by `"、"`; okurigana marked with `.` as in KANJIDIC (`た.べる`). May be empty |
+| 8   | u32  | onyomi        | string offset, katakana, readings separated by `"、"`, most useful first (see Readings). May be empty `""` |
+| 12  | u32  | kunyomi       | string offset, hiragana, separated by `"、"`, most useful first; okurigana marked with `.` as in KANJIDIC (`た.べる`). May be empty |
 | 16  | u32  | distractors   | absolute file offset of this card's meaning distractor list (see below) |
 | 20  | u8   | jlpt          | 1..5 (N1..N5), 0 = unknown                                 |
 | 21  | u8   | grade         | KANJIDIC school grade 1..10, 0 = unknown                   |
@@ -96,6 +96,22 @@ version bump). Version 2 changed the stroke block layout (see below).
 
 The kanji's own glyphs are looked up by `codepoint` in sets 0 and 1 (every card
 **must** have a set-0 and a set-1 glyph).
+
+**Readings.** Within each kind (`onyomi`, `kunyomi`) the readings are ordered
+**most useful first**, and a reading question asks the **first** reading of the
+kind (dots removed). **Every listed reading counts as a valid answer**: no
+option of a question may be another reading of the target, of either kind, so
+readings that are not worth asking stay in the list, after the others, to keep
+distractors out. **A kind may be empty**: the device then asks the other kind,
+and a card with neither kind gets no reading questions. An empty kind is the
+offset of an empty string (`""`) inside the string pool, **never 0** (readers
+reject an offset outside the pool). A non-empty list has no empty item (no
+leading, trailing or doubled `、`) and no reading that is only okurigana dots.
+The builder by default
+keeps KANJIDIC2's order; `build --common-readings` puts common readings first
+and leaves a kind empty when none of its readings is worth asking
+(docs/common-readings.md). A card with no meaning and no reading is never
+written.
 
 ## Distractor lists
 
