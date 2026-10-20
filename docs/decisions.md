@@ -2440,3 +2440,34 @@ numbers in docs/meaning-order.md.
   credits the source; `Credits.h` gains `kMeanings`, shown on About
   ("Meanings:") and in the portal footer. Not run, not pushed: the maintainer
   reviews the N5 list and the doubtful cases first.
+
+## 2026-10-20 – Meanings: English by a learner signal, then Spanish, then overrides
+
+The maintainer reviewed the first version (previous entry): following
+KANJIDIC2's English order reproduces its quirks (原 prado, 機 telar, 私
+privado, 明 inteligente, 験 efecto, 背 estatura, 支 rama, 頂 colocar sobre, 更
+caer la noche…). Decided and implemented the same day on `feature/es-meanings`
+(docs/meaning-order.md):
+
+- **English first, by a learner signal**: each KANJIDIC2 English meaning is
+  scored by the JLPT vocabulary words that contain the kanji (Jonathan Waller's
+  lists, as for the readings), through their JMdict glosses: level weight 16 /
+  8 / 4 / 2 / 1.5 (N5..N1) divided by the word's number of kanji, sense and
+  gloss position, exact or partial match; a score under 2 counts as none. The
+  Spanish list then follows the new English order as before. wordfreq was tried
+  and adds nothing.
+- **English decks too**: the same problem (機 "loom" shown today), so the flag
+  reorders English for `--lang en` as well; it keeps its name,
+  `--meaning-order`, since it now orders meanings in general. 524 English and
+  707 Spanish first meanings change against KANJIDIC2 (295 Spanish ones
+  against the first version).
+- **Overrides**: a project-authored table,
+  `tools/pack-builder/data/meaning_overrides.tsv` (27 lines, N5-N3 only), puts
+  one of KANJIDIC2's own meanings first where the signal or the matching still
+  goes wrong (機 machine, 申 decir, 中 dentro, 早 early: JMdict merges 早い and
+  速い). The builder and a test check that every override names a KANJIDIC2
+  meaning of that kanji and language; it is distributed with the packs under
+  CC BY-SA (docs/data-sources.md). An English override comes before the
+  Spanish step, so Spanish follows it.
+- No firmware change: the new sources (JMdict, the JLPT lists) were already
+  credited, and `kMeanings` (FreeDict) is unchanged.

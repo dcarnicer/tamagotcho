@@ -117,10 +117,11 @@ jobs:
 
       # --common-readings: each kind's most useful reading first (the one the
       # device asks), and a kind with nothing worth asking left empty
-      # (docs/common-readings.md). --meaning-order: the Spanish meanings in the
-      # order of the English ones (the device shows the first), and in every
-      # language meaning distractors kept away from the meanings a pack leaves
-      # out (docs/meaning-order.md).
+      # (docs/common-readings.md). --meaning-order: each kanji's most useful
+      # meaning first (the one the device shows): English by the JLPT
+      # vocabulary, Spanish by the English order, plus the project's overrides;
+      # and in every language meaning distractors kept away from the meanings a
+      # pack leaves out (docs/meaning-order.md).
       - name: Build packs
         env:
           LEVELS: ${{ steps.inputs.outputs.levels }}
@@ -297,8 +298,10 @@ jobs:
           newspaper frequency. Reading questions ask a common reading: the ones the
           Jōyō table approves first, then those of the easiest JLPT vocabulary,
           then the most frequent; a kanji with no reading of a kind worth asking
-          (気 いき, 百 もも) is asked the other kind. Spanish meanings follow the
-          order of the English ones, most common first (持 sostener, not duración).
+          (気 いき, 百 もも) is asked the other kind. The meaning shown is the one
+          learners meet first: English meanings are ordered by the JLPT vocabulary
+          that uses the kanji (私 "I", 機 "machine"), Spanish ones by the English
+          ones they translate (持 "sostener", not "duración").
 
           ## Install
 
@@ -330,9 +333,10 @@ jobs:
           > (CC BY-SA), wordfreq (Robyn Speer, CC BY-SA 4.0, with data from
           > OpenSubtitles), the Tatoeba Project's sentence indices (CC BY 2.0 FR)
           > and the Jōyō kanji table (Agency for Cultural Affairs, 2010).
-          > Spanish meaning order from FreeDict's English-Spanish dictionary
-          > (WikDict, from Wiktionary via DBnary), CC BY-SA 3.0. These packs are
-          > licensed CC BY-SA.
+          > Meaning order from the same JLPT vocabulary lists and JMdict; Spanish
+          > meaning order from FreeDict's English-Spanish dictionary (WikDict,
+          > from Wiktionary via DBnary), CC BY-SA 3.0; and the Tangochō
+          > project's meaning overrides. These packs are licensed CC BY-SA.
           MD
           } > notes.md
           cat notes.md

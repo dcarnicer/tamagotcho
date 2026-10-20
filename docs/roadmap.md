@@ -110,23 +110,25 @@ Scope for now: **kanji only** (no vocabulary decks).
       - [ ] Follow-up: let a few common readings the Jōyō table does not
         approve be asked (等 など, 経 た.つ, 被 かぶ.る), e.g. for learners outside
         the school curriculum.
-      - [~] **Spanish meanings in a useful order** (2026-10-20). KANJIDIC2's
-        Spanish meanings are often ordered worse than its English ones, and the
-        device shows the first ones: 持 "duración; propiedad" (en "hold;
-        have"), 界 "borde; frontera" (en "world; boundary"), 題 "objeto; tema"
-        (en "topic; subject"). Order them by the English order (match each
-        Spanish gloss to its English counterpart). Implemented on
+      - [~] **Meanings in a useful order** (2026-10-20). KANJIDIC2's Spanish
+        meanings are often ordered worse than its English ones, and the device
+        shows the first ones: 持 "duración; propiedad" (en "hold; have"), 界
+        "borde; frontera" (en "world; boundary"), 題 "objeto; tema" (en
+        "topic; subject"); and its English order has quirks of its own (機
+        "loom", 私 "private", 原 "meadow"). Implemented on
         `feature/es-meanings` (docs/meaning-order.md): `build --meaning-order`
-        matches each Spanish gloss to the English one it translates with
-        FreeDict's English-Spanish dictionary (WikDict, from Wiktionary, CC
-        BY-SA 3.0) and related forms; 602 first meanings change (8 in N5: 持
-        sostener, 食 comer, 見 ver …), and in every language meaning
-        distractors also avoid the meanings a pack leaves out. Pending: the
-        maintainer's review of the N5 list and the doubtful cases (明
-        inteligente, 御 manipular), then a decks run (`decks.yml` is prepared).
+        orders the English meanings by the JLPT vocabulary words that use the
+        kanji (their JMdict glosses), the Spanish ones by the English ones they
+        translate (FreeDict's English-Spanish dictionary, CC BY-SA 3.0), then
+        applies a 27-line project-authored override table; 524 English and 707
+        Spanish first meanings change (N5: 14 and 13), English decks included,
+        and in every language meaning distractors also avoid the meanings a
+        pack leaves out. Pending: the maintainer's review of the N5-N3 lists,
+        then a decks run (`decks.yml` is prepared).
       - [ ] Follow-up: French and Portuguese meanings in the English order too
         (about as many changes as Spanish), once a pinned English-French /
         English-Portuguese dictionary under a compatible licence exists.
+      - [ ] Follow-up: hand-check the N2-N1 meaning changes the report flags.
       Invariant enforced: **no option may be another valid reading or meaning of
       the target** (otherwise two options are correct); checked in `Quiz.cpp`
       and in the builder's distractor lists.

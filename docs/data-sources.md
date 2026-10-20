@@ -45,10 +45,11 @@ or stroke data.
   English), at most as many as English has and at most 3. If the language has
   none for a kanji, the first 3 English meanings are used and card flag bit0 is
   set. KANJIDIC2 has no meanings at all for some kanji; cards with neither
-  meanings nor readings are dropped. With `--meaning-order` the Spanish list is
-  first put in the order of the English one (see
-  [Meaning order](#meaning-order-optional-fetch---meanings-build---meaning-order)),
-  so the caps keep the glosses that translate the English ones.
+  meanings nor readings are dropped. With `--meaning-order` the English list
+  is first ordered by a learner signal, the Spanish list by the new English
+  one, and a few overrides apply (see
+  [Meaning order](#meaning-order-optional-fetch---readings---meanings-build---meaning-order)),
+  so the caps keep the most useful meanings.
 - On'yomi: katakana as in KANJIDIC2. Kun'yomi: hiragana as in KANJIDIC2.
 - Kun'yomi keep the `.` okurigana marker (`た.べる`). The `-` prefix/suffix
   markers (`-ず`, `ひ.-`) are **dropped**: they carry little value on a 135 px
@@ -230,7 +231,10 @@ published decks with it; the decks published so far use none of them.
   the same terms and attribution as KANJIDIC2 ("This package uses the JMdict
   and KANJIDIC2 files…").
 - Used for: the list of words (kanji form + reading) and their priority tags
-  (`nfXX`, `news1`, `ichi1`…), as a prior for how common each word is.
+  (`nfXX`, `news1`, `ichi1`…), as a prior for how common each word is; and,
+  with `--meaning-order`, the English glosses of the JLPT vocabulary words
+  (docs/meaning-order.md). Only the English file is read (its Japanese and
+  English parts are what the EDRDG licence covers).
 
 ### JmdictFurigana
 
@@ -307,7 +311,8 @@ published decks with it; the decks published so far use none of them.
   its reading), read with Python's `sqlite3`. 7,270 entries, 7,224 (word,
   reading) pairs after expanding alternatives and skipping notes.
 - Used for: the learner signal: a reading met in an easier JLPT list's word
-  comes first (docs/common-readings.md).
+  comes first (docs/common-readings.md); and, with `--meaning-order`, a meaning
+  of the words met in easier lists comes first (docs/meaning-order.md).
 
 Test fixtures: `tools/pack-builder/tests/test_readings.py` holds hand-written
 miniatures of each format (a few JMdict-style entries such as 九つ/ここのつ, a
@@ -315,18 +320,20 @@ furigana line per word, a three-token wordfreq list, two Tatoeba index lines,
 a few rows shaped like the Jōyō table's text and two-table Anki decks with a
 handful of words). They are not copied from the files above.
 
-## Meaning order (optional: `fetch --meanings`, `build --meaning-order`)
+## Meaning order (optional: `fetch --readings --meanings`, `build --meaning-order`)
 
-`build --meaning-order` puts each card's Spanish meanings in the order of its
-English ones (KANJIDIC2 lists English most common first, Spanish often not), so
-the meaning the device shows is a translation of the first English one
-(docs/meaning-order.md). The dictionary below is downloaded only by
+`build --meaning-order` puts each card's most useful meaning first, the one the
+device shows (docs/meaning-order.md): the English meanings by a learner signal
+(the JLPT vocabulary words that use the kanji, through their JMdict glosses:
+both inputs of `--common-readings` above), the Spanish ones in the order of
+the English ones they translate (the dictionary below), then a short
+project-authored override table. The dictionary is downloaded only by
 `tangocho-pack fetch --meanings`, into `cache/meanings/`, and read only with
-that flag. A pack built with it contains no dictionary data, only KANJIDIC2's
-own Spanish meanings in another order (the caps then keep the ones that match
-the English list), but the order is derived from the dictionary, so the pack
-carries its attribution (below). `decks.yml` is prepared to build the
-published decks with it; the decks published so far use none of it.
+that flag. A pack built with it contains no word or dictionary data, only
+KANJIDIC2's own meanings in another order (the caps then keep the first ones),
+but the order is derived from these sources, so the pack carries their
+attribution (below). `decks.yml` is prepared to build the published decks with
+it; the decks published so far use none of it.
 
 ### FreeDict English-Spanish dictionary (WikDict)
 
@@ -357,10 +364,23 @@ published decks with it; the decks published so far use none of it.
   etc. are covered by separate copyright held by the compilers of that
   material)" (https://www.edrdg.org/edrdg/licence.html).
 
-Test fixtures: `tools/pack-builder/tests/test_meanings.py` holds a hand-written
-miniature in the TEI format (a dozen English words with Spanish translations)
+### Meaning overrides (project-authored)
+
+- File: `tools/pack-builder/data/meaning_overrides.tsv`, committed in this
+  repository (not downloaded): a short hand-checked table (27 lines) that puts
+  one of KANJIDIC2's own meanings first for a kanji and language where the
+  steps above go wrong (機 "machine", 申 "decir"), with the reason.
+- Authored by the Tangochō project. Licence: it is distributed with the packs
+  under CC BY-SA (and with the code, MIT); it holds no third-party text beyond
+  the KANJIDIC2 meanings it names, each of which the builder checks against
+  KANJIDIC2 (an override can only choose among them, never add text).
+- Used for: the last step of `--meaning-order`.
+
+Test fixtures: `tools/pack-builder/tests/test_meanings.py` holds hand-written
+miniatures in the TEI, JMdict and Anki-deck formats (a dozen English words
+with Spanish translations, four JMdict entries, a handful of vocabulary words)
 and KANJIDIC2-shaped entries with invented glosses; they are not copied from
-the dictionary or KANJIDIC2.
+the sources or KANJIDIC2.
 
 ## Root CA certificates (firmware)
 
@@ -394,10 +414,12 @@ from Jonathan Waller's JLPT Resources (tanos.co.uk, CC BY)" and adds:
 > Tatoeba Project's sentence indices (CC BY 2.0 FR) and the Jōyō kanji table
 > (Agency for Cultural Affairs, 2010).
 
-A Spanish pack built with `--meaning-order` adds:
+A pack built with `--meaning-order` adds (the FreeDict part for Spanish):
 
-> Spanish meaning order from FreeDict's English-Spanish dictionary (WikDict,
-> from Wiktionary via DBnary), CC BY-SA 3.0.
+> Meaning order from Jonathan Waller's JLPT vocabulary lists (tanos.co.uk,
+> CC BY) and JMdict (EDRDG, CC BY-SA 4.0); Spanish meaning order from FreeDict's
+> English-Spanish dictionary (WikDict, from Wiktionary via DBnary), CC BY-SA
+> 3.0; and the Tangochō project's meaning overrides.
 
 The decks release notes in `decks.yml` carry this text.
 
