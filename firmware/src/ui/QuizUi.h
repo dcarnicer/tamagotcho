@@ -14,21 +14,12 @@
 #include <cstdio>
 
 #include "pack/Utf8.h"
+#include "ui/HintBar.h"  // captionChars(), kCaptionCharW, hintFrontEnd()
 #include "ui/Theme.h"
 
 namespace tgc {
 
-// ---------------------------------------------------------------- captions
-constexpr int kCaptionCharW = 6;  // Font0 at 1x
-
-// Code points in UTF-8 `s` (a caption's width is this times kCaptionCharW).
-inline int captionChars(const char* s) {
-    int n = 0;
-    if (s)
-        while (utf8Next(&s)) ++n;
-    return n;
-}
-
+// ---------------------------------------------------------------- pills
 // Width of a caption pill with `text` and an icon `iconW` px wide (0: none),
 // as widgets::pillWidth() draws it.
 inline int pillWidthFor(const char* text, int iconW) {
@@ -189,17 +180,6 @@ inline bool strokeCounterWorded(const char* fmt, unsigned strokes, int room) {
     char buf[40];
     snprintf(buf, sizeof buf, fmt, strokes, strokes);
     return captionChars(buf) * kCaptionCharW <= room;
-}
-
-// ---------------------------------------------------------------- hint bar fit
-// Where widgets::drawHintBar() ends the front-button items (the x after the
-// last word, without its trailing 6 px) for a tap word and an optional hold
-// word, with the tap mark `tapW` and hold mark `holdW` px wide.
-inline int hintFrontEnd(const char* tap, const char* hold, int tapW, int holdW) {
-    int x = theme::kGutter;
-    if (tap) x += tapW + 3 + captionChars(tap) * kCaptionCharW + 6;
-    if (hold) x += holdW + 3 + captionChars(hold) * kCaptionCharW + 6;
-    return x - 6;
 }
 
 }  // namespace tgc

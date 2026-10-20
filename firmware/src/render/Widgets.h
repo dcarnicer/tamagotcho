@@ -54,13 +54,23 @@ void drawBattery(lgfx::LovyanGFX& d, int x, int y, int pct);
 // mark and a word (• tap, ▬ hold), the side button's on the right as an icon,
 // with its word only when that fits. `holding` (or a press fill under way, see
 // setPressFill()) lights the hold item while a hold is in progress.
+// A screen whose side tap and side hold differ (the date stepper) also sets
+// `sideHold`: ▬ and that word after the side icon and its word. When the two
+// groups do not fit one row, the side group takes a second row above the
+// front one: the bar is then hintBarHeight() = 24 px tall, which the screen
+// must leave free (ui/HintBar.h, docs/ux-refresh.md §2.4). `sideDim` draws the
+// side tap's icon and word in text-faint (not available right now).
 struct Hints {
     const char* tap = nullptr;
     const char* hold = nullptr;
     const Icon* side = nullptr;
     const char* sideWord = nullptr;
+    const char* sideHold = nullptr;
+    bool sideDim = false;
     bool holding = false;
 };
+// The bar's height for `hints` on a `w` px wide panel: kHintH, or twice that.
+int hintBarHeight(int w, const Hints& hints);
 void drawHintBar(lgfx::LovyanGFX& d, Renderer& r, int w, int h, const Hints& hints);
 
 // ---------------------------------------------------------------- tile

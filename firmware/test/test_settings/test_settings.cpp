@@ -302,28 +302,34 @@ void test_layout_stats() {
 
 void test_layout_date() {
     using namespace theme;
+    // The hint bar is one row, or two where the side button's -1 day and
+    // cancel do not fit next to the front items (widgets::hintBarHeight()).
     for (const Panel& p : kPanels) {
-        const layout::Date d = layout::dateFor(p.w, p.h);
-        const int hintY = p.h - kHintH;
-        TEST_ASSERT_TRUE(inside(d.tile, p.w, kHeaderH, hintY));
-        TEST_ASSERT_TRUE(inside(d.notice, p.w, kHeaderH, hintY));
-        TEST_ASSERT_TRUE(inside(d.explain, p.w, kHeaderH, hintY));
-        TEST_ASSERT_TRUE(d.tile.w >= 100);  // "Wednesday" in the label face is 96 px
-        TEST_ASSERT_EQUAL(layout::kDateTileH, d.tile.h);
-        TEST_ASSERT_TRUE(d.bandH < d.tile.h);
-        // The pill under the tile and above the hint bar.
-        TEST_ASSERT_TRUE(d.pillY >= d.tile.bottom());
-        TEST_ASSERT_TRUE(d.pillY + kPillH <= hintY);
-        TEST_ASSERT_TRUE(d.pillCx > d.tile.x && d.pillCx < d.tile.right());
-        TEST_ASSERT_FALSE(overlap(d.tile, d.notice));
-        TEST_ASSERT_FALSE(overlap(d.tile, d.explain));
-        TEST_ASSERT_FALSE(overlap(d.notice, d.explain));
-        // At least three caption lines for the explanation.
-        TEST_ASSERT_TRUE(d.explain.h >= 30);
-        // Two caption lines of the notice: "Último uso sáb 17 oct" is 21
-        // characters (126 px).
-        TEST_ASSERT_TRUE(d.notice.w >= 126 && d.notice.h >= 20);
-        if (p.w <= p.h) TEST_ASSERT_TRUE(d.explain.y >= d.pillY + kPillH);
+        for (int hintH : {kHintH, 2 * kHintH}) {
+            const layout::Date d = layout::dateFor(p.w, p.h, hintH);
+            const int hintY = p.h - hintH;
+            TEST_ASSERT_TRUE(inside(d.tile, p.w, kHeaderH, hintY));
+            TEST_ASSERT_TRUE(inside(d.notice, p.w, kHeaderH, hintY));
+            TEST_ASSERT_TRUE(inside(d.explain, p.w, kHeaderH, hintY));
+            TEST_ASSERT_TRUE(d.tile.w >= 100);  // "Wednesday" in the label face is 96 px
+            TEST_ASSERT_EQUAL(layout::kDateTileH, d.tile.h);
+            TEST_ASSERT_TRUE(d.bandH < d.tile.h);
+            // The pill under the tile and above the hint bar.
+            TEST_ASSERT_TRUE(d.pillY >= d.tile.bottom());
+            TEST_ASSERT_TRUE(d.pillY + kPillH <= hintY);
+            TEST_ASSERT_TRUE(d.pillCx > d.tile.x && d.pillCx < d.tile.right());
+            TEST_ASSERT_FALSE(overlap(d.tile, d.notice));
+            TEST_ASSERT_FALSE(overlap(d.tile, d.explain));
+            TEST_ASSERT_FALSE(overlap(d.notice, d.explain));
+            // At least five caption lines for the explanation: a network
+            // status (two lines), a blank one and "Hold when it shows today."
+            // (two lines in 21 characters).
+            TEST_ASSERT_TRUE(d.explain.h >= 50);
+            // Two caption lines of the notice: "Último uso sáb 17 oct" is 21
+            // characters (126 px).
+            TEST_ASSERT_TRUE(d.notice.w >= 126 && d.notice.h >= 20);
+            if (p.w <= p.h) TEST_ASSERT_TRUE(d.explain.y >= d.pillY + kPillH);
+        }
     }
 }
 

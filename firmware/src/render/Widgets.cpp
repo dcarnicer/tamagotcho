@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "pack/Utf8.h"
+#include "ui/HintBar.h"
 
 namespace tgc {
 namespace widgets {
@@ -148,30 +149,45 @@ void drawHeader(lgfx::LovyanGFX& d, Renderer& r, int w, const Header& h) {
 
 // ---------------------------------------------------------------- hint bar
 
+namespace {
+HintSpec hintSpec(const Hints& h) {
+    HintSpec s;
+    s.tap = h.tap;
+    s.hold = h.hold;
+    s.tapMarkW = kIconTap.w;
+    s.holdMarkW = kIconHold.w;
+    s.sideIconW = h.side ? h.side->w : 0;
+    s.sideWord = h.sideWord;
+    s.sideHold = h.sideHold;
+    return s;
+}
+}  // namespace
+
+int hintBarHeight(int w, const Hints& hints) { return planHints(w, hintSpec(hints)).height; }
+
 void drawHintBar(lgfx::LovyanGFX& d, Renderer& r, int w, int h, const Hints& hints) {
+    // ui/HintBar.h decides where the side group goes; the front row is the
+    // bottom 12 px on every screen.
+    const HintPlan plan = planHints(w, hintSpec(hints));
     const int y = h - kHintH;
-    d.fillRect(0, y, w, kHintH, kBg);
-    int x = kGutter;
-    auto item = [&](const Icon& mark, const char* word, bool lit) {
-        drawIcon(d, mark, x, y + 2 + (7 - mark.h) / 2, lit ? kAccentHi : kText);
-        x += mark.w + 3;
-        x += drawCaption(d, r, word, x, y + 2, lit ? kText : kTextDim, kBg) + 6;
+    d.fillRect(0, h - plan.height, w, plan.height, kBg);
+    auto item = [&](int x, int row, const Icon& mark, const char* word, uint16_t markInk,
+                    uint16_t wordInk) {
+        drawIcon(d, mark, x, row + 2 + (7 - mark.h) / 2, markInk);
+        if (word) drawCaption(d, r, word, x + mark.w + kHintMarkGap, row + 2, wordInk, kBg);
+        return x + hintItemW(mark.w, word) + kHintItemGap;
     };
-    if (hints.tap) item(kIconTap, hints.tap, false);
-    if (hints.hold) item(kIconHold, hints.hold, hints.holding || gPress >= 0.0f);
-    if (!hints.side) return;
-    const Icon& ic = *hints.side;
-    const int iy = y + 2 + (7 - ic.h) / 2;
-    const int wordW = hints.sideWord ? captionWidth(hints.sideWord) : 0;
-    // The word only when the two sides stay as far apart as the front items
-    // (6 px); else the icon alone.
-    const int withWord = w - kGutter - wordW - ic.w - 3;
-    if (wordW && withWord >= x) {
-        drawIcon(d, ic, withWord, iy, kText);
-        drawCaption(d, r, hints.sideWord, withWord + ic.w + 3, y + 2, kTextDim, kBg);
-    } else {
-        drawIcon(d, ic, w - kGutter - ic.w, iy, kText);
+    int x = kGutter;
+    if (hints.tap) x = item(x, y, kIconTap, hints.tap, kText, kTextDim);
+    if (hints.hold) {
+        const bool lit = hints.holding || gPress >= 0.0f;
+        item(x, y, kIconHold, hints.hold, lit ? kAccentHi : kText, lit ? kText : kTextDim);
     }
+    const int sy = plan.twoRows ? y - kHintH : y;
+    if (hints.side)
+        item(plan.sideX, sy, *hints.side, plan.sideWord ? hints.sideWord : nullptr,
+             hints.sideDim ? kTextFaint : kText, hints.sideDim ? kTextFaint : kTextDim);
+    if (hints.sideHold) item(plan.sideHoldX, sy, kIconHold, hints.sideHold, kText, kTextDim);
 }
 
 // ---------------------------------------------------------------- tile
