@@ -4522,6 +4522,53 @@ struct Key {
     }
 };
 
+#if defined(TGC_REMOTE)
+// Serial remote for tools/screenshots (env sticks3-shots, never a release).
+// One byte a command: 'a' / 'b' tap the front / side button, 'A' / 'B' hold
+// it, 's' prints the back buffer, which is what the panel shows. A press is a
+// virtual button kept down for a while, so it goes through Key like a real one.
+uint32_t gRemoteUpAt[2] = {0, 0};  // millis() when the virtual button comes up; 0: up
+
+bool remoteDown(int k, uint32_t now) {
+    if (!gRemoteUpAt[k]) return false;
+    if (static_cast<int32_t>(now - gRemoteUpAt[k]) < 0) return true;
+    gRemoteUpAt[k] = 0;
+    return false;
+}
+
+// "#shot W H", one "#r Y <hex>" line a row (RGB565 as stored: big-endian), "#end".
+void remoteShot() {
+    static const char kHex[] = "0123456789abcdef";
+    static char line[16 + 4 * 320 + 2];
+    const int w = gCanvas->width(), h = gCanvas->height();
+    const uint8_t* px = static_cast<const uint8_t*>(gCanvas->getBuffer());
+    Serial.printf("\n#shot %d %d\n", w, h);
+    for (int y = 0; y < h && w <= 320; ++y) {
+        int n = snprintf(line, sizeof line, "#r %d ", y);
+        const uint8_t* row = px + static_cast<size_t>(y) * w * 2;
+        for (int i = 0; i < w * 2; ++i) {
+            line[n++] = kHex[row[i] >> 4];
+            line[n++] = kHex[row[i] & 15];
+        }
+        line[n++] = '\n';
+        Serial.write(reinterpret_cast<const uint8_t*>(line), n);
+    }
+    Serial.printf("#end\n");
+}
+
+void remotePoll(uint32_t now, uint32_t holdMs) {
+    while (Serial.available() > 0) {
+        const int c = Serial.read();
+        if (c == 's') {
+            remoteShot();
+        } else if (c == 'a' || c == 'A' || c == 'b' || c == 'B') {
+            const int k = (c == 'a' || c == 'A') ? 0 : 1;
+            if (!gRemoteUpAt[k]) gRemoteUpAt[k] = now + (c >= 'a' ? 80 : holdMs + 200);
+        }
+    }
+}
+#endif
+
 // Adds the time spent in deep sleep (RTC timer) to the SRS day clock. Only a
 // wake-up from our own deepSleep() qualifies: after a power cut both the RTC
 // timer and RTC memory are reset, and a crash reset is not a wake-up.
@@ -5145,9 +5192,15 @@ void loop() {
     const uint32_t t = millis();
     gSrs.tick(t);
     static Key keyA, keyB;
+    const uint32_t holdMs = tgc::holdMsFor(gHoldPref);
+#if defined(TGC_REMOTE)
+    remotePoll(t, holdMs);
+    const bool downA = tgc::board::isHeld(Button::Select) || remoteDown(0, t);
+    const bool downB = tgc::board::isHeld(Button::Next) || remoteDown(1, t);
+#else
     const bool downA = tgc::board::isHeld(Button::Select);
     const bool downB = tgc::board::isHeld(Button::Next);
-    const uint32_t holdMs = tgc::holdMsFor(gHoldPref);
+#endif
     int a = keyA.poll(downA, t, holdMs);
     int b = keyB.poll(downB, t, holdMs);
     if (downA || downB || a || b) {
