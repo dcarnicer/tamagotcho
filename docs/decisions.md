@@ -2341,4 +2341,38 @@ Branch `feature/common-readings`; details and numbers in docs/common-readings.md
 - **Opt-in.** `fetch --readings` + `build --common-readings`; the default build,
   `decks.yml` and the published decks are unchanged until the maintainer
   decides. A pack-format extension (`flags` bits 1-2: "do not ask on/kun") for
-  the 465 Jōyō kanji with no approved kun'yomi is proposed, not implemented.
+  the 465 Jōyō kanji with no approved kun'yomi was proposed; the maintainer
+  chose empty kinds instead (next entry).
+
+## 2026-10-20 – Common readings: the maintainer's decisions
+
+The open questions of docs/common-readings.md, answered the same day and
+implemented on `feature/common-readings`.
+
+- **Approved readings first:** yes, the Jōyō table stays the first tier.
+- **Empty kinds, not flags.** No pack-format extension. With
+  `--common-readings` a kind with nothing worth asking is left empty and the
+  device asks the other kind through `buildQuestion`'s existing fallback: for a
+  Jōyō kanji, a kind with no approved reading (気 いき, 百 もも, 肉 しし); for
+  another kanji, a kind no word uses. Never both kinds (the one with the higher
+  total score stays: 茨, 岡, 埼, 唄, 彪, 晟, 燿), never a card's only kind. A kind
+  that stays keeps every reading, last the unused ones. The builder keeps the
+  emptied readings out of the precomputed reading distractors too
+  (`Card.valid_*`), since the device can only exclude what the pack lists.
+  docs/pack-format.md now says it: most useful reading first, the first is
+  asked, every listed one is valid, a kind may be empty (an offset to `""`,
+  never 0), no empty items.
+- **Learner signal: JLPT vocabulary.** Jonathan Waller's tanos.co.uk lists (CC
+  BY, the licence already relied on for the kanji levels), from the Internet
+  Archive's 2011 copies of the original Anki decks, pinned by timestamp and
+  SHA256. Key: tier, then the easiest JLPT level of a word using the reading,
+  then frequency weighted by the words' levels (×16 N5 … ×1.5 N1). Neither
+  pure form passed the ten test cases (lexicographic missed 出 で.る, the blend
+  missed 明 あか.るい); the combination passes all of them.
+- **Adopted for the published decks**, prepared only: `decks.yml` fetches
+  `--readings`, builds with `--common-readings`, checks the reading
+  distractors and credits the sources; `Credits.h` adds JMdict next to
+  KANJIDIC2 and the other sources for the portal footer. Not run, not pushed:
+  the maintainer reviews the N5 list first.
+- **pypdf** stays; **jiten.moe** is not used; asking a few common
+  non-approved readings (等 など) is a roadmap follow-up.

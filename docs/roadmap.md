@@ -95,12 +95,17 @@ Scope for now: **kanji only** (no vocabulary decks).
       Pending: preferring *common* readings — KANJIDIC2's reading order is not by
       frequency (e.g. 九's first kun reading is the rare ここの), so this needs a
       reading-frequency source or an on'yomi preference for some kanji.
-      Researched on `feature/common-readings` (2026-10-20,
-      docs/common-readings.md): an opt-in `build --common-readings` orders
-      readings by word frequency (JMdict, JmdictFurigana, wordfreq, Tatoeba)
-      with the Jōyō table's approved readings first. To decide: use it for the
-      decks, and a `flags` extension so kanji with no reading of a kind worth
-      asking (気 いき, 百 もも) ask the other kind.
+      Done on `feature/common-readings` (2026-10-20, docs/common-readings.md):
+      `build --common-readings` puts the Jōyō table's approved readings first,
+      then those of the easiest JLPT vocabulary, then the most frequent (JMdict,
+      JmdictFurigana, wordfreq, Tatoeba), and leaves a kind with nothing worth
+      asking empty, so 気 and 百 are asked their on'yomi. `decks.yml` is
+      prepared to use it; to run after the maintainer's review of the N5 list.
+      - [ ] Follow-up: let a few common readings the Jōyō table does not
+        approve be asked (等 など, 経 た.つ, 被 かぶ.る), e.g. for learners outside
+        the school curriculum.
+      - [ ] Follow-up: an About row for the reading-order credits
+        (`credits::kReadings`, today only in the portal footer).
       Invariant enforced: **no option may be another valid reading or meaning of
       the target** (otherwise two options are correct); checked in `Quiz.cpp`
       and in the builder's distractor lists.

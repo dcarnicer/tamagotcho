@@ -210,13 +210,14 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 ## Reading order (optional: `fetch --readings`, `build --common-readings`)
 
 `build --common-readings` reorders each card's on'yomi and kun'yomi so the
-reading the device asks is a common one (docs/common-readings.md). The five
-inputs below are downloaded only by `tangocho-pack fetch --readings`, into
-`cache/readings/`, and read only with that flag (and by
-`scripts/common_readings_report.py`). A pack built with it contains no word
-data from them, only KANJIDIC2's own readings in a different order, but it is
-derived from them, so it carries their attribution (below). Packs built
-without the flag (all published decks so far) use none of them.
+reading the device asks is a useful one, and leaves a kind with nothing worth
+asking empty (docs/common-readings.md). The six inputs below are downloaded
+only by `tangocho-pack fetch --readings`, into `cache/readings/`, and read only
+with that flag (and by the scripts in `tools/pack-builder/scripts/`). A pack
+built with it contains no word data from them, only KANJIDIC2's own readings in
+a different order (some kinds left out), but it is derived from them, so it
+carries their attribution (below). `decks.yml` is prepared to build the
+published decks with it; the decks published so far use none of them.
 
 ### JMdict
 
@@ -280,14 +281,35 @@ without the flag (all published decks so far) use none of them.
 - Suggested credit: "Jōyō kanji table (常用漢字表), Agency for Cultural
   Affairs, 2010."
 - Used for: which readings the table approves for each kanji and which it
-  indents as special or of narrow use (`joyo_table.py`, read with pypdf). The
-  PDF stays in `cache/`.
+  indents as special or of narrow use (`joyo_table.py`, read with pypdf):
+  approved readings come first, and a Jōyō kanji's kind with no approved
+  reading is left empty. The PDF stays in `cache/`.
+
+### JLPT vocabulary lists (tanos.co.uk)
+
+- URLs: the Internet Archive's captures of
+  `http://www.tanos.co.uk/jlpt/jlpt{N}/vocab/n{N}-vocab-kanji-hiragana.anki`
+  for N = 5..1, taken 2011-07-22, fetched through Wayback `id_` URLs (which
+  return the archived bytes unchanged) and pinned in `fetch.py` by capture
+  timestamp and SHA256. tanos.co.uk itself no longer resolves; the 2025
+  captures of the N1-N3 files have the same digests.
+- Owner: Jonathan Waller (JLPT Resources). Licence: CC BY, from the same "Use
+  my data!" page as the JLPT kanji levels above ("Everything on this site (that
+  I'm not selling), is licenced under Creative Commons "BY"…"); the vocabulary
+  lists were free downloads, not sold.
+- Required attribution: "JLPT vocabulary lists from Jonathan Waller's JLPT
+  Resources (tanos.co.uk), CC BY."
+- Format: Anki 1.x decks (SQLite files; `Front` = the word in kanji, `Back` =
+  its reading), read with Python's `sqlite3`. 7,270 entries, 7,224 (word,
+  reading) pairs after expanding alternatives and skipping notes.
+- Used for: the learner signal: a reading met in an easier JLPT list's word
+  comes first (docs/common-readings.md).
 
 Test fixtures: `tools/pack-builder/tests/test_readings.py` holds hand-written
 miniatures of each format (a few JMdict-style entries such as 九つ/ここのつ, a
-furigana line per word, a three-token wordfreq list, two Tatoeba index lines
-and a few rows shaped like the Jōyō table's text). They are not copied from the
-files above.
+furigana line per word, a three-token wordfreq list, two Tatoeba index lines,
+a few rows shaped like the Jōyō table's text and two-table Anki decks with a
+handful of words). They are not copied from the files above.
 
 ## Root CA certificates (firmware)
 
@@ -313,22 +335,23 @@ below); nothing is bundled with the firmware.
 > packs built with `--strokes`). This pack is licensed CC BY-SA.
 
 A pack built with another `--font` credits that font instead of Noto Sans JP.
-A pack built with `--common-readings` adds:
+A pack built with `--common-readings` says "JLPT levels and vocabulary lists
+from Jonathan Waller's JLPT Resources (tanos.co.uk, CC BY)" and adds:
 
 > Reading order from JMdict (EDRDG, CC BY-SA 4.0), JmdictFurigana (CC BY-SA),
 > wordfreq (Robyn Speer, CC BY-SA 4.0, with data from OpenSubtitles), the
 > Tatoeba Project's sentence indices (CC BY 2.0 FR) and the Jōyō kanji table
 > (Agency for Cultural Affairs, 2010).
 
-No published deck is built with it yet, so `firmware/src/Credits.h` does not
-list these.
+The decks release notes in `decks.yml` carry this text.
 
 The firmware shows a short form of this attribution on the device
-(**Settings › Device › About**: the loaded deck's name, then KANJIDIC2, KanjiVG when the
-deck has stroke order, the JLPT levels and the glyph font, each with its
+(**Settings › Device › About**: the loaded deck's name, then KANJIDIC2 and JMdict, KanjiVG
+when the deck has stroke order, the JLPT levels and the glyph font, each with its
 licence; "Firmware: MIT", "Decks: CC BY-SA", "UI font: Noto Sans JP, SIL OFL
 1.1" and the repository) and in the
-footer of the Wi-Fi portal page. Both read the strings in
+footer of the Wi-Fi portal page, which also lists the other reading-order
+sources (`credits::kReadings`; About would need a row in `main.cpp` for it). Both read the strings in
 `firmware/src/Credits.h`: change them together with this file. Packs carry no
 list of their sources, so the device shows these credits for any deck,
 including one built with another font or from WaniKani (docs/decisions.md,
