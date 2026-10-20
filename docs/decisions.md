@@ -2398,3 +2398,45 @@ implemented on `feature/common-readings`.
   the maintainer reviews the N5 list first.
 - **pypdf** stays; **jiten.moe** is not used; asking a few common
   non-approved readings (等 など) is a roadmap follow-up.
+
+## 2026-10-20 – Spanish meanings in the English order
+
+The maintainer decided to order KANJIDIC2's Spanish meanings by the English
+order (docs/roadmap.md, phase 3). Branch `feature/es-meanings`; details and
+numbers in docs/meaning-order.md.
+
+- **Order, not format.** The device shows a card's first meaning (option,
+  meaning -> kanji prompt, detail card), so reordering changes what it shows
+  with no pack-format or firmware change. The builder's caps (as many meanings
+  as English, at most three) apply after the reorder, so 607 of 2,310 Spanish
+  cards store other glosses: the ones that translate the English list (持
+  "sostener; mantener" instead of "duración; propiedad"). No gloss is added,
+  removed or rewritten.
+- **Source: FreeDict's eng-spa (WikDict, from Wiktionary via DBnary), CC BY-SA
+  3.0**, a dated release (`2025.11.23`) pinned by SHA256; CC BY-SA 3.0 allows
+  a later version for adaptations, so packs stay CC BY-SA 4.0. Not used: the
+  full JMdict's Spanish glosses (the EDRDG licence covers only JMdict's
+  Japanese and English parts; other languages are "covered by separate
+  copyright held by the compilers"), Apertium (GPL), kaikki.org and WikDict's
+  own files (unversioned), machine translation (not reproducible).
+- **Matching**: normalisation, then a dictionary translation, then a related
+  form (shared stem, cognate, head words, an English near-synonym) counted one
+  English position later; ties and unmatched glosses keep KANJIDIC2's order,
+  unmatched last. Sense-order and "covers more English glosses" tie-breaks were
+  tried and not adopted: each fixed some cards (明 claro) and broke others (青
+  verde, 時 hora); sense order came out about even, coverage worse. 602 first meanings change; the 8 in N5 now translate the first
+  English gloss (食 comer, 書 escribir, 見 ver); the doubtful ones (明
+  inteligente, 御 manipular, 構 poner, …) are listed for review.
+- **The invariant, stricter**: with the flag every KANJIDIC2 meaning of a card
+  (not only the stored ones) keeps meaning distractors away, in every language
+  (`Card.valid_meanings`). Default packs break the invariant through the
+  meanings the caps leave out (N3 en: 取 "take" offered for 受), so
+  `scripts/check_meaning_distractors.py` fails on them and passes on packs
+  built with the flag.
+- **Spanish only.** No pinned English-French/Portuguese release under a
+  compatible licence; `fr`/`pt` keep KANJIDIC2's order (a warning says so).
+- **Opt-in and prepared**: `fetch --meanings` + `build --meaning-order`;
+  `decks.yml` fetches it, builds with it, checks the meaning distractors and
+  credits the source; `Credits.h` gains `kMeanings`, shown on About
+  ("Meanings:") and in the portal footer. Not run, not pushed: the maintainer
+  reviews the N5 list and the doubtful cases first.
