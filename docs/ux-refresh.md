@@ -672,7 +672,9 @@ Delivered:
   below the current day on a device with a real-time anchor (docs/srs.md §5).
   The line under the pill no longer explains the buttons.
 - Stats: accuracy ring (`fillArc`), six tiles, seen/total bar. Done: check,
-  "All caught up", tomorrow's due count, streak, "+10 new". About: label-face
+  "All caught up", tomorrow's due count, streak, "+10 new" (only while the
+  deck has cards never studied: once every card has been seen there is no
+  button and no hold hint, 2026-10-20). About: label-face
   headings, paging kept. Wi-Fi portal screen: the QR codes as before, the
   address in the label face, the free space as a bar in MB, hint-bar words.
   Errors and notices: a label-face title and one end-user action.

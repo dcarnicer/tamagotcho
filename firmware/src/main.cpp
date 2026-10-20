@@ -1818,6 +1818,10 @@ uint32_t currentStreak() {
 // new card is left today. A check in a circle, "All caught up", tomorrow's due
 // count, the streak and a "+10 new" button. A tap, hold or side tap studies 10
 // more (rebuilds the queue and tries again); the side hold opens the settings.
+// A deck whose cards have all been studied has nothing to add: no button, no
+// hold hint, and those presses do nothing.
+bool doneCanStudyMore() { return deckCounts().fresh > 0; }
+
 void drawDone() {
     using namespace tgc::theme;
     auto& d = *gCanvas;
@@ -1848,12 +1852,14 @@ void drawDone() {
         wg::drawIcon(d, tgc::kIconFlame, x, l.line2Y, kWarn);
         wg::drawCaption(d, gRender, line, x + tgc::kIconFlame.w + 4, l.line2Y, kWarn, kBg);
     }
-    const tgc::layout::Rect& b = l.button;
-    d.fillRect(b.x, b.y, b.w, b.h, kAccent);
-    gRender.drawLabel(d, ui().doneMore, b.x, b.y, b.w, b.h, kText, kAccent, tgc::Renderer::kTextUi,
-                      tgc::Align::Centre);
     wg::Hints h;
-    h.hold = ui().hintStudyMore;
+    if (doneCanStudyMore()) {
+        const tgc::layout::Rect& b = l.button;
+        d.fillRect(b.x, b.y, b.w, b.h, kAccent);
+        gRender.drawLabel(d, ui().doneMore, b.x, b.y, b.w, b.h, kText, kAccent,
+                          tgc::Renderer::kTextUi, tgc::Align::Centre);
+        h.hold = ui().hintStudyMore;
+    }
     h.side = &tgc::kIconMenu;
     wg::drawHintBar(d, gRender, W, H, h);
     present();
@@ -5410,7 +5416,7 @@ void loop() {
     } else if (gScreen == Screen::Done) {
         if (b == 2) {
             openMenu();
-        } else if (a || b == 1) {
+        } else if ((a || b == 1) && doneCanStudyMore()) {
             // Nothing due and the daily new cap is spent: study 10 more today.
             gExtraNew = tgc::studyMoreExtra(gSrs.newPerDay(), deckCounts().introducedToday,
                                             extraNewToday());
