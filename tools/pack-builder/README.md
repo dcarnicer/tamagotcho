@@ -32,10 +32,11 @@ uv run pytest
   and the pinned KanjiVG release zip. `--klee-one` also gets Klee One (the
   textbook-style font that was the default before 2026-10-18) into
   `cache/fonts/`, for `build --font cache/fonts/KleeOne-SemiBold.ttf`.
-  `--readings` also gets, into `cache/readings/` (~30 MB), what
+  `--readings` also gets, into `cache/readings/` (~37 MB), what
   `build --common-readings` reads: JMdict, JmdictFurigana, wordfreq's Japanese
-  list, Tatoeba's Japanese sentence indices and the official Jōyō kanji table
-  (PDF). Licences in docs/data-sources.md.
+  list, Tatoeba's Japanese sentence indices, the official Jōyō kanji table
+  (PDF) and the tanos.co.uk JLPT vocabulary lists (Internet Archive copies,
+  pinned and checked against SHA256). Licences in docs/data-sources.md.
 - `build --jlpt N [--jlpt M ...] [--grade G ... | --joyo] [--order jlpt|grade]
   --lang en|es|fr|pt
   [--font PATH] [--large-px 96] [--small-px 40] [--text-px 18] [--option-px 20]
@@ -59,14 +60,20 @@ uv run pytest
   pack about a third to a quarter of its v1 size. Firmware older than v2
   support refuses these packs ("unsupported pack version"); it keeps reading its
   v1 packs.
-  `--common-readings` (needs `fetch --readings`, adds ~8 s) reorders each
+  `--common-readings` (needs `fetch --readings`, adds ~10 s) reorders each
   kanji's on'yomi and kun'yomi so the device, which asks the first reading of a
-  kind, asks a common one: the Jōyō table's approved readings first, then by
-  word frequency (docs/common-readings.md). Every reading is kept, so the
-  distractor invariant is unaffected; without the flag the order is
-  KANJIDIC2's. It cannot be combined with `--wanikani-token` (WaniKani already
-  lists its primary reading first). `scripts/common_readings_report.py` prints
-  what it changes for JLPT N5-N1 and the Jōyō kanji.
+  kind, asks a useful one: the Jōyō table's approved readings first, then the
+  readings of the easiest JLPT vocabulary, then by word frequency
+  (docs/common-readings.md). A kind with nothing worth asking (no approved
+  reading for a Jōyō kanji, no used one for another kanji: 気 いき, 百 もも) is
+  left empty, so the device asks the other kind; never both kinds. A kind that
+  stays keeps every reading, and reading distractors are kept away from the
+  emptied kind's readings too. Without the flag the output is unchanged. It
+  cannot be combined with `--wanikani-token` (WaniKani already lists its
+  primary reading first). `scripts/common_readings_report.py` prints what it
+  changes for JLPT N5-N1 and the Jōyō kanji; `scripts/check_reading_distractors.py
+  out/*.tgc` checks built packs (the reading-distractor invariant against the
+  full KANJIDIC2 readings, and how often a precomputed list is short).
 - `build --wanikani-token TOKEN [--wanikani-level N ...]` builds from **your own
   WaniKani account** instead of KANJIDIC2 (so no `--jlpt`/`--grade`, and
   `fetch` is only needed for the font). It imports only the kanji you have

@@ -4,6 +4,7 @@ are hand-written miniatures in the sources' formats (no third-party data)."""
 
 import json
 import math
+import sqlite3
 
 import pytest
 
@@ -18,6 +19,7 @@ from tangocho_pack.readings import (
     WordPair,
     bound_forms,
     corpus_weights,
+    load_jlpt_vocab,
     load_tatoeba_counts,
     load_wordfreq,
     match_level,
@@ -28,8 +30,10 @@ from tangocho_pack.readings import (
     priority_rank,
     reorder_raw,
     score_readings,
+    segments,
     sound_variants,
     surface_forms,
+    worth_asking,
 )
 
 # --- miniature inputs -----------------------------------------------------------
@@ -254,6 +258,111 @@ def test_reorder_raw_keeps_every_reading():
     assert reorder_raw(raw, scores)[0][1].onyomi[0] == "ダイ"
 
 
+def test_order_by_score_level_first_and_bound_forms_have_none():
+    sc = {"だ.す": 5.0, "で.る": 3.0, "で": 9.0}
+    lv = {"だ.す": 5, "で.る": 5, "で": 5, "い.でる": 1}
+    # The level ties (both N5), so the score decides; the bound で has no level.
+    assert order_by_score(["い.でる", "で.る", "だ.す", "で"], sc, {"で"}, level=lv) == \
+        ["だ.す", "で.る", "い.でる", "で"]
+    # A reading whose easiest list word is N5 beats a more frequent N3 one.
+    assert order_by_score(["あき.らか", "あか.るい"], {"あき.らか": 9.0, "あか.るい": 1.0},
+                          level={"あき.らか": 3, "あか.るい": 5}) == ["あか.るい", "あき.らか"]
+    # The tier still comes first.
+    assert order_by_score(["ダイ", "テイ"], {}, tier={"ダイ": 1, "テイ": 0},
+                          level={"ダイ": 5}) == ["テイ", "ダイ"]
+
+
+def test_load_jlpt_vocab(tmp_path):
+    n5 = anki_deck(tmp_path / "n5.anki", [("九つ", "ここのつ"), ("川/河", "かわ"),
+                                          ("七", "しち / なな"), ("うん", "（感）"), ("毎年", "")])
+    n4 = anki_deck(tmp_path / "n4.anki", [("お・金持ち", "かねもち/おかねもち"), ("九つ", "ここのつ")])
+    v = load_jlpt_vocab({5: n5, 4: n4})
+    assert v[("九つ", "ここのつ")] == 5                 # the easier level wins
+    assert v[("川", "かわ")] == 5 and v[("河", "かわ")] == 5
+    assert v[("七", "しち")] == 5 and v[("七", "なな")] == 5
+    assert v[("金持ち", "かねもち")] == 4 and v[("お金持ち", "おかねもち")] == 4
+    assert not any(t in ("うん", "毎年") for t, _ in v)  # notes and empty readings skipped
+
+
+def test_segments_falls_back_for_one_kanji_words():
+    assert segments("明い", "あかるい", {}) == [(0, 0, "あかる")]   # a typo in a JLPT list
+    assert segments("四", "よん", {}) == [(0, 0, "よん")]
+    assert segments("先生", "せんせい", {}) is None                 # two kanji: no guess
+    assert segments("九つ", "ここのつ", {("九つ", "ここのつ"): [(0, 0, "x")]}) == [(0, 0, "x")]
+
+
+def test_worth_asking_and_drop_rules():
+    from tangocho_pack.readings import ReadingScores
+
+    joyo = {"百": [JoyoReading("ヒャク", False)],
+            "茨": [JoyoReading("いばら", True)],
+            "行": [JoyoReading("コウ", False), JoyoReading("アン", True), JoyoReading("いく", False)]}
+    raw = [RawKanji(ord("百"), {"en": ["hundred"]}, ["ヒャク"], ["もも"], 4, 1, 6, 163),
+           RawKanji(ord("茨"), {"en": ["briar"]}, ["シ", "ジ"], ["いばら", "かや"], 0, 8, 9, 0),
+           RawKanji(ord("行"), {"en": ["go"]}, ["コウ", "アン"], ["ゆ.く", "い.く"], 4, 2, 6, 20),
+           RawKanji(ord("彪"), {"en": ["spotted"]}, ["ヒュウ"], ["あや"], 0, 9, 11, 0),
+           RawKanji(ord("舜"), {"en": ["hibiscus"]}, ["シュン"], [], 0, 9, 13, 0),
+           RawKanji(ord("杏"), {"en": ["apricot"]}, ["キョウ"], ["あんず"], 0, 9, 7, 0)]
+    scores = ReadingScores(score={ord("茨"): {"いばら": 2.0}, ord("彪"): {}, ord("杏"): {"あんず": 1.0}})
+    assert worth_asking(ord("行"), ["い.く"], {}, joyo)           # approved, unscored
+    assert not worth_asking(ord("百"), ["もも"], {"もも": 9.0}, joyo)  # used, not approved
+    assert worth_asking(ord("杏"), ["あんず"], {"あんず": 1.0}, joyo)  # not Jōyō: used
+    assert not worth_asking(ord("杏"), ["キョウ"], {}, joyo)
+    out, st = reorder_raw(raw, scores, joyo, drop=True)
+    got = {chr(k.codepoint): (k.onyomi, k.kunyomi) for k in out}
+    assert got["百"] == (["ヒャク"], []) and out[0].all_kunyomi == ["もも"]
+    assert got["茨"] == ([], ["いばら", "かや"])        # both fail: kun scores higher, stays
+    assert got["行"] == (["コウ", "アン"], ["い.く", "ゆ.く"])  # kinds that stay keep everything
+    assert got["彪"][0] == ["ヒュウ"] and got["彪"][1] == []  # both fail, tie: on stays
+    assert got["舜"] == (["シュン"], [])                # its only kind stays
+    assert got["杏"] == ([], ["あんず"])
+    assert st.both_failed == [(ord("茨"), "kun"), (ord("彪"), "on")]
+    assert st.only_kind_kept == [(ord("舜"), "on")]
+    assert st.dropped_on == [ord("茨"), ord("杏")] and st.dropped_kun == [ord("百"), ord("彪")]
+    # Without drop nothing is emptied and no full lists ride along.
+    kept, st2 = reorder_raw(raw, scores, joyo)
+    assert all(k.onyomi or k.kunyomi for k in kept) and kept[0].kunyomi == ["もも"]
+    assert kept[0].all_kunyomi is None and not st2.dropped_kun
+
+
+def test_reading_distractors_avoid_a_dropped_kind():
+    from tangocho_pack.distractors import reading_distractors
+    from tangocho_pack.kanjidic import Card
+
+    # Say 生's kun'yomi were emptied; 木's first kun'yomi き is one of them.
+    sei = Card(ord("生"), ["life"], ["セイ"], [], jlpt=5, valid_kunyomi=["い.きる", "き"])
+    ki = Card(ord("木"), ["tree"], ["モク"], ["き"], jlpt=5)
+    kei = Card(ord("系"), ["system"], ["ケイ"], ["き.る"], jlpt=5)
+    assert reading_distractors([sei, ki, kei])[0] == [2]   # 木 is left out
+    # Without the full list 木 would be a candidate (モク is two kana from セイ).
+    plain = Card(ord("生"), ["life"], ["セイ"], [], jlpt=5)
+    assert 1 in reading_distractors([plain, ki, kei])[0]
+
+
+def test_empty_kind_roundtrip_and_validation():
+    from tangocho_pack.glyphs import Glyph
+    from tangocho_pack.kanjidic import Card
+    from tangocho_pack.pack import read_pack, write_pack
+
+    cards = [Card(ord("百"), ["hundred"], ["ヒャク"], [], jlpt=5)]
+    glyphs = [Glyph(ord("百"), 0, 4, 4, 0, -4, 32, b"\x00" * 8),
+              Glyph(ord("百"), 1, 4, 4, 0, -4, 16, b"\x00" * 8)]
+    glyphs += [Glyph(ord(ch), 2, 2, 2, 0, -2, 8, b"\x00" * 2) for ch in "ヒャク"]
+    raw = write_pack(cards, glyphs, "mini", "en", 32, 16, 12, 12, 10, build_time=1)
+    p = read_pack(raw)
+    assert p.errors == []
+    c = p.cards[0]
+    assert c.kunyomi == ""
+    # The empty kind is an offset to "" inside the string pool, never 0.
+    ko = c.string_offs[2]
+    assert ko != 0 and p.header["strings_off"] <= ko < p.header["strings_off"] + \
+        p.header["strings_size"] and raw[ko] == 0
+    # A list with an empty item (doubled 、) is reported.
+    bad = Card(ord("百"), ["hundred"], ["ヒャク", ""], [], jlpt=5)
+    p = read_pack(write_pack([bad], glyphs, "mini", "en", 32, 16, 12, 12, 10, build_time=1))
+    assert any("empty reading" in e for e in p.errors)
+
+
 def test_parse_kanjidic_records_bound_kun():
     xml = """<?xml version="1.0" encoding="UTF-8"?><kanjidic2>
 <character><literal>日</literal><codepoint><cp_value cp_type="ucs">65e5</cp_value></codepoint>
@@ -329,7 +438,27 @@ KD2 = """<?xml version="1.0" encoding="UTF-8"?><kanjidic2>
 <misc><grade>1</grade><stroke_count>2</stroke_count><freq>55</freq><jlpt>4</jlpt></misc>
 <reading_meaning><rmgroup><reading r_type="ja_on">キュウ</reading><reading r_type="ja_on">ク</reading>
 <reading r_type="ja_kun">ここの</reading><reading r_type="ja_kun">ここの.つ</reading>
-<meaning>nine</meaning></rmgroup></reading_meaning></character></kanjidic2>"""
+<meaning>nine</meaning></rmgroup></reading_meaning></character>
+<character><literal>百</literal><codepoint><cp_value cp_type="ucs">767e</cp_value></codepoint>
+<misc><grade>1</grade><stroke_count>6</stroke_count><freq>163</freq><jlpt>4</jlpt></misc>
+<reading_meaning><rmgroup><reading r_type="ja_on">ヒャク</reading>
+<reading r_type="ja_kun">もも</reading><meaning>hundred</meaning></rmgroup></reading_meaning></character>
+</kanjidic2>"""
+
+
+def anki_deck(path, rows):
+    """A miniature Anki 1.x deck: the two tables load_jlpt_vocab reads."""
+    con = sqlite3.connect(path)
+    con.execute("create table fieldModels (id integer, name text, ordinal integer)")
+    con.execute("create table fields (factId integer, fieldModelId integer, ordinal integer, "
+                "value text)")
+    con.executemany("insert into fieldModels values (?, ?, ?)", [(7, "Front", 0), (8, "Back", 1)])
+    for i, (front, back) in enumerate(rows):
+        con.execute("insert into fields values (?, 7, 0, ?)", (i, front))
+        con.execute("insert into fields values (?, 8, 1, ?)", (i, back))
+    con.commit()
+    con.close()
+    return path
 
 
 @pytest.fixture
@@ -337,7 +466,7 @@ def fake_inputs(monkeypatch, tmp_path):
     kd = tmp_path / "kanjidic2.xml"
     kd.write_text(KD2, encoding="utf-8")
     levels = tmp_path / "kanji.json"
-    levels.write_text(json.dumps({"九": {"jlpt_new": 5}}), encoding="utf-8")
+    levels.write_text(json.dumps({"九": {"jlpt_new": 5}, "百": {"jlpt_new": 5}}), encoding="utf-8")
     files = {"KANJIDIC_GZ": kd, "KANJI_JSON": levels,
              "JMDICT_GZ": (tmp_path / "JMdict_e", JMDICT.encode()),
              "JMDICT_FURIGANA": (tmp_path / "JmdictFurigana.txt", FURIGANA.encode()),
@@ -350,8 +479,13 @@ def fake_inputs(monkeypatch, tmp_path):
             v[0].write_bytes(v[1])
             v = v[0]
         monkeypatch.setattr(paths, name, v)
+    vocab = {n: tmp_path / f"n{n}.anki" for n in (5, 4, 3, 2, 1)}
+    for n, p in vocab.items():
+        anki_deck(p, [("九つ", "ここのつ")] if n == 5 else [])
+    monkeypatch.setattr(paths, "JLPT_VOCAB", vocab)
     monkeypatch.setattr(joyo_table, "load_pdf", lambda p: {
-        "九": [JoyoReading(r, False) for r in ("キュウ", "ク", "ここの", "ここのつ")]})
+        "九": [JoyoReading(r, False) for r in ("キュウ", "ク", "ここの", "ここのつ")],
+        "百": [JoyoReading("ヒャク", False)]})
     seen = {}
 
     def fake(cards, *a, **kw):
@@ -365,15 +499,22 @@ def fake_inputs(monkeypatch, tmp_path):
 def test_cli_common_readings_reorders(fake_inputs, tmp_path, capsys):
     with pytest.raises(_Stop):
         cli.main(["build", "--jlpt", "5", "--common-readings", "-o", str(tmp_path / "x.tgc")])
-    (c,) = fake_inputs["cards"]
-    assert c.kunyomi == ["ここの.つ", "ここの"] and c.onyomi == ["キュウ", "ク"]
-    assert "first kun'yomi for 1 of 1 cards" in capsys.readouterr().out
+    nine, hundred = sorted(fake_inputs["cards"], key=lambda c: c.codepoint)
+    assert nine.kunyomi == ["ここの.つ", "ここの"] and nine.onyomi == ["キュウ", "ク"]
+    # 百's only kun'yomi (もも) is not in the Jōyō table: the kind is emptied,
+    # but the reading still keeps distractors away.
+    assert hundred.onyomi == ["ヒャク"] and hundred.kunyomi == []
+    assert hundred.valid_kunyomi == ["もも"]
+    out = capsys.readouterr().out
+    assert "first kun'yomi for 1 of 2 cards" in out and "kun'yomi for 1 (nothing" in out
 
 
 def test_cli_default_keeps_kanjidic2_order(fake_inputs, tmp_path):
     with pytest.raises(_Stop):
         cli.main(["build", "--jlpt", "5", "-o", str(tmp_path / "x.tgc")])
-    assert fake_inputs["cards"][0].kunyomi == ["ここの", "ここの.つ"]
+    nine, hundred = sorted(fake_inputs["cards"], key=lambda c: c.codepoint)
+    assert nine.kunyomi == ["ここの", "ここの.つ"] and hundred.kunyomi == ["もも"]
+    assert hundred.valid_kunyomi == []
 
 
 def test_cli_common_readings_needs_fetch(fake_inputs, monkeypatch, tmp_path, capsys):
@@ -394,21 +535,23 @@ def test_cli_common_readings_not_for_wanikani(tmp_path, capsys):
 # --- the real data (skipped without `fetch --readings`) ----------------------------------
 
 REAL = [paths.KANJIDIC_GZ, paths.JMDICT_GZ, paths.JMDICT_FURIGANA, paths.WORDFREQ_JA,
-        paths.TATOEBA_JPN, paths.JOYO_PDF]
+        paths.TATOEBA_JPN, paths.JOYO_PDF, *paths.JLPT_VOCAB.values()]
 
 
 @pytest.mark.skipif(not all(p.exists() for p in REAL), reason="run `tangocho-pack fetch --readings`")
 def test_real_data_sanity():
     from tangocho_pack.readings import compute_scores
 
-    raw = [k for k in parse_kanjidic(paths.KANJIDIC_GZ) if chr(k.codepoint) in "九食下上日入弟木"]
+    raw = [k for k in parse_kanjidic(paths.KANJIDIC_GZ)
+           if chr(k.codepoint) in "九食下上日入弟木行出明生四一大気"]
     scores = compute_scores(raw, paths.JMDICT_GZ, paths.JMDICT_FURIGANA, paths.WORDFREQ_JA,
-                            paths.TATOEBA_JPN)
-    out, _ = reorder_raw(raw, scores, joyo_table.load_pdf(paths.JOYO_PDF))
+                            paths.TATOEBA_JPN, load_jlpt_vocab(paths.JLPT_VOCAB))
+    out, st = reorder_raw(raw, scores, joyo_table.load_pdf(paths.JOYO_PDF), drop=True)
     first = {chr(k.codepoint): (k.onyomi[:1], k.kunyomi[:1]) for k in out}
-    assert first["九"][1] == ["ここの.つ"]
-    assert first["食"][1] == ["た.べる"]
-    assert first["入"][1] == ["はい.る"]
-    assert first["下"][1] == ["した"] and first["上"][1] == ["うえ"] and first["日"][1] == ["ひ"]
+    want_kun = {"九": "ここの.つ", "食": "た.べる", "入": "はい.る", "下": "した", "上": "うえ",
+                "日": "ひ", "行": "い.く", "出": "で.る", "明": "あか.るい", "生": "う.まれる",
+                "四": "よん", "一": "ひと.つ", "大": "おお.きい"}
+    assert {k: first[k][1] for k in want_kun} == {k: [v] for k, v in want_kun.items()}
     assert first["弟"][0] == ["テイ"] and first["木"][0] == ["モク"]
+    assert first["気"][1] == [] and st.dropped_kun == [ord("気")]   # いき, き: none approved
     assert not math.isnan(scores.of(ord("九"), "キュウ"))

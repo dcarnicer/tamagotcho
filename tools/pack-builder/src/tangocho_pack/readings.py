@@ -392,6 +392,48 @@ def parse_furigana(source: str | Path | bytes) -> dict[tuple[str, str], list[Seg
     return out
 
 
+# --- JLPT vocabulary (tanos.co.uk) ---------------------------------------------------
+
+_ALT_SPLIT = re.compile(r"[\s/／]+")
+_KANA_ONLY = re.compile(r"^[ぁ-ゖァ-ヶー]+$")
+
+
+def load_jlpt_vocab(files: dict[int, str | Path]) -> dict[tuple[str, str], int]:
+    """(word, reading) -> new JLPT level (5 = N5, the easiest; a word in two
+    lists keeps the easier level), from Jonathan Waller's vocabulary lists in
+    their Anki 1.x deck form (`n5-vocab-kanji-hiragana.anki`: an SQLite file
+    whose facts have a `Front` (the word in kanji) and a `Back` (its reading)).
+
+    Entries listing alternatives are expanded: `川/河`, `しち / なな`, and
+    `お・金持ち` (with and without the part before `・`). Readings that are
+    not plain kana (grammar notes such as `（感）`) are skipped."""
+    import sqlite3
+
+    out: dict[tuple[str, str], int] = {}
+    for level, path in files.items():
+        con = sqlite3.connect(f"file:{Path(path)}?mode=ro", uri=True)
+        try:
+            names = {i: name for i, name in con.execute("select id, name from fieldModels")}
+            facts: dict[int, dict[str, str]] = {}
+            for fid, mid, value in con.execute("select factId, fieldModelId, value from fields"):
+                facts.setdefault(fid, {})[names.get(mid, "")] = (value or "").strip()
+        finally:
+            con.close()
+        for f in facts.values():
+            texts = []
+            for t in _ALT_SPLIT.split(f.get("Front", "")):
+                if "・" in t:
+                    texts += [t.replace("・", ""), t.split("・", 1)[1]]
+                elif t:
+                    texts.append(t)
+            readings = [r for r in _ALT_SPLIT.split(f.get("Back", "")) if _KANA_ONLY.match(r)]
+            for t in texts:
+                for r in readings:
+                    if out.get((t, r), 0) < level:
+                        out[(t, r)] = level
+    return out
+
+
 # --- kana and matching ---------------------------------------------------------------
 
 def to_hiragana(s: str) -> str:
@@ -483,6 +525,9 @@ class ReadingScores:
     """score[codepoint][reading]: summed word weight, for on and kun readings
     (readings spelled exactly as in the card lists), plus match statistics."""
     score: dict[int, dict[str, float]] = field(default_factory=dict)
+    # level[codepoint][reading]: the easiest JLPT level (5 = N5) of a list word
+    # using the reading; empty without the JLPT vocabulary lists.
+    level: dict[int, dict[str, float]] = field(default_factory=dict)
     matched: int = 0      # per-kanji furigana parts attributed to a reading
     unmatched: int = 0    # parts of a known kanji that fit none of its readings
     unmatched_by_kanji: dict[int, dict[str, float]] = field(default_factory=dict)
@@ -491,13 +536,31 @@ class ReadingScores:
         return self.score.get(cp, {}).get(reading, 0.0)
 
 
+def segments(text: str, reading: str,
+             furigana: dict[tuple[str, str], list[Segment]]) -> list[Segment] | None:
+    """The per-kanji furigana of a word: JmdictFurigana's, or for a word it
+    lacks that is one kanji plus kana (明い あかるい, a typo in a JLPT list), the
+    reading without the kana ending."""
+    segs = furigana.get((text, reading))
+    if segs:
+        return segs
+    if text and is_kanji(text[0]) and all(is_hiragana(c) for c in text[1:]):
+        h = to_hiragana(reading)
+        tail = text[1:]
+        if h.endswith(tail) and len(h) > len(tail):
+            return [(0, 0, h[:len(h) - len(tail)])]
+    return None
+
+
 def score_readings(kanji: dict[int, KanjiReadings], pairs: Iterable[WordPair],
-                   furigana: dict[tuple[str, str], list[Segment]]) -> ReadingScores:
-    """Attribute every word's weight to the readings of the kanji it is written with."""
+                   furigana: dict[tuple[str, str], list[Segment]],
+                   combine: str = "sum") -> ReadingScores:
+    """Attribute every word's weight to the readings of the kanji it is written
+    with: summed (`combine="sum"`) or the largest (`"max"`, for JLPT levels)."""
     res = ReadingScores()
     unmatched = defaultdict(lambda: defaultdict(float))
     for p in pairs:
-        segs = furigana.get((p.text, p.reading))
+        segs = segments(p.text, p.reading, furigana)
         if not segs:
             continue
         for start, end, rt in segs:
@@ -530,7 +593,10 @@ def score_readings(kanji: dict[int, KanjiReadings], pairs: Iterable[WordPair],
             res.matched += 1
             per = res.score.setdefault(ord(ch), {})
             for r in hits:
-                per[r] = per.get(r, 0.0) + p.weight / len(hits)
+                if combine == "max":
+                    per[r] = max(per.get(r, 0.0), p.weight)
+                else:
+                    per[r] = per.get(r, 0.0) + p.weight / len(hits)
     res.unmatched_by_kanji = {k: dict(v) for k, v in unmatched.items()}
     return res
 
@@ -557,21 +623,28 @@ def bound_forms(kunyomi: list[str], marked: Iterable[str] = ()) -> set[str]:
 
 
 def order_by_score(readings: list[str], scores: dict[str, float],
-                   bound: Iterable[str] = (), tier: dict[str, int] | None = None) -> list[str]:
+                   bound: Iterable[str] = (), tier: dict[str, int] | None = None,
+                   level: dict[str, float] | None = None) -> list[str]:
     """Most common reading first; unscored and tied readings keep their order.
 
-    Readings in `bound` count BOUND_FACTOR of their score. `tier` (reading ->
-    0, 1, ...; missing = 0) sorts first: the builder puts the readings the
-    Jōyō table approves in tier 0 and the rest in tier 1."""
+    The key is, in order: `tier` (reading -> 0, 1, ...; missing = 0: the
+    builder puts the readings the Jōyō table approves in tier 0, the rest in
+    tier 1); `level`, the easiest JLPT level of a list word using the reading
+    (5 = N5 first; missing = 0, last); then the score. Readings in `bound` count
+    BOUND_FACTOR of their score and no level: a bound form (九日's ここの, 日 -び)
+    is never the answer because a list word happens to use it."""
     bound = set(bound)
     tier = tier or {}
+    level = level or {}
 
-    def key(r: str) -> float:
+    def key(r: str) -> tuple[float, float]:
         s = scores.get(r, 0.0)
-        return s * BOUND_FACTOR if r in bound else s
+        if r in bound:
+            return 0.0, s * BOUND_FACTOR
+        return level.get(r, 0.0), s
 
-    return [r for _, _, _, r in sorted((tier.get(r, 0), -key(r), i, r)
-                                       for i, r in enumerate(readings))]
+    return [r for *_, r in sorted((tier.get(r, 0), -key(r)[0], -key(r)[1], i, r)
+                                  for i, r in enumerate(readings))]
 
 
 def joyo_tiers(cp: int, readings: list[str], joyo: dict | None) -> dict[str, int] | None:
@@ -602,18 +675,39 @@ def zipf(x: float) -> float:
 
 # --- builder entry points ----------------------------------------------------------
 
+# A word on a JLPT list counts this many times its frequency (by its level), so
+# among readings whose easiest list word has the same level, the one in more
+# and easier list words wins (出: 出る beats the compound verbs in 〜出す).
+LEVEL_MULT = {5: 16.0, 4: 8.0, 3: 4.0, 2: 2.0, 1: 1.5}
+
+
 def compute_scores(raw: list, jmdict: str | Path | bytes, furigana: str | Path | bytes,
                    wordfreq: str | Path | bytes | None = None,
-                   tatoeba: str | Path | bytes | None = None) -> ReadingScores:
+                   tatoeba: str | Path | bytes | None = None,
+                   jlpt_vocab: dict[tuple[str, str], int] | None = None) -> ReadingScores:
     """Scores for the readings of every kanji in `raw` (KANJIDIC2 RawKanji).
+
     Without `wordfreq` the JMdict priorities alone weigh the words; `tatoeba`
-    (only used with `wordfreq`) splits a form's frequency among its readings."""
+    (only used with `wordfreq`) splits a form's frequency among its readings.
+    With `jlpt_vocab` ((word, reading) -> level, load_jlpt_vocab) each word's
+    weight is multiplied by LEVEL_MULT for its level, and `level` holds each
+    reading's easiest list level."""
     kanji = {k.codepoint: KanjiReadings(k.onyomi, k.kunyomi) for k in raw}
+    furi = parse_furigana(furigana)
     pairs: list[WordPair] = list(parse_jmdict(jmdict))
     if wordfreq is not None:
         counts = load_tatoeba_counts(tatoeba) if tatoeba is not None else None
         pairs = corpus_weights(pairs, load_wordfreq(wordfreq), counts)
-    return score_readings(kanji, pairs, parse_furigana(furigana))
+    if jlpt_vocab:
+        pairs = [WordPair(p.text, p.reading,
+                          p.weight * LEVEL_MULT.get(jlpt_vocab.get((p.text, p.reading), 0), 1.0),
+                          p.pos) for p in pairs]
+    res = score_readings(kanji, pairs, furi)
+    if jlpt_vocab:
+        lv = score_readings(kanji, [WordPair(t, r, float(n)) for (t, r), n in jlpt_vocab.items()],
+                            furi, combine="max")
+        res.level = lv.score
+    return res
 
 
 @dataclass
@@ -625,20 +719,71 @@ class ReorderStats:
     readings_kun: int = 0
     unscored_on: int = 0     # on'yomi that no word in the data uses
     unscored_kun: int = 0
+    dropped_on: list[int] = field(default_factory=list)    # codepoints
+    dropped_kun: list[int] = field(default_factory=list)
+    # Both kinds had nothing worth asking: (codepoint, kind kept). Or the only
+    # kind the card has: (codepoint, kind kept), kept so the card keeps a reading.
+    both_failed: list[tuple[int, str]] = field(default_factory=list)
+    only_kind_kept: list[tuple[int, str]] = field(default_factory=list)
 
 
-def reorder_raw(raw: list, scores: ReadingScores, joyo: dict | None = None
-                ) -> tuple[list, ReorderStats]:
+def worth_asking(cp: int, readings: list[str], scores: dict[str, float],
+                 joyo: dict | None) -> bool:
+    """Whether a kind of a kanji has a reading worth asking: for a kanji in the
+    Jōyō table, one the table approves (not indented); for any other kanji,
+    one that some word uses (score > 0)."""
+    if not readings:
+        return False
+    entry = joyo.get(chr(cp)) if joyo else None
+    if entry is not None:
+        from .joyo_table import classify
+
+        return any(classify(r, entry) == "joyo" for r in readings)
+    return any(scores.get(r, 0.0) > 0 for r in readings)
+
+
+def reorder_raw(raw: list, scores: ReadingScores, joyo: dict | None = None,
+                drop: bool = False) -> tuple[list, ReorderStats]:
     """A copy of `raw` (KANJIDIC2 RawKanji) with each kanji's on'yomi and
-    kun'yomi ordered most common first (with `joyo`, the table's approved
-    readings before the rest). Every reading is kept."""
+    kun'yomi ordered most useful first: with `joyo`, the table's approved
+    readings before the rest; then by the easiest JLPT list level (if
+    `scores.level`); then by score.
+
+    With `drop`, a kind with nothing worth asking (worth_asking) is emptied, so
+    the device asks the other kind. Never both: if both kinds would go, the one
+    with the higher total score stays; a card's only kind always stays. A kind
+    that stays keeps all its readings."""
     st = ReorderStats()
     out = []
     for k in raw:
-        sc = scores.score.get(k.codepoint, {})
-        on = order_by_score(k.onyomi, sc, tier=joyo_tiers(k.codepoint, k.onyomi, joyo))
+        cp = k.codepoint
+        sc = scores.score.get(cp, {})
+        lv = scores.level.get(cp, {})
+        on = order_by_score(k.onyomi, sc, tier=joyo_tiers(cp, k.onyomi, joyo), level=lv)
         kun = order_by_score(k.kunyomi, sc, bound_forms(k.kunyomi, k.kun_bound),
-                             joyo_tiers(k.codepoint, k.kunyomi, joyo))
+                             joyo_tiers(cp, k.kunyomi, joyo), lv)
+        all_on = all_kun = None
+        if drop:
+            all_on, all_kun = list(on), list(kun)
+            bad_on = bool(on) and not worth_asking(cp, on, sc, joyo)
+            bad_kun = bool(kun) and not worth_asking(cp, kun, sc, joyo)
+            if bad_on and bad_kun:
+                keep = "on" if sum(sc.get(r, 0.0) for r in on) >= sum(
+                    sc.get(r, 0.0) for r in kun) else "kun"
+                st.both_failed.append((cp, keep))
+                bad_on, bad_kun = keep == "kun", keep == "on"
+            if bad_on and not kun:
+                st.only_kind_kept.append((cp, "on"))
+                bad_on = False
+            if bad_kun and not on:
+                st.only_kind_kept.append((cp, "kun"))
+                bad_kun = False
+            if bad_on:
+                st.dropped_on.append(cp)
+                on = []
+            if bad_kun:
+                st.dropped_kun.append(cp)
+                kun = []
         st.kanji += 1
         st.first_on_changed += bool(on) and on[0] != k.onyomi[0]
         st.first_kun_changed += bool(kun) and kun[0] != k.kunyomi[0]
@@ -646,5 +791,7 @@ def reorder_raw(raw: list, scores: ReadingScores, joyo: dict | None = None
         st.readings_kun += len(kun)
         st.unscored_on += sum(1 for r in on if not sc.get(r))
         st.unscored_kun += sum(1 for r in kun if not sc.get(r))
-        out.append(replace(k, onyomi=on, kunyomi=kun))
+        # With `drop`, the full lists ride along (RawKanji.all_*), so reading
+        # distractors are kept away from an emptied kind's readings too.
+        out.append(replace(k, onyomi=on, kunyomi=kun, all_onyomi=all_on, all_kunyomi=all_kun))
     return out, st

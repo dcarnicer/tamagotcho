@@ -22,14 +22,14 @@ def _common_readings(raw: list) -> tuple[list, object] | None:
     """`build --common-readings`: KANJIDIC2 readings reordered most common
     first (docs/common-readings.md), or None after printing an error."""
     need = [paths.JMDICT_GZ, paths.JMDICT_FURIGANA, paths.WORDFREQ_JA, paths.TATOEBA_JPN,
-            paths.JOYO_PDF]
+            paths.JOYO_PDF, *paths.JLPT_VOCAB.values()]
     missing = [p for p in need if not p.exists()]
     if missing:
         print("error: --common-readings needs " + ", ".join(p.name for p in missing)
               + ": run `tangocho-pack fetch --readings`", file=sys.stderr)
         return None
     from .joyo_table import load_pdf
-    from .readings import compute_scores, reorder_raw
+    from .readings import compute_scores, load_jlpt_vocab, reorder_raw
 
     try:
         joyo = load_pdf(paths.JOYO_PDF)
@@ -37,8 +37,8 @@ def _common_readings(raw: list) -> tuple[list, object] | None:
         print(f"error: {e}", file=sys.stderr)
         return None
     scores = compute_scores(raw, paths.JMDICT_GZ, paths.JMDICT_FURIGANA, paths.WORDFREQ_JA,
-                            paths.TATOEBA_JPN)
-    return reorder_raw(raw, scores, joyo)
+                            paths.TATOEBA_JPN, load_jlpt_vocab(paths.JLPT_VOCAB))
+    return reorder_raw(raw, scores, joyo, drop=True)
 
 
 def cmd_build(a) -> int:
@@ -104,10 +104,14 @@ def cmd_build(a) -> int:
             print("error: no cards selected", file=sys.stderr)
             return 1
         if before is not None:
-            on = sum(1 for c in cards if c.onyomi[:1] != before[c.codepoint].onyomi[:1])
-            kun = sum(1 for c in cards if c.kunyomi[:1] != before[c.codepoint].kunyomi[:1])
+            def changed(kind: str) -> tuple[int, int]:
+                new = [(getattr(c, kind), getattr(before[c.codepoint], kind)) for c in cards]
+                return (sum(1 for n, o in new if n and n[0] != o[0]),
+                        sum(1 for n, o in new if o and not n))
+            (on, on_drop), (kun, kun_drop) = changed("onyomi"), changed("kunyomi")
             print(f"common readings: first on'yomi changed for {on} and first kun'yomi for "
-                  f"{kun} of {len(cards)} cards")
+                  f"{kun} of {len(cards)} cards; on'yomi dropped for {on_drop}, kun'yomi "
+                  f"for {kun_drop} (nothing worth asking)")
         name = a.name or default_deck_name(jlpt, grades, joyo=a.joyo)
     if not name.isascii():
         print(f"warning: deck name {name!r} is not ASCII; the device draws the deck name "

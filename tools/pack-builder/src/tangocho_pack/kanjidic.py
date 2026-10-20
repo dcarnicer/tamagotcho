@@ -48,6 +48,11 @@ class Card:
     level: int = 0
     distractors: list[int] = field(default_factory=list)
     distractors_reading: list[int] = field(default_factory=list)
+    # Every reading the kanji has, when `onyomi`/`kunyomi` hold fewer (a kind
+    # emptied by `--common-readings`): reading distractors are kept away from
+    # these too. Empty = the same as `onyomi`/`kunyomi`. Not stored in the pack.
+    valid_onyomi: list[str] = field(default_factory=list)
+    valid_kunyomi: list[str] = field(default_factory=list)
 
     @property
     def char(self) -> str:
@@ -69,6 +74,9 @@ class RawKanji:
     # or suffix (`うわ-`, `-び`): bound forms, used only inside compounds. Only
     # `--common-readings` looks at it (readings.py); the pack does not store it.
     kun_bound: frozenset[str] = frozenset()
+    # Set by readings.reorder_raw when it empties a kind: the readings before.
+    all_onyomi: list[str] | None = None
+    all_kunyomi: list[str] | None = None
 
 
 def clean_kun(r: str) -> str:
@@ -77,7 +85,9 @@ def clean_kun(r: str) -> str:
 
 
 def _dedupe(items: list[str]) -> list[str]:
-    return list(dict.fromkeys(i for i in items if i))
+    """Distinct readings in order, without empty ones (or ones that are only
+    okurigana dots): a pack's reading list never has an empty item."""
+    return list(dict.fromkeys(i for i in items if i.replace(".", "")))
 
 
 def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
@@ -200,6 +210,8 @@ def make_cards(
                 freq=min(k.freq, 65535),
                 radicals=list(k.radicals),
                 fallback_en=fallback,
+                valid_onyomi=list(k.all_onyomi or []),
+                valid_kunyomi=list(k.all_kunyomi or []),
             )
         )
     if order == "grade":

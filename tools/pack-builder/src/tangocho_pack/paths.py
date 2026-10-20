@@ -24,5 +24,7 @@ JMDICT_GZ = READINGS_DIR / "JMdict_e.gz"
 JMDICT_FURIGANA = READINGS_DIR / "JmdictFurigana.txt"
 WORDFREQ_JA = READINGS_DIR / "large_ja.msgpack.gz"
 TATOEBA_JPN = READINGS_DIR / "jpn_indices.tar.bz2"
+# Jonathan Waller's JLPT vocabulary lists (tanos.co.uk), N5..N1, as Anki 1.x decks.
+JLPT_VOCAB = {n: READINGS_DIR / "jlpt" / f"n{n}-vocab-kanji-hiragana.anki" for n in (5, 4, 3, 2, 1)}
 # The official Jōyō table, read only by scripts/common_readings_report.py.
 JOYO_PDF = READINGS_DIR / "joyokanjihyo_20101130.pdf"
