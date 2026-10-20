@@ -98,10 +98,16 @@ struct UiStrings {
     const char* quizKanji;
     const char* dateTitle;
     // Date screen: the last-used day and a proposed "today" the user steps.
+    // The hint bar (docs/ux-refresh.md §2.4, two side actions): "• +1 day
+    // ▬ OK" and "◂ -1 day ▬ cancel" (hintCancel), one row from 189 px (English)
+    // and 201 px (Spanish), else the side items on a second row; checked in
+    // test_quizui, which copies these.
     const char* dateLastUsed;  // caption before the last-used date: "last used Sat 17 Oct"
     const char* dateToday;     // the pill while the proposed day is the current one
     const char* dateOneDay;    // "+1 day": the pill, and the hint bar's tap word
     const char* dateDaysFmt;   // "+%u days" (2 and up)
+    const char* dateBackOneDay;  // "-1 day": the pill, and the hint bar's side tap word
+    const char* dateBackDaysFmt; // "-%u days" (2 and up)
     const char* weekdays[7];   // short names, Sunday first
     // The boot-time question tries the network time first (docs/srs.md 5.1):
     // a label-face title and the network in a caption; the hint bar's tap
@@ -328,8 +334,8 @@ struct UiStrings {
     // the day (at most 96 px: "Wednesday"; the tile is 100 px wide).
     const char* weekdaysLong[7];  // Sunday first
     const char* dateWasOff;       // the notice over "last used" at boot (caption, warn)
-    // Under the pill: how to confirm and how to step back (caption, wrapped:
-    // three lines of 21 characters in both orientations).
+    // Under the pill (caption, wrapped to 21 characters, under the network
+    // status when there is one): what to step to. The hint bar has the buttons.
     const char* dateExplain;
     const char* hintByHand;  // hint bar on "Getting the date": a tap sets it by hand
     // Statistics: the ring's caption, the six tiles' captions (Font0 in a
@@ -366,7 +372,7 @@ const UiStrings kUiEn = {
     "SETTINGS", "DECKS",
     "NEW/DAY", "HARD AFTER", "off",
     "MEANING", "READING", "KANJI",
-    "DATE", "last used", "today", "+1 day", "+%u days",
+    "DATE", "last used", "today", "+1 day", "+%u days", "-1 day", "-%u days",
     {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
     "Getting the date", "via %s...",
     "No network: set it by hand", "No network time: set it by hand",
@@ -434,7 +440,7 @@ const UiStrings kUiEn = {
     "cancel", "more",
     {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"},
     "Device was off.",
-    "Hold when it shows today. Side hold: a day back.",
+    "Hold when it shows today.",
     "by hand",
     "accuracy",
     {"streak", "best", "due", "new", "learned", "time"},
@@ -453,7 +459,7 @@ const UiStrings kUiEs = {
     "AJUSTES", "MAZOS",
     "NUEVAS/DIA", "DIFICIL TRAS", "no",
     "SIGNIFICADO", "LECTURA", "KANJI",
-    "FECHA", "último uso", "hoy", "+1 día", "+%u días",
+    "FECHA", "último uso", "hoy", "+1 día", "+%u días", "-1 día", "-%u días",
     {"dom", "lun", "mar", "mié", "jue", "vie", "sáb"},
     "Obteniendo la fecha", "de %s...",
     "Sin red: ajústala a mano", "Sin hora de red: ajústala a mano",
@@ -522,7 +528,7 @@ const UiStrings kUiEs = {
     "cancelar", "más",
     {"Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"},
     "Estuvo apagado.",
-    "Mantén cuando sea hoy. Lateral larga: un día atrás.",
+    "Mantén cuando sea hoy.",
     "a mano",
     "precisión",
     {"racha", "mejor", "hoy", "nuevas", "dominadas", "tiempo"},
@@ -610,8 +616,10 @@ enum class Choice {
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
-uint16_t gDateSteps = 0;  // days the proposed "today" is past the current day
-uint16_t gBootDay = 0;    // persisted day index at boot: "last used" on the date screen
+// Days from the current day's date to the proposed "today" (negative =
+// earlier), within gSrs.manualStepsMin()..manualStepsMax().
+int32_t gDateSteps = 0;
+uint16_t gBootDay = 0;  // persisted day index at boot: "last used" on the date screen
 // A real wall-clock time was applied since boot (applyWallClock), so the
 // power-cut date question is not needed.
 bool gWallClockSynced = false;
@@ -1866,14 +1874,14 @@ void formatDate(uint16_t day, char* out, size_t n) {
 
 // Date screen (docs/srs.md section 5, power-cut rule): the last-used date and a
 // proposed "today" that starts at the current day. A tap adds a day, a side
-// hold takes one back (never below the current day: the index does not
-// rewind), a hold confirms, a side tap cancels. Asked on a power-on boot (where
-// the network time comes first when it can, see dateSyncBegin()) and opened
-// from Settings > Device > Date for manual corrections.
-uint16_t dateTarget() {
-    const uint32_t t = static_cast<uint32_t>(gSrs.today()) + gDateSteps;
-    return t > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(t);
-}
+// tap takes one away, a hold confirms, a side hold cancels. Below the current
+// day the index is kept and the anchor moves back (SrsStore::setDateManual(),
+// only on a store with an anchor). Asked on a power-on boot (where the network
+// time comes first when it can, see dateSyncBegin()) and opened from Settings >
+// Device > Date for manual corrections.
+
+// The proposed "today" as a calendar day (days since 1970-01-01).
+int32_t dateTarget() { return gSrs.epochDayOf(gSrs.today()) + gDateSteps; }
 
 const char* weekdayName(uint16_t day) {
     return ui().weekdays[tgc::weekdayFromDays(gSrs.epochDayOf(day))];
@@ -1894,13 +1902,13 @@ void weekdayDayMonth(uint16_t day, char* out, size_t n) {
 }
 
 // The calendar tile (§2.4): an accent band with "OCT 2026", the day in the
-// numeral face and the weekday under it.
-void drawCalendarTile(lgfx::LovyanGFX& d, const tgc::layout::Date& l, uint16_t day) {
+// numeral face and the weekday under it, for calendar day `epochDay`.
+void drawCalendarTile(lgfx::LovyanGFX& d, const tgc::layout::Date& l, int32_t epochDay) {
     using namespace tgc::theme;
     const tgc::layout::Rect& t = l.tile;
     int y = 0;
     unsigned m = 1, dd = 1;
-    tgc::civilFromDays(gSrs.epochDayOf(day), &y, &m, &dd);
+    tgc::civilFromDays(epochDay, &y, &m, &dd);
     d.fillRect(t.x, t.y, t.w, t.h, kSurface);
     d.fillRect(t.x, t.y, t.w, l.bandH, kAccent);
     char band[16], num[4];
@@ -1912,7 +1920,7 @@ void drawCalendarTile(lgfx::LovyanGFX& d, const tgc::layout::Date& l, uint16_t d
     snprintf(num, sizeof num, "%u", dd);
     gRender.drawLabel(d, num, t.x, t.y + l.bandH + 2, t.w, 36, kText, kSurface,
                       tgc::Renderer::kTextUiNumeral, tgc::Align::Centre);
-    gRender.drawLabel(d, ui().weekdaysLong[tgc::weekdayFromDays(gSrs.epochDayOf(day))], t.x,
+    gRender.drawLabel(d, ui().weekdaysLong[tgc::weekdayFromDays(epochDay)], t.x,
                       t.y + l.bandH + 40, t.w, 20, kTextDim, kSurface, tgc::Renderer::kTextUi,
                       tgc::Align::Centre);
 }
@@ -1936,9 +1944,10 @@ void drawDateNet() {
 
 // The stepper (docs/ux-refresh.md, date mockup): at boot "Device was off." and
 // the last-used day, then the calendar tile of the proposed day, the "+N days"
-// pill, why it is asked by hand when the network time failed, and how to
-// confirm or step back. The hint bar has the front button's two actions and
-// the side button's cancel.
+// / "-N days" pill, why it is asked by hand when the network time failed, and
+// what to step to. The hint bar has both buttons' two actions: "• +1 day ▬ OK"
+// and "◂ -1 day ▬ cancel", the side ones on a row of their own when the panel
+// is too narrow for one row (the portraits); "-1 day" is dimmed at the floor.
 void drawDate() {
     using namespace tgc::theme;
     auto& d = *gCanvas;
@@ -1948,7 +1957,14 @@ void drawDate() {
         drawDateNet();
         return;
     }
-    const tgc::layout::Date l = tgc::layout::dateFor(W, H);
+    wg::Hints h;
+    h.tap = ui().dateOneDay;
+    h.hold = ui().firstLangHold;  // "OK"
+    h.side = &tgc::kIconBack;
+    h.sideWord = ui().dateBackOneDay;
+    h.sideDim = gDateSteps <= gSrs.manualStepsMin();
+    h.sideHold = ui().hintCancel;
+    const tgc::layout::Date l = tgc::layout::dateFor(W, H, wg::hintBarHeight(W, h));
     const bool land = W > H;
     const tgc::Align align = land ? tgc::Align::Left : tgc::Align::Centre;
     char line[64], day[32];
@@ -1970,14 +1986,18 @@ void drawDate() {
         snprintf(line, sizeof line, "%s", ui().dateToday);
     else if (gDateSteps == 1)
         snprintf(line, sizeof line, "%s", ui().dateOneDay);
+    else if (gDateSteps == -1)
+        snprintf(line, sizeof line, "%s", ui().dateBackOneDay);
+    else if (gDateSteps > 0)
+        snprintf(line, sizeof line, ui().dateDaysFmt, static_cast<unsigned>(gDateSteps));
     else
-        snprintf(line, sizeof line, ui().dateDaysFmt, (unsigned)gDateSteps);
+        snprintf(line, sizeof line, ui().dateBackDaysFmt, static_cast<unsigned>(-gDateSteps));
     const int pw = wg::pillWidth(line);
     wg::drawPill(d, gRender, l.pillCx - pw / 2, l.pillY, line, gDateSteps ? kWarn : kTextDim,
                  kSurfaceHi);
 
-    // Why it is asked by hand after all (the network time failed), then how
-    // the buttons work.
+    // Why it is asked by hand after all (the network time failed), then what
+    // to step to (the hint bar has the buttons).
     const tgc::layout::Rect& e = l.explain;
     const int maxLines = e.h / 10;
     int lines = 0;
@@ -1990,11 +2010,6 @@ void drawDate() {
     drawCaptionLines(d, ui().dateExplain, e.x, e.y + 10 * lines, e.w, maxLines - lines, kTextDim,
                      align);
 
-    wg::Hints h;
-    h.tap = ui().dateOneDay;
-    h.hold = ui().firstLangHold;  // "OK"
-    h.side = &tgc::kIconBack;
-    h.sideWord = ui().hintCancel;
     wg::drawHintBar(d, gRender, W, H, h);
     present();
 }
@@ -2945,13 +2960,23 @@ void leaveDate() {
     drawScreen();
 }
 
-// Applies the stepped days (advanceDaysManual also restarts the day carry, see
+// Applies the stepped days (setDateManual: later dates advance the index,
+// earlier ones move the anchor back; either restarts the day carry, see
 // docs/srs.md section 5), persists them, rebuilds the queue (cards may now be
 // due) and goes back to where the date screen was opened from: Settings >
 // Device > Date, or the quiz on a power-off boot.
 void applyDate() {
     dateSyncCancel();
-    gSrs.advanceDaysManual(gDateSteps);
+    const tgc::ManualDate r = gSrs.setDateManual(gDateSteps);
+    char date[16];
+    formatDate(gSrs.today(), date, sizeof date);
+    Serial.printf("clock: set by hand, %+ld days: %s, day %u (%s)\n",
+                  static_cast<long>(gDateSteps),
+                  r == tgc::ManualDate::Advanced     ? "advanced"
+                  : r == tgc::ManualDate::Reanchored ? "re-anchored"
+                  : r == tgc::ManualDate::Same       ? "same day"
+                                                     : "rejected",
+                  (unsigned)gSrs.today(), date);
     gSrs.save(gSrsIo);
     gDirty = 0;
     gQueue.rebuild(*gPack, gSrs, gRng);
@@ -5212,8 +5237,10 @@ void loop() {
         // the reason); any press gives up on it, radio off, and shows the
         // stepper. Presses are handled before the poll, which may block for the
         // NTP request.
-        // The stepper: tap one more day, hold confirm, side hold one day back
-        // (never below the current day: undoes an overshoot), side tap cancel.
+        // The stepper: tap one more day, side tap one day less (as the quiz's
+        // side tap is the previous option; below the current day only with an
+        // anchor, see SrsStore::manualStepsMin()), hold confirm, side hold
+        // cancel.
         if (gDateSync == DateSync::Joining) {
             if (a || b) {
                 dateSyncCancel();
@@ -5222,16 +5249,16 @@ void loop() {
                 dateSyncPoll();
             }
         } else if (a == 1) {
-            if (dateTarget() < 0xFFFF) ++gDateSteps;
+            if (gDateSteps < gSrs.manualStepsMax()) ++gDateSteps;
             drawScreen();
         } else if (a == 2) {
             applyDate();
-        } else if (b == 2) {
-            if (gDateSteps > 0) {
+        } else if (b == 1) {
+            if (gDateSteps > gSrs.manualStepsMin()) {
                 --gDateSteps;
                 drawScreen();
             }
-        } else if (b == 1) {  // cancel: back to the Date submenu, or straight into the quiz
+        } else if (b == 2) {  // cancel: back to the Date submenu, or straight into the quiz
             if (gAfterDate != Screen::Quiz)
                 openDateMenu(false);
             else
