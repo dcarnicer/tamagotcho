@@ -73,13 +73,14 @@ inline HintPlan planHints(int w, const HintSpec& s) {
     const int right = w - theme::kGutter;
     const int frontEnd = hintFrontEnd(s.tap, s.hold, s.tapMarkW, s.holdMarkW);
     const bool sideTap = s.sideIconW > 0;
+    const bool hasWord = sideTap && s.sideWord && *s.sideWord;
     const int iconOnly = sideTap ? s.sideIconW : 0;
-    const int withWord = sideTap ? hintItemW(s.sideIconW, s.sideWord) : 0;
+    const int withWord = hasWord ? hintItemW(s.sideIconW, s.sideWord) : iconOnly;
 
     if (!s.sideHold) {
         // One row; the side word only when it keeps 6 px clear of the front
         // items, else the icon alone.
-        p.sideWord = sideTap && s.sideWord && right - withWord >= frontEnd + kHintItemGap;
+        p.sideWord = hasWord && right - withWord >= frontEnd + kHintItemGap;
         p.sideX = right - (p.sideWord ? withWord : iconOnly);
         return p;
     }
@@ -87,7 +88,7 @@ inline HintPlan planHints(int w, const HintSpec& s) {
     // Two side actions: the side tap (its words included), 6 px, the hold item.
     const int holdW = hintItemW(s.holdMarkW, s.sideHold);
     auto groupW = [&](int tapW) { return tapW + (tapW > 0 ? kHintItemGap : 0) + holdW; };
-    p.sideWord = sideTap && s.sideWord;
+    p.sideWord = hasWord;
     int start = right - groupW(p.sideWord ? withWord : iconOnly);
     if (start < frontEnd + kHintItemGap) {
         // A row of its own; only if even that is too narrow, the side tap
