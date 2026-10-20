@@ -4547,6 +4547,116 @@ struct Key {
     }
 };
 
+#if defined(TGC_REMOTE)
+// Serial remote for tools/screenshots (env sticks3-shots, never a release).
+// One byte a command over USB serial, read by loop():
+//   'a' / 'b'  tap the front / side button (down for 80 ms)
+//   'A' / 'B'  hold it (down until the hold fires, then up)
+//   's'        print the back buffer, which is what the panel shows: "#shot W H
+//              <on|dim|dark>" (the backlight; dark: the last frame drawn), one
+//              "#r Y <hex>" line a row (RGB565 as stored: big-endian, four hex
+//              digits a pixel), "#end"
+//   'w'        wake: counts as activity and lights a dim or dark panel, no press
+// Test hooks:
+//   'd'        the boot-time date question as after a power cut: "Getting the
+//              date via <ssid>..." first, then the stepper (with the reason when
+//              the network failed). It writes nothing itself: a hold on the
+//              stepper confirms (saved), a side tap cancels, and a network time
+//              that answers is applied as by every sync (a same-day one writes
+//              nothing)
+//   'f'        the next home Wi-Fi join is pinned to an access point that does
+//              not exist: the pinned step fails, any access point after 25 s
+//   'x'        the next join is pinned there for good: it fails after 40 s ("No
+//              network: set it by hand" on the date question)
+// A press is a virtual button that goes through Key like a real one: it counts
+// as activity, a dim panel brightens and acts, a dark one only wakes. While a
+// virtual button is down the next bytes wait, so a burst runs in order.
+struct RemoteKey {
+    uint32_t upAt = 0;     // millis() when a tap comes up; 0: up
+    bool holding = false;  // a hold that has not fired yet
+};
+RemoteKey gRemote[2];
+void wakeScreen();
+
+bool remoteBusy() {
+    return gRemote[0].upAt || gRemote[0].holding || gRemote[1].upAt || gRemote[1].holding;
+}
+
+bool remoteDown(int k, uint32_t now) {
+    RemoteKey& r = gRemote[k];
+    if (r.holding) return true;
+    if (!r.upAt) return false;
+    if (static_cast<int32_t>(now - r.upAt) < 0) return true;
+    r.upAt = 0;  // seen up once by Key: the press ends here
+    return false;
+}
+
+// After Key::poll(): a remote hold lets go shortly after its hold fired, so a
+// slow loop() turn can never make it a tap.
+void remoteKeyEvent(int k, int event, uint32_t now) {
+    if (gRemote[k].holding && event == 2) {
+        gRemote[k].holding = false;
+        gRemote[k].upAt = now + 50;
+    }
+}
+
+void remoteShot() {
+    static const char kHex[] = "0123456789abcdef";
+    static char line[16 + 4 * 320 + 2];  // up to 320 pixels a row (T-Display-S3)
+    const int w = gCanvas->width(), h = gCanvas->height();
+    const uint8_t* px = static_cast<const uint8_t*>(gCanvas->getBuffer());
+    Serial.printf("\n#shot %d %d %s\n", w, h, gScreenOff ? "dark" : gDimmed ? "dim" : "on");
+    for (int y = 0; y < h && w <= 320 && px; ++y) {
+        int n = snprintf(line, sizeof line, "#r %d ", y);
+        const uint8_t* row = px + static_cast<size_t>(y) * w * 2;
+        for (int i = 0; i < w * 2; ++i) {
+            line[n++] = kHex[row[i] >> 4];
+            line[n++] = kHex[row[i] & 15];
+        }
+        line[n++] = '\n';
+        Serial.write(reinterpret_cast<const uint8_t*>(line), n);
+    }
+    Serial.printf("#end\n");
+}
+
+// 'd': see above. Not while a radio is in use (the portal, Get decks, the
+// network test) or the question is already open.
+void remoteDateQuestion() {
+    if (gScreen == Screen::Date || gHome.active() || gPortal.active() || !gPack->isOpen()) {
+        Serial.printf("remote: no date question now (screen %d, radio %d)\n",
+                      static_cast<int>(gScreen), gHome.active() || gPortal.active() ? 1 : 0);
+        return;
+    }
+    Serial.printf("remote: the date question, as after a power cut\n");
+    gAdvance.cancel();
+    dateSyncBegin();
+    openDate(Screen::Quiz);
+}
+
+void remotePoll(uint32_t now) {
+    while (!remoteBusy() && Serial.available() > 0) {
+        const int c = Serial.read();
+        if (c == 'a' || c == 'b') {
+            gRemote[c == 'b'].upAt = now + 80;
+        } else if (c == 'A' || c == 'B') {
+            gRemote[c == 'B'].holding = true;
+        } else if (c == 's') {
+            remoteShot();
+        } else if (c == 'w') {
+            gLastInputAt = now;
+            if (gScreenOff || gDimmed) wakeScreen();
+        } else if (c == 'd') {
+            remoteDateQuestion();
+        } else if (c == 'f' || c == 'x') {
+            tgc::HomeWifi::setTestFault(c == 'f' ? tgc::HomeWifi::TestFault::BadPin
+                                                 : tgc::HomeWifi::TestFault::NoJoin);
+            Serial.printf("remote: the next join %s\n",
+                          c == 'f' ? "fails its pinned step" : "fails");
+        }
+    }
+}
+#endif
+
 // Adds the time spent in deep sleep (RTC timer) to the SRS day clock. Only a
 // wake-up from our own deepSleep() qualifies: after a power cut both the RTC
 // timer and RTC memory are reset, and a crash reset is not a wake-up.
@@ -5170,11 +5280,21 @@ void loop() {
     const uint32_t t = millis();
     gSrs.tick(t);
     static Key keyA, keyB;
+#if defined(TGC_REMOTE)
+    remotePoll(t);
+    const bool downA = tgc::board::isHeld(Button::Select) || remoteDown(0, t);
+    const bool downB = tgc::board::isHeld(Button::Next) || remoteDown(1, t);
+#else
     const bool downA = tgc::board::isHeld(Button::Select);
     const bool downB = tgc::board::isHeld(Button::Next);
+#endif
     const uint32_t holdMs = tgc::holdMsFor(gHoldPref);
     int a = keyA.poll(downA, t, holdMs);
     int b = keyB.poll(downB, t, holdMs);
+#if defined(TGC_REMOTE)
+    remoteKeyEvent(0, a, t);
+    remoteKeyEvent(1, b, t);
+#endif
     if (downA || downB || a || b) {
         gLastInputAt = t;
         // A dark panel only wakes up: that press (through its release) is

@@ -326,6 +326,7 @@ in its footer.
 | `tools/pack-builder/` | Python CLI that builds `.tgc` packs     |
 | `tools/release/`      | release helper: merge a build into one flashable image |
 | `tools/ui-font/`      | generator of the firmware's UI font (`firmware/src/ui/UiFont.h`) |
+| `tools/screenshots/`  | serial remote: press a StickS3's buttons and save its screen over USB (`sticks3-shots` build) |
 | `.github/workflows/`  | CI, firmware release and decks release automation |
 | `docs/`               | architecture, pack format, decisions, roadmap |
 

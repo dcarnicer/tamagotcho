@@ -79,7 +79,17 @@ void wipe(String& s) {
     if (s.length()) std::memset(const_cast<char*>(s.c_str()), 0, s.length());
 }
 
+#if defined(TGC_REMOTE)
+HomeWifi::TestFault sNextFault = HomeWifi::TestFault::None;
+// A locally administered BSSID that no access point has.
+constexpr uint8_t kNowhere[6] = {0x02, 0x00, 0x00, 0x00, 0x7E, 0x57};
+#endif
+
 }  // namespace
+
+#if defined(TGC_REMOTE)
+void HomeWifi::setTestFault(TestFault f) { sNextFault = f; }
+#endif
 
 // --- saved settings ---------------------------------------------------------
 
@@ -150,6 +160,10 @@ bool HomeWifi::saveCatalogUrl(const String& url) {
 bool HomeWifi::begin() {
     if (active()) return true;
     failure_ = Failure::None;
+#if defined(TGC_REMOTE)
+    fault_ = sNextFault;
+    sNextFault = TestFault::None;
+#endif
     String ssid, pass;
     loadCredentials(ssid, pass);
     wipe(pass);  // each join step reads it again (joinStep())
@@ -210,6 +224,14 @@ void HomeWifi::pickAccessPoint(int16_t n) {
         channel_ = WiFi.channel(best);
     }
     WiFi.scanDelete();
+#if defined(TGC_REMOTE)
+    if (fault_ != TestFault::None) {  // setTestFault()
+        std::memcpy(bssid_, kNowhere, sizeof bssid_);
+        Serial.printf("[net] test: pinned to 02:00:00:00:7E:57, which does not exist (%s)\n",
+                      fault_ == TestFault::BadPin ? "pinned step" : "whole join");
+        best = 0;
+    }
+#endif
     joinStep(best >= 0);
 }
 
@@ -217,7 +239,11 @@ void HomeWifi::joinStep(bool pinned) {
     String ssid, pass;
     loadCredentials(ssid, pass);
     const char* pw = pass.length() ? pass.c_str() : nullptr;
-    if (pinned)
+    bool pin = pinned;
+#if defined(TGC_REMOTE)
+    if (fault_ == TestFault::NoJoin) pin = true;  // the any step too
+#endif
+    if (pin)
         WiFi.begin(ssid_, pw, channel_, bssid_);
     else
         WiFi.begin(ssid_, pw);

@@ -30,7 +30,12 @@ pio device monitor
 
 Use `-e tdisplay-s3` for the T-Display-S3. `-e sticks3-dev` is the StickS3 build
 with the quiz trace (`TGC_QUIZ_LOG`) on the serial monitor: every question,
-answer and grade, plus Wi-Fi and power events.
+answer and grade, plus Wi-Fi and power events. `-e sticks3-shots` is the
+StickS3 build with the serial remote (`TGC_REMOTE`): over the USB cable,
+`tools/screenshots/remote.py` presses its buttons, saves its screen as PNG and
+runs test hooks (the power-cut date question, a home Wi-Fi join that fails);
+see [tools/screenshots/README.md](../tools/screenshots/README.md). Never flash
+it as a release: anything on the cable can press the buttons.
 
 ### Prebuilt images from a release
 
