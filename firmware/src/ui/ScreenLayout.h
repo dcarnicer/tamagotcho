@@ -146,7 +146,9 @@ constexpr bool ringFits(int textW, int rInner) { return textW <= 2 * rInner - 6;
 // weekday), the "+N days" pill under it, the two notice lines ("Device was
 // off.", "Last used ...") and the explanation / network status lines.
 // Portrait: notice, tile, pill, explanation top to bottom. Landscape: tile and
-// pill on the left, the text right of them.
+// pill on the left, the text right of them. `hintH` is the hint bar's height
+// (widgets::hintBarHeight(): 24 px where the side button's two actions take a
+// second row).
 struct Date {
     Rect notice;   // two caption lines
     Rect tile;
@@ -158,10 +160,10 @@ struct Date {
 constexpr int kDateTileH = 76;  // band 13, day 38, weekday 21, 4 px under it
 constexpr int kDateTileMaxW = 100;  // "Wednesday" in the label face (96 px) and 2 px a side
 
-constexpr Date dateFor(int w, int h) {
+constexpr Date dateFor(int w, int h, int hintH = theme::kHintH) {
     using namespace theme;
     Date d{};
-    const int hintY = h - kHintH;
+    const int hintY = h - hintH;
     const int top = kHeaderH + 3;
     d.bandH = 13;
     if (w > h) {

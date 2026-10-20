@@ -96,6 +96,14 @@ struct ClockSyncResult {
     uint16_t daysAdvanced = 0;  // non-zero only for Advanced
 };
 
+// Outcome of SrsStore::setDateManual() (docs/srs.md section 5, power-cut rule).
+enum class ManualDate : uint8_t {
+    Rejected,    // outside manualStepsMin()..manualStepsMax(): nothing changed
+    Same,        // 0 steps: nothing changed
+    Advanced,    // later: the index moved forward (advanceDaysManual)
+    Reanchored,  // earlier: the index kept, the anchor moved back
+};
+
 // Byte sink/source for the state file. Device code implements this over
 // LittleFS (temp + rename); MemoryIo below is the test double.
 class StateIo {
@@ -147,6 +155,19 @@ public:
     // next rollover comes a full day after the answer -- late, never early
     // (docs/srs.md section 5, power-cut rule).
     void advanceDaysManual(uint16_t n);
+
+    // The date screen (docs/srs.md section 5, power-cut rule): a date the user
+    // confirmed, `steps` days from the one shown for today(). Later dates are
+    // advanceDaysManual(steps). Earlier ones keep the index (it never rewinds)
+    // and move the anchor back instead, as a Reanchored sync does, and restart
+    // the day carry too. Rejected, nothing changed, outside the range below.
+    ManualDate setDateManual(int32_t steps);
+    // That range, in days from the date shown for today(). Back: to
+    // 2026-01-01, the earliest date a sync accepts, but only with an anchor;
+    // without one the shown date is the fixed base plus the index, not a date
+    // to correct, so the floor is 0. Forward: to the last index day.
+    int32_t manualStepsMin() const;
+    int32_t manualStepsMax() const;
 
     // Applies a real wall-clock time (docs/srs.md section 5.1); `tzOffsetMin` is
     // local time minus UTC in minutes. The first sync anchors the displayed date

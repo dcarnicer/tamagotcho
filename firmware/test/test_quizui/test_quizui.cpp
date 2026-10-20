@@ -1,7 +1,8 @@
 // Native tests for the quiz screens' pure logic (ui/QuizUi.h): session
 // progress, option navigation, the hint bar policy, hold progress, auto-advance
 // and the pixel budgets of the header pills and hint bars in English and
-// Spanish (the strings are copies of main.cpp's UiStrings; keep them in step).
+// Spanish (the strings are copies of main.cpp's UiStrings; keep them in step),
+// and the hint bar's layout (ui/HintBar.h), the date stepper's included.
 #include <unity.h>
 
 #include <cstring>
@@ -258,6 +259,102 @@ void test_quiz_hints_fit_portrait() {
     TEST_ASSERT_FALSE(quizHintFits(135, "siguiente", "responder"));
 }
 
+// A bar without a side-hold word is laid out as before: one row, the side word
+// only when it keeps 6 px clear of the front items.
+void test_hint_plan_one_side_action_unchanged() {
+    HintSpec s;
+    s.tap = "move";
+    s.hold = "open";
+    s.tapMarkW = kIconTap.w;
+    s.holdMarkW = kIconHold.w;
+    s.sideIconW = kIconBack.w;
+    s.sideWord = "back";
+    HintPlan p = planHints(135, s);
+    TEST_ASSERT_FALSE(p.twoRows);
+    TEST_ASSERT_EQUAL(theme::kHintH, p.height);
+    TEST_ASSERT_TRUE(p.sideWord);
+    TEST_ASSERT_EQUAL(135 - theme::kGutter - (kIconBack.w + 3 + 4 * 6), p.sideX);
+    // "• mover ▬ abrir ◂ atrás" does not fit 135 px: the icon alone.
+    s.tap = "mover";
+    s.hold = "abrir";
+    s.sideWord = "atrás";
+    p = planHints(135, s);
+    TEST_ASSERT_FALSE(p.twoRows);
+    TEST_ASSERT_FALSE(p.sideWord);
+    TEST_ASSERT_EQUAL(135 - theme::kGutter - kIconBack.w, p.sideX);
+    TEST_ASSERT_TRUE(planHints(240, s).sideWord);
+    // No front items: the word fits from the gutter on.
+    HintSpec only;
+    only.sideIconW = kIconBack.w;
+    only.sideWord = "stop";
+    TEST_ASSERT_TRUE(planHints(135, only).sideWord);
+}
+
+// The date stepper (main.cpp drawDate()): "• +1 day ▬ OK" and "◂ -1 day
+// ▬ cancel" in English and Spanish. One row where both groups fit (landscape),
+// else the side group on a second row; the side words are always drawn, and
+// nothing overlaps or leaves the panel.
+static HintSpec dateHints(bool es) {
+    HintSpec s;
+    s.tap = es ? "+1 d\xC3\xAD" "a" : "+1 day";
+    s.hold = "OK";
+    s.tapMarkW = kIconTap.w;
+    s.holdMarkW = kIconHold.w;
+    s.sideIconW = kIconBack.w;
+    s.sideWord = es ? "-1 d\xC3\xAD" "a" : "-1 day";
+    s.sideHold = es ? "cancelar" : "cancel";
+    return s;
+}
+
+void test_hint_plan_date_stepper() {
+    for (bool es : {false, true}) {
+        const HintSpec s = dateHints(es);
+        const int frontEnd = hintFrontEnd(s.tap, s.hold, s.tapMarkW, s.holdMarkW);
+        for (int w : {135, 170, 240, 320}) {
+            const HintPlan p = planHints(w, s);
+            TEST_ASSERT_TRUE(p.sideWord);
+            // The side tap item, 6 px, the side hold item, ending at the gutter.
+            TEST_ASSERT_TRUE(p.sideX >= theme::kGutter);
+            TEST_ASSERT_EQUAL(p.sideX + hintItemW(s.sideIconW, s.sideWord) + kHintItemGap,
+                              p.sideHoldX);
+            TEST_ASSERT_EQUAL(w - theme::kGutter, p.sideHoldX + hintItemW(s.holdMarkW, s.sideHold));
+            // The front row always fits.
+            TEST_ASSERT_TRUE(frontEnd <= w - theme::kGutter);
+            // On one row, 6 px between the groups.
+            if (!p.twoRows) TEST_ASSERT_TRUE(p.sideX >= frontEnd + kHintItemGap);
+            TEST_ASSERT_EQUAL(p.twoRows ? 2 * theme::kHintH : theme::kHintH, p.height);
+        }
+        // Portrait takes two rows, landscape one.
+        TEST_ASSERT_TRUE(planHints(135, s).twoRows);
+        TEST_ASSERT_TRUE(planHints(170, s).twoRows);
+        TEST_ASSERT_FALSE(planHints(240, s).twoRows);
+        TEST_ASSERT_FALSE(planHints(320, s).twoRows);
+    }
+    // The widths docs/ux-refresh.md §2.4 gives: one row from 189 px (English)
+    // and 201 px (Spanish).
+    TEST_ASSERT_FALSE(planHints(189, dateHints(false)).twoRows);
+    TEST_ASSERT_TRUE(planHints(188, dateHints(false)).twoRows);
+    TEST_ASSERT_FALSE(planHints(201, dateHints(true)).twoRows);
+    TEST_ASSERT_TRUE(planHints(200, dateHints(true)).twoRows);
+}
+
+// Only when even a row of its own is too narrow does the side tap lose its
+// word; the side hold item and the icon stay. No side tap: the hold alone.
+void test_hint_plan_side_hold_fallbacks() {
+    const HintSpec s = dateHints(true);
+    const HintPlan p = planHints(100, s);
+    TEST_ASSERT_TRUE(p.twoRows);
+    TEST_ASSERT_FALSE(p.sideWord);
+    TEST_ASSERT_EQUAL(100 - theme::kGutter - hintItemW(s.holdMarkW, s.sideHold), p.sideHoldX);
+    TEST_ASSERT_EQUAL(p.sideHoldX - kHintItemGap - s.sideIconW, p.sideX);
+
+    HintSpec hold = dateHints(false);
+    hold.sideIconW = 0;
+    const HintPlan q = planHints(240, hold);
+    TEST_ASSERT_FALSE(q.twoRows);
+    TEST_ASSERT_EQUAL(240 - theme::kGutter - hintItemW(hold.holdMarkW, hold.sideHold), q.sideHoldX);
+}
+
 void test_caption_chars_counts_code_points() {
     TEST_ASSERT_EQUAL(0, captionChars(nullptr));
     TEST_ASSERT_EQUAL(9, captionChars("GOOD \xC2\xB7 4d"));
@@ -281,6 +378,9 @@ int main(int, char**) {
     RUN_TEST(test_result_pills_never_overflow);
     RUN_TEST(test_stroke_counter_word_once_per_card);
     RUN_TEST(test_quiz_hints_fit_portrait);
+    RUN_TEST(test_hint_plan_one_side_action_unchanged);
+    RUN_TEST(test_hint_plan_date_stepper);
+    RUN_TEST(test_hint_plan_side_hold_fallbacks);
     RUN_TEST(test_caption_chars_counts_code_points);
     return UNITY_END();
 }

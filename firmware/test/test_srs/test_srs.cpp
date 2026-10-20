@@ -1357,6 +1357,153 @@ void test_advance_days_manual() {
     TEST_ASSERT_EQUAL_UINT16(0xFFFF, s.today());
 }
 
+// The date screen, forward and "today": a later date is advanceDaysManual(),
+// 0 changes nothing (the carry included), past the last index day is refused.
+void test_date_manual_forward_and_same() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(7);
+    s.addElapsedMs(20 * kHourMs);
+    TEST_ASSERT_EQUAL_INT32(0, s.manualStepsMin());  // never synced: today is the floor
+    TEST_ASSERT_EQUAL_INT32(0xFFFF - 7, s.manualStepsMax());
+
+    TEST_ASSERT_TRUE(s.setDateManual(0) == ManualDate::Same);
+    TEST_ASSERT_EQUAL_UINT16(7, s.today());
+    TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(20 * kHourMs), s.msCarry());
+
+    s.setNewIntroducedDay(7);
+    s.setNewIntroducedCount(5);
+    TEST_ASSERT_TRUE(s.setDateManual(3) == ManualDate::Advanced);
+    TEST_ASSERT_EQUAL_UINT16(10, s.today());
+    TEST_ASSERT_EQUAL_UINT32(0, s.msCarry());
+    TEST_ASSERT_EQUAL_UINT16(10, s.newIntroducedDay());
+    TEST_ASSERT_EQUAL_UINT16(0, s.newIntroducedCount());
+    TEST_ASSERT_FALSE(s.hasWallClock());  // a forward step never anchors
+
+    s.setToday(0xFFFE);
+    TEST_ASSERT_EQUAL_INT32(1, s.manualStepsMax());
+    TEST_ASSERT_TRUE(s.setDateManual(2) == ManualDate::Rejected);
+    TEST_ASSERT_EQUAL_UINT16(0xFFFE, s.today());
+    TEST_ASSERT_TRUE(s.setDateManual(1) == ManualDate::Advanced);
+    TEST_ASSERT_EQUAL_UINT16(0xFFFF, s.today());
+    TEST_ASSERT_EQUAL_INT32(0, s.manualStepsMax());
+}
+
+// An earlier date on an anchored store: the manual twin of a Reanchored sync.
+// The index, due days, streak and new-card counter stay; the anchor moves
+// back, the carry restarts, and later syncs measure from the new anchor.
+void test_date_manual_back_reanchors() {
+    const int tz = 60;
+    SrsStore s;
+    MemoryIo empty;
+    s.begin(empty);
+    s.setToday(18);
+    TEST_ASSERT_TRUE(s.syncWallClock(utcOf(2026, 11, 9, 10, 0, tz), tz).kind ==
+                     ClockSync::Anchored);
+    s.grade(0x65E5, Grade::Good, s.today(), 0, 0.5f);
+    const Record before = *s.find(0x65E5);
+    const uint16_t anchor = s.epochAnchor();
+
+    // The user overshot by two days earlier on: the device shows the 11th.
+    s.advanceDaysManual(2);
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 11, 11), s.epochDayOf(s.today()));
+    s.grade(0x6708, Grade::Good, s.today(), 0, 0.5f);  // a new card on the 11th
+    s.addElapsedMs(5 * kHourMs);
+    const uint16_t streak = s.streakCurrent();
+    const uint16_t introduced = s.newIntroducedCount();
+    TEST_ASSERT_EQUAL_UINT16(1, introduced);
+    TEST_ASSERT_TRUE(s.manualStepsMin() < -2);
+
+    TEST_ASSERT_TRUE(s.setDateManual(-2) == ManualDate::Reanchored);
+    TEST_ASSERT_EQUAL_UINT16(20, s.today());  // never rewound
+    TEST_ASSERT_EQUAL_UINT16(anchor - 2, s.epochAnchor());
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 11, 9), s.epochDayOf(s.today()));
+    TEST_ASSERT_EQUAL_UINT32(0, s.msCarry());  // late, never early
+    const Record* after = s.find(0x65E5);
+    TEST_ASSERT_EQUAL_UINT16(before.dueDay, after->dueDay);
+    TEST_ASSERT_EQUAL_UINT16(before.lastDay, after->lastDay);
+    TEST_ASSERT_EQUAL_UINT16(streak, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(20, s.lastStudyDay());
+    TEST_ASSERT_EQUAL_UINT16(20, s.newIntroducedDay());  // same index day: same budget
+    TEST_ASSERT_EQUAL_UINT16(introduced, s.newIntroducedCount());
+
+    // It persists like any anchor.
+    MemoryIo io;
+    TEST_ASSERT_TRUE(s.save(io));
+    SrsStore b;
+    TEST_ASSERT_TRUE(b.begin(io));
+    TEST_ASSERT_EQUAL_UINT16(anchor - 2, b.epochAnchor());
+    TEST_ASSERT_EQUAL_UINT16(20, b.today());
+
+    // From there index and real date move together: the same day is Same,
+    // the next one advances by one.
+    TEST_ASSERT_TRUE(b.syncWallClock(utcOf(2026, 11, 9, 22, 0, tz), tz).kind == ClockSync::Same);
+    TEST_ASSERT_EQUAL_UINT16(20, b.today());
+    const ClockSyncResult r = b.syncWallClock(utcOf(2026, 11, 10, 9, 0, tz), tz);
+    TEST_ASSERT_TRUE(r.kind == ClockSync::Advanced);
+    TEST_ASSERT_EQUAL_UINT16(1, r.daysAdvanced);
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 11, 10), b.epochDayOf(b.today()));
+}
+
+// Without an anchor there is no date to correct: below the current day is
+// refused and nothing changes; the screen's own forward steps can still be
+// undone because they were never applied.
+void test_date_manual_back_needs_anchor() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(12);
+    s.addElapsedMs(3 * kHourMs);
+    TEST_ASSERT_EQUAL_INT32(0, s.manualStepsMin());
+    TEST_ASSERT_TRUE(s.setDateManual(-1) == ManualDate::Rejected);
+    TEST_ASSERT_EQUAL_UINT16(12, s.today());
+    TEST_ASSERT_EQUAL_UINT16(0, s.epochAnchor());
+    TEST_ASSERT_FALSE(s.hasWallClock());
+    TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(3 * kHourMs), s.msCarry());
+    TEST_ASSERT_EQUAL_INT32(kSrsLegacyEpochDay + 12, s.epochDayOf(s.today()));
+
+    // The first sync still anchors the current index as today.
+    TEST_ASSERT_TRUE(s.syncWallClock(utcOf(2026, 12, 1, 12, 0, 0), 0).kind ==
+                     ClockSync::Anchored);
+    TEST_ASSERT_EQUAL_UINT16(12, s.today());
+    TEST_ASSERT_TRUE(s.manualStepsMin() < 0);
+}
+
+// The floor: 2026-01-01, the earliest date a sync accepts, and an anchor that
+// stays at 1 or more even for an index larger than that day count.
+void test_date_manual_floor() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(2);
+    TEST_ASSERT_TRUE(s.syncWallClock(utcOf(2026, 1, 3, 12, 0, 0), 0).kind ==
+                     ClockSync::Anchored);
+    TEST_ASSERT_EQUAL_INT32(-2, s.manualStepsMin());
+    TEST_ASSERT_TRUE(s.setDateManual(-3) == ManualDate::Rejected);
+    TEST_ASSERT_EQUAL_INT32(daysFromCivil(2026, 1, 3), s.epochDayOf(s.today()));
+    TEST_ASSERT_TRUE(s.setDateManual(-2) == ManualDate::Reanchored);
+    TEST_ASSERT_EQUAL_INT32(kWallClockMinEpochDay, s.epochDayOf(s.today()));
+    TEST_ASSERT_EQUAL_INT32(0, s.manualStepsMin());
+    TEST_ASSERT_TRUE(s.setDateManual(-1) == ManualDate::Rejected);
+
+    // An index past the floor's day count (synced in 2099): the anchor is the
+    // limit, never 0 ("none").
+    SrsStore t;
+    MemoryIo io2;
+    t.begin(io2);
+    t.setToday(30000);
+    TEST_ASSERT_TRUE(t.syncWallClock(utcOf(2099, 12, 31, 12, 0, 0), 0).kind ==
+                     ClockSync::Anchored);
+    const int32_t shown = t.epochDayOf(t.today());
+    TEST_ASSERT_EQUAL_INT32(30001 - shown, t.manualStepsMin());
+    TEST_ASSERT_TRUE(t.setDateManual(t.manualStepsMin() - 1) == ManualDate::Rejected);
+    TEST_ASSERT_TRUE(t.setDateManual(t.manualStepsMin()) == ManualDate::Reanchored);
+    TEST_ASSERT_EQUAL_UINT16(1, t.epochAnchor());
+    TEST_ASSERT_TRUE(t.hasWallClock());
+    TEST_ASSERT_EQUAL_UINT16(30000, t.today());
+}
+
 // The anchor survives a save/load at byte 38; bytes 44..47 stay zero.
 void test_serialize_anchor_roundtrip() {
     SrsStore a;
@@ -1459,6 +1606,10 @@ int main() {
     RUN_TEST(test_sync_monotonic);
     RUN_TEST(test_sync_counters);
     RUN_TEST(test_advance_days_manual);
+    RUN_TEST(test_date_manual_forward_and_same);
+    RUN_TEST(test_date_manual_back_reanchors);
+    RUN_TEST(test_date_manual_back_needs_anchor);
+    RUN_TEST(test_date_manual_floor);
     RUN_TEST(test_serialize_anchor_roundtrip);
     RUN_TEST(test_serialize_pre_anchor_file_unchanged);
     return UNITY_END();

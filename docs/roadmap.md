@@ -60,8 +60,9 @@ Scope for now: **kanji only** (no vocabulary decks).
         the clock from NTP once joined.
       - [x] Better manual fallback (2026-10-18): the date screen shows the
         last-used date and a proposed "today" with its weekday (tap +1 day, hold
-        confirms, side hold -1 day, side tap cancels) instead of the 0/1/2-7/14+
-        buckets. A sync from the phone answers it instead.
+        confirms; then side hold -1 day and side tap cancel, swapped on
+        2026-10-20, below) instead of the 0/1/2-7/14+ buckets. A sync from the
+        phone answers it instead.
       - [x] Time zone rules, manual zone, network first (2026-10-18, v0.1.0
         hardware feedback): the page sends the browser's zone as a POSIX TZ
         rule, so the 04:00 rollover follows DST changes (23/25 h study days)
@@ -75,6 +76,15 @@ Scope for now: **kanji only** (no vocabulary decks).
         (Europe/Madrid, +120 min in October), and after a real power-off the
         network-first screen answers by itself, or a tap leads to the stepper.
         Not yet tried: choosing a zone by hand on the device.
+      - [x] Date stepper in both directions (2026-10-20, StickS3 feedback: with
+        the network time failing there was no visible way to go back a day,
+        and the side tap cancelled): side tap -1 day, side hold cancel, both
+        in the hint bar ("• +1 day ▬ OK", "◂ -1 day ▬ cancel", the side items
+        on a second row in portrait). Below the current day the index is kept
+        and the anchor moves back, like a `Reanchored` sync; only on a device
+        that has had a real-time date once (docs/srs.md §5). Native-tested
+        (`test_srs`, `test_quizui`, `test_settings`). Not yet verified on
+        hardware.
 - [~] **Phase 3 – Better cards.** Distractors done for visual similarity,
       shared classical radicals and confusable readings; meaning→kanji questions
       done; the mistake detail card is done (a tap after a wrong answer opens a

@@ -27,7 +27,9 @@ with **multiple-choice reviews** and spaced repetition, fully offline.
    after, auto-advance), **Stats**, **Wi-Fi** and **Device** (orientation,
    brightness, language, hold time, date and time zone, sleep, About). In
    every menu a tap moves, a hold opens or chooses, and the side button goes
-   back; the bar at the bottom of the screen says what each does.
+   back; the bar at the bottom of the screen says what each does. The date
+   screen is the one exception: there the front tap adds a day, the side tap
+   takes one away, and holding the side button cancels.
 
 ## Getting decks onto the device (Wi-Fi portal)
 
