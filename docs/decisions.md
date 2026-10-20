@@ -2229,3 +2229,43 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   join in progress as activity for its whole length; the idle time runs from
   its end. The boot-time date attempt can take up to ~43 s (40 s join + 3 s
   NTP) and is still skippable with a tap.
+
+## 2026-10-20 – Serial remote for UI checks and screenshots
+
+- **What:** env `sticks3-shots` (`sticks3` + `-DTGC_REMOTE=1`) reads one byte
+  a command from USB serial: tap / hold either button, dump the screen, wake
+  the panel, and three test hooks. `tools/screenshots/remote.py` (a `uv run`
+  script) drives it. Only that env compiles any of it: the `sticks3`,
+  `sticks3-dev` and `tdisplay-s3` images built from this branch are byte for
+  byte main's, apart from the embedded ELF hash.
+- **Presses are virtual buttons** OR-ed into the real ones before `Key`, so
+  a remote press is a real press for everything downstream: activity for the
+  dim and sleep timers, a dim panel brightens and acts, a dark one only wakes
+  (verified on the StickS3), the hold-progress fill, the orientation lock.
+  A hold stays down until `Key` fires it, so a slow loop turn cannot make it a
+  tap, and while a virtual button is down the next bytes wait in the serial
+  buffer: a burst runs in order, one press at a time. `w` lights the panel
+  without a press, which the tool sends first so a dark panel does not swallow
+  its first press.
+- **The screen is the back buffer** (`gCanvas`, what the last push showed),
+  not a panel readback: one text line a row, RGB565 in hex, with the row index,
+  between `#shot W H <on|dim|dark>` and `#end`. Text survives the log lines
+  other tasks print between rows, and the host can tell a cut row from a good
+  one. ~130 KB, well under a second.
+- **The USB link drops bytes now and then** (the core's USB Serial/JTAG
+  driver discards what it cannot hand over within 100 ms): once in ~60 shots a
+  dump came in with a row cut and its end lost, and once a log line went
+  missing. The tool asks for a dump again (three tries); an `until:` on one
+  log line can, rarely, time out, so a shot is the surer check.
+- **DTR up, RTS down** on open: asking pyserial for both down resets the
+  StickS3 on every open (the USB Serial/JTAG resets while RTS is up and DTR
+  down, and pyserial sets DTR first).
+- **Test hooks in place, not fakes.** `d` runs the boot-time date question
+  where it is (`dateSyncBegin()` + `openDate(Screen::Quiz)`, the same calls as
+  `setup()`), so nothing is rebooted or written until the stepper is answered.
+  `f` / `x` pin the next home Wi-Fi join to `02:00:00:00:7E:57`, a locally
+  administered BSSID no access point has, for the pinned step or the whole
+  join: the driver really fails (reason 201, no AP found) and the real timeouts
+  run. With `f` the any-access-point step of the 2026-10-19 entry ran on
+  hardware for the first time: after 25 s on the missing access point it
+  joined the strongest one (-25 dBm) at 31 s in all, and NTP answered.

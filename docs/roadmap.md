@@ -183,7 +183,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       2026-10-19). **v0.2.1** (2026-10-19) has the fixes from that day's
       hardware test: home Wi-Fi joins pinned to the strongest access point,
       statistics in their own section of the page, Auto orientation by default.
-      Pending: **README photos**, and the T-Display-S3 images on
+      Pending: **README photos** (`tools/screenshots` takes the screen
+      captures from a StickS3 since 2026-10-20), and the T-Display-S3 images on
       real hardware.
 
 ## Cross-cutting
