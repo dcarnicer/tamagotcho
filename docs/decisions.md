@@ -2316,3 +2316,24 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   run. With `f` the any-access-point step of the 2026-10-19 entry ran on
   hardware for the first time: after 25 s on the missing access point it
   joined the strongest one (-25 dBm) at 31 s in all, and NTP answered.
+
+## 2026-10-20 – Reading questions when a card lacks a kind
+
+- **Context:** `--common-readings` decks drop a kind when none of its readings
+  is worth asking (about 465 Jōyō kanji end up with no kun'yomi, some dozens
+  with no on'yomi), so empty `onyomi` / `kunyomi` become common.
+- **The relaxed pass checks both kinds.** When a deck cannot fill four options
+  with the asked kind, `buildQuestion` offers a card's other kind (an on'yomi
+  in a kun'yomi question). That option was compared with the target's readings
+  of the asked kind only, so it could be one of the target's own on'yomi: two
+  correct answers. Every reading distractor is now compared with both lists.
+- **The on/kun turn follows the kind asked, not the one wanted**
+  (`quiz/Quiz.h` `ReadingTurn`). The app flipped the wanted kind after every
+  reading question, so a card without kun'yomi on kun'yomi's turn (asked
+  on'yomi instead) used the turn up, and the next card was asked on'yomi
+  again. Now the next kind is the opposite of the one asked: a fallback keeps
+  the turn, and one kind comes twice in a row only when the second card lacks
+  the other. In the native test deck (kun'yomi on 9 of 15 cards) kun'yomi go
+  from 138 to 150 of 375 reading questions.
+- The detail card's reading rows moved to `ui/QuizUi.h` (`detailReadings`):
+  one row per kind present, as before, now unit tested.

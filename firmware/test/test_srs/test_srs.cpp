@@ -875,6 +875,45 @@ void test_queue_interleaves_modes() {
     TEST_ASSERT_FALSE(q.next(&it));
 }
 
+// A reading question needs one kind of reading, not both: cards without
+// kun'yomi (common once the builder drops readings not worth asking) or without
+// on'yomi still get their reading turn; a card with neither never does.
+void test_queue_reading_needs_one_kind() {
+    std::vector<CardSpec> cs = {{0x6C34, "water", "スイ", "みず", {}},
+                                {0x6C17, "spirit", "キ、ケ", "", {}},       // no kun'yomi
+                                {0x7551, "field", "", "はたけ、はた", {}},  // no on'yomi
+                                {0x3005, "repeat mark", "", "", {}}};      // neither
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(10);
+    // All due, in card order; meaning and meaning -> kanji already asked, so
+    // the reading is the least used mode of every card.
+    for (size_t i = 0; i < cs.size(); ++i) {
+        setDue(srs, cs[i].cp, static_cast<uint16_t>(1 + i), 100);
+        srs.getOrCreate(cs[i].cp).modeSeen = 0x5;
+    }
+
+    XorShiftRng rng(4);
+    Queue q;
+    q.rebuild(pack, srs, rng);
+    QueueItem it;
+    for (uint32_t i = 0; i < 3; ++i) {
+        TEST_ASSERT_TRUE(q.next(&it));
+        TEST_ASSERT_EQUAL_UINT32(i, it.cardIndex);
+        TEST_ASSERT_EQUAL(QuizMode::Reading, it.mode);
+    }
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL_UINT32(3, it.cardIndex);
+    TEST_ASSERT_TRUE(it.mode != QuizMode::Reading);
+    TEST_ASSERT_FALSE(q.next(&it));
+}
+
 // Day streak over the SRS day index: consecutive days extend it, a gap resets
 // it and the best is retained (docs/srs.md section 4).
 void test_streak() {
@@ -1591,6 +1630,7 @@ int main() {
     RUN_TEST(test_queue_no_repeat_within_session);
     RUN_TEST(test_queue_relearn_requeues_and_caps);
     RUN_TEST(test_queue_interleaves_modes);
+    RUN_TEST(test_queue_reading_needs_one_kind);
     RUN_TEST(test_streak);
     RUN_TEST(test_streak_first_answer_on_day_zero);
     RUN_TEST(test_review_ms_saturation);

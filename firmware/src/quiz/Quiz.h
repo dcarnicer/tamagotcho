@@ -58,6 +58,9 @@ std::string meaningAt(const char* meanings, int index);
 // First reading of a "、"-separated list with '.' okurigana markers removed
 // ("た.べる、く.う" -> "たべる"). Empty if the list is empty.
 std::string firstReadingDisplay(const char* readings);
+// Every reading of the list, still "、"-separated, '.' markers removed
+// ("た.べる、く.う" -> "たべる、くう"). Empty if the list is empty.
+std::string readingsDisplay(const char* readings);
 
 // True if the card has a reading of this kind (None -> false).
 bool hasReading(const Card& c, ReadingKind kind);
@@ -70,11 +73,30 @@ ReadingKind readingKindOf(const Card& c);
 // in this mode (no meaning / no reading) or fewer than 2 distinct options exist.
 // Distractors: the card's precomputed list first (cards with a reading of the
 // asked kind in Reading mode), then random cards of the same kind, then random
-// cards of any kind.
+// cards of any kind (a card without the asked kind offers its other one). A
+// reading distractor is never one of the target's readings, of either kind.
 // For Reading mode, `readingKind` is the kind to ask for; if the card has none
 // of that kind, its primary kind is used instead (so kanji with only on'yomi or
 // only kun'yomi can still be asked). None means the card's primary kind.
 bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rng& rng, Question* out,
                    ReadingKind readingKind = ReadingKind::None);
+
+// The kind the next Reading question asks for, so on'yomi and kun'yomi take
+// turns: pass want() to buildQuestion(), then report the kind it asked
+// (Question::readingKind). The turn follows the kind actually asked, not the
+// one wanted: a card without the wanted kind is asked its other kind and the
+// wanted kind stays next, so a deck where many cards have no kun'yomi still
+// asks kun'yomi on the next card that has one instead of skipping the turn.
+class ReadingTurn {
+public:
+    ReadingKind want() const { return nextKun_ ? ReadingKind::Kun : ReadingKind::On; }
+    void asked(ReadingKind k) {
+        if (k == ReadingKind::On) nextKun_ = true;
+        else if (k == ReadingKind::Kun) nextKun_ = false;
+    }
+
+private:
+    bool nextKun_ = false;  // on'yomi first
+};
 
 }  // namespace tgc

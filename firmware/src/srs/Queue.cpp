@@ -85,10 +85,11 @@ void Queue::rebuild(const PackReader& pack, const SrsStore& srs, XorShiftRng& rn
 
 int Queue::chooseMode(const Card& c, int prev) const {
     const bool hasMeaning = c.meanings && c.meanings[0];
-    const bool hasReading = (c.onyomi && c.onyomi[0]) || (c.kunyomi && c.kunyomi[0]);
     bool can[3];
     can[static_cast<int>(QuizMode::Meaning)] = hasMeaning;
-    can[static_cast<int>(QuizMode::Reading)] = hasReading;
+    // One kind is enough: buildQuestion() asks a card without the wanted kind
+    // its other one. Only a card with neither is never asked a reading.
+    can[static_cast<int>(QuizMode::Reading)] = readingKindOf(c) != ReadingKind::None;
     can[static_cast<int>(QuizMode::MeaningToKanji)] = hasMeaning;
 
     bool seen[3] = {false, false, false};

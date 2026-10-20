@@ -2,7 +2,8 @@
 // progress, option navigation, the hint bar policy, hold progress, auto-advance
 // and the pixel budgets of the header pills and hint bars in English and
 // Spanish (the strings are copies of main.cpp's UiStrings; keep them in step),
-// and the hint bar's layout (ui/HintBar.h), the date stepper's included.
+// the hint bar's layout (ui/HintBar.h), the date stepper's included, and the
+// detail card's reading rows.
 #include <unity.h>
 
 #include <cstring>
@@ -237,6 +238,35 @@ void test_stroke_counter_word_once_per_card() {
     TEST_ASSERT_TRUE(strokeCounterWorded("stroke %u/%u", 30, headerPillRoom(170, 0, true) - 36 - 6));
 }
 
+static Card readingsCard(const char* on, const char* kun) {
+    Card c{};
+    c.meanings = "meaning";
+    c.onyomi = on;
+    c.kunyomi = kun;
+    return c;
+}
+
+void test_detail_reading_rows_skip_a_missing_kind() {
+    DetailReading rows[2];
+    // Both kinds: ON then KUN, every reading, okurigana dots removed.
+    TEST_ASSERT_EQUAL_INT(2, detailReadings(readingsCard("ショク、ジキ", "た.べる、く.う"), rows));
+    TEST_ASSERT_EQUAL(ReadingKind::On, rows[0].kind);
+    TEST_ASSERT_EQUAL_STRING("ショク、ジキ", rows[0].text.c_str());
+    TEST_ASSERT_EQUAL(ReadingKind::Kun, rows[1].kind);
+    TEST_ASSERT_EQUAL_STRING("たべる、くう", rows[1].text.c_str());
+    // No kun'yomi (気, 百, 肉 in a common-readings deck): the ON row alone, no
+    // KUN pill beside a blank line.
+    TEST_ASSERT_EQUAL_INT(1, detailReadings(readingsCard("キ、ケ", ""), rows));
+    TEST_ASSERT_EQUAL(ReadingKind::On, rows[0].kind);
+    TEST_ASSERT_EQUAL_STRING("キ、ケ", rows[0].text.c_str());
+    // No on'yomi: the KUN row moves up to the first row.
+    TEST_ASSERT_EQUAL_INT(1, detailReadings(readingsCard("", "はたけ、はた"), rows));
+    TEST_ASSERT_EQUAL(ReadingKind::Kun, rows[0].kind);
+    TEST_ASSERT_EQUAL_STRING("はたけ、はた", rows[0].text.c_str());
+    // Neither: no rows at all.
+    TEST_ASSERT_EQUAL_INT(0, detailReadings(readingsCard("", ""), rows));
+}
+
 // ---------------------------------------------------------------- hint bar fit
 
 // The quiz's front items must keep 6 px clear of the side icon (the settings
@@ -377,6 +407,7 @@ int main(int, char**) {
     RUN_TEST(test_result_pill_shortens_before_overflowing);
     RUN_TEST(test_result_pills_never_overflow);
     RUN_TEST(test_stroke_counter_word_once_per_card);
+    RUN_TEST(test_detail_reading_rows_skip_a_missing_kind);
     RUN_TEST(test_quiz_hints_fit_portrait);
     RUN_TEST(test_hint_plan_one_side_action_unchanged);
     RUN_TEST(test_hint_plan_date_stepper);
