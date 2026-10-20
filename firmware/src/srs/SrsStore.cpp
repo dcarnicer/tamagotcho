@@ -160,6 +160,32 @@ void SrsStore::advanceDaysManual(uint16_t n) {
     msCarry_ = 0;
 }
 
+int32_t SrsStore::manualStepsMin() const {
+    if (epochAnchor_ == 0) return 0;
+    // The earliest date a sync accepts, and an anchor of at least 1 (0 means
+    // "none"): the date shown for today() may not go below either.
+    int32_t floor = kWallClockMinEpochDay;
+    if (floor < static_cast<int32_t>(nowDay_) + 1) floor = static_cast<int32_t>(nowDay_) + 1;
+    const int32_t steps = floor - epochDayOf(nowDay_);
+    return steps < 0 ? steps : 0;
+}
+
+int32_t SrsStore::manualStepsMax() const { return 0xFFFF - static_cast<int32_t>(nowDay_); }
+
+ManualDate SrsStore::setDateManual(int32_t steps) {
+    if (steps < manualStepsMin() || steps > manualStepsMax()) return ManualDate::Rejected;
+    if (steps == 0) return ManualDate::Same;
+    if (steps > 0) {
+        advanceDaysManual(static_cast<uint16_t>(steps));
+        return ManualDate::Advanced;
+    }
+    // The index stays; the current day shows the confirmed date. The range
+    // keeps the anchor within 1..its old value.
+    epochAnchor_ = static_cast<uint16_t>(static_cast<int32_t>(epochAnchor_) + steps);
+    msCarry_ = 0;  // late, never early, as for a forward step
+    return ManualDate::Reanchored;
+}
+
 ClockSyncResult SrsStore::syncWallClock(int64_t utcMs, int tzOffsetMin) {
     return syncWallClock(utcMs, fixedTzRule(tzOffsetMin));
 }

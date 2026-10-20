@@ -40,6 +40,11 @@ constexpr int kSrsRolloverHour = 4;
 // is a broken browser clock or a forged request.
 constexpr int64_t kWallClockMinUtcMs = 1767225600000LL;  // 2026-01-01T00:00:00Z
 constexpr int64_t kWallClockMaxUtcMs = 4102444800000LL;  // 2100-01-01T00:00:00Z
+// The same lower bound as a calendar day: the earliest date the date screen
+// can set by hand (docs/srs.md section 5, power-cut rule).
+constexpr int32_t kWallClockMinEpochDay = daysFromCivil(2026, 1, 1);
+static_assert(static_cast<int64_t>(kWallClockMinEpochDay) * 86400000LL == kWallClockMinUtcMs,
+              "the earliest date is the day of the earliest time");
 constexpr int kTzOffsetMinLowest = -12 * 60;
 constexpr int kTzOffsetMinHighest = 14 * 60;
 
