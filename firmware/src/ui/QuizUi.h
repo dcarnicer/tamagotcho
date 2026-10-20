@@ -1,9 +1,10 @@
 #pragma once
 // Pure logic of the quiz screens of the UX refresh (docs/ux-refresh.md §2.4,
 // §2.5 and §6): the session progress in the header, option navigation, the
-// hint bar policy, hold progress, auto-advance timing, and the result pill's
-// text within its pixel budget. Pure C++, no Arduino (native-tested in
-// test_quizui); the drawing is in main.cpp with render/Widgets.
+// hint bar policy, hold progress, auto-advance timing, the result pill's
+// text within its pixel budget, and the detail card's reading rows. Pure C++,
+// no Arduino (native-tested in test_quizui); the drawing is in main.cpp with
+// render/Widgets.
 //
 // Pixel budgets assume the header and hint bar geometry of render/Widgets:
 // captions are Font0 at 1x (6 px a character), a pill is its text plus 6 px of
@@ -12,8 +13,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <string>
+#include <utility>
 
+#include "pack/PackReader.h"
 #include "pack/Utf8.h"
+#include "quiz/Quiz.h"   // ReadingKind, readingsDisplay()
 #include "ui/HintBar.h"  // captionChars(), kCaptionCharW, hintFrontEnd()
 #include "ui/Theme.h"
 
@@ -180,6 +185,30 @@ inline bool strokeCounterWorded(const char* fmt, unsigned strokes, int room) {
     char buf[40];
     snprintf(buf, sizeof buf, fmt, strokes, strokes);
     return captionChars(buf) * kCaptionCharW <= room;
+}
+
+// One reading row of the detail card: its ON / KUN pill and every reading of
+// that kind ("、"-separated, okurigana dots removed).
+struct DetailReading {
+    ReadingKind kind = ReadingKind::None;
+    std::string text;
+};
+
+// The detail card's reading rows, top to bottom: ON, then KUN, each only when
+// the card has that kind. A card without kun'yomi (or on'yomi) gets one row,
+// not a pill beside a blank line, and the meanings above get the room; one
+// with neither gets none. Returns the row count, 0..2.
+inline int detailReadings(const Card& c, DetailReading out[2]) {
+    int n = 0;
+    const ReadingKind kinds[2] = {ReadingKind::On, ReadingKind::Kun};
+    for (ReadingKind k : kinds) {
+        std::string s = readingsDisplay(k == ReadingKind::On ? c.onyomi : c.kunyomi);
+        if (s.empty()) continue;
+        out[n].kind = k;
+        out[n].text = std::move(s);
+        ++n;
+    }
+    return n;
 }
 
 }  // namespace tgc

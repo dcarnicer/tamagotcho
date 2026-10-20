@@ -262,6 +262,32 @@ bool isReadingOf(const std::string& s, const char* list) {
     }
 }
 
+// A deck as `--common-readings` builds it: a kind none of whose readings is
+// worth asking is dropped, so many cards have no kun'yomi and a few no
+// on'yomi; 々 has neither. The reading lists mix kinds, as the builder's do (a
+// candidate is listed when either kind is confusable), so they name cards
+// without the asked kind too.
+std::vector<CardSpec> sparseKunCards() {
+    return {
+        {0x6C17, "spirit", "キ、ケ", "", {1, 2}, {12, 13, 4}},  // 0  no kun
+        {0x767E, "hundred", "ヒャク", "", {0}, {13, 0}},        // 1  no kun
+        {0x8089, "meat", "ニク", "", {}, {}},                   // 2  no kun
+        {0x90E8, "section", "ブ", "", {}, {}},                  // 3  no kun
+        {0x5186, "circle", "エン", "まる.い", {}, {9, 3, 13, 8}},  // 4
+        {0x5C71, "mountain", "サン", "やま", {}, {0, 1, 2, 6, 7}},  // 5
+        {0x5DDD, "river", "セン", "かわ", {}, {5, 10, 11}},       // 6
+        {0x624B, "hand", "シュ", "て", {}, {}},                  // 7
+        {0x76EE, "eye", "モク", "め", {}, {}},                   // 8
+        {0x6BCE, "every", "マイ", "", {}, {}},                   // 9  no kun
+        {0x8336, "tea", "チャ、サ", "", {}, {}},                 // 10 no kun
+        {0x7551, "field", "", "はたけ、はた", {}, {0, 1, 5}},    // 11 no on
+        {0x8FBC, "crowded", "", "こ.む、こ.める", {}, {}},       // 12 no on
+        {0x3005, "repeat mark", "", "", {}, {}},                 // 13 neither
+        {0x672C, "book", "ホン", "もと", {}, {}},                // 14
+        {0x5B66, "study", "ガク", "まな.ぶ", {}, {}},            // 15
+    };
+}
+
 // Glyph sets 0 and 1 for every card (all a quiz test needs).
 std::vector<GlyphSpec> cardGlyphs(const std::vector<CardSpec>& cs) {
     std::vector<GlyphSpec> gl;
@@ -627,6 +653,9 @@ void test_quiz_text_helpers() {
     TEST_ASSERT_EQUAL_STRING("たべる", firstReadingDisplay("た.べる、く.う").c_str());
     TEST_ASSERT_EQUAL_STRING("ニチ", firstReadingDisplay("ニチ、ジツ").c_str());
     TEST_ASSERT_EQUAL_STRING("", firstReadingDisplay("").c_str());
+    TEST_ASSERT_EQUAL_STRING("たべる、くう", readingsDisplay("た.べる、く.う").c_str());
+    TEST_ASSERT_EQUAL_STRING("ニチ、ジツ", readingsDisplay("ニチ、ジツ").c_str());
+    TEST_ASSERT_EQUAL_STRING("", readingsDisplay("").c_str());
 }
 
 void test_quiz_meaning() {
@@ -730,6 +759,115 @@ void test_quiz_relaxed_pass_excludes_target_readings_of_both_kinds() {
             TEST_ASSERT_TRUE(q.optionCard[i] != (want == ReadingKind::Kun ? 2 : 3));
         }
     }
+}
+
+namespace {
+ReadingKind otherKind(ReadingKind k) { return k == ReadingKind::On ? ReadingKind::Kun : ReadingKind::On; }
+}  // namespace
+
+void test_quiz_sparse_kun_fallback_and_options() {
+    // A kind the card lacks falls back to its other one; the options are all of
+    // the asked kind (the deck has enough of each for the strict pass), so a
+    // kun'yomi question never offers a card without kun'yomi: no empty option,
+    // no duplicate, no katakana. 々 (neither kind) is never a reading question.
+    auto cs = sparseKunCards();
+    auto buf = makePack(cs, cardGlyphs(cs));
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    XorShiftRng rng(77);
+    const ReadingKind wants[] = {ReadingKind::On, ReadingKind::Kun};
+    for (uint32_t idx = 0; idx < cs.size(); ++idx) {
+        Card t;
+        TEST_ASSERT_TRUE(r.card(idx, &t));
+        for (ReadingKind want : wants) {
+            for (int iter = 0; iter < 40; ++iter) {
+                Question q;
+                const bool ok = buildQuestion(r, idx, QuizMode::Reading, rng, &q, want);
+                if (readingKindOf(t) == ReadingKind::None) {
+                    TEST_ASSERT_FALSE(ok);
+                    TEST_ASSERT_TRUE(buildQuestion(r, idx, QuizMode::Meaning, rng, &q));
+                    continue;
+                }
+                TEST_ASSERT_TRUE(ok);
+                const ReadingKind asked = hasReading(t, want) ? want : otherKind(want);
+                TEST_ASSERT_EQUAL(asked, q.readingKind);
+                TEST_ASSERT_EQUAL(4, q.count);
+                TEST_ASSERT_EQUAL_UINT16(idx, q.optionCard[q.correct]);
+                const char* own = asked == ReadingKind::Kun ? t.kunyomi : t.onyomi;
+                TEST_ASSERT_EQUAL_STRING(firstReadingDisplay(own).c_str(), q.options[q.correct].c_str());
+                for (int i = 0; i < q.count; ++i) {
+                    TEST_ASSERT_FALSE(q.options[i].empty());
+                    Card c;
+                    TEST_ASSERT_TRUE(r.card(q.optionCard[i], &c));
+                    TEST_ASSERT_TRUE(hasReading(c, asked));
+                    const bool kata = hasInRange(q.options[i], 0x30A0, 0x30FF);
+                    const bool hira = hasInRange(q.options[i], 0x3041, 0x309F);
+                    TEST_ASSERT_TRUE(asked == ReadingKind::On ? kata && !hira : hira && !kata);
+                    for (int j = i + 1; j < q.count; ++j) {
+                        TEST_ASSERT_TRUE(q.options[i] != q.options[j]);
+                        TEST_ASSERT_TRUE(q.optionCard[i] != q.optionCard[j]);
+                    }
+                    if (i == q.correct) continue;
+                    TEST_ASSERT_FALSE(isReadingOf(q.options[i], t.onyomi));
+                    TEST_ASSERT_FALSE(isReadingOf(q.options[i], t.kunyomi));
+                }
+            }
+        }
+    }
+}
+
+void test_quiz_reading_turn() {
+    ReadingTurn t;
+    TEST_ASSERT_EQUAL(ReadingKind::On, t.want());  // on'yomi first
+    t.asked(ReadingKind::On);
+    TEST_ASSERT_EQUAL(ReadingKind::Kun, t.want());
+    t.asked(ReadingKind::On);  // kun wanted, but the card had none
+    TEST_ASSERT_EQUAL(ReadingKind::Kun, t.want());  // still kun'yomi's turn
+    t.asked(ReadingKind::Kun);
+    TEST_ASSERT_EQUAL(ReadingKind::On, t.want());
+    t.asked(ReadingKind::Kun);  // on wanted, a kun-only card
+    TEST_ASSERT_EQUAL(ReadingKind::On, t.want());
+    t.asked(ReadingKind::None);  // nothing asked: no change
+    TEST_ASSERT_EQUAL(ReadingKind::On, t.want());
+}
+
+void test_quiz_sparse_kun_alternation() {
+    // The app's loop (main.cpp, newQuestion()): want() into buildQuestion(),
+    // then asked(). Over a session of the sparse deck the kinds alternate: the
+    // same kind twice in a row only when the second card lacks the other one,
+    // so a card without kun'yomi does not use up kun'yomi's turn.
+    auto cs = sparseKunCards();
+    auto buf = makePack(cs, cardGlyphs(cs));
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    XorShiftRng rng(5);
+    ReadingTurn turn;
+    ReadingKind prev = ReadingKind::None;
+    int on = 0, kun = 0, none = 0;
+    for (uint32_t i = 0; i < 400; ++i) {
+        const uint32_t idx = (i * 7) % cs.size();  // every card, in a mixed order
+        Card c;
+        TEST_ASSERT_TRUE(r.card(idx, &c));
+        const ReadingKind want = turn.want();
+        Question q;
+        if (!buildQuestion(r, idx, QuizMode::Reading, rng, &q, want)) {
+            TEST_ASSERT_EQUAL(ReadingKind::None, readingKindOf(c));  // only 々
+            ++none;
+            continue;
+        }
+        turn.asked(q.readingKind);
+        TEST_ASSERT_EQUAL(hasReading(c, want) ? want : otherKind(want), q.readingKind);
+        if (q.readingKind == prev) TEST_ASSERT_FALSE(hasReading(c, otherKind(prev)));
+        prev = q.readingKind;
+        ++(q.readingKind == ReadingKind::Kun ? kun : on);
+    }
+    TEST_ASSERT_EQUAL(25, none);
+    TEST_ASSERT_EQUAL(375, on + kun);
+    // 9 of the 15 askable cards have kun'yomi, 13 on'yomi: kun'yomi come up
+    // less, but more than when a card without them used up their turn (138).
+    TEST_ASSERT_EQUAL(150, kun);
 }
 
 void test_quiz_distractor_priority_and_shuffle() {
@@ -1294,6 +1432,9 @@ int main() {
     RUN_TEST(test_quiz_reading_kinds);
     RUN_TEST(test_quiz_reading_excludes_target_readings);
     RUN_TEST(test_quiz_relaxed_pass_excludes_target_readings_of_both_kinds);
+    RUN_TEST(test_quiz_sparse_kun_fallback_and_options);
+    RUN_TEST(test_quiz_reading_turn);
+    RUN_TEST(test_quiz_sparse_kun_alternation);
     RUN_TEST(test_quiz_unavailable_and_tiny);
     RUN_TEST(test_quiz_meaning_gloss_collisions);
     RUN_TEST(test_quiz_meaning_to_kanji_excludes_cards_with_the_prompt);

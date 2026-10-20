@@ -569,7 +569,7 @@ tgc::Question gQ;
 int gSel = 0;
 bool gRevealed = false;
 bool gLastCorrect = false;  // outcome of the last answer (drives the detail card)
-bool gNextReadingIsKun = false;
+tgc::ReadingTurn gReadingTurn;  // on'yomi and kun'yomi questions take turns
 // The last answer's grade and the days to the card's next review (record
 // dueDay - today), for the result pill.
 tgc::Grade gLastGrade = tgc::Grade::Good;
@@ -912,12 +912,11 @@ bool newQuestion() {
         tgc::QueueItem item;
         if (!gQueue.next(&item)) return false;
         // Ask for on'yomi and kun'yomi in turn, so both kinds show up.
-        const tgc::ReadingKind want =
-            gNextReadingIsKun ? tgc::ReadingKind::Kun : tgc::ReadingKind::On;
+        const tgc::ReadingKind want = gReadingTurn.want();
         for (int k = 0; k < kN; ++k) {
             const tgc::QuizMode mode = kModes[(static_cast<int>(item.mode) + k) % kN];
             if (!tgc::buildQuestion(*gPack, item.cardIndex, mode, gRng, &gQ, want)) continue;
-            if (gQ.mode == tgc::QuizMode::Reading) gNextReadingIsKun = !gNextReadingIsKun;
+            if (gQ.mode == tgc::QuizMode::Reading) gReadingTurn.asked(gQ.readingKind);
             gSel = 0;
             gRevealed = false;
             gShownAt = millis();
@@ -2752,25 +2751,6 @@ void drawGetDecks() {
     present();
 }
 
-// Joins a card's "、"-separated reading list into one display string, dropping
-// the okurigana markers ("た.べる、く.う" -> "たべる、くう") for display.
-std::string joinReadings(const char* list) {
-    std::string out;
-    if (!list || !*list) return out;
-    const char* kSep = "\xE3\x80\x81";  // U+3001 "、"
-    const char* p = list;
-    while (*p) {
-        const char* e = std::strstr(p, kSep);
-        const size_t n = e ? static_cast<size_t>(e - p) : std::strlen(p);
-        for (size_t i = 0; i < n; ++i)
-            if (p[i] != '.') out += p[i];
-        if (!e) break;
-        out += kSep;
-        p = e + 3;
-    }
-    return out;
-}
-
 // The detail card's kanji box (gQuizG's prompt box, where the quiz showed the
 // kanji): the static set-0 glyph, or -- while the pack's stroke data animates
 // -- every stroke: those written so far in `text`, the current one in `warn`,
@@ -2876,22 +2856,21 @@ void drawDetail() {
     if (acc) wg::drawCaption(d, gRender, acc, x + w - accW, y + (lh - 7 + 1) / 2, kTextDim, kBg);
     y += lh + 2;
 
-    const std::string on = joinReadings(card.onyomi);
-    const std::string kun = joinReadings(card.kunyomi);
-    const int readingRows = (on.empty() ? 0 : 1) + (kun.empty() ? 0 : 1);
+    // Only the kinds the card has get a row (ui/QuizUi.h).
+    tgc::DetailReading readings[2];
+    const int readingRows = tgc::detailReadings(card, readings);
     const int lines = std::max(1, std::min(3, (bottom - y - readingRows * (lh + 2)) / lh));
     y += gRender.drawWrapped(d, card.meanings, x, y, w, lines, kText, kBg, kLabel) * lh + 2;
 
     // Both readings start at the same x, after the wider tag.
     const int tagW = std::max(wg::pillWidth(ui().detailOn), wg::pillWidth(ui().detailKun));
-    auto reading = [&](const char* tag, const std::string& s) {
-        if (s.empty() || y + lh > bottom + 2) return;
+    for (int i = 0; i < readingRows && y + lh <= bottom + 2; ++i) {
+        const char* tag = readings[i].kind == tgc::ReadingKind::Kun ? ui().detailKun : ui().detailOn;
         wg::drawPill(d, gRender, x, y + (lh - kPillH + 1) / 2, tag, kModeReading, kSurfaceHi);
-        gRender.drawLabel(d, s.c_str(), x + tagW + 5, y, w - tagW - 5, lh, kText, kBg, kLabel);
+        gRender.drawLabel(d, readings[i].text.c_str(), x + tagW + 5, y, w - tagW - 5, lh, kText, kBg,
+                          kLabel);
         y += lh + 2;
-    };
-    reading(ui().detailOn, on);
-    reading(ui().detailKun, kun);
+    }
 
     if (g.hints) {
         wg::Hints hints;

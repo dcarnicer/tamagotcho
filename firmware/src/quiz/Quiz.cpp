@@ -37,6 +37,14 @@ std::string firstReadingDisplay(const char* r) {
     return out;
 }
 
+std::string readingsDisplay(const char* r) {
+    std::string out;
+    if (!r) return out;
+    for (; *r; ++r)
+        if (*r != '.') out += *r;
+    return out;
+}
+
 ReadingKind readingKindOf(const Card& c) {
     if (c.onyomi[0]) return ReadingKind::On;
     if (c.kunyomi[0]) return ReadingKind::Kun;
