@@ -198,11 +198,18 @@ After a real power-off the device has to find out the date again:
   on to the quiz. If that fails, or you **tap** to skip it, the date screen
   comes up (with the reason when it failed).
 - **Otherwise**, or then, the **date screen**: the last-used date and a
-  proposed "today" with its weekday. **Tap: +1 day, hold: OK, side hold: -1
-  day** (never before the current day), **side tap: cancel** (keep the day as
-  it is); the bottom lines say so.
+  proposed "today" with its weekday. **Tap: +1 day, side tap: -1 day, hold:
+  OK, side hold: cancel** (keep the day as it is); the hint bar says so (in
+  portrait the side button's two actions take a second row).
 
-**Settings → Date »** has the same date screen for manual corrections and
+Going below the current day fixes a device that is ahead of the real date
+(say, a day too many confirmed earlier): the reviews stay where they are, only
+the date shown moves back, as when the network time finds the device ahead
+(docs/srs.md §5). That needs a date the device has had from a real clock once
+(the portal page or NTP); until then -1 day only undoes your own +1 days, and
+"-1 day" is dimmed at today.
+
+**Settings → Device → Date** has the same date screen for manual corrections and
 **Time zone**: **From phone** (the zone the portal page last sent, shown with
 its city) or one of 22 zones (UTC, London, Lisbon, Madrid, Athens, New York,
 Chicago, Denver, Los Angeles, Mexico City, Bogota, Lima, Caracas, Santiago,

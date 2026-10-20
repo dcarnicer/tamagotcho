@@ -1893,6 +1893,8 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   in Spanish (room below "+N days"); landscape: 2 and 3 (the status line
   still clears the "+N days" line by 2 px); T-Display: 3 in portrait, 2 in
   landscape. The header's "side: back" went the same day (entry above).
+  (Since then the hint bar carries them, and the side tap and side hold
+  swapped: 2026-10-20, "Date stepper: side tap -1 day, side hold cancel".)
 - **Flash:** StickS3 1,395,805 → 1,407,853 bytes (+12.0 KB: the page's rule
   script 1.6 KB, the parser and day arithmetic, the zone list, two screens and
   their strings), static RAM 54,164 → 54,508 bytes. **Not verified on
