@@ -202,7 +202,7 @@ PortalText makeSpanish() {
     t.footVersionFmt = "Tangochō %s &middot; firmware con licencia MIT";
     t.footDecksFmt =
         "Mazos: CC BY-SA. Datos de kanji: %s; orden de trazos: %s; niveles JLPT: %s; glifos: %s; "
-        "orden de lecturas: %s.";
+        "orden de lecturas: %s; orden de significados: %s.";
     return t;
 }
 

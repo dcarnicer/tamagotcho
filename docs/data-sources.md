@@ -41,10 +41,14 @@ or stroke data.
 
 ### Meaning and reading conventions
 
-- Meanings: first 3 in the requested language (`m_lang`; no attribute = English).
-  If the language has none for a kanji, the first 3 English meanings are used
-  and card flag bit0 is set. KANJIDIC2 has no meanings at all for some kanji;
-  cards with neither meanings nor readings are dropped.
+- Meanings: the first ones in the requested language (`m_lang`; no attribute =
+  English), at most as many as English has and at most 3. If the language has
+  none for a kanji, the first 3 English meanings are used and card flag bit0 is
+  set. KANJIDIC2 has no meanings at all for some kanji; cards with neither
+  meanings nor readings are dropped. With `--meaning-order` the Spanish list is
+  first put in the order of the English one (see
+  [Meaning order](#meaning-order-optional-fetch---meanings-build---meaning-order)),
+  so the caps keep the glosses that translate the English ones.
 - On'yomi: katakana as in KANJIDIC2. Kun'yomi: hiragana as in KANJIDIC2.
 - Kun'yomi keep the `.` okurigana marker (`た.べる`). The `-` prefix/suffix
   markers (`-ず`, `ひ.-`) are **dropped**: they carry little value on a 135 px
@@ -311,6 +315,53 @@ furigana line per word, a three-token wordfreq list, two Tatoeba index lines,
 a few rows shaped like the Jōyō table's text and two-table Anki decks with a
 handful of words). They are not copied from the files above.
 
+## Meaning order (optional: `fetch --meanings`, `build --meaning-order`)
+
+`build --meaning-order` puts each card's Spanish meanings in the order of its
+English ones (KANJIDIC2 lists English most common first, Spanish often not), so
+the meaning the device shows is a translation of the first English one
+(docs/meaning-order.md). The dictionary below is downloaded only by
+`tangocho-pack fetch --meanings`, into `cache/meanings/`, and read only with
+that flag. A pack built with it contains no dictionary data, only KANJIDIC2's
+own Spanish meanings in another order (the caps then keep the ones that match
+the English list), but the order is derived from the dictionary, so the pack
+carries its attribution (below). `decks.yml` is prepared to build the
+published decks with it; the decks published so far use none of it.
+
+### FreeDict English-Spanish dictionary (WikDict)
+
+- URL: https://download.freedict.org/dictionaries/eng-spa/2025.11.23/freedict-eng-spa-2025.11.23.src.tar.xz
+  (FreeDict release `2025.11.23`, listed with its SHA512 in
+  https://freedict.org/freedict-database.json; pinned in `fetch.py` by SHA256).
+  The archive holds the TEI dictionary (64,258 English headwords, their
+  Spanish translations per sense) and the licence (`COPYING`); the builder
+  reads the TEI from the archive.
+- Owner: Karl Bartel (WikDict, maintainer of the FreeDict release), from
+  Wiktionary via DBnary (Gilles Sérasset).
+- Licence: Creative Commons Attribution-ShareAlike 3.0 Unported (the TEI
+  header: "Licensed under the Creative Commons Attribution-ShareAlike 3.0
+  Unported license"; https://creativecommons.org/licenses/by-sa/3.0/legalcode).
+  DBnary: "Dbnary is derived from Wiktionary and is distributed under Creative
+  Commons Attribution-ShareAlike 3.0" (https://kaiko.getalp.org/about-dbnary/);
+  WikDict: "Data from Wiktionary via DBnary licensed under the Creative Commons
+  Attribution-ShareAlike License" (https://www.wikdict.com/page/about). CC BY-SA
+  3.0 §4(b) lets an adaptation use a later version with the same licence
+  elements, so packs stay CC BY-SA 4.0 (as with KanjiVG).
+- Required attribution: "Spanish meaning order from FreeDict's English-Spanish
+  dictionary (WikDict, from Wiktionary via DBnary), CC BY-SA 3.0."
+- Used for: which English gloss each Spanish gloss translates (with
+  normalisation and related forms, docs/meaning-order.md).
+- Not used, by licence: the full multilingual JMdict's Spanish glosses. The
+  EDRDG licence covers "the Japanese and English components (the
+  translational equivalents in other languages, e.g. German, French, Dutch,
+  etc. are covered by separate copyright held by the compilers of that
+  material)" (https://www.edrdg.org/edrdg/licence.html).
+
+Test fixtures: `tools/pack-builder/tests/test_meanings.py` holds a hand-written
+miniature in the TEI format (a dozen English words with Spanish translations)
+and KANJIDIC2-shaped entries with invented glosses; they are not copied from
+the dictionary or KANJIDIC2.
+
 ## Root CA certificates (firmware)
 
 `firmware/src/platform/RootCerts.h` embeds eleven public root CA certificates
@@ -343,15 +394,21 @@ from Jonathan Waller's JLPT Resources (tanos.co.uk, CC BY)" and adds:
 > Tatoeba Project's sentence indices (CC BY 2.0 FR) and the Jōyō kanji table
 > (Agency for Cultural Affairs, 2010).
 
+A Spanish pack built with `--meaning-order` adds:
+
+> Spanish meaning order from FreeDict's English-Spanish dictionary (WikDict,
+> from Wiktionary via DBnary), CC BY-SA 3.0.
+
 The decks release notes in `decks.yml` carry this text.
 
 The firmware shows a short form of this attribution on the device
 (**Settings › Device › About**: the loaded deck's name, then KANJIDIC2 and JMdict, KanjiVG
-when the deck has stroke order, the JLPT levels and the glyph font, each with its
-licence; "Firmware: MIT", "Decks: CC BY-SA", "UI font: Noto Sans JP, SIL OFL
-1.1" and the repository) and in the
-footer of the Wi-Fi portal page, which also lists the other reading-order
-sources (`credits::kReadings`; About would need a row in `main.cpp` for it). Both read the strings in
+when the deck has stroke order, the JLPT levels, the other reading-order sources
+(`credits::kReadings`, "Readings:"), the meaning-order source
+(`credits::kMeanings`, "Meanings:") and the glyph font, each with its licence;
+"Firmware: MIT", "Decks: CC BY-SA", "UI font: Noto Sans JP, SIL OFL 1.1" and
+the repository) and in the footer of the Wi-Fi portal page, which lists the
+same sources. Both read the strings in
 `firmware/src/Credits.h`: change them together with this file. Packs carry no
 list of their sources, so the device shows these credits for any deck,
 including one built with another font or from WaniKani (docs/decisions.md,

@@ -366,6 +366,7 @@ struct UiStrings {
     const char* hintStop;    // hint bar: the side button stops the portal
     const char* deckCardsFmt;  // the deck list's caption of a deck not loaded: %u cards
     const char* aboutReadings;  // About: + JmdictFurigana, wordfreq ... (the reading order)
+    const char* aboutMeanings;  // About: + FreeDict/WikDict (the Spanish meaning order)
 };
 
 const UiStrings kUiEn = {
@@ -454,6 +455,7 @@ const UiStrings kUiEn = {
     "%s · %u decks", "on device", "stop",
     "%u kanji",
     "Readings:",
+    "Meanings:",
 };
 
 const UiStrings kUiEs = {
@@ -543,6 +545,7 @@ const UiStrings kUiEs = {
     "%s · %u mazos", "en el equipo", "parar",
     "%u kanji",
     "Lecturas:",
+    "Significados:",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -2332,6 +2335,7 @@ void drawAbout() {
         items.push_back({ui().aboutStrokes, cr::kKanjiVg, false, false});
     items.push_back({ui().aboutJlpt, cr::kJlpt, false, false});
     items.push_back({ui().aboutReadings, cr::kReadings, false, false});
+    items.push_back({ui().aboutMeanings, cr::kMeanings, false, false});
     items.push_back({ui().aboutGlyphs, cr::kGlyphs, false, false});
 
     // Each value wrapped to the width in the caption font (6 px a character).

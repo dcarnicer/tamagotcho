@@ -381,7 +381,7 @@ String pageFooter(const PortalText& t) {
     h += " &middot; ";
     h += fmt(t.footDecksFmt, credit(credits::kKanjidic).c_str(), credit(credits::kKanjiVg).c_str(),
              credit(credits::kJlpt).c_str(), credit(credits::kGlyphs).c_str(),
-             credit(credits::kReadings).c_str());
+             credit(credits::kReadings).c_str(), credit(credits::kMeanings).c_str());
     h += " &middot; <a href=\"https://";
     h += credits::kRepo;
     h += "\">";

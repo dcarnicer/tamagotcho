@@ -29,6 +29,10 @@ constexpr const char kReadings[] =
     "JmdictFurigana, CC" TGC_NBSP "BY-SA; wordfreq (c)" TGC_NBSP "Robyn" TGC_NBSP "Speer, CC"
     TGC_NBSP "BY-SA" TGC_NBSP "4.0; Tatoeba, CC" TGC_NBSP "BY" TGC_NBSP "2.0" TGC_NBSP
     "FR; Joyo kanji table (Agency for Cultural Affairs)";
+// The source of the Spanish decks' meaning order (docs/meaning-order.md):
+// FreeDict's English-Spanish dictionary, built by WikDict from Wiktionary.
+constexpr const char kMeanings[] =
+    "FreeDict/WikDict (Wiktionary), CC" TGC_NBSP "BY-SA" TGC_NBSP "3.0";
 constexpr const char kGlyphs[] = "Noto" TGC_NBSP "Sans" TGC_NBSP "JP, SIL" TGC_NBSP "OFL" TGC_NBSP "1.1";
 // The firmware's own UI font (ui/UiFont.h): glyphs pre-rendered from the
 // same font, so the same credit (About shows it with the firmware).

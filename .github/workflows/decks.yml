@@ -109,13 +109,18 @@ jobs:
           esac
 
       # --readings adds what --common-readings needs (JMdict, JmdictFurigana,
-      # wordfreq, Tatoeba's indices, the Jōyō table, the JLPT vocabulary lists).
-      - name: Fetch data sources (KANJIDIC2, JLPT levels, font, KanjiVG, reading data)
-        run: uv run tangocho-pack fetch --readings
+      # wordfreq, Tatoeba's indices, the Jōyō table, the JLPT vocabulary lists);
+      # --meanings what --meaning-order needs (FreeDict's English-Spanish
+      # dictionary, pinned and checked against SHA256).
+      - name: Fetch data sources (KANJIDIC2, JLPT levels, font, KanjiVG, reading and meaning data)
+        run: uv run tangocho-pack fetch --readings --meanings
 
       # --common-readings: each kind's most useful reading first (the one the
       # device asks), and a kind with nothing worth asking left empty
-      # (docs/common-readings.md).
+      # (docs/common-readings.md). --meaning-order: the Spanish meanings in the
+      # order of the English ones (the device shows the first), and in every
+      # language meaning distractors kept away from the meanings a pack leaves
+      # out (docs/meaning-order.md).
       - name: Build packs
         env:
           LEVELS: ${{ steps.inputs.outputs.levels }}
@@ -127,11 +132,11 @@ jobs:
           for lang in $LANGS; do
             for n in $LEVELS; do
               uv run tangocho-pack build --jlpt "$n" --lang "$lang" --strokes --common-readings \
-                -o "out/n${n}-${lang}.tgc"
+                --meaning-order -o "out/n${n}-${lang}.tgc"
             done
             if [ "$JOYO" = "true" ]; then
               uv run tangocho-pack build --joyo --lang "$lang" --strokes --common-readings \
-                -o "out/joyo-${lang}.tgc"
+                --meaning-order -o "out/joyo-${lang}.tgc"
             fi
           done
 
@@ -181,6 +186,11 @@ jobs:
       # kind --common-readings left empty (checked against KANJIDIC2's lists).
       - name: Check reading distractors
         run: uv run python scripts/check_reading_distractors.py out/*.tgc
+
+      # No meaning distractor may show a meaning of its card, or have the card's
+      # first meaning among its own (checked against KANJIDIC2's full lists).
+      - name: Check meaning distractors
+        run: uv run python scripts/check_meaning_distractors.py out/*.tgc
 
       # The device lists decks in catalog order (its own language first), so the
       # catalog follows the build order: per language N5 .. N1, then Joyo. The
@@ -287,7 +297,8 @@ jobs:
           newspaper frequency. Reading questions ask a common reading: the ones the
           Jōyō table approves first, then those of the easiest JLPT vocabulary,
           then the most frequent; a kanji with no reading of a kind worth asking
-          (気 いき, 百 もも) is asked the other kind.
+          (気 いき, 百 もも) is asked the other kind. Spanish meanings follow the
+          order of the English ones, most common first (持 sostener, not duración).
 
           ## Install
 
@@ -318,8 +329,10 @@ jobs:
           > Reading order from JMdict (EDRDG, CC BY-SA 4.0), JmdictFurigana
           > (CC BY-SA), wordfreq (Robyn Speer, CC BY-SA 4.0, with data from
           > OpenSubtitles), the Tatoeba Project's sentence indices (CC BY 2.0 FR)
-          > and the Jōyō kanji table (Agency for Cultural Affairs, 2010). These
-          > packs are licensed CC BY-SA.
+          > and the Jōyō kanji table (Agency for Cultural Affairs, 2010).
+          > Spanish meaning order from FreeDict's English-Spanish dictionary
+          > (WikDict, from Wiktionary via DBnary), CC BY-SA 3.0. These packs are
+          > licensed CC BY-SA.
           MD
           } > notes.md
           cat notes.md
