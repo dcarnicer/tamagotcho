@@ -29,6 +29,7 @@ inline int builtinScale(uint8_t set) { return set == Renderer::kTextBuiltin ? 2 
 inline const UiFace* uiFace(uint8_t set) {
     if (set == Renderer::kTextUi) return &uifont::kLabel;
     if (set == Renderer::kTextUiNumeral) return &uifont::kNumeral;
+    if (set == Renderer::kTextUiKana) return &uifont::kKana;
     return nullptr;
 }
 // Width of the box drawn for a character a UI face (and the pack) lacks.

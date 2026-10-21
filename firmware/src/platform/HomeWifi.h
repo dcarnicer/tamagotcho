@@ -26,7 +26,7 @@ public:
     // is named after the catalog format this firmware reads (catalog-v2.txt,
     // kCatalogVersion), independently of the pack format in the tag.
     static constexpr const char* kDefaultCatalogUrl =
-        "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog-v2.txt";
+        "https://github.com/dcarnicer/tamagotcho/releases/download/decks-v2/catalog-v2.txt";
     // A join: a scan for the network (kScanMsPerChannel a channel, at most
     // kScanTimeoutMs), then kPinnedJoinMs on its strongest access point, which
     // may refuse a client's first tries for ~15-20 s (docs/decisions.md,

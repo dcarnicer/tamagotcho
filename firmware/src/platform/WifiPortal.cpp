@@ -18,7 +18,7 @@
 #include "Credits.h"
 #include "Version.h"
 
-// mDNS ("http://tangocho.local/") in home mode. Off with -DTGC_PORTAL_MDNS=0.
+// mDNS ("http://tamagotcho.local/") in home mode. Off with -DTGC_PORTAL_MDNS=0.
 #ifndef TGC_PORTAL_MDNS
 #define TGC_PORTAL_MDNS 1
 #endif
@@ -345,7 +345,11 @@ String pageHeader(const PortalText& t, int refreshS = 0) {
         h += String(refreshS);
         h += "\">";
     }
-    h += "<title>Tangoch\xC5\x8D</title><style>";
+    h += "<title>";
+    h += credits::kAppName;
+    h += " (";
+    h += credits::kAppNameLatin;
+    h += ")</title><style>";
     h += "body{font-family:system-ui,sans-serif;margin:1rem;max-width:44rem;line-height:1.45}";
     h += "table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:.3rem .3rem;";
     h += "border-bottom:1px solid #ccc;vertical-align:middle}td.r{text-align:right;white-space:nowrap}";
@@ -354,12 +358,18 @@ String pageHeader(const PortalText& t, int refreshS = 0) {
     h += "input[type=url]{width:100%;max-width:26rem;padding:.3rem}";
     h += "input[type=text],input[type=password]{width:100%;max-width:16rem;padding:.3rem;margin:.15rem 0}";
     h += "code{background:#eee;padding:0 .2rem}h1{font-size:1.25rem;margin-bottom:.2rem}";
+    h += "h1 small{font-size:.75em;font-weight:400;color:#666}";
     h += "h2{font-size:1.05rem;margin:1.2rem 0 .3rem}h3{font-size:.95rem;margin:.9rem 0 .2rem}";
     h += "details{margin:1.2rem 0}summary{font-weight:600;cursor:pointer}progress{width:100%}";
     h += ".muted{color:#666}.err{color:#b00}.ok{color:#070}.status{margin-top:0}";
     h += "footer{margin-top:1.5rem;padding-top:.4rem;border-top:1px solid #ccc;font-size:.8rem;";
     h += "color:#666}";
-    h += "</style></head><body><h1>Tangoch\xC5\x8D</h1>";
+    // The name in kana (the phone has Japanese fonts) and romanised.
+    h += "</style></head><body><h1>";
+    h += credits::kAppName;
+    h += " <small>";
+    h += credits::kAppNameLatin;
+    h += "</small></h1>";
     return h;
 }
 
@@ -425,14 +435,14 @@ bool WifiPortal::begin(const Hooks& hooks) {
 
     scanNearby();
     WiFi.mode(WIFI_AP);
-    // Stable SSID suffix from the AP MAC's last two bytes ("Tangocho-A1B2").
+    // Stable SSID suffix from the AP MAC's last two bytes ("Tamagotcho-A1B2").
     uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     if (mac[4] == 0 && mac[5] == 0) {  // never expected; keep it unique-ish anyway
         mac[4] = 0xAB;
         mac[5] = 0xCD;
     }
-    snprintf(ssid_, sizeof ssid_, "Tangocho-%02X%02X", mac[4], mac[5]);
+    snprintf(ssid_, sizeof ssid_, "%s-%02X%02X", credits::kAppNameLatin, mac[4], mac[5]);
     snprintf(url_, sizeof url_, "%s", kApUrl);
     // Open network: no passphrase (see the security note in the header).
     if (!WiFi.softAP(ssid_)) {
@@ -491,7 +501,7 @@ bool WifiPortal::startServer(const Hooks& hooks) {
 }
 
 const char* WifiPortal::mdnsUrl() const {
-    return (active_ && mode_ == Mode::Home && mdns_) ? "http://tangocho.local/" : "";
+    return (active_ && mode_ == Mode::Home && mdns_) ? kMdnsUrl : "";
 }
 
 void WifiPortal::registerRoutes() {
@@ -1499,7 +1509,7 @@ void WifiPortal::handleSwitchHome() {
         b += "</b></p>";
 #if TGC_PORTAL_MDNS
         b += "<p>";
-        b += fmt(t.switchMdnsFmt, "http://tangocho.local/", "http://tangocho.local/");
+        b += fmt(t.switchMdnsFmt, kMdnsUrl, kMdnsUrl);
         b += "</p>";
 #endif
         b += "<p class=\"muted\">";

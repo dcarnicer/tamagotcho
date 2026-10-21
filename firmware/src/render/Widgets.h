@@ -29,9 +29,9 @@ int drawCaption(lgfx::LovyanGFX& d, Renderer& r, const char* s, int x, int y, ui
                 uint16_t bg);
 
 // ---------------------------------------------------------------- header
-// The 16 px status bar: a title (text-dim caption) or a pill on the left; on
-// the right an optional value and the battery. Its bottom is a 2 px progress
-// bar (the quiz) or a 1 px hairline.
+// The 16 px status bar: a title (text-dim caption; the app's name in the UI
+// font's Kana face) or a pill on the left; on the right an optional value and
+// the battery. Its bottom is a 2 px progress bar (the quiz) or a 1 px hairline.
 struct Header {
     const char* title = nullptr;
     const char* pill = nullptr;  // drawn instead of the title when set

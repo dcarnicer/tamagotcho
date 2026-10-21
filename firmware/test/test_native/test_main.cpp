@@ -1352,9 +1352,10 @@ void test_text_wrap() {
     // ... unless it is longer than a line: then after its '-'.
     assertLines({"CC\xC2\xA0" "BY-", "SA\xC2\xA0" "4.0"}, wrapped("CC\xC2\xA0" "BY-SA\xC2\xA0" "4.0", 8));
     // A URL breaks after its last '/' that fits.
-    assertLines({"github.com/dcarnicer/", "tangocho"}, wrapped("github.com/dcarnicer/tangocho", 21));
-    assertLines({"github.com/", "dcarnicer/", "tangocho"}, wrapped("github.com/dcarnicer/tangocho", 12));
-    assertLines({"github.com/dcarnicer/tangocho"}, wrapped("github.com/dcarnicer/tangocho", 39));
+    assertLines({"github.com/dcarnicer/", "tamagotcho"}, wrapped("github.com/dcarnicer/tamagotcho", 21));
+    assertLines({"github.com/", "dcarnicer/", "tamagotcho"},
+                wrapped("github.com/dcarnicer/tamagotcho", 12));
+    assertLines({"github.com/dcarnicer/tamagotcho"}, wrapped("github.com/dcarnicer/tamagotcho", 39));
     // A version string breaks after a '-'.
     assertLines({"v0.1.0-12-gabcdef0-", "dirty"}, wrapped("v0.1.0-12-gabcdef0-dirty", 21));
     // Nothing to break at: cut at the limit.

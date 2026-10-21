@@ -5,6 +5,8 @@
 
 #include "pack/Utf8.h"
 #include "ui/HintBar.h"
+#include "ui/UiFace.h"
+#include "ui/UiFont.h"
 
 namespace tgc {
 namespace widgets {
@@ -102,6 +104,16 @@ int pillWidth(const char* text, const Icon* icon) {
     return captionWidth(text) + 6 + (icon ? icon->w + 3 : 0);
 }
 
+// A header title: a text-dim caption, or, for a title made only of kana the
+// Kana face has (the app's name, たまごっちょ: Font0 has no kana), that face
+// with its ink centred in the bar above the hairline. Returns the width drawn.
+static int drawHeaderTitle(lgfx::LovyanGFX& d, Renderer& r, int w, const char* title) {
+    if (*title && uiCanDraw(uifont::kKana, title))
+        return r.drawLabel(d, title, kGutter, 0, w - 2 * kGutter, kHeaderH - 1, kTextDim, kBg,
+                           Renderer::kTextUiKana);
+    return drawCaption(d, r, title, kGutter, 4, kTextDim, kBg);
+}
+
 int drawPill(lgfx::LovyanGFX& d, Renderer& r, int x, int y, const char* text, uint16_t fg,
              uint16_t bg, const Icon* icon) {
     const int w = pillWidth(text, icon);
@@ -121,7 +133,7 @@ void drawHeader(lgfx::LovyanGFX& d, Renderer& r, int w, const Header& h) {
     if (h.pill)
         left += drawPill(d, r, kGutter, 2, h.pill, h.pillFg, h.pillBg, h.pillIcon);
     else if (h.title)
-        left += drawCaption(d, r, h.title, kGutter, 4, kTextDim, kBg);
+        left += drawHeaderTitle(d, r, w, h.title);
     int rx = w - kGutter;
     if (h.battery >= 0) {
         rx -= 13;

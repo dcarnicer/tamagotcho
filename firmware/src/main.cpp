@@ -1,4 +1,4 @@
-// Tangocho Phase 2: open the saved pack in /packs and run a spaced-repetition
+// Tamagotcho Phase 2: open the saved pack in /packs and run a spaced-repetition
 // multiple-choice quiz (kanji -> meaning / reading / meaning -> kanji).
 #include <Arduino.h>
 #include <LittleFS.h>
@@ -39,7 +39,6 @@
 #include "ui/SettingsTree.h"
 #include "ui/TextLayout.h"
 #include "ui/Theme.h"
-#include "ui/UiFont.h"
 #include "ui/UiLang.h"
 #include "Credits.h"
 #include "Version.h"
@@ -88,7 +87,7 @@ uint16_t kGrey, kHighlight, kGreen, kRed, kYellow;
 // default and the fallback for any unknown code, so the error screen (which
 // runs before a pack is open) still has text.
 struct UiStrings {
-    const char* appName;  // error screen title bar
+    const char* appName;  // header of the error screen (and the done screen with no deck)
     const char* settingsTitle;
     const char* decksTitle;
     const char* newPerDayTitle;
@@ -392,7 +391,7 @@ struct UiStrings {
 };
 
 const UiStrings kUiEn = {
-    "TANGOCHO",
+    tgc::credits::kAppName,  // たまごっちょ, the header's Kana face
     "SETTINGS", "DECKS",
     "NEW/DAY", "HARD AFTER", "off",
     "MEANING", "READING", "KANJI",
@@ -496,7 +495,7 @@ const UiStrings kUiEn = {
 };
 
 const UiStrings kUiEs = {
-    "TANGOCHO",
+    tgc::credits::kAppName,
     "AJUSTES", "MAZOS",
     "NUEVAS/DIA", "DIFICIL TRAS", "no",
     "SIGNIFICADO", "LECTURA", "KANJI",
@@ -2355,15 +2354,9 @@ void drawStats() {
 // back.
 int gAboutPage = 0;
 
-// "Tangochō" in the label face, which has no "ō": the "o" gets a macron 3 px
-// over its ink.
+// The app's name, たまごっちょ, in the label face (it has these kana).
 void drawAppName(lgfx::LovyanGFX& d, int x, int y, int h, uint16_t fg) {
-    const int w = gRender.drawLabel(d, "Tangocho", x, y, W - x, h, fg, kBlack);
-    const tgc::UiGlyph* o = tgc::uiGlyph(tgc::uifont::kLabel, 'o');
-    if (!o || w <= 0) return;
-    const int ox = x + gRender.textWidth("Tangoch", tgc::Renderer::kTextUi) + o->xOff;
-    const int baseline = y + (h + gRender.capHeight(tgc::Renderer::kTextUi)) / 2;
-    d.fillRect(ox + 1, baseline + o->yOff - 4, o->width - 2, 2, fg);
+    gRender.drawLabel(d, tgc::credits::kAppName, x, y, W - x, h, fg, kBlack);
 }
 
 void drawAbout() {
@@ -2561,7 +2554,9 @@ void drawWifi() {
     } else {
         drawCaptionLines(d, qrLabel, tx, y, tw, 1, kText);
         y += 11;
-        // As large as fits: 4 px modules for a version 2 code on the StickS3.
+        // As large as fits: on the StickS3, 4 px modules for a version 2 code
+        // (the page's address) and 3 px for the version 3 join code (the
+        // "Tamagotcho-XXXX" payload is 33 bytes, one more than version 2 holds).
         const int box = std::min(W - 2 * kGutter, (H - y) * 56 / 100);
         const int side = qrSide(qrText.c_str(), box);
         drawQr(d, qrText.c_str(), (W - side) / 2, y, box);
@@ -5276,7 +5271,7 @@ void firstLangLoop(int a) {
 
 void setup() {
     Serial.begin(115200);
-    Serial.printf("Tangocho %s\n", tgc::firmwareVersion());
+    Serial.printf("%s %s\n", tgc::credits::kAppNameLatin, tgc::firmwareVersion());
     tgc::board::begin();
     setCpuFrequencyMhz(kCpuMhz);
     // The press that woke the chip must not also act on the first screen.
@@ -5294,6 +5289,8 @@ void setup() {
 
     // Apply the saved orientation right after board::begin() (which set portrait)
     // and before the canvas exists, so the buffer matches the panel from boot.
+    // The namespace keeps the project's former name on purpose, so settings
+    // survive the rename to Tamagotcho (docs/decisions.md, 2026-10-21).
     gPrefs.begin("tangocho", false);
     // Absent (never chosen) is not Auto: it may ask for the language below.
     const bool uiPrefStored = gPrefs.isKey("ui");

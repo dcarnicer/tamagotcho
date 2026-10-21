@@ -1,4 +1,4 @@
-# Tangocho, 16 MB flash (LilyGO T-Display-S3). Same layout as the StickS3
+# Tamagotcho, 16 MB flash (LilyGO T-Display-S3). Same layout as the StickS3
 # table (single 2 MB app slot, no OTA) with the remainder given to LittleFS.
 # Name,    Type, SubType, Offset,   Size,     Flags
 nvs,       data, nvs,     0x9000,   0x5000,

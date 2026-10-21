@@ -14,7 +14,7 @@ void setUp() {}
 void tearDown() {}
 
 void test_wifi_qr_escape() {
-    TEST_ASSERT_EQUAL_STRING("Tangocho-A1B2", wifiQrEscape("Tangocho-A1B2").c_str());
+    TEST_ASSERT_EQUAL_STRING("Tamagotcho-A1B2", wifiQrEscape("Tamagotcho-A1B2").c_str());
     TEST_ASSERT_EQUAL_STRING("", wifiQrEscape("").c_str());
     // Every reserved character gets one backslash, in place.
     TEST_ASSERT_EQUAL_STRING("a\\;b\\,c\\:d\\\"e\\\\f", wifiQrEscape("a;b,c:d\"e\\f").c_str());
@@ -24,8 +24,8 @@ void test_wifi_qr_escape() {
 }
 
 void test_wifi_qr_payload() {
-    TEST_ASSERT_EQUAL_STRING("WIFI:T:nopass;S:Tangocho-A1B2;;",
-                             wifiQrOpenNetwork("Tangocho-A1B2").c_str());
+    TEST_ASSERT_EQUAL_STRING("WIFI:T:nopass;S:Tamagotcho-A1B2;;",
+                             wifiQrOpenNetwork("Tamagotcho-A1B2").c_str());
     TEST_ASSERT_EQUAL_STRING("WIFI:T:nopass;S:my\\;net\\:5;;", wifiQrOpenNetwork("my;net:5").c_str());
 }
 
@@ -33,8 +33,10 @@ void test_qr_version() {
     TEST_ASSERT_EQUAL(1, qrVersionForBytes(0));
     TEST_ASSERT_EQUAL(1, qrVersionForBytes(17));
     TEST_ASSERT_EQUAL(2, qrVersionForBytes(18));
-    // The device's texts: the AP join string and the URLs.
-    TEST_ASSERT_EQUAL(2, qrVersionForBytes(std::string("WIFI:T:nopass;S:Tangocho-A1B2;;").size()));
+    // The device's texts: the AP join string (33 bytes since the SSID is
+    // "Tamagotcho-XXXX": one byte over version 2) and the URLs.
+    TEST_ASSERT_EQUAL(3, qrVersionForBytes(std::string("WIFI:T:nopass;S:Tamagotcho-A1B2;;").size()));
+    TEST_ASSERT_EQUAL(29, qrModules(3));
     TEST_ASSERT_EQUAL(2, qrVersionForBytes(std::string("http://192.168.4.1/").size()));
     TEST_ASSERT_EQUAL(2, qrVersionForBytes(std::string("http://192.168.100.200/").size()));
     TEST_ASSERT_EQUAL(3, qrVersionForBytes(33));
