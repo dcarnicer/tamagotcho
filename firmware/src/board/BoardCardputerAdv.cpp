@@ -16,7 +16,9 @@
 // reading, and the deep sleep's wake on a key (ext1 on G11).
 #include "board/Board.h"
 
-#if defined(TGC_BOARD_CARDPUTER_ADV)
+// In the M5 image (TGC_BOARD_M5) this file is board/BoardM5.cpp's
+// tgc::board::cardputer, picked at boot.
+#if defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5)
 #include <HWCDC.h>
 #include <M5Unified.h>
 #include <driver/rtc_io.h>
@@ -26,6 +28,9 @@
 
 namespace tgc {
 namespace board {
+#if defined(TGC_BOARD_M5)
+namespace cardputer {
+#endif
 
 namespace {
 
@@ -286,7 +291,11 @@ void deepSleep() {
 uint64_t rtcMicros() { return esp_rtc_get_time_us(); }
 bool powerButtonClicked() { return false; }  // a power switch, no button
 uint32_t randomSeed() { return esp_random(); }
+const char* name() { return "Cardputer ADV"; }
 
+#if defined(TGC_BOARD_M5)
+}  // namespace cardputer
+#endif
 }  // namespace board
 }  // namespace tgc
 #endif

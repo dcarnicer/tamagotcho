@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   firmware:
-    name: Firmware (native tests + StickS3/T-Display-S3/Cardputer ADV build)
+    name: Firmware (native tests + StickS3/T-Display-S3/Cardputer ADV/M5 builds)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -58,6 +58,15 @@ jobs:
 
       - name: Build Cardputer ADV
         run: pio run -e cardputer-adv
+
+      - name: Build the M5 image (StickS3 + Cardputer ADV)
+        run: pio run -e m5stack
+
+      # The serial remote (TGC_REMOTE, tools/screenshots) is compiled only into
+      # the -shots envs; build one with buttons and one with the keyboard so
+      # its code keeps compiling. Never released.
+      - name: Build StickS3 and Cardputer ADV with the serial remote
+        run: pio run -e sticks3-shots -e cardputer-adv-shots
 
   pack-builder:
     name: Pack builder (uv run pytest)

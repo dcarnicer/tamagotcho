@@ -438,7 +438,7 @@ const UiStrings kUiEn = {
     "An update needs room for both copies. Delete the old one first: Settings > Wi-Fi > Web portal",
     "Not a valid deck", "Download failed", "Cancelled",
     "get decks",
-    {"Web portal", "Home", "Setup mode", "Forget network"}, "none", "No home network saved",
+    {"Web portal", "Home", "Setup mode", "Forget Wi-Fi"}, "none", "No home network saved",
     "Network forgotten", "FORGET WI-FI?", {"Cancel", "Forget"},
     "Scan to join", "Scan to open the page", "other QR", "via %s", "Connecting to",
     "setup", "retry", "Connection lost...", "study", "%s %u%%",
@@ -540,7 +540,7 @@ const UiStrings kUiEs = {
     "bajar", "actualizar", "estudiar", "repetir",
     "Guardado %s", "%s · %u kanji",
     "El catálogo está vacío",
-    "Sin Wi-Fi de casa", "Ajustes > Wi-Fi > Modo configuración, y guarda tu red en la página",
+    "Sin Wi-Fi de casa", "Ajustes > Wi-Fi > Configurar, y guarda tu red en la página",
     "Red no encontrada", "¿Contraseña incorrecta?", "No se pudo conectar", "Servidor inaccesible",
     "Fallo de conexión segura", "Error del servidor %d", "Aún no hay catálogo en esta URL",
     "Catálogo no válido", "Catálogo más nuevo: actualiza el firmware",
@@ -549,14 +549,14 @@ const UiStrings kUiEs = {
     "Hace falta sitio para las dos copias. Borra antes la vieja: Ajustes > Wi-Fi > Portal web",
     "Mazo no válido", "Descarga fallida", "Cancelado",
     "descargar",
-    {"Portal web", "Casa", "Modo configuración", "Olvidar red"}, "ninguna",
+    {"Portal web", "Casa", "Configurar", "Olvidar red"}, "ninguna",
     "No hay red de casa guardada", "Red olvidada", "OLVIDAR WI-FI?", {"Cancelar", "Olvidar"},
     "Escanea y únete", "Escanea y abre la web", "otro QR", "vía %s",
     "Conectando a", "config.", "repetir", "Conexión perdida...",
     "estudiar", "%s %u%%", "libre %s / %s", "%s: %s",
     "RED DE CASA", "Comprobando catálogo...", "IP %s", "señal %d dBm (%s)",
     {"débil", "regular", "buena", "excelente"}, "catálogo: %u mazos", "hora de red: ok",
-    "hora de red: sin respuesta", "repetir", "Wi-Fi > Modo configuración: guárdala en la página",
+    "hora de red: sin respuesta", "repetir", "Wi-Fi > Configurar: guárdala en la página",
     "ACERCA DE", "Firmware:", "Mazos:", "Mazo:", "ninguno", "Datos de kanji:", "Orden de trazos:",
     "Niveles JLPT:", "Glifos:",
     "mover", "abrir", "elegir", "atrás", "Wi-Fi de casa",
@@ -727,7 +727,8 @@ char gTzRuleText[tgc::kTzRuleMaxLen + 1] = "";
 tgc::TzRule gPhoneTz;           // the zone the page last sent (the "From phone" row)
 bool gPhoneTzKnown = false;
 char gPhoneTzName[48] = "";
-// NTP over the home Wi-Fi gets this long once the network is up.
+// NTP over the home Wi-Fi gets this long once the network is up, twice at most
+// (HomeWifi::fetchUtcMs asks again when nothing answered).
 constexpr uint32_t kNtpTimeoutMs = 3000;
 // Network time for the boot-time date question (docs/srs.md section 5.1): with a
 // home Wi-Fi and a time zone known, the date screen first joins and asks NTP,
@@ -939,7 +940,7 @@ void createCanvas() {
     }
     gCanvas = new lgfx::LGFX_Sprite(&disp);
     gCanvas->setColorDepth(16);
-    gCanvas->setPsram(psramFound());
+    gCanvas->setPsram(tgc::hasPsram());
     if (!gCanvas->createSprite(W, H)) {
         gCanvas->setPsram(false);  // fall back to internal RAM
         gCanvas->createSprite(W, H);
@@ -2239,12 +2240,19 @@ void drawDateMenu() {
     formatDate(gSrs.today(), date, sizeof date);
     currentZoneLabel(zone, sizeof zone);
     const char* values[kDateMenuRows] = {date, zone};
+    // Narrow rows put the value under the label: beside it, portrait cut the
+    // date to "2026-..." (2026-10-20).
+    const bool wide = wideRows();
     gDateMenuList.setCount(kDateMenuRows);
-    layoutList(gDateMenuList, kHeaderH, H - kHintH - kNoteH, layout().row1H);
+    layoutList(gDateMenuList, kHeaderH, H - kHintH - kNoteH,
+               wide ? layout().row1H : layout().row2H);
     wg::drawList(d, gDateMenuList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
         wg::Row row;
         row.label = ui().dateMenuRows[i];
-        row.value = values[i];
+        if (wide)
+            row.value = values[i];
+        else
+            row.caption = values[i];
         row.keepLabel = true;
         row.chevron = true;
         row.focused = f;
@@ -3289,7 +3297,7 @@ void dateSyncBegin() {
 }
 
 // loop() on the date screen while Joining. Once the join succeeds: NTP
-// (blocking, at most kNtpTimeoutMs), radio off, then applyWallClock(), which
+// (blocking, at most 2 x kNtpTimeoutMs), radio off, then applyWallClock(), which
 // answers the question and leaves for the quiz -- true when that happened. On
 // any failure the radio is off too and the stepper comes up with a status line
 // that says to set the date by hand.
@@ -3885,7 +3893,7 @@ void wifiLoop(int a, int b) {
         const tgc::HomeWifi::State st = gHome.poll();
         if (st == tgc::HomeWifi::State::Connected) {
             // The network is up anyway: take the real date from NTP first, as
-            // Get decks does (blocking, at most kNtpTimeoutMs).
+            // Get decks does (blocking, at most 2 x kNtpTimeoutMs).
             netSyncClock();
             gSwallowInput = true;  // presses made while blocked must not act now
             gNetActivityAt = millis();

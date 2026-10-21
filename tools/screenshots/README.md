@@ -174,3 +174,19 @@ loads, applies and sets just the same. Opening and leaving screens, taps on the
 quiz (moving the highlight) and cancelling are safe; `scenarios/tour.txt` sticks
 to those. Take a full flash backup before flashing a device whose progress
 matters.
+
+## The README's pictures
+
+`readme_images.py` turns 1x shots into the README's pictures: each one 3x
+larger (nearest neighbour) with rounded corners, plus `cover.png` (1280x720,
+also the M5Burner cover) with two of them beside the name. The 1x shots it was
+last run on are in `readme/`; to redo one, take it again with the same name
+and rerun:
+
+```sh
+uv run tools/screenshots/remote.py -o tools/screenshots/readme shot:stats   # e.g.
+uv run tools/screenshots/readme_images.py tools/screenshots/readme          # -> docs/images/
+```
+
+The cover's text needs Noto Sans JP in the pack builder's cache
+(`cd tools/pack-builder && uv run tamagotcho-pack fetch`).

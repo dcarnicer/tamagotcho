@@ -6,6 +6,7 @@
 
 #include "pack/PackReader.h"
 #include "pack/PackSource.h"
+#include "platform/Psram.h"
 
 namespace tgc {
 
@@ -42,12 +43,12 @@ inline Allocator psramAllocator() {
 // without PSRAM (the Cardputer ADV) always on demand, so the internal heap
 // keeps room for the canvas, Wi-Fi and TLS whatever the deck.
 inline PackMemory packMemory() {
-    return psramFound() ? PackMemory::InMemoryOrStreamed : PackMemory::Streamed;
+    return hasPsram() ? PackMemory::InMemoryOrStreamed : PackMemory::Streamed;
 }
 
 // The renderer's glyph cache: unbounded in PSRAM, else a budget of internal
 // heap (Renderer::begin()).
 constexpr size_t kGlyphCacheBudgetNoPsram = 16u * 1024u;
-inline size_t glyphCacheBudget() { return psramFound() ? 0 : kGlyphCacheBudgetNoPsram; }
+inline size_t glyphCacheBudget() { return hasPsram() ? 0 : kGlyphCacheBudgetNoPsram; }
 
 }  // namespace tgc

@@ -105,18 +105,19 @@ Scope for now: **kanji only** (no vocabulary decks).
       and the detail card right for such cards (checked on the StickS3,
       2026-10-20). The N5 list was reviewed by the maintainer; the reading
       order's credits are on About and the portal footer.
-      - [ ] Rebuild the published decks with it: `decks.yml` is prepared, not
-        run yet (it replaces `decks-v2` in place; v0.2.1 reads the new packs).
+      - [x] Rebuild the published decks with it: `decks.yml` replaced
+        `decks-v2` in place on 2026-10-20, and again on 2026-10-21 (hiragana
+        glyphs, the new repository name in the catalog's URLs).
       - [ ] Follow-up: let a few common readings the Jōyō table does not
         approve be asked (等 など, 経 た.つ, 被 かぶ.る), e.g. for learners outside
         the school curriculum.
-      - [~] **Meanings in a useful order** (2026-10-20). KANJIDIC2's Spanish
+      - [x] **Meanings in a useful order** (2026-10-20). KANJIDIC2's Spanish
         meanings are often ordered worse than its English ones, and the device
         shows the first ones: 持 "duración; propiedad" (en "hold; have"), 界
         "borde; frontera" (en "world; boundary"), 題 "objeto; tema" (en
         "topic; subject"); and its English order has quirks of its own (機
-        "loom", 私 "private", 原 "meadow"). Implemented on
-        `feature/es-meanings` (docs/meaning-order.md): `build --meaning-order`
+        "loom", 私 "private", 原 "meadow"). Done (docs/meaning-order.md):
+        `build --meaning-order`
         orders the English meanings by the JLPT vocabulary words that use the
         kanji (their JMdict glosses), the Spanish ones by the English ones they
         translate (FreeDict's English-Spanish dictionary, CC BY-SA 3.0), then
@@ -124,7 +125,7 @@ Scope for now: **kanji only** (no vocabulary decks).
         Spanish first meanings change (N5: 14 and 14), English decks included,
         and in every language meaning distractors also avoid the meanings a
         pack leaves out. The maintainer reviewed the N5-N3 doubtful cases
-        (2026-10-20). Pending: merge, then a decks run (`decks.yml` is prepared).
+        (2026-10-20). On `main` and in the published decks since 2026-10-20.
       - [ ] Follow-up: French and Portuguese meanings in the English order too
         (about as many changes as Spanish), once a pinned English-French /
         English-Portuguese dictionary under a compatible licence exists.
@@ -150,8 +151,8 @@ Scope for now: **kanji only** (no vocabulary decks).
         falls back to any access point after 25 s ran on hardware on
         2026-10-20 (serial remote hook `f`): it joined the strongest one at
         31 s and NTP answered.
-        - [ ] Once, an NTP request right after a join got no answer in 3 s
-          (2026-10-19); maybe retry once before giving up.
+        - [x] Once, an NTP request right after a join got no answer in 3 s
+          (2026-10-19): since 2026-10-21 a second try follows (6 s at most).
       - [x] **One-button deck download.** Decks -> "+ Get decks" joins the home
         Wi-Fi, reads the release catalog over **HTTPS** (verified against a small
         embedded root-CA set, redirects followed), lists its decks marked new /
@@ -237,14 +238,18 @@ Scope for now: **kanji only** (no vocabulary decks).
       Delete progress and the new date screen buttons, and goes with the
       `decks-v2` rebuild of that day (reading and meaning order, hiragana
       glyphs). Its "What's new" comes from `docs/releases/v0.3.0.md`.
-      Pending: **README photos** (`tools/screenshots` takes the screen
-      captures from a StickS3 since 2026-10-20), and the T-Display-S3 release
-      images on real hardware (the firmware itself was checked on a T-Display-S3
-      on 2026-10-21, see docs/decisions.md).
+      The **README** is a landing page since 2026-10-21: a cover and a
+      gallery of real screens (`tools/screenshots/readme_images.py`, shots
+      from a StickS3 through the serial remote), with the long manual moved
+      to `docs/user-guide.md`. The v0.3.0 merged images of the StickS3 and
+      the T-Display-S3 booted as new devices on real hardware (2026-10-21).
+      The Cardputer ADV's v0.3.0 merged image booted on hardware the same
+      day. Pending: publishing on **M5Burner**, one entry for both M5 boards
+      with the `m5stack` image (docs/m5burner.md).
       - [x] `release.yml` puts `docs/releases/<tag>.md` in the notes as the
         "What's new" (from v0.3.0; before, it was added by hand).
-      - [ ] CI: also build `sticks3-shots` (the serial remote), so its code
-        keeps compiling.
+      - [x] CI: also build `sticks3-shots` and `cardputer-adv-shots` (the
+        serial remote), so its code keeps compiling (2026-10-21).
 
 ## Cross-cutting
 
@@ -286,17 +291,31 @@ Scope for now: **kanji only** (no vocabulary decks).
       in a left column and the options on the right, and shrinks the list rows to
       fit the shorter screen.
 
-- [~] **Third board: M5Stack Cardputer ADV** (2026-10-21, branch
-      `feature/cardputer-adv`). Envs `cardputer-adv` and `cardputer-adv-shots`:
+- [~] **Third board: M5Stack Cardputer ADV** (2026-10-21, released in
+      v0.3.0). Envs `cardputer-adv` and `cardputer-adv-shots`:
       landscape only (no Orientation row, no Auto), the keyboard drives every
       screen (arrows, Enter, Esc/del, Tab as the menu key; arrows repeat on
       lists) and the hint bar names keys; G0 is the front button; deep sleep
       wakes on G0 or any key. No PSRAM: packs open streamed (a few KB instead
       of up to 237 KB), the glyph cache has a 16 KB budget, the SRS table
       grows by steps (docs/architecture.md, "Memory without PSRAM").
-      **Built and native-tested only, not run on hardware yet**: rotation, key
-      map, battery, sleep and wake, and the heap with Wi-Fi and TLS need a real
-      device (the hardware checklist is in the decisions entry).
+      Checked on a Cardputer ADV (2026-10-21): orientation, the key map, the
+      Tab menu, G0, sleep and wake on a key, the battery icon; the arrows on
+      the 2x2 kanji grid move by row and column. Get decks downloads work
+      without PSRAM (2026-10-21): N1 (1.8 MB) and N2 (532 KB, 11.3 s, as on
+      the StickS3); about 107 KB of internal heap free after the TLS
+      handshake, 67 KB the largest block, 62 KB the lowest since boot (after
+      a portal session); a 1,232-kanji deck opens streamed in 10 KB.
+      - [ ] **Bug, intermittent (2 of 4 tries):** after a Get decks download
+        the deck reloaded by `portalPacksChanged()` reads nothing: its name
+        is "" (log `pack : 1232 cards`), the done screen says "All caught
+        up" for a deck never studied, and every read of its file fails
+        (`seek` false, `position()` -1: the `FILE*` is dead), also for a deck
+        chosen afterwards; a reboot fixes it. Seen only in streamed mode,
+        both times after a long-running session with the web portal used
+        before the download; not on fresh boots. Not yet understood: the
+        new handle reads fine during `open()`, and esp_littlefs gives each
+        open its own descriptor.
 
 - [~] **Power management** (2026-10-18). Done: dim after 30 s, deep sleep
       after 2 min on battery (front button wakes; panel-off only on USB), 5 min
@@ -339,16 +358,22 @@ Scope for now: **kanji only** (no vocabulary decks).
       pickers), the deck list from pack headers, and the date, stats, done,
       Get decks, Wi-Fi portal, About and error screens in the flat style.
       Phases 1-3 are on `main`, checked on the StickS3 (2026-10-18). Left:
-      phase 5 polish (kanji fade-in, maybe slides), and two values cut short
-      in portrait seen on 2026-10-20: the Date row's "2026-…" in
-      Settings › Device › Date, and "Modo conf…" (Setup mode) in the Spanish
-      Wi-Fi menu.
+      phase 5 polish (kanji fade-in, maybe slides). The two values cut short
+      in portrait seen on 2026-10-20 are fixed (2026-10-21): narrow screens
+      show the Date page's values under their labels, and the Spanish Wi-Fi
+      menu's "Modo configuración" row is "Configurar"; the English "Forget
+      network" (cut to "Forget net...") is "Forget Wi-Fi".
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
       (picking an option on the device takes longer than in Anki).
 - [ ] **Learning mode** (idea, 2026-10-18). A mode for learning kanji, not
       only reviewing them: for example, introducing a new kanji (meanings,
       readings, stroke order) before its first multiple-choice question.
       Scope to be defined.
+- [x] **One image for the StickS3 and the Cardputer ADV** (2026-10-21).
+      The `m5stack` env compiles both boards and picks one at boot (PSRAM or
+      not), so one M5Burner entry lists both devices; checked on both, and as
+      a merged image on a blank Cardputer (docs/decisions.md, "One image for
+      the StickS3 and the Cardputer ADV"). The single-board envs stay.
 - [ ] **Decks on the Cardputer ADV's microSD card** (idea, 2026-10-21). The
       Cardputer has a microSD slot (CS G12, MOSI G14, CLK G40, MISO G39):
       decks copied there from a computer, beside or instead of the 5.9 MB
