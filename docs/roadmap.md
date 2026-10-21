@@ -151,8 +151,8 @@ Scope for now: **kanji only** (no vocabulary decks).
         falls back to any access point after 25 s ran on hardware on
         2026-10-20 (serial remote hook `f`): it joined the strongest one at
         31 s and NTP answered.
-        - [ ] Once, an NTP request right after a join got no answer in 3 s
-          (2026-10-19); maybe retry once before giving up.
+        - [x] Once, an NTP request right after a join got no answer in 3 s
+          (2026-10-19): since 2026-10-21 a second try follows (6 s at most).
       - [x] **One-button deck download.** Decks -> "+ Get decks" joins the home
         Wi-Fi, reads the release catalog over **HTTPS** (verified against a small
         embedded root-CA set, redirects followed), lists its decks marked new /
@@ -248,8 +248,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       (docs/m5burner.md).
       - [x] `release.yml` puts `docs/releases/<tag>.md` in the notes as the
         "What's new" (from v0.3.0; before, it was added by hand).
-      - [ ] CI: also build `sticks3-shots` (the serial remote), so its code
-        keeps compiling.
+      - [x] CI: also build `sticks3-shots` and `cardputer-adv-shots` (the
+        serial remote), so its code keeps compiling (2026-10-21).
 
 ## Cross-cutting
 
@@ -358,10 +358,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       pickers), the deck list from pack headers, and the date, stats, done,
       Get decks, Wi-Fi portal, About and error screens in the flat style.
       Phases 1-3 are on `main`, checked on the StickS3 (2026-10-18). Left:
-      phase 5 polish (kanji fade-in, maybe slides), and two values cut short
-      in portrait seen on 2026-10-20: the Date row's "2026-…" in
-      Settings › Device › Date, and "Modo conf…" (Setup mode) in the Spanish
-      Wi-Fi menu.
+      phase 5 polish (kanji fade-in, maybe slides). The two values cut short
+      in portrait seen on 2026-10-20 are fixed (2026-10-21): narrow screens
+      show the Date page's values under their labels, and the Spanish Wi-Fi
+      menu's "Modo configuración" row is "Configurar"; the English "Forget
+      network" (cut to "Forget net...") is "Forget Wi-Fi".
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
       (picking an option on the device takes longer than in Anki).
 - [ ] **Learning mode** (idea, 2026-10-18). A mode for learning kanji, not

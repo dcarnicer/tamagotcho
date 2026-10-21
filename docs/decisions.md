@@ -2854,3 +2854,47 @@ marked *to confirm* needs the device.
   records' lapses. The new `onkana` key starts at katakana.
 - **Pack builder 0.3.0**: the `tamagotcho-pack` name, the reading and meaning
   order, and the hiragana glyphs for on'yomi.
+
+## 2026-10-21 – One image for the StickS3 and the Cardputer ADV
+
+- **Why.** M5Burner lists a firmware under several devices but takes one
+  `.bin` per version, and the board was chosen at compile time. The maintainer
+  wanted one entry for both M5 boards.
+- **What.** A new env, `m5stack` (`-DTGC_BOARD_M5`), compiles
+  `board/BoardSticks3.cpp` and `board/BoardCardputerAdv.cpp` into the
+  namespaces `tgc::board::sticks3` and `tgc::board::cardputer`;
+  `board/BoardM5.cpp` defines every `tgc::board` function by forwarding to the
+  board found at boot. Nothing outside `board/` changed: the app already asked
+  the board at run time (`hasKeyboard()`, `fixedLandscape()`, `hasAccel()`),
+  and the pack memory mode already followed the PSRAM. The single-board envs
+  stay; the release builds `m5stack` as a fourth image
+  (`tamagotcho-m5stack[-merged].bin`).
+- **Which board.** Decided before `M5.begin()`, which needs it (the
+  Cardputer's `begin()` frees G11 from the RTC domain, and G11 is the StickS3's
+  front button): the StickS3 has 8 MB of PSRAM, the Cardputer ADV none.
+  `begin()` then logs `board: <name> (M5 image)` and says so when M5Unified's
+  own detection disagrees.
+- **PSRAM.** The image is the octal-PSRAM framework build (`qio_opi`), as the
+  StickS3's. On the Cardputer the PSRAM init fails ("PSRAM ID read error ...
+  Bailing out") and the boot goes on (`CONFIG_SPIRAM_IGNORE_NOTFOUND`); the
+  display on G33-G38 works. Checked on hardware first with the v0.3.0 StickS3
+  app on the Cardputer. That run also showed that in this core (2.0.17)
+  `psramFound()` reads **true** when the init failed (`psramInit()` sets the
+  flag without checking under `CONFIG_SPIRAM_BOOT_INIT`), so it opened a deck
+  in internal RAM (130 KB) and would have put the canvas in PSRAM. The app now
+  asks `tgc::hasPsram()` (`platform/Psram.h`: a SPIRAM heap exists) for the
+  pack memory mode, the glyph cache budget and the canvas.
+- **Cost.** Flash 1,476,457 B for `m5stack` against 1,470,685 B for `sticks3`
+  (+5.6 KB). On the Cardputer the PSRAM framework build leaves less internal
+  heap for TLS than `cardputer-adv` does: after the handshake of a Get decks
+  download 93 KB free and a 54 KB largest block (60 KB the lowest since boot),
+  against 107 KB and 67 KB. Enough; watch it if TLS or the canvas grow.
+- **Checked on hardware (2026-10-21).**
+  - StickS3, `m5stack-shots`: `board: StickS3 (M5 image)`, the PM1 button,
+    tables in memory (290 KB internal heap free), quiz, settings and the
+    Orientation row (Auto).
+  - Cardputer ADV, `m5stack-shots`: `board: Cardputer ADV (M5 image)`, the
+    keyboard, landscape, N1 opened streamed (210 KB free), a Get decks
+    download (N2 es, 533 KB in 13.5 s).
+  - Cardputer ADV, the merged `m5stack` image at `0x0` after an Erase Flash:
+    boots as a new device (storage formatted, the language question).

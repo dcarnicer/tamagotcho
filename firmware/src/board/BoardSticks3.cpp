@@ -4,7 +4,9 @@
 // BtnB = GPIO12 = side button. Mapping: A = Select, B = Next.
 #include "board/Board.h"
 
-#if defined(TGC_BOARD_STICKS3)
+// In the M5 image (TGC_BOARD_M5) this file is board/BoardM5.cpp's
+// tgc::board::sticks3, picked at boot.
+#if defined(TGC_BOARD_STICKS3) || defined(TGC_BOARD_M5)
 #include <M5Unified.h>
 #include <driver/rtc_io.h>
 #include <esp_random.h>
@@ -13,6 +15,9 @@
 
 namespace tgc {
 namespace board {
+#if defined(TGC_BOARD_M5)
+namespace sticks3 {
+#endif
 
 namespace {
 m5::Button_Class& btn(Button b) { return b == Button::Select ? M5.BtnA : M5.BtnB; }
@@ -257,7 +262,15 @@ bool powerButtonClicked() {
 }
 
 uint32_t randomSeed() { return esp_random(); }
+const char* name() { return "StickS3"; }
 
+#if defined(TGC_BOARD_M5)
+// No keyboard, every orientation (the inline ones of Board.h elsewhere).
+bool fixedLandscape() { return false; }
+bool hasKeyboard() { return false; }
+bool nextKeyEvent(KeyEvent*) { return false; }
+}  // namespace sticks3
+#endif
 }  // namespace board
 }  // namespace tgc
 #endif
