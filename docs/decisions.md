@@ -2898,3 +2898,12 @@ marked *to confirm* needs the device.
     download (N2 es, 533 KB in 13.5 s).
   - Cardputer ADV, the merged `m5stack` image at `0x0` after an Erase Flash:
     boots as a new device (storage formatted, the language question).
+
+## 2026-10-21 – v0.4.0: the M5 image, on M5Burner
+
+- **What.** The fourth firmware release, the same day as v0.3.0: the
+  `m5stack` image (one build for the StickS3 and the Cardputer ADV, above), the
+  small follow-ups (NTP asks twice; the Date page and the Wi-Fi menu no longer
+  cut words in portrait) and the new README. `release.yml` builds four
+  boards now; the `m5stack` merged image is the one published on M5Burner, as
+  one entry listing both devices (docs/m5burner.md).
