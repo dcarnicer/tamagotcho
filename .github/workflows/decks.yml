@@ -261,11 +261,12 @@ jobs:
           catalog_v="${catalog_v%.txt}"
           {
           cat <<MD
-          # Tangochō decks (pack format v${VERSION})
+          # Tamagotcho decks (pack format v${VERSION})
 
-          Prebuilt kanji decks for Tangochō, with stroke order. Firmware that reads
-          pack format v${VERSION} downloads them with **Decks > + Get decks** (over
-          the home Wi-Fi) from this release's catalog, its default:
+          Prebuilt kanji decks for Tamagotcho (たまごっちょ), with stroke order.
+          Firmware that reads pack format v${VERSION} downloads them with
+          **Decks > + Get decks** (over the home Wi-Fi) from this release's
+          catalog, its default:
 
               ${url}
 
@@ -335,7 +336,7 @@ jobs:
           > and the Jōyō kanji table (Agency for Cultural Affairs, 2010).
           > Meaning order from the same JLPT vocabulary lists and JMdict; Spanish
           > meaning order from FreeDict's English-Spanish dictionary (WikDict,
-          > from Wiktionary via DBnary), CC BY-SA 3.0; and the Tangochō
+          > from Wiktionary via DBnary), CC BY-SA 3.0; and the Tamagotcho
           > project's meaning overrides. These packs are licensed CC BY-SA.
           MD
           } > notes.md
@@ -356,7 +357,7 @@ jobs:
           CATALOG_JSON: ${{ needs.build.outputs.catalog_json }}
         run: |
           set -euo pipefail
-          title="Tangochō decks (pack format v${VERSION})"
+          title="Tamagotcho decks (pack format v${VERSION})"
           cd dist
           ls -l
           packs=(*.tgc)

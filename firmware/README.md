@@ -39,9 +39,9 @@ it as a release: anything on the cable can press the buttons.
 
 ### Prebuilt images from a release
 
-A GitHub release carries, per board, the app-only `tangocho-<env>.bin` (the same
+A GitHub release carries, per board, the app-only `tamagotcho-<env>.bin` (the same
 file `pio run` produces, e.g. for M5Launcher) and a **merged**
-`tangocho-<env>-merged.bin` that `esptool write_flash 0x0 …` or a browser (ESP
+`tamagotcho-<env>-merged.bin` that `esptool write_flash 0x0 …` or a browser (ESP
 Web Tools, via the release's `manifest.json`) can flash in one go. A merged image
 carries **no filesystem**: the first boot formats the data partition when it
 holds no LittleFS (erased or foreign), so a fresh device asks for its language

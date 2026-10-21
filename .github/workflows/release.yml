@@ -132,7 +132,7 @@ jobs:
       - name: Stage app-only .bin
         run: |
           mkdir -p ../dist
-          cp ".pio/build/${{ matrix.env }}/firmware.bin" "../dist/tangocho-${{ matrix.env }}.bin"
+          cp ".pio/build/${{ matrix.env }}/firmware.bin" "../dist/tamagotcho-${{ matrix.env }}.bin"
 
       - name: Build merged flashable image (for ESP Web Tools)
         run: |
@@ -146,7 +146,7 @@ jobs:
             --build-dir ".pio/build/${{ matrix.env }}" \
             --partitions "partitions/${{ matrix.partitions }}" \
             --flash-size "${{ matrix.flash_size }}" \
-            --out "../dist/tangocho-${{ matrix.env }}-merged.bin" \
+            --out "../dist/tamagotcho-${{ matrix.env }}-merged.bin" \
             "${extra[@]}"
 
       - name: ESP Web Tools manifest
@@ -155,16 +155,16 @@ jobs:
           ENVNAME: ${{ matrix.env }}
           BOARDNAME: ${{ matrix.name }}
         run: |
-          cat > "../dist/tangocho-${ENVNAME}-manifest.json" <<JSON
+          cat > "../dist/tamagotcho-${ENVNAME}-manifest.json" <<JSON
           {
-            "name": "Tangochō ${BOARDNAME}",
+            "name": "Tamagotcho ${BOARDNAME}",
             "version": "${TAG#v}",
             "new_install_prompt_erase": true,
             "builds": [
               {
                 "chipFamily": "ESP32-S3",
                 "parts": [
-                  { "path": "tangocho-${ENVNAME}-merged.bin", "offset": 0 }
+                  { "path": "tamagotcho-${ENVNAME}-merged.bin", "offset": 0 }
                 ]
               }
             ]
@@ -196,7 +196,7 @@ jobs:
           tag="${{ needs.resolve.outputs.tag }}"
           {
           cat <<MD
-          # Tangochō ${tag}
+          # Tamagotcho (たまごっちょ) ${tag}
 
           Firmware for the **M5Stack StickS3** and the **LilyGO T-Display-S3**.
 
@@ -204,21 +204,21 @@ jobs:
 
           | file | what |
           |---|---|
-          | \`tangocho-sticks3.bin\` | app-only image (M5Launcher, \`pio run -t upload\`) |
-          | \`tangocho-tdisplay-s3.bin\` | app-only image (T-Display-S3) |
-          | \`tangocho-sticks3-merged.bin\`, \`tangocho-tdisplay-s3-merged.bin\` | single images for a first install (offset 0x0) |
-          | \`tangocho-*-manifest.json\` | ESP Web Tools manifests (for an install page) |
+          | \`tamagotcho-sticks3.bin\` | app-only image (M5Launcher, \`pio run -t upload\`) |
+          | \`tamagotcho-tdisplay-s3.bin\` | app-only image (T-Display-S3) |
+          | \`tamagotcho-sticks3-merged.bin\`, \`tamagotcho-tdisplay-s3-merged.bin\` | single images for a first install (offset 0x0) |
+          | \`tamagotcho-*-manifest.json\` | ESP Web Tools manifests (for an install page) |
 
           ## Flash it
 
-          - **First install, USB:** \`esptool --chip esp32s3 write_flash 0x0 tangocho-sticks3-merged.bin\`
+          - **First install, USB:** \`esptool --chip esp32s3 write_flash 0x0 tamagotcho-sticks3-merged.bin\`
           - **First install, browser** (Chrome or Edge): open
             <https://espressif.github.io/esptool-js/>, **Connect**, add
-            \`tangocho-sticks3-merged.bin\` at address \`0x0\`, **Program**.
-          - **Update:** \`esptool --chip esp32s3 write_flash 0x10000 tangocho-sticks3.bin\`.
+            \`tamagotcho-sticks3-merged.bin\` at address \`0x0\`, **Program**.
+          - **Update:** \`esptool --chip esp32s3 write_flash 0x10000 tamagotcho-sticks3.bin\`.
             The merged image also erases the settings (home Wi-Fi, preferences);
             the app-only image keeps them. Decks and study progress survive both.
-          - **M5Launcher:** install the app-only \`tangocho-sticks3.bin\`, then put a
+          - **M5Launcher:** install the app-only \`tamagotcho-sticks3.bin\`, then put a
             deck on the device over Wi-Fi (a device with no deck boots into the
             Wi-Fi upload screen).
 
@@ -263,5 +263,5 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
           else
-            gh release create "$TAG" --title "Tangochō ${TAG}" --notes-file notes.md dist/*
+            gh release create "$TAG" --title "Tamagotcho ${TAG}" --notes-file notes.md dist/*
           fi
