@@ -103,7 +103,7 @@ def default_source() -> KanjiVGDir | KanjiVGZip:
     if extracted.is_dir():
         return KanjiVGDir(extracted)
     raise KanjiVGError(
-        f"no KanjiVG data in {paths.KANJIVG_DIR} (run `tangocho-pack fetch`)"
+        f"no KanjiVG data in {paths.KANJIVG_DIR} (run `tamagotcho-pack fetch`)"
     )
 
 

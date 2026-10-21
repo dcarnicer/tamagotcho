@@ -609,7 +609,7 @@ list. Rebuilt on boot and on every pack change.
 3. **New cards**, ordered by the pack's `level` hint then codepoint — the
    builder's "learn earlier" order, which for the N5 deck means frequency-ish
    and for the Jōyō deck is school order (grade 1..6, then 8, each by
-   frequency; `tangocho-pack build --order`, tools/pack-builder/README.md).
+   frequency; `tamagotcho-pack build --order`, tools/pack-builder/README.md).
    Take at most `new_per_day` minus **this deck's** cards introduced today
    (records with flags bit0 set and `last_day == now_day`), then append. The
    cap is per deck, as in Anki: another deck's new cards do not use it up, and

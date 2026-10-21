@@ -3,14 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from tangocho_pack import fixture, paths
-from tangocho_pack.glyphs import Glyph
-from tangocho_pack.kanjidic import Card
-from tangocho_pack.kanjivg import KanjiVGDir, StrokeMask, flatten_path, stroke_masks
-from tangocho_pack.pack import read_pack, write_pack
+from tamagotcho_pack import fixture, paths
+from tamagotcho_pack.glyphs import Glyph
+from tamagotcho_pack.kanjidic import Card
+from tamagotcho_pack.kanjivg import KanjiVGDir, StrokeMask, flatten_path, stroke_masks
+from tamagotcho_pack.pack import read_pack, write_pack
 
 KANJIVG = Path(__file__).parent / "data" / "kanjivg"
-needs_font = pytest.mark.skipif(not paths.DEFAULT_FONT.exists(), reason="run `tangocho-pack fetch`")
+needs_font = pytest.mark.skipif(not paths.DEFAULT_FONT.exists(), reason="run `tamagotcho-pack fetch`")
 
 
 def mini_src() -> KanjiVGDir:
@@ -115,7 +115,7 @@ def test_write_pack_rejects_large_px_with_strokes():
 
 
 def test_build_rejects_large_px_with_strokes():
-    from tangocho_pack.build import build_pack
+    from tamagotcho_pack.build import build_pack
     # The check runs before the font is opened, so this needs no fetched font.
     with pytest.raises(ValueError, match="128"):
         build_pack([_card()], paths.DEFAULT_FONT, "en", "mini", 160, 16, 12, 12,
@@ -169,7 +169,7 @@ def test_read_pack_rejects_bad_stroke_offsets():
 
 @needs_font
 def test_build_rejects_strokes_px_mismatch():
-    from tangocho_pack.build import build_pack
+    from tamagotcho_pack.build import build_pack
     with pytest.raises(ValueError, match="em square"):
         build_pack([_card()], paths.DEFAULT_FONT, "en", "mini", 32, 16, 12, 12,
                    strokes=True, strokes_px=16, kanjivg=mini_src())
@@ -196,7 +196,7 @@ def test_mini_fixture_carries_strokes():
 
 @needs_font
 def test_preview_strokes_mode():
-    from tangocho_pack.preview import render_preview
+    from tamagotcho_pack.preview import render_preview
     p = read_pack((paths.FIXTURES / "mini.tgc").read_bytes())
     img, info = render_preview(p, 0x65E5, "strokes", 135, 240, 2)
     assert img.size == (270, 480)

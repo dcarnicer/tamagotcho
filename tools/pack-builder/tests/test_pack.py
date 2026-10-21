@@ -3,17 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from tangocho_pack import fixture, paths
-from tangocho_pack.build import build_pack
-from tangocho_pack.glyphs import Glyph, pack_4bpp, unpack_4bpp
-from tangocho_pack.kanjidic import RawKanji
-from tangocho_pack.kanjidic import make_cards, parse_kanjidic
-from tangocho_pack.pack import read_pack, write_pack
-from tangocho_pack.preview import render_preview
+from tamagotcho_pack import fixture, paths
+from tamagotcho_pack.build import build_pack
+from tamagotcho_pack.glyphs import Glyph, pack_4bpp, unpack_4bpp
+from tamagotcho_pack.kanjidic import RawKanji
+from tamagotcho_pack.kanjidic import make_cards, parse_kanjidic
+from tamagotcho_pack.pack import read_pack, write_pack
+from tamagotcho_pack.preview import render_preview
 
 XML = Path(__file__).parent / "data" / "mini_kanjidic2.xml"
 JLPT = {0x65E5: 5, 0x6708: 5, 0x706B: 5}
-needs_font = pytest.mark.skipif(not paths.DEFAULT_FONT.exists(), reason="run `tangocho-pack fetch`")
+needs_font = pytest.mark.skipif(not paths.DEFAULT_FONT.exists(), reason="run `tamagotcho-pack fetch`")
 
 
 def mini_cards(lang="en"):
@@ -144,7 +144,7 @@ def test_meaning_language_capped_to_english():
 
 
 def test_glcd_cp437_map():
-    from tangocho_pack import glcd
+    from tamagotcho_pack import glcd
     assert glcd.glcd_index(ord("A")) == 0x41
     assert glcd.glcd_index(0x00E9) == 0x82  # é
     assert glcd.glcd_index(0x00E1) == 0xA0  # á
@@ -158,8 +158,8 @@ def test_glcd_cp437_map():
 
 
 def test_meaning_distractors_use_visual_and_skip_glosses():
-    from tangocho_pack.distractors import meaning_distractors
-    from tangocho_pack.kanjidic import Card
+    from tamagotcho_pack.distractors import meaning_distractors
+    from tamagotcho_pack.kanjidic import Card
     cards = [Card(1, ["a"], [], [], jlpt=5, strokes=1),
              Card(2, ["b"], [], [], jlpt=5, strokes=1),
              Card(3, ["a"], [], [], jlpt=5, strokes=1),  # shares a gloss with card 0
@@ -171,8 +171,8 @@ def test_meaning_distractors_use_visual_and_skip_glosses():
 
 
 def test_reading_distractors_pick_confusable():
-    from tangocho_pack.distractors import reading_distractors
-    from tangocho_pack.kanjidic import Card
+    from tamagotcho_pack.distractors import reading_distractors
+    from tamagotcho_pack.kanjidic import Card
     cards = [Card(1, ["x"], ["ショウ"], [], jlpt=5, strokes=1),
              Card(2, ["y"], ["ジョウ"], [], jlpt=5, strokes=2),  # one kana apart
              Card(3, ["z"], [], ["つき"], jlpt=5, strokes=3)]     # no on'yomi to compare
@@ -181,8 +181,8 @@ def test_reading_distractors_pick_confusable():
 
 
 def test_reading_distractors_skip_target_readings():
-    from tangocho_pack.distractors import reading_distractors
-    from tangocho_pack.kanjidic import Card
+    from tamagotcho_pack.distractors import reading_distractors
+    from tamagotcho_pack.kanjidic import Card
     cards = [Card(1, ["x"], ["ニチ", "ジツ"], ["ひ", "び"], jlpt=5, strokes=1),
              Card(2, ["y"], [], ["ひ"], jlpt=5, strokes=2),     # kun ひ is a target reading
              Card(3, ["z"], ["ジツ"], [], jlpt=5, strokes=3),   # on ジツ is a target reading
@@ -281,4 +281,4 @@ def test_fixture_is_deterministic(tmp_path):
     assert a == fixture.build_mini(paths.DEFAULT_FONT)
     committed = paths.FIXTURES / "mini.tgc"
     if committed.exists():
-        assert a == committed.read_bytes(), "run `tangocho-pack fixture`"
+        assert a == committed.read_bytes(), "run `tamagotcho-pack fixture`"

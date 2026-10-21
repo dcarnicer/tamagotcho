@@ -1,5 +1,5 @@
 // Native tests for the deck catalog parser (src/catalog). The first two
-// fixtures are verbatim `tangocho-pack catalog` output (catalog format v2) for
+// fixtures are verbatim `tamagotcho-pack catalog` output (catalog format v2) for
 // two copies of the builder's fixtures/mini.tgc (deck name "JLPT N5"), without
 // and with --base-url.
 #include <unity.h>

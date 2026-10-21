@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-from tangocho_pack import build, cli, paths
-from tangocho_pack.build import default_deck_name
-from tangocho_pack.kanjidic import JOYO_GRADES, RawKanji, make_cards, parse_kanjidic
+from tamagotcho_pack import build, cli, paths
+from tamagotcho_pack.build import default_deck_name
+from tamagotcho_pack.kanjidic import JOYO_GRADES, RawKanji, make_cards, parse_kanjidic
 
 
 def raw(cp, grade, freq=0, strokes=5, jlpt_old=0):
@@ -144,7 +144,7 @@ def test_cli_warns_about_a_non_ascii_name(fake_build, tmp_path, capsys):
     assert "not ASCII" in capsys.readouterr().err
 
 
-@pytest.mark.skipif(not paths.KANJIDIC_GZ.exists(), reason="run `tangocho-pack fetch`")
+@pytest.mark.skipif(not paths.KANJIDIC_GZ.exists(), reason="run `tamagotcho-pack fetch`")
 def test_real_kanjidic_has_the_2136_joyo_kanji():
     cards = make_cards(parse_kanjidic(paths.KANJIDIC_GZ), "en", None, set(JOYO_GRADES),
                        {}, order="grade")

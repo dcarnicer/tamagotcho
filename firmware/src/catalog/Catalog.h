@@ -1,5 +1,5 @@
 #pragma once
-// Parser for the line-oriented deck catalog written by `tangocho-pack catalog`
+// Parser for the line-oriented deck catalog written by `tamagotcho-pack catalog`
 // (format v2: tools/pack-builder/README.md, "Catalog format"; published as
 // `catalog-v2.txt`), plus the small URL and file-name helpers the on-device "Get
 // decks" screen needs. Pure C++, no Arduino: unit tested natively in

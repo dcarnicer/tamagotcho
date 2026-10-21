@@ -11,10 +11,10 @@ import tarfile
 
 import pytest
 
-from tangocho_pack import build, cli, fetch, paths
-from tangocho_pack.distractors import meaning_distractors
-from tangocho_pack.kanjidic import Card, RawKanji, make_cards, parse_kanjidic
-from tangocho_pack.meanings import (
+from tamagotcho_pack import build, cli, fetch, paths
+from tamagotcho_pack.distractors import meaning_distractors
+from tamagotcho_pack.kanjidic import Card, RawKanji, make_cards, parse_kanjidic
+from tamagotcho_pack.meanings import (
     MIN_SCORE,
     EnglishOrder,
     MeaningOrder,
@@ -38,7 +38,7 @@ from tangocho_pack.meanings import (
     reorder_raw,
     same_stem,
 )
-from tangocho_pack.readings import load_jlpt_vocab
+from tamagotcho_pack.readings import load_jlpt_vocab
 
 # --- a miniature FreeDict TEI --------------------------------------------------------
 
@@ -322,7 +322,7 @@ def test_committed_overrides_parse():
     assert {lang for _, lang in ov} <= {"en", "es"}
 
 
-@pytest.mark.skipif(not paths.KANJIDIC_GZ.exists(), reason="run `tangocho-pack fetch`")
+@pytest.mark.skipif(not paths.KANJIDIC_GZ.exists(), reason="run `tamagotcho-pack fetch`")
 def test_committed_overrides_use_kanjidic2_meanings():
     assert check_overrides(load_overrides(paths.MEANING_OVERRIDES),
                            parse_kanjidic(paths.KANJIDIC_GZ)) == []
@@ -518,7 +518,7 @@ REAL = [paths.KANJIDIC_GZ, paths.FREEDICT_ENG_SPA, paths.JMDICT_GZ, *paths.JLPT_
 
 
 @pytest.mark.skipif(not all(p.exists() for p in REAL),
-                    reason="run `tangocho-pack fetch --readings --meanings`")
+                    reason="run `tamagotcho-pack fetch --readings --meanings`")
 def test_real_data_sanity():
     raw = parse_kanjidic(paths.KANJIDIC_GZ)
     eo = EnglishOrder(load_learner_vocab(load_jlpt_vocab(paths.JLPT_VOCAB), paths.JMDICT_GZ))

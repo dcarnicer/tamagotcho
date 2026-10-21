@@ -6,15 +6,15 @@ import struct
 
 import pytest
 
-from tangocho_pack import fixture, paths, rle
-from tangocho_pack.glyphs import Glyph
-from tangocho_pack.kanjidic import Card
-from tangocho_pack.kanjivg import StrokeMask
-from tangocho_pack.pack import GLYPH_SIZE, read_pack, write_pack
+from tamagotcho_pack import fixture, paths, rle
+from tamagotcho_pack.glyphs import Glyph
+from tamagotcho_pack.kanjidic import Card
+from tamagotcho_pack.kanjivg import StrokeMask
+from tamagotcho_pack.pack import GLYPH_SIZE, read_pack, write_pack
 
-needs_font = pytest.mark.skipif(not paths.DEFAULT_FONT.exists(), reason="run `tangocho-pack fetch`")
+needs_font = pytest.mark.skipif(not paths.DEFAULT_FONT.exists(), reason="run `tamagotcho-pack fetch`")
 # mini_v1.tgc was frozen when Klee One was the default font.
-needs_klee = pytest.mark.skipif(not paths.KLEE_ONE.exists(), reason="run `tangocho-pack fetch --klee-one`")
+needs_klee = pytest.mark.skipif(not paths.KLEE_ONE.exists(), reason="run `tamagotcho-pack fetch --klee-one`")
 
 
 def g4(pix, w, h):
@@ -266,7 +266,7 @@ def test_v2_fixture_matches_v1_pixels():
 def test_rle_vectors_are_up_to_date():
     committed = (paths.FIXTURES / "rle_vectors.bin").read_bytes()
     assert committed == fixture.rle_vectors(fixture.build_mini(paths.DEFAULT_FONT)), \
-        "run `tangocho-pack fixture`"
+        "run `tamagotcho-pack fixture`"
 
 
 def test_rle_vectors_decode():

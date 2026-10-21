@@ -191,7 +191,7 @@ Scope for now: **kanji only** (no vocabulary decks).
       - [x] **WaniKani importer** (user's own token, unlocked kanji only). The
         builder can build a pack from the kanji a user has unlocked on their own
         WaniKani account instead of (or as well as) KANJIDIC2, via
-        `tangocho-pack build --wanikani-token ... [--wanikani-level N]`. Nothing
+        `tamagotcho-pack build --wanikani-token ... [--wanikani-level N]`. Nothing
         is shipped, nothing is fetched without the flag, and the token is never
         logged or cached; a WaniKani-derived pack is the user's own
         responsibility and is not redistributed (docs/data-sources.md).
@@ -210,7 +210,7 @@ Scope for now: **kanji only** (no vocabulary decks).
       single-file image** per board plus an **ESP Web Tools `manifest.json`**,
       published by `.github/workflows/release.yml` on tags `v*` (and manual
       dispatch); CI (`.github/workflows/ci.yml`) runs the native tests and both
-      board builds plus the pack-builder tests; a `tangocho-pack catalog` command
+      board builds plus the pack-builder tests; a `tamagotcho-pack catalog` command
       that writes the small line-oriented catalog the device is meant to read;
       README with the licence/attribution and flashing instructions.
       The **device-side catalog fetch/parse** is done (`firmware/src/catalog/`,

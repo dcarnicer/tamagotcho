@@ -50,7 +50,9 @@ VERSION = 2
 FILE_NAME = f"catalog-v{VERSION}.txt"
 JSON_FILE_NAME = f"catalog-v{VERSION}.json"
 # `#`-prefixed lines are comments for any reader. The first line carries the
-# version so a reader can refuse an unknown format before parsing records.
+# version so a reader can refuse an unknown format before parsing records. The
+# tag keeps the project's former name (Tangochō) on purpose: it is part of the
+# format, and firmware in the field checks it (docs/decisions.md, 2026-10-21).
 HEADER = f"#tangocho-catalog\t{VERSION}"
 COLUMNS = "# name\ttitle\tlang\tcards\tbytes\tsha256\turl"
 # Byte cap of the title column (UTF-8); the firmware's kCatalogMaxTitleLen.
@@ -160,7 +162,7 @@ def render_json(records: list[Record]) -> str:
     return (
         json.dumps(
             {
-                "_comment": "Human-readable companion to the line-oriented Tangocho pack "
+                "_comment": "Human-readable companion to the line-oriented Tamagotcho pack "
                             "catalog. The device reads the text catalog, not this file.",
                 "format": "tangocho-catalog",
                 "version": VERSION,

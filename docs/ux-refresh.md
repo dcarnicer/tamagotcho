@@ -28,7 +28,7 @@ uv run python ../ux-mockups/render.py --tokens                   # colour table 
 ```
 
 The script needs the builder cache (Klee One and the KanjiVG zip, from
-`uv run tangocho-pack fetch --klee-one`), and its output is deterministic. **Before**
+`uv run tamagotcho-pack fetch --klee-one`), and its output is deterministic. **Before**
 images are line-by-line ports of the `draw*` functions in
 `firmware/src/main.cpp`. They use the same geometry, the built-in 6×8 Font0
 with all 8 rows, pack glyphs rendered by the builder's own `FontRenderer` at

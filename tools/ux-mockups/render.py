@@ -7,7 +7,7 @@ GLCD / KanjiVG code come from there):
     cd tools/pack-builder && uv run python ../ux-mockups/render.py
 
 Options: ``--cache DIR`` (default ``tools/pack-builder/cache``; needs
-``fonts/KleeOne-SemiBold.ttf`` and the KanjiVG zip, i.e. ``uv run tangocho-pack
+``fonts/KleeOne-SemiBold.ttf`` and the KanjiVG zip, i.e. ``uv run tamagotcho-pack
 fetch --klee-one``), ``--out DIR`` (default ``docs/ux``) and ``--tokens`` (print the colour
 token table with contrast ratios used in docs/ux-refresh.md, then exit).
 
@@ -42,15 +42,15 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from tangocho_pack import glcd
-from tangocho_pack.glyphs import FontRenderer, unpack_4bpp
-from tangocho_pack.kanjivg import KanjiVGDir, KanjiVGZip, stroke_masks
+from tamagotcho_pack import glcd
+from tamagotcho_pack.glyphs import FontRenderer, unpack_4bpp
+from tamagotcho_pack.kanjivg import KanjiVGDir, KanjiVGZip, stroke_masks
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_CACHE = REPO / "tools" / "pack-builder" / "cache"
 DEFAULT_OUT = REPO / "docs" / "ux"
 
-# Builder defaults (tangocho_pack.build.build_pack) = what a default pack holds.
+# Builder defaults (tamagotcho_pack.build.build_pack) = what a default pack holds.
 LARGE_PX, SMALL_PX, TEXT_PX, OPTION_PX = 96, 40, 18, 20
 
 
@@ -1236,7 +1236,7 @@ class After:
         c.fill(T.BG)
         self.header("GET DECKS", wifi=True)
         c.glcd_text("Home Wi-Fi · 4 decks", GUT, HEADER_H + 4, T.TEXT_DIM)
-        # Catalog lines carry name, lang, cards and bytes (tangocho-pack catalog).
+        # Catalog lines carry name, lang, cards and bytes (tamagotcho-pack catalog).
         rows = [("n3-es", "ES · 367 kanji", "1.9 MB", "dl", 0.45),
                 ("n4-en", "EN · 167 kanji", "0.9 MB", "", 0),
                 ("n4-es", "ES · on device", "", "have", 0),
@@ -1427,7 +1427,7 @@ SCREENS = [
 def render_all(cache: Path, out: Path) -> list[Path]:
     font = cache / "fonts" / "KleeOne-SemiBold.ttf"
     if not font.exists():
-        sys.exit(f"error: {font} not found (run `uv run tangocho-pack fetch` in "
+        sys.exit(f"error: {font} not found (run `uv run tamagotcho-pack fetch` in "
                  "tools/pack-builder, or pass --cache)")
     glyphs = Glyphs(font)
     source = stroke_source(cache)
