@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tangochō UX mockups: "before" and "after" PNGs of the device screens.
+"""Tamagotcho UX mockups: "before" and "after" PNGs of the device screens.
 
 Run it inside the pack builder's environment (Pillow, fontTools and the glyph /
 GLCD / KanjiVG code come from there):
@@ -696,7 +696,7 @@ class Before:
         c.fill(self.K_BLACK)
         self.header("WI-FI")
         self.back_hint()
-        lines = ["Tangocho-1A2B", "http://192.168.4.1",
+        lines = ["Tamagotcho-1A2B", "http://192.168.4.1",
                  "Open the URL on your phone and upload a .tgc", "free 5047 / 6080 KB",
                  "uploaded: 0", "ready"]
         top = 18
@@ -1331,7 +1331,7 @@ class After:
         c.fill(T.BG)
         self.header("WI-FI", wifi=True)
         y = HEADER_H + 4
-        size = self.qr("WIFI:T:nopass;S:Tangocho-1A2B;;", GUT, y)
+        size = self.qr("WIFI:T:nopass;S:Tamagotcho-1A2B;;", GUT, y)
         self.qr("http://192.168.4.1", W - GUT - size, y)
         for i, (n, label) in enumerate((("1", "join"), ("2", "open"))):
             x = GUT if i == 0 else W - GUT - size
@@ -1341,8 +1341,8 @@ class After:
         y += size + 20
         # The SSID is picked from the phone's list (recognised: small is fine);
         # the URL may have to be typed (large).
-        c.glcd_text("network", GUT, y, T.TEXT_FAINT)
-        c.glcd_text("Tangocho-1A2B", W - GUT, y, T.TEXT, 1, "tr")
+        c.glcd_text("Wi-Fi", GUT, y, T.TEXT_FAINT)  # "network" no longer fits beside the SSID
+        c.glcd_text("Tamagotcho-1A2B", W - GUT, y, T.TEXT, 1, "tr")
         c.glcd_text("then open", GUT, y + 13, T.TEXT_FAINT)
         c.label("192.168.4.1", GUT, y + 23, W - 2 * GUT, 20, T.ACCENT_HI, T.BG, TEXT, "c")
         y += 50
@@ -1494,7 +1494,7 @@ def contact_sheet(pairs, font_path: Path, path: Path) -> Path:
     sheet_h = 70 + sum(max(c[6] for c in r) + pad for r in rows) + pad
     sheet = Image.new("RGB", (sheet_w, sheet_h), (18, 20, 26))
     d = ImageDraw.Draw(sheet)
-    d.text((pad, 20), "Tangochō UX refresh — before / after (proposal, see docs/ux-refresh.md)",
+    d.text((pad, 20), "Tamagotcho UX refresh — before / after (proposal, see docs/ux-refresh.md)",
            font=title_f, fill=(235, 235, 240))
     y = 70
     for r in rows:
