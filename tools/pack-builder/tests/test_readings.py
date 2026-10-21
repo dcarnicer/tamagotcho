@@ -347,7 +347,7 @@ def test_empty_kind_roundtrip_and_validation():
     cards = [Card(ord("百"), ["hundred"], ["ヒャク"], [], jlpt=5)]
     glyphs = [Glyph(ord("百"), 0, 4, 4, 0, -4, 32, b"\x00" * 8),
               Glyph(ord("百"), 1, 4, 4, 0, -4, 16, b"\x00" * 8)]
-    glyphs += [Glyph(ord(ch), 2, 2, 2, 0, -2, 8, b"\x00" * 2) for ch in "ヒャク"]
+    glyphs += [Glyph(ord(ch), 2, 2, 2, 0, -2, 8, b"\x00" * 2) for ch in "ひゃくヒャク"]
     raw = write_pack(cards, glyphs, "mini", "en", 32, 16, 12, 12, 10, build_time=1)
     p = read_pack(raw)
     assert p.errors == []

@@ -297,17 +297,19 @@ struct UiStrings {
     // caption line under the label, so its label gets 107 px. Landscape rows
     // are wider: 110 px on the home, 212 on a page.
     const char* groupRows[5];   // decks, study, stats, Wi-Fi, device
-    const char* studyRows[4];   // new per day, hard after, auto-advance, delete (progress)
+    const char* studyRows[5];   // new per day, hard after, auto-advance, on'yomi, delete (progress)
     const char* deviceRows[7];  // orientation, brightness, language, hold time, date, sleep, about
     const char* studyTitle;     // headers (Font0, ASCII)
     const char* deviceTitle;
     const char* advanceTitle;
     const char* holdTitle;
+    const char* onKanaTitle;
     const char* studyValueFmt;  // the Study row's value, %u = new per day
     const char* wifiOff;        // the Wi-Fi row's value while the radio is off
     const char* decimalPoint;   // "1.5 s" / "1,5 s"
     const char* advanceRows[3];  // ui/InputPrefs.h order: off, short, normal
     const char* holdRows[3];     // short, normal, long
+    const char* onKanaRows[2];   // tgc::OnKana order: katakana, hiragana
     const char* months[12];      // short names: the header's "18 Oct", the date tile's "OCT 2026"
     const char* choiceDefault;   // a picker row's value on the default choice
     // Pickers: a description under the header (Font0, wrapped to the width: at
@@ -317,6 +319,7 @@ struct UiStrings {
     const char* descHardAfter;
     const char* descAdvance;
     const char* descHold;
+    const char* descOnKana;
     const char* descOrient;  // only with an accelerometer (it explains Auto)
     const char* descBright;
     const char* descLang;
@@ -369,7 +372,7 @@ struct UiStrings {
     const char* aboutReadings;  // About: + JmdictFurigana, wordfreq ... (the reading order)
     const char* aboutMeanings;  // About: + FreeDict/WikDict (the Spanish meaning order)
     // Settings > Study > Delete progress (docs/srs.md section 2.1). The Study
-    // row is studyRows[3] ("Delete") over deleteRowValue ("progress"):
+    // row is studyRows[4] ("Delete") over deleteRowValue ("progress"):
     // "Delete progress" (130 px) and "Borrar progreso" (133 px) do not fit a
     // portrait page row's 107 px. Its screen: the header (Font0, ASCII), two
     // rows (label face) with a caption (19 characters in the 135 px
@@ -451,18 +454,20 @@ const UiStrings kUiEn = {
     "answer", "next", "details",
     "stroke %u/%u",
     {"Decks", "Study", "Stats", "Wi-Fi", "Device"},
-    {"New per day", "Hard after", "Auto next", "Delete"},
+    {"New per day", "Hard after", "Auto next", "On'yomi", "Delete"},
     {"Orientation", "Brightness", "Language", "Hold time", "Date", "Sleep", "About"},
-    "STUDY", "DEVICE", "AUTO NEXT", "HOLD TIME",
+    "STUDY", "DEVICE", "AUTO NEXT", "HOLD TIME", "ON'YOMI",
     "%u/day", "off", ".",
     {"Off", "Short", "Normal"},
     {"Short", "Normal", "Long"},
+    {"Katakana", "Hiragana"},
     {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"},
     "default",
     "New kanji added to each day's reviews.",
     "Slower correct answers count as Hard.",
     "After a correct answer, the next card comes by itself.",
     "How long to hold a button to choose.",
+    "In the answers only: details stay in katakana.",
     "Auto turns the screen as you hold the device.",
     "Lower saves battery.",
     "Auto follows the loaded deck.",
@@ -560,18 +565,20 @@ const UiStrings kUiEs = {
     "responder", "siguiente", "detalles",
     "trazo %u/%u",
     {"Mazos", "Estudio", "Progreso", "Wi-Fi", "Dispositivo"},
-    {"Nuevas/día", "Difícil tras", "Pasar solo", "Borrar"},
+    {"Nuevas/día", "Difícil tras", "Pasar solo", "Lecturas on", "Borrar"},
     {"Orientación", "Brillo", "Idioma", "Pulsación", "Fecha", "Suspender", "Acerca de"},
-    "ESTUDIO", "DISPOSITIVO", "PASAR SOLO", "PULSACION",
+    "ESTUDIO", "DISPOSITIVO", "PASAR SOLO", "PULSACION", "LECTURAS ON",
     "%u/día", "apagado", ",",
     {"No", "Rápido", "Normal"},
     {"Corta", "Normal", "Larga"},
+    {"Katakana", "Hiragana"},
     {"ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"},
     "por defecto",
     "Kanji nuevos que entran cada día.",
     "Un acierto más lento cuenta como Difícil.",
     "Tras un acierto, la siguiente tarjeta llega sola.",
     "Cuánto mantener pulsado un botón para elegir.",
+    "En las respuestas. La ficha sigue en katakana.",
     "Auto gira la pantalla según sostengas el aparato.",
     "Más bajo ahorra batería.",
     "Auto sigue el mazo cargado.",
@@ -687,7 +694,7 @@ enum class Screen {
 };
 // Screen::Choice is shared by the row pickers (see openChoice()).
 enum class Choice {
-    NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi, AutoAdvance, HoldTime
+    NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi, AutoAdvance, HoldTime, OnKana
 };
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
@@ -840,6 +847,7 @@ constexpr uint8_t kBrightnessDefault = 128;
 uint8_t gBrightness = kBrightnessDefault;  // NVS `tangocho`/`bri`
 uint8_t gAdvancePref = tgc::kAdvanceDefault;  // NVS `tangocho`/`adv` (ui/InputPrefs.h)
 uint8_t gHoldPref = tgc::kHoldDefault;        // NVS `tangocho`/`hold`
+tgc::OnKana gOnKana = tgc::OnKana::Katakana;  // NVS `tangocho`/`onkana` (0 katakana, 1 hiragana)
 uint32_t gLastInputAt = 0;      // millis() of the last button activity
 uint32_t gLastPowerCheck = 0;
 bool gDimmed = false;
@@ -993,7 +1001,8 @@ bool newQuestion() {
         const tgc::ReadingKind want = gReadingTurn.want();
         for (int k = 0; k < kN; ++k) {
             const tgc::QuizMode mode = kModes[(static_cast<int>(item.mode) + k) % kN];
-            if (!tgc::buildQuestion(*gPack, item.cardIndex, mode, gRng, &gQ, want)) continue;
+            if (!tgc::buildQuestion(*gPack, item.cardIndex, mode, gRng, &gQ, want, gOnKana))
+                continue;
             if (gQ.mode == tgc::QuizMode::Reading) gReadingTurn.asked(gQ.readingKind);
             gSel = 0;
             gRevealed = false;
@@ -1816,6 +1825,8 @@ void choiceLabel(int i, char* out, size_t n) {
         snprintf(out, n, "%s", ui().advanceRows[v % tgc::kAdvanceChoices]);
     } else if (gChoice == Choice::HoldTime) {
         snprintf(out, n, "%s", ui().holdRows[v % tgc::kHoldChoices]);
+    } else if (gChoice == Choice::OnKana) {
+        snprintf(out, n, "%s", ui().onKanaRows[v % 2]);
     } else {
         snprintf(out, n, "%u", (unsigned)v);
     }
@@ -1847,6 +1858,7 @@ const char* choiceTitle() {
         case Choice::ForgetWifi: return ui().forgetTitle;
         case Choice::AutoAdvance: return ui().advanceTitle;
         case Choice::HoldTime: return ui().holdTitle;
+        case Choice::OnKana: return ui().onKanaTitle;
         case Choice::UiLang: break;
     }
     return ui().langTitle;
@@ -1859,6 +1871,7 @@ const char* choiceDescription() {
         case Choice::SlowMs: return ui().descHardAfter;
         case Choice::AutoAdvance: return ui().descAdvance;
         case Choice::HoldTime: return ui().descHold;
+        case Choice::OnKana: return ui().descOnKana;
         case Choice::Orientation: return tgc::board::hasAccel() ? ui().descOrient : nullptr;
         case Choice::Brightness: return ui().descBright;
         case Choice::UiLang: return ui().descLang;
@@ -2967,6 +2980,12 @@ void drawDetailHeader(lgfx::LovyanGFX& d, const tgc::Card& card) {
 // kanji left, details right. When the pack carries stroke data for the card,
 // the kanji animates (drawDetailFrame(), the Screen::Detail branch of loop()).
 void drawDetail() {
+    // The card keeps the pack's katakana, the pick included: Settings > Study >
+    // On'yomi changes the answers only. Read before questionCard(): a streamed
+    // pack's string cache would not keep the card's strings past these reads.
+    tgc::Question asPack = gQ;
+    if (gOnKana != tgc::OnKana::Katakana)
+        tgc::restyleReadings(*gPack, tgc::OnKana::Katakana, &asPack);
     tgc::Card card;
     if (!questionCard(&card)) {
         drawNoQuestion();
@@ -2998,7 +3017,7 @@ void drawDetail() {
         snprintf(accFull, sizeof accFull, ui().detailAccuracyFmt, correct, total);
         snprintf(accBare, sizeof accBare, "%u/%u", correct, total);
     }
-    const char* picked = gSel >= 0 && gSel < gQ.count ? gQ.options[gSel].c_str() : "";
+    const char* picked = gSel >= 0 && gSel < asPack.count ? asPack.options[gSel].c_str() : "";
     const int markW = tgc::kIconCross.w + 4;
     const int pickedW = gRender.textWidth(picked, kLabel);
     const char* acc = nullptr;
@@ -4014,6 +4033,14 @@ void openChoice(Choice which) {
         showChoice(saved);
         return;
     }
+    if (which == Choice::OnKana) {
+        // The row is the stored tgc::OnKana.
+        gChoiceCount = 2;
+        gChoiceValues[0] = static_cast<uint16_t>(tgc::OnKana::Katakana);
+        gChoiceValues[1] = static_cast<uint16_t>(tgc::OnKana::Hiragana);
+        showChoice(static_cast<int>(gOnKana));
+        return;
+    }
     if (which == Choice::AutoAdvance || which == Choice::HoldTime) {
         // ui/InputPrefs.h: the row is the stored index.
         gChoiceCount = 3;
@@ -4095,6 +4122,14 @@ void applyChoice() {
     if (gChoice == Choice::AutoAdvance) {
         gAdvancePref = static_cast<uint8_t>(gChoiceValues[sel]);
         gPrefs.putUChar(tgc::kPrefAdvance, gAdvancePref);
+        backToMenu();
+        return;
+    }
+    if (gChoice == Choice::OnKana) {
+        gOnKana = static_cast<tgc::OnKana>(gChoiceValues[sel]);
+        gPrefs.putUChar("onkana", static_cast<uint8_t>(gOnKana));
+        // The question on screen changes too, not only the next one.
+        tgc::restyleReadings(*gPack, gOnKana, &gQ);
         backToMenu();
         return;
     }
@@ -4370,7 +4405,12 @@ const MenuItem& menuItem(st::Item id) {
              snprintf(o, n, "%s", ui().advanceRows[gAdvancePref % tgc::kAdvanceChoices]);
          },
          [] { openChoice(Choice::AutoAdvance); }},
-        {I::DeleteProgress, [] { return ui().studyRows[3]; },
+        {I::OnKana, [] { return ui().studyRows[3]; },
+         [](char* o, size_t n) {
+             snprintf(o, n, "%s", ui().onKanaRows[static_cast<int>(gOnKana) % 2]);
+         },
+         [] { openChoice(Choice::OnKana); }},
+        {I::DeleteProgress, [] { return ui().studyRows[4]; },
          [](char* o, size_t n) { snprintf(o, n, "%s", ui().deleteRowValue); },
          [] { openReset(true); }},
         // --- Device
@@ -5483,6 +5523,7 @@ void setup() {
     gBrightness = gPrefs.getUChar("bri", gBrightness);
     gAdvancePref = gPrefs.getUChar(tgc::kPrefAdvance, tgc::kAdvanceDefault);
     gHoldPref = gPrefs.getUChar(tgc::kPrefHold, tgc::kHoldDefault);
+    gOnKana = gPrefs.getUChar("onkana", 0) == 1 ? tgc::OnKana::Hiragana : tgc::OnKana::Katakana;
     tgc::board::setBrightness(gBrightness);
     setUiForLang(nullptr);  // localise the pre-pack error screens to the choice too
     gOrientPref = loadOrientPref();

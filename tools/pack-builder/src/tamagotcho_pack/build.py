@@ -9,7 +9,7 @@ from .distractors import meaning_distractors, reading_distractors, square_vector
 from .glyphs import SET_LARGE, SET_OPTION, SET_SMALL, SET_TEXT, FontRenderer, Glyph
 from .kanjidic import Card
 from .kanjivg import KanjiVGDir, KanjiVGZip, default_source, masks_for
-from .pack import card_strings, write_pack
+from .pack import card_strings, on_hiragana, write_pack
 
 
 def default_deck_name(jlpt: set[int], grades: set[int], joyo: bool = False) -> str:
@@ -66,9 +66,13 @@ def build_pack(
 
     glyphs: list[Glyph] = large + small
 
+    # Sets 2 and 3 hold every on'yomi in hiragana as well: the device can
+    # write on'yomi that way (docs/pack-format.md).
     text_cps = set(range(0x20, 0x7F))
     for s in [deck_name] + [x for c in cards for x in card_strings(c)]:
         text_cps.update(ord(ch) for ch in s)
+    for c in cards:
+        text_cps.update(ord(ch) for ch in on_hiragana(card_strings(c)[1]))
     for cp in sorted(text_cps):
         if not font.has(cp):
             raise ValueError(f"font lacks text glyph U+{cp:04X} {chr(cp)!r}")
@@ -79,8 +83,7 @@ def build_pack(
     option_cps: set[int] = set()
     for c in cards:
         _, o, k = card_strings(c)
-        option_cps.update(ord(ch) for ch in o)
-        option_cps.update(ord(ch) for ch in k)
+        option_cps.update(ord(ch) for ch in o + on_hiragana(o) + k)
     for cp in sorted(option_cps):
         if not font.has(cp):
             raise ValueError(f"font lacks option glyph U+{cp:04X} {chr(cp)!r}")

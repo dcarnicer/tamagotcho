@@ -50,6 +50,13 @@ class _Strings:
         return self.index[s]
 
 
+def on_hiragana(s: str) -> str:
+    """An on'yomi as the device writes it in hiragana (Settings > Study >
+    On'yomi): katakana ァ..ヶ and ヽヾ shifted to hiragana, anything else (ー)
+    unchanged. Packs carry these glyphs too (docs/pack-format.md)."""
+    return "".join(chr(ord(ch) - 0x60) if "ァ" <= ch <= "ヶ" or ch in "ヽヾ" else ch for ch in s)
+
+
 def card_strings(c: Card) -> tuple[str, str, str]:
     return (
         MEANING_SEP.join(c.meanings),
@@ -469,11 +476,19 @@ def read_pack(raw: bytes) -> Pack:
                     pack.strokes[i].append(PStroke(xo, yo, w, ht, doff, bits, enc, n))
 
     present = {(g.set, g.codepoint) for g in pack.glyphs}
+
+    # Every reading string a set must draw: v2 packs also carry each on'yomi in
+    # hiragana. v1 packs predate the setting that writes them so (a device
+    # draws a box for a missing glyph).
+    def readings(c: PCard) -> tuple[tuple[str, str], ...]:
+        both = (("onyomi", c.onyomi), ("kunyomi", c.kunyomi))
+        return both + ((("onyomi in hiragana", on_hiragana(c.onyomi)),) if v2 else ())
+
     for i, c in enumerate(pack.cards):
         for s in (0, 1):
             if (s, c.codepoint) not in present:
                 errs.append(f"card {i} U+{c.codepoint:04X}: missing set {s} glyph")
-        for what, txt in (("meanings", c.meanings), ("onyomi", c.onyomi), ("kunyomi", c.kunyomi)):
+        for what, txt in (("meanings", c.meanings),) + readings(c):
             for ch in txt:
                 if 0x20 <= ord(ch) <= 0x7E:
                     continue
@@ -491,7 +506,7 @@ def read_pack(raw: bytes) -> Pack:
     # If the pack ships large option text, every reading character must be in it.
     if h["option_px"]:
         for i, c in enumerate(pack.cards):
-            for what, txt in (("onyomi", c.onyomi), ("kunyomi", c.kunyomi)):
+            for what, txt in readings(c):
                 for ch in txt:
                     if (3, ord(ch)) not in present:
                         errs.append(f"card {i} {what}: U+{ord(ch):04X} {ch!r} missing from set 3")

@@ -10,7 +10,7 @@ from tamagotcho_pack import fixture, paths, rle
 from tamagotcho_pack.glyphs import Glyph
 from tamagotcho_pack.kanjidic import Card
 from tamagotcho_pack.kanjivg import StrokeMask
-from tamagotcho_pack.pack import GLYPH_SIZE, read_pack, write_pack
+from tamagotcho_pack.pack import GLYPH_SIZE, on_hiragana, read_pack, write_pack
 
 needs_font = pytest.mark.skipif(not paths.DEFAULT_FONT.exists(), reason="run `tamagotcho-pack fetch`")
 # mini_v1.tgc was frozen when Klee One was the default font.
@@ -249,6 +249,16 @@ def test_v1_fixture_still_reads():
     assert all(m.encoding == 0 and m.data_off % 4 == 0 for s in p.strokes for m in s)
 
 
+def shared_glyphs(v1, v2):
+    """The glyphs of `v2` that `v1` has too, in table order. A v2 pack adds the
+    hiragana form of its on'yomi to sets 2 and 3, and nothing else."""
+    keys = {(g.set, g.codepoint) for g in v1.glyphs}
+    hira = {ord(ch) for c in v2.cards for ch in on_hiragana(c.onyomi)}
+    extra = [g for g in v2.glyphs if (g.set, g.codepoint) not in keys]
+    assert extra and all(g.set in (2, 3) and g.codepoint in hira for g in extra)
+    return [g for g in v2.glyphs if (g.set, g.codepoint) in keys]
+
+
 @needs_klee
 def test_v2_fixture_matches_v1_pixels():
     # Same font and inputs as the frozen v1 fixture: identical pixels and masks.
@@ -256,7 +266,7 @@ def test_v2_fixture_matches_v1_pixels():
     raw = fixture.build_mini(paths.KLEE_ONE)
     v2 = read_pack(raw)
     assert v2.errors == [] and v2.header["version"] == 2
-    assert [g.bits for g in v1.glyphs] == [g.bits for g in v2.glyphs]
+    assert [g.bits for g in v1.glyphs] == [g.bits for g in shared_glyphs(v1, v2)]
     assert [[m.data for m in s] for s in v1.strokes] == [[m.data for m in s] for s in v2.strokes]
     assert sum(g.size for g in v2.glyphs) < sum(g.size for g in v1.glyphs)
     assert len(raw) < len(v1.raw)
@@ -301,6 +311,6 @@ def test_visual_distractors_unchanged_by_compression():
     # so a v2 pack has the same lists as the v1 fixture built from the same input.
     v1 = read_pack((paths.FIXTURES / "mini_v1.tgc").read_bytes())
     v2 = read_pack(fixture.build_mini(paths.KLEE_ONE))
-    assert [g.bits for g in v1.glyphs] == [g.bits for g in v2.glyphs]
+    assert [g.bits for g in v1.glyphs] == [g.bits for g in shared_glyphs(v1, v2)]
     assert [c.distractors for c in v1.cards] == [c.distractors for c in v2.cards]
     assert [c.distractors_reading for c in v1.cards] == [c.distractors_reading for c in v2.cards]

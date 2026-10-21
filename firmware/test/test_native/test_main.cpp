@@ -662,6 +662,15 @@ void test_quiz_text_helpers() {
     TEST_ASSERT_EQUAL_STRING("たべる、くう", readingsDisplay("た.べる、く.う").c_str());
     TEST_ASSERT_EQUAL_STRING("ニチ、ジツ", readingsDisplay("ニチ、ジツ").c_str());
     TEST_ASSERT_EQUAL_STRING("", readingsDisplay("").c_str());
+    // Katakana to hiragana: the whole block (small kana, ヴ, ヵヶ, the iteration
+    // marks); ー, the separator, hiragana and ASCII stay.
+    TEST_ASSERT_EQUAL_STRING("にち、じつ", toHiragana("ニチ、ジツ").c_str());
+    TEST_ASSERT_EQUAL_STRING("きょう", toHiragana("キョウ").c_str());
+    TEST_ASSERT_EQUAL_STRING("ぁゔゕゖゝゞ", toHiragana("ァヴヵヶヽヾ").c_str());
+    TEST_ASSERT_EQUAL_STRING("らーめん", toHiragana("ラーメン").c_str());
+    TEST_ASSERT_EQUAL_STRING("たべる A1", toHiragana("たべる A1").c_str());
+    TEST_ASSERT_EQUAL_STRING("ヷ", toHiragana("ヷ").c_str());  // no hiragana form
+    TEST_ASSERT_EQUAL_STRING("", toHiragana("").c_str());
 }
 
 void test_quiz_meaning() {
@@ -755,13 +764,16 @@ void test_quiz_relaxed_pass_excludes_target_readings_of_both_kinds() {
     // Too few cards of the asked kind, so the relaxed pass offers a card's other
     // kind. Card 2's on'yomi ジツ (katakana in a kun'yomi question) and card 3's
     // kun'yomi か (hiragana in an on'yomi question) are readings of 日 as well:
-    // either would be a second correct option. Cards 4 and 5 are fine fillers.
+    // either would be a second correct option. So is card 4's カ, in the other
+    // script (日's kun'yomi か): in hiragana it reads the same. Cards 5 and 6 are
+    // fine fillers.
     std::vector<CardSpec> cs = {{0x65E5, "day", "ニチ、ジツ", "ひ、か", {}},
                                 {0x6708, "month", "ゲツ", "つき", {}},
                                 {0x5B9F, "truth", "ジツ、シツ", "", {}},  // on only
                                 {0x868A, "mosquito", "", "か", {}},       // kun only
                                 {0x706B, "fire", "カ", "", {}},           // on only
-                                {0x4E2D, "middle", "", "なか", {}}};      // kun only
+                                {0x4E2D, "middle", "", "なか", {}},       // kun only
+                                {0x6C34, "water", "スイ", "", {}}};       // on only
     auto buf = makePack(cs, cardGlyphs(cs));
     MemorySource src(buf);
     PackReader r;
@@ -776,12 +788,13 @@ void test_quiz_relaxed_pass_excludes_target_readings_of_both_kinds() {
         TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Reading, rng, &q, want));
         TEST_ASSERT_EQUAL(want, q.readingKind);
         TEST_ASSERT_EQUAL_STRING(want == ReadingKind::Kun ? "ひ" : "ニチ", q.options[q.correct].c_str());
-        TEST_ASSERT_EQUAL(4, q.count);  // the relaxed pass still fills: カ or なか
+        TEST_ASSERT_EQUAL(4, q.count);  // the relaxed pass still fills: スイ or なか
         for (int i = 0; i < q.count; ++i) {
             if (i == q.correct) continue;
             TEST_ASSERT_FALSE(isReadingOf(q.options[i], t.onyomi));
             TEST_ASSERT_FALSE(isReadingOf(q.options[i], t.kunyomi));
             TEST_ASSERT_TRUE(q.optionCard[i] != (want == ReadingKind::Kun ? 2 : 3));
+            TEST_ASSERT_TRUE(q.optionCard[i] != 4);
         }
     }
 }
@@ -955,6 +968,77 @@ void test_quiz_reading_kinds() {
     TEST_ASSERT_EQUAL(ReadingKind::Kun, q.readingKind);
     TEST_ASSERT_EQUAL_STRING("なか", q.options[q.correct].c_str());
     TEST_ASSERT_EQUAL(4, q.count);
+}
+
+void test_quiz_on_kana() {
+    // The same seed builds the same question in either script; in hiragana no
+    // option has katakana, and restyleReadings() turns one into the other.
+    auto buf = makePack(sixCards(), someGlyphs());
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
+    const ReadingKind wants[] = {ReadingKind::On, ReadingKind::Kun};
+    for (uint32_t idx = 0; idx < 6; ++idx) {
+        for (ReadingKind want : wants) {
+            XorShiftRng ra(500 + idx), rb(500 + idx);
+            Question k, h;
+            TEST_ASSERT_TRUE(buildQuestion(r, idx, QuizMode::Reading, ra, &k, want));
+            TEST_ASSERT_TRUE(
+                buildQuestion(r, idx, QuizMode::Reading, rb, &h, want, OnKana::Hiragana));
+            TEST_ASSERT_EQUAL(k.count, h.count);
+            TEST_ASSERT_EQUAL(k.correct, h.correct);
+            TEST_ASSERT_EQUAL(k.readingKind, h.readingKind);
+            for (int i = 0; i < k.count; ++i) {
+                TEST_ASSERT_EQUAL_UINT16(k.optionCard[i], h.optionCard[i]);
+                TEST_ASSERT_EQUAL_STRING(toHiragana(k.options[i]).c_str(), h.options[i].c_str());
+                TEST_ASSERT_FALSE(hasInRange(h.options[i], 0x30A0, 0x30FF));
+            }
+            Question t = k;
+            restyleReadings(r, OnKana::Hiragana, &t);
+            for (int i = 0; i < k.count; ++i)
+                TEST_ASSERT_EQUAL_STRING(h.options[i].c_str(), t.options[i].c_str());
+            restyleReadings(r, OnKana::Katakana, &t);
+            for (int i = 0; i < k.count; ++i)
+                TEST_ASSERT_EQUAL_STRING(k.options[i].c_str(), t.options[i].c_str());
+        }
+    }
+    // Other modes are left alone.
+    XorShiftRng rng(3);
+    Question m;
+    TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Meaning, rng, &m));
+    const std::string before = m.options[0];
+    restyleReadings(r, OnKana::Hiragana, &m);
+    TEST_ASSERT_EQUAL_STRING(before.c_str(), m.options[0].c_str());
+}
+
+void test_quiz_options_differ_in_either_script() {
+    // A kun'yomi question on 日 with too few kun cards: the relaxed pass offers
+    // on'yomi, and 火's カ would read か in hiragana, as 蚊's kun option does. It
+    // is never offered, in either script; 実's ジツ fills the last option.
+    std::vector<CardSpec> cs = {{0x65E5, "day", "ニチ", "ひ", {}},
+                                {0x868A, "mosquito", "", "か", {}},   // kun only
+                                {0x706B, "fire", "カ", "", {}},       // on only
+                                {0x4E2D, "middle", "", "なか", {}},   // kun only
+                                {0x5B9F, "truth", "ジツ", "", {}}};   // on only
+    auto buf = makePack(cs, cardGlyphs(cs));
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
+    XorShiftRng rng(41);
+    const OnKana scripts[] = {OnKana::Katakana, OnKana::Hiragana};
+    for (int iter = 0; iter < 100; ++iter) {
+        for (OnKana script : scripts) {
+            Question q;
+            TEST_ASSERT_TRUE(
+                buildQuestion(r, 0, QuizMode::Reading, rng, &q, ReadingKind::Kun, script));
+            TEST_ASSERT_EQUAL(4, q.count);
+            for (int i = 0; i < q.count; ++i) {
+                TEST_ASSERT_TRUE(q.optionCard[i] != 2);
+                for (int j = 0; j < i; ++j)
+                    TEST_ASSERT_TRUE(toHiragana(q.options[i]) != toHiragana(q.options[j]));
+            }
+        }
+    }
 }
 
 void test_quiz_unavailable_and_tiny() {
@@ -1821,6 +1905,8 @@ void runPackTests() {
     RUN_TEST(test_quiz_sparse_kun_fallback_and_options);
     RUN_TEST(test_quiz_reading_turn);
     RUN_TEST(test_quiz_sparse_kun_alternation);
+    RUN_TEST(test_quiz_on_kana);
+    RUN_TEST(test_quiz_options_differ_in_either_script);
     RUN_TEST(test_quiz_unavailable_and_tiny);
     RUN_TEST(test_quiz_meaning_gloss_collisions);
     RUN_TEST(test_quiz_meaning_to_kanji_excludes_cards_with_the_prompt);

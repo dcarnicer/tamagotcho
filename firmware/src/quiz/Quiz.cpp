@@ -4,6 +4,8 @@
 #include <utility>
 #include <vector>
 
+#include "pack/Utf8.h"
+
 namespace tgc {
 
 namespace {
@@ -45,6 +47,25 @@ std::string readingsDisplay(const char* r) {
     return out;
 }
 
+std::string toHiragana(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    const char* p = s.c_str();
+    while (*p) {
+        const char* b = p;
+        uint32_t cp = utf8Next(&p);
+        if ((cp >= 0x30A1 && cp <= 0x30F6) || cp == 0x30FD || cp == 0x30FE) {
+            cp -= 0x60;  // U+3041..U+3096, U+309D..U+309E: three UTF-8 bytes
+            out += static_cast<char>(0xE0 | (cp >> 12));
+            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        } else {
+            out.append(b, p);
+        }
+    }
+    return out;
+}
+
 ReadingKind readingKindOf(const Card& c) {
     if (c.onyomi[0]) return ReadingKind::On;
     if (c.kunyomi[0]) return ReadingKind::Kun;
@@ -68,10 +89,14 @@ namespace {
 constexpr int kOptionMeanings = 1;
 
 // Reading display for a card: the asked kind if the card has it, else the
-// card's primary kind (for the relaxed pass). Empty if it has no reading.
-std::string readingDisplay(const Card& c, ReadingKind kind) {
+// card's primary kind (for the relaxed pass), an on'yomi in `onKana`. Empty if
+// it has no reading.
+std::string readingDisplay(const Card& c, ReadingKind kind, OnKana onKana) {
     ReadingKind k = hasReading(c, kind) ? kind : readingKindOf(c);
-    if (k == ReadingKind::On) return firstReadingDisplay(c.onyomi);
+    if (k == ReadingKind::On) {
+        std::string s = firstReadingDisplay(c.onyomi);
+        return onKana == OnKana::Hiragana ? toHiragana(s) : s;
+    }
     if (k == ReadingKind::Kun) return firstReadingDisplay(c.kunyomi);
     return std::string();
 }
@@ -100,11 +125,12 @@ std::string pickMeaning(const char* m, Rng& rng, const std::string* used, int us
     return std::string();
 }
 
-// True if `want` is one of the card's readings of the given list (dots removed).
-// Used so a distractor is never another valid reading of the target, which would
-// make two options correct at once.
+// True if `want` is one of the card's readings of the given list (dots removed),
+// in either script. Used so a distractor is never another valid reading of the
+// target, which would make two options correct at once.
 bool containsReading(const char* readings, const std::string& want) {
     if (!readings || !*readings || want.empty()) return false;
+    const std::string w = toHiragana(want);
     const size_t sep = std::strlen(kReadingSep);
     const char* p = readings;
     while (*p) {
@@ -113,7 +139,7 @@ bool containsReading(const char* readings, const std::string& want) {
         std::string cleaned;
         for (char ch : s)
             if (ch != '.') cleaned += ch;
-        if (cleaned == want) return true;
+        if (toHiragana(cleaned) == w) return true;
         if (!e) break;
         p = e + sep;
     }
@@ -137,7 +163,7 @@ bool containsMeaning(const char* meanings, const std::string& want) {
 }  // namespace
 
 bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rng& rng, Question* out,
-                   ReadingKind readingKind) {
+                   ReadingKind readingKind, OnKana onKana) {
     Card target;
     if (!pack.card(cardIndex, &target)) return false;
     // The candidates below read many cards; a streamed pack's string cache
@@ -155,7 +181,8 @@ bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rn
         if (kind == ReadingKind::None) return false;
     }
     std::string answer =
-        (mode == QuizMode::Reading) ? readingDisplay(target, kind) : randomMeaning(target.meanings, rng);
+        (mode == QuizMode::Reading) ? readingDisplay(target, kind, onKana)
+                                    : randomMeaning(target.meanings, rng);
     if (answer.empty()) return false;
 
     Question q;
@@ -182,15 +209,20 @@ bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rn
             if (mode == QuizMode::MeaningToKanji && containsMeaning(c.meanings, answer)) return;
         } else {
             if (strict && !hasReading(c, kind)) return;
-            s = readingDisplay(c, kind);
+            s = readingDisplay(c, kind, onKana);
             // Also a reading of the target: checked against both kinds, since
             // the relaxed pass offers a card's other kind (an on'yomi in a
             // kun'yomi question) and that may be one of the target's own.
             if (containsReading(target.onyomi, s) || containsReading(target.kunyomi, s)) return;
         }
         if (s.empty()) return;
+        // A reading is compared in hiragana: an on'yomi distractor (the relaxed
+        // pass) that sounds like a kun'yomi option is the same option in the
+        // other script (restyleReadings()).
+        const bool reading = mode == QuizMode::Reading;
+        const std::string key = reading ? toHiragana(s) : s;
         for (int i = 0; i < n; ++i)
-            if (q.options[i] == s) return;
+            if ((reading ? toHiragana(q.options[i]) : q.options[i]) == key) return;
         q.options[n] = s;
         q.optionCard[n] = static_cast<uint16_t>(idx);
         ++n;
@@ -233,6 +265,14 @@ bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rn
         if (q.optionCard[i] == cardIndex) q.correct = i;
     *out = q;
     return true;
+}
+
+void restyleReadings(const PackReader& pack, OnKana onKana, Question* q) {
+    if (!q || q->mode != QuizMode::Reading) return;
+    for (int i = 0; i < q->count; ++i) {
+        Card c;
+        if (pack.card(q->optionCard[i], &c)) q->options[i] = readingDisplay(c, q->readingKind, onKana);
+    }
 }
 
 }  // namespace tgc

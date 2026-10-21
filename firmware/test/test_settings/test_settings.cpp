@@ -138,11 +138,12 @@ void test_tree_pages() {
     TEST_ASSERT_TRUE(home.items[3] == Item::Wifi);
     TEST_ASSERT_TRUE(home.items[4] == Item::Device);
     const settings::PageItems study = settings::pageItems(Page::Study);
-    TEST_ASSERT_EQUAL(4, study.count);
+    TEST_ASSERT_EQUAL(5, study.count);
     TEST_ASSERT_TRUE(study.items[0] == Item::NewPerDay);
     TEST_ASSERT_TRUE(study.items[1] == Item::HardAfter);
     TEST_ASSERT_TRUE(study.items[2] == Item::AutoAdvance);
-    TEST_ASSERT_TRUE(study.items[3] == Item::DeleteProgress);
+    TEST_ASSERT_TRUE(study.items[3] == Item::OnKana);
+    TEST_ASSERT_TRUE(study.items[4] == Item::DeleteProgress);
     const settings::PageItems device = settings::pageItems(Page::Device);
     TEST_ASSERT_EQUAL(7, device.count);
     TEST_ASSERT_TRUE(device.items[0] == Item::Orientation);

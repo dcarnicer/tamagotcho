@@ -32,6 +32,7 @@ enum class Item : uint8_t {
     NewPerDay,
     HardAfter,
     AutoAdvance,
+    OnKana,          // on'yomi in katakana or hiragana
     DeleteProgress,  // a screen: this deck or everything, then a confirmation
     // Device ›
     Orientation,
@@ -42,12 +43,12 @@ enum class Item : uint8_t {
     Sleep,
     About,
 };
-constexpr int kItemCount = 16;
+constexpr int kItemCount = 17;
 
 inline constexpr Item kHomeItems[] = {Item::Decks, Item::Study, Item::Stats, Item::Wifi,
                                       Item::Device};
 inline constexpr Item kStudyItems[] = {Item::NewPerDay, Item::HardAfter, Item::AutoAdvance,
-                                       Item::DeleteProgress};
+                                       Item::OnKana, Item::DeleteProgress};
 inline constexpr Item kDeviceItems[] = {Item::Orientation, Item::Brightness, Item::Language,
                                         Item::HoldTime,    Item::Date,       Item::Sleep,
                                         Item::About};

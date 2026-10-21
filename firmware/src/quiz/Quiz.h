@@ -15,6 +15,12 @@ enum class QuizMode : uint8_t { Meaning, Reading, MeaningToKanji };
 // Which kind of reading a Reading question uses.
 enum class ReadingKind : uint8_t { None, On, Kun };
 
+// How on'yomi answers are written (Settings > Study > On'yomi): in katakana,
+// as the pack has them, or in hiragana for readers more used to it. Kun'yomi
+// are hiragana either way; the ON / KUN pill tells the kinds apart. The detail
+// card keeps katakana.
+enum class OnKana : uint8_t { Katakana, Hiragana };
+
 constexpr int kMaxOptions = 4;
 
 class Rng {
@@ -61,6 +67,9 @@ std::string firstReadingDisplay(const char* readings);
 // Every reading of the list, still "、"-separated, '.' markers removed
 // ("た.べる、く.う" -> "たべる、くう"). Empty if the list is empty.
 std::string readingsDisplay(const char* readings);
+// `s` with katakana shifted to hiragana (ァ..ヶ -> ぁ..ゖ, ヽヾ -> ゝゞ); every
+// other character, the long-vowel mark ー included, stays as it is.
+std::string toHiragana(const std::string& s);
 
 // True if the card has a reading of this kind (None -> false).
 bool hasReading(const Card& c, ReadingKind kind);
@@ -78,8 +87,17 @@ ReadingKind readingKindOf(const Card& c);
 // For Reading mode, `readingKind` is the kind to ask for; if the card has none
 // of that kind, its primary kind is used instead (so kanji with only on'yomi or
 // only kun'yomi can still be asked). None means the card's primary kind.
+// On'yomi options are written in `onKana`. Readings that differ only in script
+// (ジツ, じつ) are one reading here, so a question gets the same options in
+// either script.
 bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rng& rng, Question* out,
-                   ReadingKind readingKind = ReadingKind::None);
+                   ReadingKind readingKind = ReadingKind::None,
+                   OnKana onKana = OnKana::Katakana);
+
+// Rewrites the options of a Reading question in `onKana`, as buildQuestion()
+// would have written them: the setting changed with the question on screen.
+// Questions of the other modes are left as they are.
+void restyleReadings(const PackReader& pack, OnKana onKana, Question* q);
 
 // The kind the next Reading question asks for, so on'yomi and kun'yomi take
 // turns: pass want() to buildQuestion(), then report the kind it asked

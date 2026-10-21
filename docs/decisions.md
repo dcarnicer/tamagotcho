@@ -2791,3 +2791,44 @@ marked *to confirm* needs the device.
   5. Memory: load Jōyō, open Get decks and download N1 while watching the
      `pack ...` and `[net]` heap lines; the minimum since boot should stay
      above ~20 KB.
+
+## 2026-10-21 – On'yomi answers in hiragana (a Study setting)
+
+- **What.** Settings › Study › On'yomi ("Lecturas on"): Katakana (default) or
+  Hiragana, for learners who read hiragana more easily (the maintainer's
+  request). It changes the **answer options** of on'yomi questions only. The
+  detail card after a wrong answer keeps katakana, the picked answer
+  included: "En la tarjeta está bien que sea katakana". Kun'yomi are
+  hiragana either way; the header's ON / KUN pill tells the kinds apart, as
+  it has since the UX refresh. NVS `tangocho`/`onkana`: 0 katakana, 1
+  hiragana.
+- **Packs keep katakana.** The pack contract does not change. The device
+  shifts the code points when it builds the question (`buildQuestion()`'s
+  `onKana`). A change of the setting with a question on screen rewrites
+  that question (`restyleReadings()`), so it shows at once.
+- **Readings compare in hiragana.** When distractors are picked, two
+  readings that differ only in script are one reading. So a distractor that
+  sounds like a reading of the target (火's カ against 日's kun'yomi か) is
+  left out in both scripts. Two options that read the same in hiragana never
+  both appear. A question therefore has the same options in either script,
+  and switching never shows two identical tiles. In katakana this drops an
+  on'yomi distractor in a kun'yomi question (and the reverse) that sounds
+  like one of the target's readings: a confusing option anyway.
+- **Glyphs.** A pack only carries the glyphs its strings use, so the builder
+  now adds the hiragana form of every on'yomi character to sets 2 and 3
+  (`pack.on_hiragana()`; docs/pack-format.md). The validator requires them in
+  v2 packs. v1 packs are exempt: they predate the setting, and the frozen v1
+  fixture still reads. The decks published before this change lack some of
+  these glyphs: ょ and ゅ in set 2 of N4 and Jōyō, and じ in both sets of N5.
+  A missing glyph draws as a box until `decks.yml` runs again. There is no
+  fallback: no backward compatibility, the maintainer updates the decks.
+- **Cost.**
+  - Decks (es): N5 105,120 → 106,424 B, N4 237,624 → 239,316 B, Jōyō
+    3,032,404 → 3,032,552 B.
+  - Firmware: sticks3 flash 1,468,409 → 1,470,061 B (+1.6 KB), static RAM
+    unchanged.
+- **Checked on a StickS3.**
+  - Hiragana options on an on'yomi question (音: おく おん けん ひん).
+  - A switch to katakana and back on the same question (地: たちこし ↔
+    タチコシ).
+  - A wrong answer whose card shows × タ and ON チ、ジ.

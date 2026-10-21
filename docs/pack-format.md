@@ -164,6 +164,12 @@ reading answers where legibility matters. A reader that wants a set-3 glyph
 **must fall back to set 2** if the code point is not present in set 3 (packs may
 omit set 3 entirely: `option_px = 0`).
 
+Sets 2 and 3 also hold the **hiragana form of every on'yomi character**: the
+katakana ァ..ヶ and ヽヾ shifted down by 0x60 (U+3041..U+3096, ゝゞ); other
+characters, such as ー, have no other form. The device can show on'yomi answers
+in hiragana (Settings › Study › On'yomi) while the strings stay katakana. A
+v2 pack **must** carry these glyphs; v1 packs predate the setting.
+
 ## Bitmap encoding 0: raw 4bpp
 
 Row-major, top to bottom. Two pixels per byte, **high nibble first**. Each

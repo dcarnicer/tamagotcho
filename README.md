@@ -27,7 +27,8 @@ the project was formerly called Tangochō.
 4. Hold the side button for the **settings**: a summary of the loaded deck
    (due and new cards, how much of it you have seen) and five groups --
    **Decks** (switch decks, Get decks), **Study** (new cards per day, Hard
-   after, auto-advance, delete progress), **Stats**, **Wi-Fi** and **Device** (orientation,
+   after, auto-advance, on'yomi answers in katakana or hiragana, delete
+   progress), **Stats**, **Wi-Fi** and **Device** (orientation,
    brightness, language, hold time, date and time zone, sleep, About). In
    every menu a tap moves, a hold opens or chooses, and the side button goes
    back; the bar at the bottom of the screen says what each does. The date
