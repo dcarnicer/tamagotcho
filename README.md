@@ -1,8 +1,11 @@
-# Tangochō 単語帳
+# たまごっちょ (Tamagotcho)
 
-Kanji flashcards on your wrist-sized ESP32. Tangochō turns an
-[M5Stack StickS3](https://docs.m5stack.com/) into a ring-bound kanji card deck
-with **multiple-choice reviews** and spaced repetition, fully offline.
+たまごっちょ (Tamagotcho): a 電子単語帳 (*denshi tangochō*, electronic flashcard
+book) for kanji, on an [M5Stack StickS3](https://docs.m5stack.com/). It turns
+the wrist-sized ESP32 into a ring-bound kanji card deck with **multiple-choice
+reviews** and spaced repetition, fully offline. The name crosses Tamagotchi
+with *tangochō* (単語帳, the ring-bound vocabulary cards the StickS3 resembles);
+the project was formerly called Tangochō.
 
 > Status: early development. See [docs/roadmap.md](docs/roadmap.md).
 
@@ -44,8 +47,8 @@ The portal has two modes:
 - **Home mode** (the usual one): the device joins **your Wi-Fi** and serves the
   page there, so the phone stays on its normal network. The device screen
   shows the network, the address (`http://<ip>/`) and a **QR code** of it;
-  `http://tangocho.local/` usually works too.
-- **Setup mode**: the device's own **open** network `Tangocho-XXXX` (the last
+  `http://tamagotcho.local/` usually works too.
+- **Setup mode**: the device's own **open** network `Tamagotcho-XXXX` (the last
   bytes of its MAC) at `http://192.168.4.1/`, for the first setup or to change
   networks. The screen shows a QR code that joins it; a tap of the front button
   swaps it for one that opens the page.
@@ -59,7 +62,7 @@ The portal has two modes:
    the loaded deck).
 2. A device with no decks starts the portal by itself (later: hold the side
    button for **Settings → Wi-Fi → Setup mode**). Scan the QR code on the
-   screen with the phone camera to join `Tangocho-XXXX`, then open
+   screen with the phone camera to join `Tamagotcho-XXXX`, then open
    `http://192.168.4.1` (or tap the device's front button and scan the second
    QR code).
 3. The page's first step is **Connect the device to your Wi-Fi**: pick the
@@ -125,7 +128,7 @@ on the confirmation deletes.
 
 - Still at home: **Web portal → Advanced → Home Wi-Fi**, save the new network,
   then **Reconnect**.
-- Elsewhere: **Settings → Wi-Fi → Setup mode**, join `Tangocho-XXXX`, save the
+- Elsewhere: **Settings → Wi-Fi → Setup mode**, join `Tamagotcho-XXXX`, save the
   new network on the page and press **Switch to my Wi-Fi**.
 - **Settings → Wi-Fi → Forget network** asks first (Cancel is selected; tap to
   Forget, then hold).
@@ -153,7 +156,7 @@ on the confirmation deletes.
   deck yet follows the browser's language, and the page offers English /
   Español links.
 - The default catalog is
-  `https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog-v2.txt`,
+  `https://github.com/dcarnicer/tamagotcho/releases/download/decks-v2/catalog-v2.txt`,
   in the dedicated **decks release** for the pack format this firmware reads (see
   [Prebuilt decks](#prebuilt-decks-and-their-licence) below). It works once the
   decks workflow has published `catalog-v2.txt` there (a maintainer action);
@@ -221,7 +224,7 @@ packs**; their notes link to the decks release below.
 **Version.** Every firmware build carries a version string, shown under
 **Settings › Device › About**, in the portal page's footer, as `"version"` in
 `/api/stats` and `/api/status`, and as the first boot log line
-(`Tangocho v0.1.0`). [`firmware/scripts/version.py`](firmware/scripts/version.py)
+(`Tamagotcho <version>`). [`firmware/scripts/version.py`](firmware/scripts/version.py)
 sets it: the `TGC_VERSION` environment variable if present (the release
 workflow passes the tag), else `git describe --tags --always --dirty --match
 "v[0-9]*"` (e.g. `v0.1.0-3-gabc1234-dirty`, or just the commit id when no `v*`
@@ -238,11 +241,12 @@ pio run -e sticks3 -t uploadfs    # LittleFS image built from data/
 
 ### Flash a merged image (esptool or a browser)
 
-A release's `tangocho-sticks3-merged.bin` (and the `tdisplay-s3` one) is one file
-flashed at offset 0, so it needs no offset list:
+A release's `tamagotcho-sticks3-merged.bin` (and the `tdisplay-s3` one) is one
+file flashed at offset 0, so it needs no offset list (releases up to v0.2.1
+name their files `tangocho-…`):
 
 ```sh
-esptool --chip esp32s3 write_flash 0x0 tangocho-sticks3-merged.bin
+esptool --chip esp32s3 write_flash 0x0 tamagotcho-sticks3-merged.bin
 ```
 
 **What it overwrites:** everything from `0x0` to the end of the app, including
@@ -253,7 +257,7 @@ device and keep its settings, flash the app-only image at the app offset
 instead:
 
 ```sh
-esptool --chip esp32s3 write_flash 0x10000 tangocho-sticks3.bin
+esptool --chip esp32s3 write_flash 0x10000 tamagotcho-sticks3.bin
 ```
 
 It is produced from the PlatformIO build by
@@ -261,7 +265,7 @@ It is produced from the PlatformIO build by
 equivalent of (StickS3):
 
 ```sh
-esptool --chip esp32s3 merge_bin -o tangocho-sticks3-merged.bin \
+esptool --chip esp32s3 merge_bin -o tamagotcho-sticks3-merged.bin \
   --flash_mode dio --flash_freq 80m --flash_size 8MB \
   0x0     .pio/build/sticks3/bootloader.bin \
   0x8000  .pio/build/sticks3/partitions.bin \
@@ -278,9 +282,9 @@ switches the flash to QIO itself (see `docs/decisions.md`).
 
 For a **browser flash** (Chrome or Edge on a desktop), open Espressif's web
 flasher <https://espressif.github.io/esptool-js/>, press **Connect** and pick
-the StickS3's port, add `tangocho-sticks3-merged.bin` at address `0x0` and
+the StickS3's port, add `tamagotcho-sticks3-merged.bin` at address `0x0` and
 press **Program**. The release also carries ESP Web Tools manifests
-(`tangocho-*-manifest.json`) for a future install page; ESP Web Tools needs a
+(`tamagotcho-*-manifest.json`) for a future install page; ESP Web Tools needs a
 page that serves the image and the manifest together, so it cannot be pointed
 at a release on its own. A merged image carries **no filesystem**:
 on the first boot the firmware finds no LittleFS on the data partition (erased,

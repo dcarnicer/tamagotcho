@@ -1,4 +1,4 @@
-# Tangochō – notes for agents
+# Tamagotcho (たまごっちょ) – notes for agents
 
 Kanji multiple-choice review app for the M5Stack StickS3. Read
 `docs/architecture.md` and `docs/pack-format.md` before touching code.

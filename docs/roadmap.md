@@ -134,7 +134,7 @@ Scope for now: **kanji only** (no vocabulary decks).
       and in the builder's distractor lists.
 - [~] **Phase 4 – Connectivity.** The on-device **Wi-Fi portal** is done: it
       serves a single self-contained page from a phone/laptop on its own open
-      access point (`Tangocho-XXXX`, `http://192.168.4.1`) to upload, delete and
+      access point (`Tamagotcho-XXXX`, `http://192.168.4.1`) to upload, delete and
       download packs and to read the SRS statistics (`/`, `/api/stats`); it also
       lets a fresh, pack-less device boot into an "upload a `.tgc`" state and
       continue into the quiz once a pack arrives. Pending:
@@ -348,8 +348,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       combined attribution in the notes, to the release `decks-v<pack format>`
       (`decks-v2`), which is never marked "latest" so firmware releases cannot
       hide it. The device's default Get decks catalog is now
-      `releases/download/decks-v2/catalog-v2.txt` on `dcarnicer/tangocho`
-      (catalog format v2, 2026-10-18); the first run published the v1
+      `releases/download/decks-v2/catalog-v2.txt` on `dcarnicer/tamagotcho`
+      (`dcarnicer/tangocho` before the rename of 2026-10-21; catalog format v2,
+      2026-10-18); the first run published the v1
       `catalog.txt`, the second (2026-10-18) published `catalog-v2.txt` and
       deleted `catalog.txt`, which only v0.1.0 reads. The former blockers (the
       JLPT lists' licence, the 5 MiB cap in pack format v1) were resolved first.

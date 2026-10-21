@@ -93,12 +93,12 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
   `20170710`, the current (and so far only) documented revision,
   https://docs.api.wanikani.com/. Endpoints used: `/assignments` (which kanji
   the user has unlocked) and `/subjects` (their characters, meanings, readings).
-- Owner: **Tofugu LLC. WaniKani is a trademark of Tofugu LLC.** Tangochō is an
+- Owner: **Tofugu LLC. WaniKani is a trademark of Tofugu LLC.** Tamagotcho is an
   unofficial third-party tool; it is not affiliated with, endorsed by or
   sponsored by WaniKani or Tofugu.
 - Licence/terms: WaniKani's content (subject meanings, readings, mnemonics…)
   is © Tofugu LLC and is governed by the WaniKani terms of service and the API
-  terms. **Tangochō ships and redistributes no WaniKani content**: nothing is
+  terms. **Tamagotcho ships and redistributes no WaniKani content**: nothing is
   fetched unless the user runs the importer with their *own* personal API token,
   and a pack built this way is **the user's own responsibility**. It is intended
   for that user's personal study, must not be redistributed, and must respect
@@ -169,12 +169,13 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
   bitmaps at build time. Only the Regular weight is used: Medium clogged dense
   kanji at the 40 px option size (docs/decisions.md, 2026-10-18).
 - Also used for: **the firmware's UI font**. `tools/ui-font/gen_ui_font.py`
-  renders ASCII, Latin-1 and `· … › ‹ « » – — ✓ ▲ ▼` at 18 px and the digits
-  with `%:/+-.` at 32 px from the same Regular OTF, with the builder's
-  `FontRenderer`, into `firmware/src/ui/UiFont.h` (216 glyphs, ~15 KB of 4bpp
-  bitmaps). That header is committed and compiled into every firmware image,
-  so the firmware distributes these bitmaps; they carry the font's credit
-  (README, Settings › Device › About "UI font").
+  renders ASCII, Latin-1, `· … › ‹ « » – — ✓ ▲ ▼` and the six kana of the
+  app's name (たまごっちょ) at 18 px, the digits with `%:/+-.` at 32 px and
+  those six kana again at 12 px (the header) from the same Regular OTF, with
+  the builder's `FontRenderer`, into `firmware/src/ui/UiFont.h` (228 glyphs,
+  ~16 KB of 4bpp bitmaps). That header is committed and compiled into every
+  firmware image, so the firmware distributes these bitmaps; they carry the
+  font's credit (README, Settings › Device › About "UI font").
 - OFL notes: the OFL permits use, embedding and redistribution of the font and
   of output made with it; it does not require the licence of rendered output
   to change. The pre-rendered 4bpp bitmaps in a pack, and those in the
@@ -370,7 +371,7 @@ it; the decks published so far use none of it.
   repository (not downloaded): a short hand-checked table (39 lines) that puts
   one of KANJIDIC2's own meanings first for a kanji and language where the
   steps above go wrong (機 "machine", 申 "decir"), with the reason.
-- Authored by the Tangochō project. Licence: it is distributed with the packs
+- Authored by the Tamagotcho project. Licence: it is distributed with the packs
   under CC BY-SA (and with the code, MIT); it holds no third-party text beyond
   the KANJIDIC2 meanings it names, each of which the builder checks against
   KANJIDIC2 (an override can only choose among them, never add text).
@@ -419,7 +420,7 @@ A pack built with `--meaning-order` adds (the FreeDict part for Spanish):
 > Meaning order from Jonathan Waller's JLPT vocabulary lists (tanos.co.uk,
 > CC BY) and JMdict (EDRDG, CC BY-SA 4.0); Spanish meaning order from FreeDict's
 > English-Spanish dictionary (WikDict, from Wiktionary via DBnary), CC BY-SA
-> 3.0; and the Tangochō project's meaning overrides.
+> 3.0; and the Tamagotcho project's meaning overrides.
 
 The decks release notes in `decks.yml` carry this text.
 

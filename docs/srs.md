@@ -480,8 +480,8 @@ is the single entry point for every source (NTP below calls it too). It is
 not part of the SRS file.
 
 **Time zone.** NTP only yields UTC, so the device keeps a zone in NVS
-(`tangocho`): `tzr` (the rule the page last sent) and `tzn` (its IANA name);
-`tz` (int16, minutes east, the offset the page last sent), which is all a page
+(namespace `tangocho`, the project's former name, kept): `tzr` (the rule the
+page last sent) and `tzn` (its IANA name); `tz` (int16, minutes east, the offset the page last sent), which is all a page
 from before the rule left and is then read as a fixed rule; and `tzm`, the
 IANA name of a zone chosen by hand in **Settings › Date › Time zone** from a
 short list (`srs/TimeZone`, `kTzZones`: tzdata's own POSIX rules). The zone in
