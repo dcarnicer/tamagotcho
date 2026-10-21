@@ -5,6 +5,9 @@ StickS3 and the Cardputer ADV (the T-Display-S3 is a LilyGO board, which
 M5Burner does not list). M5Burner writes one file at `0x0`, so each entry
 carries the board's **merged** image from the GitHub release. This page keeps
 what the publish form asks for, to update the entries with each release.
+One entry cannot serve both boards: a version carries one `.bin`, and the
+board is chosen when the firmware is compiled (a universal image is a roadmap
+idea).
 
 | field | StickS3 entry | Cardputer ADV entry |
 |---|---|---|
@@ -14,7 +17,7 @@ what the publish form asks for, to update the entries with each release.
 | Categories | Development & Learning, Productivity | the same |
 | Source (GitHub) | `https://github.com/dcarnicer/tamagotcho` | the same |
 | Firmware file | `tamagotcho-sticks3-merged.bin` | `tamagotcho-cardputer-adv-merged.bin` |
-| Cover | `docs/images/cover.png` (1280x720) | the same, or a Cardputer one |
+| Cover | `docs/images/cover.png` (1280x720) | `docs/images/cover-cardputer.png` |
 | Description | the text below | the text below, Cardputer controls |
 | Version notes | the first lines of `docs/releases/<tag>.md` | the same |
 

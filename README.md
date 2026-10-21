@@ -49,15 +49,17 @@ cards Japanese students carry around, which the M5Stack StickS3 resembles.
   <tr>
     <td align="center"><img src="docs/images/detail.png" width="160" alt="The mistake card: meanings, readings and the stroke order"><br><sub>Stroke order after a mistake</sub></td>
     <td align="center"><img src="docs/images/settings.png" width="160" alt="The settings home: the deck summary and five groups"><br><sub>Settings</sub></td>
-    <td align="center"><img src="docs/images/done.png" width="160" alt="All caught up: tomorrow's due cards, the streak and +10 new"><br><sub>Done for the day</sub></td>
+    <td align="center"><img src="docs/images/get-decks.png" width="160" alt="The deck catalog on the device, a deck just downloaded"><br><sub>Get decks over Wi-Fi</sub></td>
     <td align="center"><img src="docs/images/stats.png" width="160" alt="Statistics: streak, accuracy, time"><br><sub>Statistics</sub></td>
   </tr>
 </table>
 
 <p align="center">
   <img src="docs/images/quiz-landscape.png" width="320" alt="The quiz in landscape: the kanji on the left, the options on the right">
+  &nbsp;
+  <img src="docs/images/portal.png" width="200" alt="The Wi-Fi portal page on a phone: the deck catalog">
 </p>
-<p align="center"><sub>Landscape: the StickS3 turns the screen as you turn it</sub></p>
+<p align="center"><sub>Landscape (the StickS3 turns the screen as you turn it) · the Wi-Fi portal on a phone</sub></p>
 
 ## Features
 
@@ -90,7 +92,7 @@ cards Japanese students carry around, which the M5Stack StickS3 resembles.
 | | Board | Screen | Input | Firmware files |
 |---|---|---|---|---|
 | <img src="docs/images/board-sticks3.png" width="90" alt="StickS3 screen"> | [M5Stack StickS3](https://docs.m5stack.com/en/core/StickS3) | 1.14″, 135×240 | two buttons, auto-rotate | `tamagotcho-sticks3-*.bin` |
-| | [M5Stack Cardputer ADV](https://docs.m5stack.com/en/core/Cardputer-Adv) | 1.14″, 240×135 | keyboard | `tamagotcho-cardputer-adv-*.bin` |
+| <img src="docs/images/board-cardputer.png" width="120" alt="Cardputer ADV screen"> | [M5Stack Cardputer ADV](https://docs.m5stack.com/en/core/Cardputer-Adv) | 1.14″, 240×135 | keyboard | `tamagotcho-cardputer-adv-*.bin` |
 | <img src="docs/images/board-tdisplay.png" width="90" alt="T-Display-S3 screen"> | [LilyGO T-Display-S3](https://lilygo.cc/products/t-display-s3) | 1.9″, 170×320 | two buttons | `tamagotcho-tdisplay-s3-*.bin` |
 
 ## Install

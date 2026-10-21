@@ -6,11 +6,13 @@
 
     uv run tools/screenshots/readme_images.py SHOTS_DIR [-o docs/images]
 
-SHOTS_DIR holds the 1x shots (135x240 or 240x135 from a StickS3, 170x320 from
-a T-Display-S3) named as the README uses them: quiz-meaning.png, detail.png,
-... Each one is written 3x larger (nearest neighbour, so the pixels stay
+SHOTS_DIR holds the 1x shots (135x240 or 240x135 from a StickS3 or a
+Cardputer ADV, 170x320 from a T-Display-S3) named as the README uses them:
+quiz-meaning.png, detail.png, ...; portal.png is a phone-width screenshot of
+the portal page at 2x, used as it is. Each one is written 3x larger (nearest neighbour, so the pixels stay
 sharp) with rounded corners; `cover.png` (1280x720, also M5Burner's cover
-size) puts two of them beside the name. The cover's text uses Noto Sans JP
+size) puts two of them beside the name, and `cover-cardputer.png` does the
+same with two Cardputer ADV screens (its M5Burner entry). The cover's text uses Noto Sans JP
 from the pack builder's cache (`uv run tamagotcho-pack fetch` downloads it).
 """
 
@@ -30,9 +32,13 @@ RADIUS = 18  # corner radius of a scaled screen, px
 SHOTS = [
     "quiz-meaning", "quiz-reading", "quiz-kanji", "feedback", "detail",
     "settings", "get-decks", "stats", "done", "quiz-landscape",
-    "board-sticks3", "board-cardputer", "board-tdisplay",
+    "board-sticks3", "board-cardputer", "board-tdisplay", "portal",
 ]
+# Browser screenshots (already at 2x): rounded corners only.
+UNSCALED = {"portal"}
 COVER_SCREENS = ["quiz-meaning", "detail"]
+# The Cardputer ADV entry's cover: its landscape screens, one above the other.
+CARDPUTER_SCREENS = ["cardputer-meaning", "cardputer-kanji"]
 
 BG_TOP = (14, 17, 28)
 BG_BOTTOM = (28, 34, 56)
@@ -61,7 +67,7 @@ def font(name: str, size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(path), size)
 
 
-def cover(shots: Path) -> Image.Image:
+def cover(shots: Path, names: list[str] = COVER_SCREENS, board: str = "") -> Image.Image:
     w, h = 1280, 720
     img = Image.new("RGB", (w, h))
     px = img.load()
@@ -73,17 +79,21 @@ def cover(shots: Path) -> Image.Image:
     canvas = img.convert("RGBA")
     draw = ImageDraw.Draw(canvas)
 
-    # The screens at 2x in device bezels, the second one a little lower.
-    screen_w, screen_h, pad, gap = 270, 480, 14, 28
-    n = len(COVER_SCREENS)
-    x = w - 56 - n * (screen_w + 2 * pad) - (n - 1) * gap
-    for i, name in enumerate(COVER_SCREENS):
-        shot = Image.open(shots / f"{name}.png")
-        screen = rounded(scaled(shot, 2), 10)
-        y = 84 + 48 * (i % 2)
-        draw.rounded_rectangle((x, y, x + screen_w + 2 * pad, y + screen_h + 2 * pad), 34, fill=BEZEL)
+    # The screens at 2x in device bezels: portrait ones side by side, the
+    # second a little lower; landscape ones stacked, the second a little right.
+    pad, gap = 14, 28
+    shots_2x = [rounded(scaled(Image.open(shots / f"{n}.png"), 2), 10) for n in names]
+    sw, sh = shots_2x[0].size
+    n = len(shots_2x)
+    if sw < sh:
+        x0, y0, dx, dy = w - 56 - n * (sw + 2 * pad) - (n - 1) * gap, 84, sw + 2 * pad + gap, 48
+    else:
+        x0, y0, dx, dy = w - 56 - (sw + 2 * pad) - 40, 70, 40, sh + 2 * pad + gap
+    for i, screen in enumerate(shots_2x):
+        x = x0 + i * dx if sw < sh else x0 + (i % 2) * dx
+        y = y0 + (i % 2) * dy if sw < sh else y0 + i * dy
+        draw.rounded_rectangle((x, y, x + sw + 2 * pad, y + sh + 2 * pad), 34, fill=BEZEL)
         canvas.alpha_composite(screen, (x + pad, y + pad))
-        x += screen_w + 2 * pad + gap
 
     title = font("NotoSansJP-Medium.otf", 76)
     latin = font("NotoSansJP-Medium.otf", 46)
@@ -97,7 +107,8 @@ def cover(shots: Path) -> Image.Image:
     draw.text((tx, 404), "spaced repetition, offline.", font=body, fill=TEXT_DIM)
     draw.text((tx, 470), "JLPT N5–N1 · Jōyō", font=body, fill=TEXT_DIM)
     draw.text((tx, 506), "English · Español", font=body, fill=TEXT_DIM)
-    draw.text((tx, 616), "M5Stack StickS3 · Cardputer ADV · T-Display-S3", font=small, fill=TEXT_DIM)
+    draw.text((tx, 616), board or "M5Stack StickS3 · Cardputer ADV · T-Display-S3", font=small,
+              fill=TEXT_DIM)
     return canvas.convert("RGB")
 
 
@@ -112,11 +123,17 @@ def main() -> int:
         if not src.exists():
             print(f"skip {name} (no {src.name})")
             continue
-        rounded(scaled(Image.open(src), SCALE), RADIUS).save(args.out / f"{name}.png", optimize=True)
+        img = Image.open(src)
+        img = img.convert("RGB") if name in UNSCALED else scaled(img, SCALE)
+        rounded(img, RADIUS).save(args.out / f"{name}.png", optimize=True)
         print(f"wrote {name}.png")
     if all((args.shots / f"{n}.png").exists() for n in COVER_SCREENS):
         cover(args.shots).save(args.out / "cover.png", optimize=True)
         print("wrote cover.png")
+    if all((args.shots / f"{n}.png").exists() for n in CARDPUTER_SCREENS):
+        cover(args.shots, CARDPUTER_SCREENS, "for the M5Stack Cardputer ADV").save(
+            args.out / "cover-cardputer.png", optimize=True)
+        print("wrote cover-cardputer.png")
     return 0
 
 
