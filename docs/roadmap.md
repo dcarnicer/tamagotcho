@@ -301,8 +301,21 @@ Scope for now: **kanji only** (no vocabulary decks).
       grows by steps (docs/architecture.md, "Memory without PSRAM").
       Checked on a Cardputer ADV (2026-10-21): orientation, the key map, the
       Tab menu, G0, sleep and wake on a key, the battery icon; the arrows on
-      the 2x2 kanji grid move by row and column. Pending: the heap during a
-      Get decks download (Wi-Fi and TLS without PSRAM).
+      the 2x2 kanji grid move by row and column. Get decks downloads work
+      without PSRAM (2026-10-21): N1 (1.8 MB) and N2 (532 KB, 11.3 s, as on
+      the StickS3); about 107 KB of internal heap free after the TLS
+      handshake, 67 KB the largest block, 62 KB the lowest since boot (after
+      a portal session); a 1,232-kanji deck opens streamed in 10 KB.
+      - [ ] **Bug, intermittent (2 of 4 tries):** after a Get decks download
+        the deck reloaded by `portalPacksChanged()` reads nothing: its name
+        is "" (log `pack : 1232 cards`), the done screen says "All caught
+        up" for a deck never studied, and every read of its file fails
+        (`seek` false, `position()` -1: the `FILE*` is dead), also for a deck
+        chosen afterwards; a reboot fixes it. Seen only in streamed mode,
+        both times after a long-running session with the web portal used
+        before the download; not on fresh boots. Not yet understood: the
+        new handle reads fine during `open()`, and esp_littlefs gives each
+        open its own descriptor.
 
 - [~] **Power management** (2026-10-18). Done: dim after 30 s, deep sleep
       after 2 min on battery (front button wakes; panel-off only on USB), 5 min
