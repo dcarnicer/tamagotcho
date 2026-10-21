@@ -372,6 +372,24 @@ Scope for now: **kanji only** (no vocabulary decks).
       only reviewing them: for example, introducing a new kanji (meanings,
       readings, stroke order) before its first multiple-choice question.
       Scope to be defined.
+- [ ] **OTA firmware updates** (idea, 2026-10-21). Update the firmware over
+      the home Wi-Fi, from the device, instead of over USB: for example a
+      Settings › Device › Update row that reads the latest GitHub release
+      (as Get decks reads the decks catalog: HTTPS, size and SHA-256 checked),
+      says what is new and installs the board's app-only image, keeping
+      settings, decks and progress. To be decided first:
+      - The flash layout: today one 2 MB app slot and no OTA data partition
+        (`partitions/*.csv`), so nearly all flash is LittleFS. Two OTA slots
+        of about 1.6 MB (the app is 1.48 MB) would take some 1.2 MB from the
+        5.9 MB of decks on the 8 MB boards; the change itself needs one more
+        USB flash, and must keep the LittleFS data where it is or move it.
+      - Which image: the `m5stack` one on both M5 boards, the T-Display-S3's
+        own; a manifest in the release so the device does not guess file
+        names.
+      - Safety: battery and free heap checks before starting (TLS without
+        PSRAM on the Cardputer ADV), the bootloader's rollback if the new
+        image does not boot, never in the middle of a review.
+      - M5Launcher installs keep their own update path.
 - [x] **One image for the StickS3 and the Cardputer ADV** (2026-10-21).
       The `m5stack` env compiles both boards and picks one at boot (PSRAM or
       not), so one M5Burner entry lists both devices; checked on both, and as
