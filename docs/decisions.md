@@ -2885,4 +2885,16 @@ marked *to confirm* needs the device.
   asks `tgc::hasPsram()` (`platform/Psram.h`: a SPIRAM heap exists) for the
   pack memory mode, the glyph cache budget and the canvas.
 - **Cost.** Flash 1,476,457 B for `m5stack` against 1,470,685 B for `sticks3`
-  (+5.6 KB).
+  (+5.6 KB). On the Cardputer the PSRAM framework build leaves less internal
+  heap for TLS than `cardputer-adv` does: after the handshake of a Get decks
+  download 93 KB free and a 54 KB largest block (60 KB the lowest since boot),
+  against 107 KB and 67 KB. Enough; watch it if TLS or the canvas grow.
+- **Checked on hardware (2026-10-21).**
+  - StickS3, `m5stack-shots`: `board: StickS3 (M5 image)`, the PM1 button,
+    tables in memory (290 KB internal heap free), quiz, settings and the
+    Orientation row (Auto).
+  - Cardputer ADV, `m5stack-shots`: `board: Cardputer ADV (M5 image)`, the
+    keyboard, landscape, N1 opened streamed (210 KB free), a Get decks
+    download (N2 es, 533 KB in 13.5 s).
+  - Cardputer ADV, the merged `m5stack` image at `0x0` after an Erase Flash:
+    boots as a new device (storage formatted, the language question).
