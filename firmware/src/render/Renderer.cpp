@@ -62,7 +62,7 @@ void drawBitmap1bpp(lgfx::LovyanGFX& dst, int x, int y, const uint8_t* bits, int
     dst.endWrite();
 }
 
-bool Renderer::begin(const PackReader& pack) {
+bool Renderer::begin(const PackReader& pack, size_t cacheBudget) {
     end();
     pack_ = &pack;
     const PackHeader& h = pack.header();
@@ -72,10 +72,19 @@ bool Renderer::begin(const PackReader& pack) {
     // No set 3 in the pack -> set 3 uses set 2's metrics and glyphs.
     optLineH_ = h.optionLineHeight ? h.optionLineHeight : lineH_;
     optAscent_ = h.optionAscent ? h.optionAscent : ascent_;
-    size_t n = sizeof(uint8_t*) * (h.glyphCount ? h.glyphCount : 1);
-    cache_ = static_cast<uint8_t**>(pack.allocator().alloc(n));
-    if (!cache_) return false;
-    std::memset(cache_, 0, n);
+    if (cacheBudget > 0) {
+        const size_t n = sizeof(CacheSlot) * kCacheSlots;
+        slots_ = static_cast<CacheSlot*>(pack.allocator().alloc(n));
+        if (!slots_) return false;
+        for (int i = 0; i < kCacheSlots; ++i) slots_[i] = CacheSlot{};
+        budget_ = cacheBudget;
+    } else {
+        size_t n = sizeof(uint8_t*) * (h.glyphCount ? h.glyphCount : 1);
+        cache_ = static_cast<uint8_t**>(pack.allocator().alloc(n));
+        if (!cache_) return false;
+        std::memset(cache_, 0, n);
+    }
+    started_ = true;
     return true;
 }
 
@@ -87,8 +96,18 @@ void Renderer::end() {
                 if (cache_[i]) a.release(cache_[i]);
             a.release(cache_);
         }
+        if (slots_) {
+            for (int i = 0; i < kCacheSlots; ++i)
+                if (slots_[i].buf) a.release(slots_[i].buf);
+            a.release(slots_);
+        }
         if (scratch_) a.release(scratch_);
     }
+    started_ = false;
+    slots_ = nullptr;
+    budget_ = 0;
+    cached_ = 0;
+    tick_ = 0;
     cache_ = nullptr;
     scratch_ = nullptr;
     scratchCap_ = 0;
@@ -135,6 +154,50 @@ uint8_t* Renderer::scratchFor(size_t n) {
     return scratch_;
 }
 
+// The bounded cache: glyph `idx`'s bitmap from its slot, or read into the
+// least recently used one after evicting until `n` more bytes fit the budget.
+// The pointer is good until the next call (a drawing never holds two).
+const uint8_t* Renderer::boundedBitmap(const Glyph& g, uint32_t idx, size_t n) {
+    const Allocator& a = pack_->allocator();
+    CacheSlot* free = nullptr;
+    for (int i = 0; i < kCacheSlots; ++i) {
+        CacheSlot& s = slots_[i];
+        if (s.buf && s.glyph == idx) {
+            s.used = ++tick_;
+            return s.buf;
+        }
+        if (!s.buf && !free) free = &s;
+    }
+    if (n > budget_ || n > 0xFFFF) return nullptr;
+    // Room: the least recently drawn go until `n` more bytes fit and a slot is
+    // free.
+    while (cached_ + n > budget_ || !free) {
+        CacheSlot* old = nullptr;
+        for (int i = 0; i < kCacheSlots; ++i)
+            if (slots_[i].buf && (!old || slots_[i].used < old->used)) old = &slots_[i];
+        if (!old) break;
+        cached_ -= old->size;
+        a.release(old->buf);
+        *old = CacheSlot{};
+        if (!free) free = old;
+    }
+    if (!free) return nullptr;
+    uint8_t* buf = static_cast<uint8_t*>(a.alloc(n));
+    if (!buf) return nullptr;
+    const int64_t t0 = esp_timer_get_time();
+    if (!pack_->readGlyphBitmap(g, buf, n)) {
+        a.release(buf);
+        return nullptr;
+    }
+    lastFetchUs_ = static_cast<uint32_t>(esp_timer_get_time() - t0);
+    free->glyph = idx;
+    free->buf = buf;
+    free->size = static_cast<uint16_t>(n);
+    free->used = ++tick_;
+    cached_ += n;
+    return buf;
+}
+
 // Returns the decoded bitmap (cached for small glyph sets, scratch for set 0).
 const uint8_t* Renderer::bitmapFor(const Glyph& g) {
     lastFetchUs_ = 0;
@@ -142,7 +205,9 @@ const uint8_t* Renderer::bitmapFor(const Glyph& g) {
     if (n == 0) return nullptr;
     const Allocator& a = pack_->allocator();
     const uint32_t idx = pack_->glyphIndex(&g);
+    if (idx >= pack_->glyphCount()) return nullptr;  // not one of the pack's glyphs
     if (g.set != kGlyphSetLarge) {
+        if (slots_) return boundedBitmap(g, idx, n);
         if (cache_[idx]) return cache_[idx];
         uint8_t* buf = static_cast<uint8_t*>(a.alloc(n));
         const int64_t t0 = esp_timer_get_time();
@@ -173,8 +238,8 @@ const Glyph* Renderer::glyphFor(uint8_t set, uint32_t cp) const {
 }
 
 const Glyph* Renderer::uiFallback(uint32_t cp) const {
-    // Only with a pack the renderer could start on (cache_ exists).
-    return pack_ && cache_ ? pack_->findGlyph(kGlyphSetText, cp) : nullptr;
+    // Only with a pack the renderer could start on.
+    return pack_ && started_ ? pack_->findGlyph(kGlyphSetText, cp) : nullptr;
 }
 
 int Renderer::charAdvance(uint32_t cp, uint8_t set) const {

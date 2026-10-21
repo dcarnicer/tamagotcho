@@ -28,9 +28,14 @@ enum class Align : uint8_t { Left, Centre, Right };
 class Renderer {
 public:
     ~Renderer() { end(); }
-    // `pack` must outlive the renderer.
-    bool begin(const PackReader& pack);
+    // `pack` must outlive the renderer. `cacheBudget` 0: every decoded glyph
+    // of sets 1-3 is kept until end() (with PSRAM: a table of a pointer per
+    // glyph, and the bitmaps; a Joyo deck seen whole would hold 1.5 MB).
+    // Otherwise at most that many bytes of them, the least recently drawn
+    // going first, in at most kCacheSlots bitmaps (a board without PSRAM).
+    bool begin(const PackReader& pack, size_t cacheBudget = 0);
     void end();
+    static constexpr int kCacheSlots = 96;
 
     // Kanji (set 0 or 1) centred horizontally in the box, vertically centred
     // as an em square. Draws a '?' box if the glyph is missing.
@@ -118,7 +123,20 @@ private:
                       uint8_t set);
 
     const PackReader* pack_ = nullptr;
-    uint8_t** cache_ = nullptr;  // lazily filled, sets 1..3
+    bool started_ = false;       // begin() succeeded
+    uint8_t** cache_ = nullptr;  // lazily filled, sets 1..3 (no budget)
+    // The bounded cache (a budget): glyph index, bitmap, its bytes, last use.
+    struct CacheSlot {
+        uint32_t glyph = 0xFFFFFFFFu;
+        uint32_t used = 0;
+        uint16_t size = 0;
+        uint8_t* buf = nullptr;
+    };
+    CacheSlot* slots_ = nullptr;
+    size_t budget_ = 0;
+    size_t cached_ = 0;  // bytes in the slots
+    uint32_t tick_ = 0;
+    const uint8_t* boundedBitmap(const Glyph& g, uint32_t idx, size_t n);
     uint8_t* scratch_ = nullptr;
     size_t scratchCap_ = 0;
     // Glyph index whose decoded set-0 bitmap is in scratch_ (redraws of the
