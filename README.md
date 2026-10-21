@@ -91,19 +91,20 @@ cards Japanese students carry around, which the M5Stack StickS3 resembles.
 
 | | Board | Screen | Input | Firmware files |
 |---|---|---|---|---|
-| <img src="docs/images/board-sticks3.png" width="90" alt="StickS3 screen"> | [M5Stack StickS3](https://docs.m5stack.com/en/core/StickS3) | 1.14″, 135×240 | two buttons, auto-rotate | `tamagotcho-sticks3-*.bin` |
-| <img src="docs/images/board-cardputer.png" width="120" alt="Cardputer ADV screen"> | [M5Stack Cardputer ADV](https://docs.m5stack.com/en/core/Cardputer-Adv) | 1.14″, 240×135 | keyboard | `tamagotcho-cardputer-adv-*.bin` |
+| <img src="docs/images/board-sticks3.png" width="90" alt="StickS3 screen"> | [M5Stack StickS3](https://docs.m5stack.com/en/core/StickS3) | 1.14″, 135×240 | two buttons, auto-rotate | `tamagotcho-m5stack-*.bin` or `tamagotcho-sticks3-*.bin` |
+| <img src="docs/images/board-cardputer.png" width="120" alt="Cardputer ADV screen"> | [M5Stack Cardputer ADV](https://docs.m5stack.com/en/core/Cardputer-Adv) | 1.14″, 240×135 | keyboard | `tamagotcho-m5stack-*.bin` or `tamagotcho-cardputer-adv-*.bin` |
 | <img src="docs/images/board-tdisplay.png" width="90" alt="T-Display-S3 screen"> | [LilyGO T-Display-S3](https://lilygo.cc/products/t-display-s3) | 1.9″, 170×320 | two buttons | `tamagotcho-tdisplay-s3-*.bin` |
 
 ## Install
 
 Every [release](https://github.com/dcarnicer/tamagotcho/releases/latest) has,
 per board, a **merged** image (`*-merged.bin`, the whole flash from `0x0`) and
-an **app-only** image (`*.bin`, for updates).
+an **app-only** image (`*.bin`, for updates). The `m5stack` ones run on the
+StickS3 and the Cardputer ADV alike: the firmware finds the board at boot.
 
 **M5Burner** (StickS3 and Cardputer ADV). In [M5Burner](https://burner.m5stack.com/)
 (on the web in Chrome or Edge, or the desktop app), search for **Tamagotcho**,
-connect the device over USB and press **Burn**.
+connect the device over USB and press **Burn**. One entry serves both boards.
 
 **In a browser** (Chrome or Edge on a computer). Open Espressif's
 [web flasher](https://espressif.github.io/esptool-js/), press **Connect** and

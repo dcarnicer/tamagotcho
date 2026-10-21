@@ -1,25 +1,24 @@
 # M5Burner listing
 
-Tamagotcho is listed on [M5Burner](https://burner.m5stack.com/) for the
-StickS3 and the Cardputer ADV (the T-Display-S3 is a LilyGO board, which
-M5Burner does not list). M5Burner writes one file at `0x0`, so each entry
-carries the board's **merged** image from the GitHub release. This page keeps
-what the publish form asks for, to update the entries with each release.
-One entry cannot serve both boards: a version carries one `.bin`, and the
-board is chosen when the firmware is compiled (a universal image is a roadmap
-idea).
+Tamagotcho is listed on [M5Burner](https://burner.m5stack.com/) once, for
+the StickS3 and the Cardputer ADV (the T-Display-S3 is a LilyGO board, which
+M5Burner does not list). A version carries one `.bin`, written at `0x0`, so
+the entry takes the **merged `m5stack` image** of the GitHub release, the one
+build that runs on both boards (the board is found at boot; docs/decisions.md,
+"One image for the StickS3 and the Cardputer ADV"). This page keeps what the
+publish form asks for, to add a version with each release.
 
-| field | StickS3 entry | Cardputer ADV entry |
-|---|---|---|
-| Name | `Tamagotcho` | `Tamagotcho` |
-| Version | the release tag, e.g. `v0.3.0` | the same |
-| Device | StickS3 | Cardputer ADV |
-| Categories | Development & Learning, Productivity | the same |
-| Source (GitHub) | `https://github.com/dcarnicer/tamagotcho` | the same |
-| Firmware file | `tamagotcho-sticks3-merged.bin` | `tamagotcho-cardputer-adv-merged.bin` |
-| Cover | `docs/images/cover.png` (1280x720) | `docs/images/cover-cardputer.png` |
-| Description | the text below | the text below, Cardputer controls |
-| Version notes | the first lines of `docs/releases/<tag>.md` | the same |
+| field | value |
+|---|---|
+| Name | `Tamagotcho` |
+| Version | the release tag, e.g. `v0.4.0` |
+| Devices | StickS3, Cardputer ADV |
+| Categories | Development & Learning, Productivity |
+| Project link | `https://github.com/dcarnicer/tamagotcho` |
+| Firmware package | `tamagotcho-m5stack-merged.bin` |
+| Cover | `docs/images/cover.png` (1280x720); `cover-cardputer.png` is the Cardputer's |
+| Description | the text below (shared by all versions) |
+| Version description | the first lines of `docs/releases/<tag>.md` |
 
 ## Description
 
@@ -53,11 +52,12 @@ card shows its meanings, readings and stroke order.
    open the page, enter your home Wi-Fi and press **Switch to my Wi-Fi**.
 3. Scan the new QR code and download a deck, e.g. JLPT N5.
 
-**Controls (StickS3)**: tap the front button to move, **hold it to answer**;
-hold the side button for the settings, tap it to go back.
+**Controls**
 
-**Controls (Cardputer ADV)**: `;` `.` `,` `/` (the arrows) move, **Enter
-answers**, Tab opens the settings, Esc goes back.
+- StickS3: tap the front button to move, **hold it to answer**; hold the
+  side button for the settings, tap it to go back.
+- Cardputer ADV: `;` `.` `,` `/` (the arrows) move, **Enter answers**, Tab
+  opens the settings, Esc goes back.
 
 Burning erases the settings (home Wi-Fi, preferences). Code MIT; decks CC
 BY-SA (KANJIDIC2, KanjiVG). Source, manual and other boards:

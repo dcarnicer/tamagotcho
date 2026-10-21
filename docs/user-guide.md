@@ -174,10 +174,11 @@ pio run -e sticks3 -t uploadfs    # LittleFS image built from data/
 
 ### Flash a merged image (esptool or a browser)
 
-A release's `tamagotcho-sticks3-merged.bin` (and the `tdisplay-s3` and
-`cardputer-adv` ones) is one
-file flashed at offset 0, so it needs no offset list (releases up to v0.2.1
-name their files `tangocho-…`):
+A release's `tamagotcho-sticks3-merged.bin` (and the `tdisplay-s3`,
+`cardputer-adv` and, from v0.4.0, `m5stack` ones; `m5stack` runs on the
+StickS3 and the Cardputer ADV alike and is the one on M5Burner) is one file
+flashed at offset 0, so it needs no offset list (releases up to v0.2.1 name
+their files `tangocho-…`):
 
 ```sh
 esptool --chip esp32s3 write_flash 0x0 tamagotcho-sticks3-merged.bin

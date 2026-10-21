@@ -244,8 +244,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       to `docs/user-guide.md`. The v0.3.0 merged images of the StickS3 and
       the T-Display-S3 booted as new devices on real hardware (2026-10-21).
       The Cardputer ADV's v0.3.0 merged image booted on hardware the same
-      day. Pending: publishing on **M5Burner**, one entry per board
-      (docs/m5burner.md).
+      day. Pending: publishing on **M5Burner**, one entry for both M5 boards
+      with the `m5stack` image (docs/m5burner.md).
       - [x] `release.yml` puts `docs/releases/<tag>.md` in the notes as the
         "What's new" (from v0.3.0; before, it was added by hand).
       - [x] CI: also build `sticks3-shots` and `cardputer-adv-shots` (the
@@ -369,11 +369,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       only reviewing them: for example, introducing a new kanji (meanings,
       readings, stroke order) before its first multiple-choice question.
       Scope to be defined.
-- [ ] **One image for the StickS3 and the Cardputer ADV** (idea, 2026-10-21).
-      Both are 8 MB ESP32-S3 boards that M5Unified tells apart at boot, so a
-      single build could pick the display, the input and the memory model
-      (PSRAM or streamed packs) at run time instead of at compile time. Then
-      one M5Burner entry could list both devices.
+- [x] **One image for the StickS3 and the Cardputer ADV** (2026-10-21).
+      The `m5stack` env compiles both boards and picks one at boot (PSRAM or
+      not), so one M5Burner entry lists both devices; checked on both, and as
+      a merged image on a blank Cardputer (docs/decisions.md, "One image for
+      the StickS3 and the Cardputer ADV"). The single-board envs stay.
 - [ ] **Decks on the Cardputer ADV's microSD card** (idea, 2026-10-21). The
       Cardputer has a microSD slot (CS G12, MOSI G14, CLK G40, MISO G39):
       decks copied there from a computer, beside or instead of the 5.9 MB
