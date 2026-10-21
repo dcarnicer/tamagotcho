@@ -313,23 +313,28 @@ void HomeWifi::radioOff() {
 
 bool HomeWifi::fetchUtcMs(int64_t* outUtcMs, uint32_t timeoutMs) {
     if (!outUtcMs || state_ != State::Connected) return false;
-    sntp_set_sync_status(SNTP_SYNC_STATUS_RESET);
-    // UTC only: the time zone is the caller's business.
-    configTime(0, 0, "pool.ntp.org", "time.google.com", "time.cloudflare.com");
-    const uint32_t start = millis();
+    // Two tries: once, a request sent right after a join got no answer
+    // (2026-10-19), and a fresh start of SNTP sends new ones.
     bool synced = false;
-    while (millis() - start < timeoutMs) {
-        if (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
-            synced = true;
-            break;
+    for (int attempt = 0; attempt < 2 && !synced; ++attempt) {
+        sntp_set_sync_status(SNTP_SYNC_STATUS_RESET);
+        // UTC only: the time zone is the caller's business.
+        configTime(0, 0, "pool.ntp.org", "time.google.com", "time.cloudflare.com");
+        const uint32_t start = millis();
+        while (millis() - start < timeoutMs) {
+            if (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+                synced = true;
+                break;
+            }
+            delay(50);
         }
-        delay(50);
+        if (sntp_enabled()) sntp_stop();  // one answer is all we need
+        if (!synced) {
+            Serial.printf("[net] NTP: no answer in %u ms%s\n", (unsigned)timeoutMs,
+                          attempt == 0 ? ", asking once more" : "");
+        }
     }
-    if (sntp_enabled()) sntp_stop();  // one answer is all we need
-    if (!synced) {
-        Serial.printf("[net] NTP: no answer in %u ms\n", (unsigned)timeoutMs);
-        return false;
-    }
+    if (!synced) return false;
     struct timeval tv;
     gettimeofday(&tv, nullptr);
     const int64_t ms = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;

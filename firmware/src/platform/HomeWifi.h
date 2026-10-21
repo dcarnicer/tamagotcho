@@ -84,7 +84,8 @@ public:
     int rssi() const;
 
     // NTP (roadmap phase 2, "real date from NTP"). Blocking: needs Connected,
-    // runs SNTP for at most `timeoutMs` and stops it again. On success stores the
+    // runs SNTP for at most `timeoutMs`, a second time if nothing answered, and
+    // stops it again. On success stores the
     // UTC time in milliseconds since 1970 and returns true. The app turns it into
     // a study day with the saved UTC offset (applyWallClock in main.cpp).
     bool fetchUtcMs(int64_t* outUtcMs, uint32_t timeoutMs);

@@ -59,6 +59,12 @@ jobs:
       - name: Build Cardputer ADV
         run: pio run -e cardputer-adv
 
+      # The serial remote (TGC_REMOTE, tools/screenshots) is compiled only into
+      # the -shots envs; build one with buttons and one with the keyboard so
+      # its code keeps compiling. Never released.
+      - name: Build StickS3 and Cardputer ADV with the serial remote
+        run: pio run -e sticks3-shots -e cardputer-adv-shots
+
   pack-builder:
     name: Pack builder (uv run pytest)
     runs-on: ubuntu-latest
