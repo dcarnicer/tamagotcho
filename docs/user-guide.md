@@ -337,3 +337,14 @@ workflow passes the tag), else `git describe --tags --always --dirty --match
 "v[0-9]*"` (e.g. `v0.1.0-3-gabc1234-dirty`, or just the commit id when no `v*`
 tag is reachable, as in CI's shallow checkout), else `dev`. To label a local
 build by hand: `TGC_VERSION=v0.1.0-rc1 pio run -e sticks3`.
+
+**Making a release** (the maintainer):
+
+1. Write `docs/releases/vX.Y.Z.md`, the "What's new" the workflow puts in the
+   notes.
+2. Merge into `main`, push, then tag `vX.Y.Z` and push the tag; `release.yml`
+   builds and publishes the images.
+3. **Publish it on M5Burner**: add version `vX.Y.Z` to the Tamagotcho entry
+   with the release's `tamagotcho-m5stack-merged.bin` (StickS3 and Cardputer
+   ADV), as [docs/m5burner.md](m5burner.md) describes. M5Burner does not
+   follow GitHub: without this step it keeps offering the previous version.
