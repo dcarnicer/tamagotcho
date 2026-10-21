@@ -128,7 +128,7 @@ on the confirmation deletes.
   then **Reconnect**.
 - Elsewhere: **Settings → Wi-Fi → Setup mode**, join `Tamagotcho-XXXX`, save the
   new network on the page and press **Switch to my Wi-Fi**.
-- **Settings → Wi-Fi → Forget network** asks first (Cancel is selected; tap to
+- **Settings → Wi-Fi → Forget Wi-Fi** asks first (Cancel is selected; tap to
   Forget, then hold).
 
 ### Notes and limits
