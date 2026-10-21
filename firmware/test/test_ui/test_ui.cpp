@@ -326,7 +326,7 @@ void test_ui_font_app_name() {
     TEST_ASSERT_TRUE(uiCanDraw(kana, name));
     TEST_ASSERT_TRUE(uiCanDraw(label, name));
     // Other titles stay in Font0 captions.
-    for (const char* t : {"SETTINGS", "AJUSTES", "JLPT N5", "TANGOCHO", " "})
+    for (const char* t : {"SETTINGS", "AJUSTES", "JLPT N5", "TAMAGOTCHO", " "})
         TEST_ASSERT_FALSE_MESSAGE(uiCanDraw(kana, t), t);
     TEST_ASSERT_EQUAL(kana.capHeight, -uiGlyph(kana, 0x305F)->yOff);  // た
 
