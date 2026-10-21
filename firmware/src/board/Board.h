@@ -1,18 +1,19 @@
 #pragma once
 // Board HAL: one implementation per target, selected by build flag
-// (TGC_BOARD_STICKS3 / TGC_BOARD_TDISPLAY_S3 / TGC_BOARD_CARDPUTER_ADV). UI
-// code is written against the LovyanGFX API only, so it is identical on every
-// board.
+// (TGC_BOARD_STICKS3 / TGC_BOARD_TDISPLAY_S3 / TGC_BOARD_CARDPUTER_ADV), or
+// TGC_BOARD_M5: the StickS3 and the Cardputer ADV in one image, the board
+// chosen at boot (board/BoardM5.cpp). UI code is written against the
+// LovyanGFX API only, so it is identical on every board.
 #include <cstdint>
 
 #include "ui/KeyInput.h"
 
-#if defined(TGC_BOARD_STICKS3) || defined(TGC_BOARD_CARDPUTER_ADV)
+#if defined(TGC_BOARD_STICKS3) || defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5)
 #include <M5GFX.h>
 #elif defined(TGC_BOARD_TDISPLAY_S3)
 #include <LovyanGFX.hpp>
 #else
-#error "Define TGC_BOARD_STICKS3, TGC_BOARD_TDISPLAY_S3 or TGC_BOARD_CARDPUTER_ADV"
+#error "Define TGC_BOARD_STICKS3, TGC_BOARD_TDISPLAY_S3, TGC_BOARD_CARDPUTER_ADV or TGC_BOARD_M5"
 #endif
 
 namespace tgc {
@@ -33,7 +34,7 @@ enum class Button : uint8_t {
 // nextKeyEvent(): the next key event update() read, oldest first; false when
 // there is none (always on a board without a keyboard). Key::None going up
 // means every key is up (events were lost).
-#if defined(TGC_BOARD_CARDPUTER_ADV)
+#if defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5)
 bool fixedLandscape();
 bool hasKeyboard();
 bool nextKeyEvent(KeyEvent* out);
@@ -118,6 +119,9 @@ bool powerButtonClicked();
 
 // Hardware random seed.
 uint32_t randomSeed();
+
+// The board this image runs on, for the log and About ("StickS3", ...).
+const char* name();
 
 }  // namespace board
 }  // namespace tgc

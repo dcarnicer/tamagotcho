@@ -2,8 +2,8 @@
 
 PlatformIO project for the M5Stack StickS3 (primary), the LilyGO
 T-Display-S3 (dev stand-in) and the M5Stack Cardputer ADV (keyboard,
-landscape only, no PSRAM; built and native-tested, **not run on hardware
-yet**). Phase 2: open the saved pack in `/packs` and run a
+landscape only, no PSRAM), all three run on hardware. The `m5stack` env builds
+one image for the StickS3 and the Cardputer ADV, the board found at boot. Phase 2: open the saved pack in `/packs` and run a
 multiple-choice quiz (kanji -> meaning / reading / meaning -> kanji) scheduled
 from persisted FSRS review state (`/state/srs.bin`).
 
@@ -15,6 +15,7 @@ pio test -e native            # unit tests for pack/, quiz/, srs/, imu/, catalog
 pio run -e sticks3            # build for StickS3
 pio run -e tdisplay-s3        # build for T-Display-S3
 pio run -e cardputer-adv      # build for Cardputer ADV
+pio run -e m5stack            # one image for the StickS3 and the Cardputer ADV
 ```
 
 Each build prints `Tamagotcho version: ...`: `scripts/version.py` takes
@@ -45,6 +46,13 @@ serial remote, which also types its keys); it uses the StickS3's 8 MB
 partitions, so `uploadfs` works the same. The ESP32-S3's USB Serial/JTAG
 flashes it while the app runs; if it does not answer (asleep, or hung), hold
 G0 while switching it on to start the ROM's download mode.
+
+`-e m5stack` (`-e m5stack-shots` with the serial remote) runs on both M5
+boards: `board/BoardM5.cpp` picks the StickS3 when the chip has PSRAM and the
+Cardputer ADV when it has none, and logs `board: <name> (M5 image)`. It is
+the octal-PSRAM build; on the Cardputer the PSRAM init fails at boot, which
+the log shows and which is harmless (docs/decisions.md, 2026-10-21). This is
+the image M5Burner carries.
 
 ### Prebuilt images from a release
 

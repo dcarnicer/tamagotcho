@@ -940,7 +940,7 @@ void createCanvas() {
     }
     gCanvas = new lgfx::LGFX_Sprite(&disp);
     gCanvas->setColorDepth(16);
-    gCanvas->setPsram(psramFound());
+    gCanvas->setPsram(tgc::hasPsram());
     if (!gCanvas->createSprite(W, H)) {
         gCanvas->setPsram(false);  // fall back to internal RAM
         gCanvas->createSprite(W, H);

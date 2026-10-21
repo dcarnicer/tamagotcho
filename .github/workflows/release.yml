@@ -85,6 +85,11 @@ jobs:
             name: Cardputer ADV
             partitions: sticks3_8MB.csv
             flash_size: 8MB
+          # The StickS3 and the Cardputer ADV in one image (M5Burner).
+          - env: m5stack
+            name: M5 (StickS3 + Cardputer ADV)
+            partitions: sticks3_8MB.csv
+            flash_size: 8MB
     defaults:
       run:
         working-directory: firmware
@@ -226,6 +231,7 @@ jobs:
           |---|---|
           | \`tamagotcho-sticks3.bin\` | app-only image (M5Launcher, \`pio run -t upload\`) |
           | \`tamagotcho-tdisplay-s3.bin\`, \`tamagotcho-cardputer-adv.bin\` | app-only images (T-Display-S3, Cardputer ADV) |
+          | \`tamagotcho-m5stack.bin\` | app-only image for the StickS3 **and** the Cardputer ADV (the board is found at boot; the one on M5Burner) |
           | \`tamagotcho-<board>-merged.bin\` | single images for a first install (offset 0x0), one per board |
           | \`tamagotcho-*-manifest.json\` | ESP Web Tools manifests (for an install page) |
 
@@ -242,7 +248,8 @@ jobs:
             Cardputer ADV's), then put a deck on the device over Wi-Fi (a device
             with no deck boots into the Wi-Fi upload screen).
           - The other boards' files take the same commands with
-            \`tdisplay-s3\` or \`cardputer-adv\` in place of \`sticks3\`.
+            \`tdisplay-s3\` or \`cardputer-adv\` in place of \`sticks3\`; the
+            \`m5stack\` files run on the StickS3 and the Cardputer ADV alike.
 
           ## Decks
 
