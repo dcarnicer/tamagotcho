@@ -381,6 +381,11 @@ Record& SrsStore::getOrCreate(uint32_t codepoint) {
     Record r{};
     r.codepoint = codepoint;
     r.lastGrade = 0xFF;
+    // Grow by a step, not by doubling: without PSRAM the table is in the
+    // internal heap, where a doubled big table (next to the old one while it
+    // is copied) may find no room.
+    if (records_.size() == records_.capacity())
+        records_.reserve(std::min(records_.size() + kRecordGrowth, kMaxRecords));
     return *records_.insert(records_.begin() + static_cast<std::ptrdiff_t>(lo), r);
 }
 
