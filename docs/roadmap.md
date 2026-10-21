@@ -309,16 +309,14 @@ Scope for now: **kanji only** (no vocabulary decks).
       the StickS3); about 107 KB of internal heap free after the TLS
       handshake, 67 KB the largest block, 62 KB the lowest since boot (after
       a portal session); a 1,232-kanji deck opens streamed in 10 KB.
-      - [ ] **Bug, intermittent (2 of 4 tries):** after a Get decks download
-        the deck reloaded by `portalPacksChanged()` reads nothing: its name
-        is "" (log `pack : 1232 cards`), the done screen says "All caught
-        up" for a deck never studied, and every read of its file fails
-        (`seek` false, `position()` -1: the `FILE*` is dead), also for a deck
-        chosen afterwards; a reboot fixes it. Seen only in streamed mode,
-        both times after a long-running session with the web portal used
-        before the download; not on fresh boots. Not yet understood: the
-        new handle reads fine during `open()`, and esp_littlefs gives each
-        open its own descriptor.
+      - [x] **Bug: a deck unreadable after the second download of a boot**
+        (2026-10-21, found on the Cardputer ADV, on every board): its name
+        read "" and its reads failed (EBADF) until a reboot. Cause: the
+        core's `WiFiClientSecure` called `close(0)` at the end of every TLS
+        request, first closing stdin and then whatever file had taken
+        descriptor 0, which after a download is the reloaded deck. Fixed in
+        `platform/NetFetch.cpp` (`TlsClient`); docs/decisions.md has the
+        hunt.
 
 - [~] **Power management** (2026-10-18). Done: dim after 30 s, deep sleep
       after 2 min on battery (front button wakes; panel-off only on USB), 5 min

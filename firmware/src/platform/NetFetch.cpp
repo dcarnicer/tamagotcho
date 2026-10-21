@@ -49,6 +49,30 @@ private:
     mbedtls_sha256_context ctx_;
 };
 
+// WiFiClientSecure as in this core (Arduino-ESP32 2.0.17), minus a close(0).
+// stop_ssl_socket() ends by zeroing the whole context, socket number included,
+// so the socket reads 0, not -1, after a stop. Every request stops its client
+// more than once (HTTPClient::end(), then ~HTTPClient(), then the client's own
+// destructor), and the second stop() saw socket 0 >= 0 and called close(0):
+// the first time that closed stdin, from then on whatever file had taken
+// descriptor 0 -- after a download, the reloaded deck, so the next request
+// left it unreadable (docs/decisions.md, 2026-10-21). An lwIP socket is never
+// 0 here (sockets start at LWIP_SOCKET_OFFSET, 48), so 0 means "none".
+class TlsClient : public WiFiClientSecure {
+public:
+    ~TlsClient() override { forgetZeroSocket(); }
+    void stop() override {
+        forgetZeroSocket();
+        WiFiClientSecure::stop();
+        forgetZeroSocket();
+    }
+
+private:
+    void forgetZeroSocket() {
+        if (sslclient && sslclient->socket == 0) sslclient->socket = -1;
+    }
+};
+
 // One request's transport: a plain client, or a TLS client that verifies the
 // server against kRootCaPem. Declare it before the HTTPClient that uses it, so
 // the HTTPClient is destroyed (and stops the client) first.
@@ -56,7 +80,7 @@ class Transport {
 public:
     WiFiClient* open(bool https) {
         if (https) {
-            tls_.reset(new (std::nothrow) WiFiClientSecure);
+            tls_.reset(new (std::nothrow) TlsClient);
             if (!tls_) return nullptr;
             tls_->setCACert(kRootCaPem);
             tls_->setHandshakeTimeout(kTlsHandshakeTimeoutS);
@@ -76,7 +100,7 @@ public:
     }
 
 private:
-    std::unique_ptr<WiFiClientSecure> tls_;
+    std::unique_ptr<TlsClient> tls_;
     std::unique_ptr<WiFiClient> plain_;
 };
 
