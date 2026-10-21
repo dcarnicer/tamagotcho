@@ -105,18 +105,19 @@ Scope for now: **kanji only** (no vocabulary decks).
       and the detail card right for such cards (checked on the StickS3,
       2026-10-20). The N5 list was reviewed by the maintainer; the reading
       order's credits are on About and the portal footer.
-      - [ ] Rebuild the published decks with it: `decks.yml` is prepared, not
-        run yet (it replaces `decks-v2` in place; v0.2.1 reads the new packs).
+      - [x] Rebuild the published decks with it: `decks.yml` replaced
+        `decks-v2` in place on 2026-10-20, and again on 2026-10-21 (hiragana
+        glyphs, the new repository name in the catalog's URLs).
       - [ ] Follow-up: let a few common readings the Jōyō table does not
         approve be asked (等 など, 経 た.つ, 被 かぶ.る), e.g. for learners outside
         the school curriculum.
-      - [~] **Meanings in a useful order** (2026-10-20). KANJIDIC2's Spanish
+      - [x] **Meanings in a useful order** (2026-10-20). KANJIDIC2's Spanish
         meanings are often ordered worse than its English ones, and the device
         shows the first ones: 持 "duración; propiedad" (en "hold; have"), 界
         "borde; frontera" (en "world; boundary"), 題 "objeto; tema" (en
         "topic; subject"); and its English order has quirks of its own (機
-        "loom", 私 "private", 原 "meadow"). Implemented on
-        `feature/es-meanings` (docs/meaning-order.md): `build --meaning-order`
+        "loom", 私 "private", 原 "meadow"). Done (docs/meaning-order.md):
+        `build --meaning-order`
         orders the English meanings by the JLPT vocabulary words that use the
         kanji (their JMdict glosses), the Spanish ones by the English ones they
         translate (FreeDict's English-Spanish dictionary, CC BY-SA 3.0), then
@@ -124,7 +125,7 @@ Scope for now: **kanji only** (no vocabulary decks).
         Spanish first meanings change (N5: 14 and 14), English decks included,
         and in every language meaning distractors also avoid the meanings a
         pack leaves out. The maintainer reviewed the N5-N3 doubtful cases
-        (2026-10-20). Pending: merge, then a decks run (`decks.yml` is prepared).
+        (2026-10-20). On `main` and in the published decks since 2026-10-20.
       - [ ] Follow-up: French and Portuguese meanings in the English order too
         (about as many changes as Spanish), once a pinned English-French /
         English-Portuguese dictionary under a compatible licence exists.
@@ -286,17 +287,18 @@ Scope for now: **kanji only** (no vocabulary decks).
       in a left column and the options on the right, and shrinks the list rows to
       fit the shorter screen.
 
-- [~] **Third board: M5Stack Cardputer ADV** (2026-10-21, branch
-      `feature/cardputer-adv`). Envs `cardputer-adv` and `cardputer-adv-shots`:
+- [~] **Third board: M5Stack Cardputer ADV** (2026-10-21, released in
+      v0.3.0). Envs `cardputer-adv` and `cardputer-adv-shots`:
       landscape only (no Orientation row, no Auto), the keyboard drives every
       screen (arrows, Enter, Esc/del, Tab as the menu key; arrows repeat on
       lists) and the hint bar names keys; G0 is the front button; deep sleep
       wakes on G0 or any key. No PSRAM: packs open streamed (a few KB instead
       of up to 237 KB), the glyph cache has a 16 KB budget, the SRS table
       grows by steps (docs/architecture.md, "Memory without PSRAM").
-      **Built and native-tested only, not run on hardware yet**: rotation, key
-      map, battery, sleep and wake, and the heap with Wi-Fi and TLS need a real
-      device (the hardware checklist is in the decisions entry).
+      Checked on a Cardputer ADV (2026-10-21): orientation, the key map, the
+      Tab menu, G0, sleep and wake on a key, the battery icon; the arrows on
+      the 2x2 kanji grid move by row and column. Pending: the heap during a
+      Get decks download (Wi-Fi and TLS without PSRAM).
 
 - [~] **Power management** (2026-10-18). Done: dim after 30 s, deep sleep
       after 2 min on battery (front button wakes; panel-off only on USB), 5 min
