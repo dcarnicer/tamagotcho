@@ -345,6 +345,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       only reviewing them: for example, introducing a new kanji (meanings,
       readings, stroke order) before its first multiple-choice question.
       Scope to be defined.
+- [ ] **Decks on the Cardputer ADV's microSD card** (idea, 2026-10-21). The
+      Cardputer has a microSD slot (CS G12, MOSI G14, CLK G40, MISO G39):
+      decks copied there from a computer, beside or instead of the 5.9 MB
+      LittleFS; maybe the SRS state too. Kept out of the first port on
+      purpose (simple first); the streamed pack tables already read on demand.
 
 ## Before publishing
 
