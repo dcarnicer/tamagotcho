@@ -2907,3 +2907,40 @@ marked *to confirm* needs the device.
   cut words in portrait) and the new README. `release.yml` builds four
   boards now; the `m5stack` merged image is the one published on M5Burner, as
   one entry listing both devices (docs/m5burner.md).
+
+## 2026-10-21 – A deck unreadable after the second download: WiFiClientSecure's close(0)
+
+- **Symptom.** On the Cardputer ADV, after a Get decks download the loaded
+  deck sometimes read nothing until a reboot: its name was "" (log
+  `pack : 1232 cards`), the done screen said "All caught up" for a deck never
+  studied, and every read of its file failed. First seen 2 times in 4, "after
+  a portal session".
+- **Reproduced** on the StickS3 with packs forced streamed: always on the
+  **second** download of a boot. A health check every second and errno on the
+  failed read showed `EBADF` (errno 9): the `FILE*` was fine, its descriptor
+  closed. The new reader died in `loadPack()`'s swap, when the old reader's
+  file closed, so both had the same descriptor number.
+- **Found** by linking a debug build with `-Wl,--wrap=_open_r
+  -Wl,--wrap=_close_r` (in this IDF, newlib reaches the VFS through those
+  aliases, so wrapping `esp_vfs_open` does nothing) and logging every LittleFS
+  descriptor with the call stack of each close. A deck file had descriptor
+  **0**, and a `close(0)` came from `WiFiClientSecure::stop()` called by
+  `HTTPClient::~HTTPClient()` at the end of `fetchPackFile()`.
+- **Cause (Arduino-ESP32 2.0.17).** `stop_ssl_socket()` ends with
+  `memset(ssl_client, 0, ...)`, so after a stop the socket number reads 0,
+  not -1. Each request stops its client more than once (`HTTPClient::end()`,
+  then the destructor, then the client's own), and the next `stop()` sees
+  `socket >= 0` and calls `close(0)`. The first TLS request of a boot closes
+  stdin; the lowest free descriptor is then 0, so the next file opened takes
+  it, and after a download that is the reloaded deck; the next TLS request
+  (another download, the portal's catalog) closes it. Every board was
+  affected, the StickS3 too (its glyphs are read from the open file).
+- **Fix.** `platform/NetFetch.cpp` uses `TlsClient`, a `WiFiClientSecure`
+  whose `stop()` and destructor turn socket 0 into -1 before and after the
+  base `stop()`. An lwIP socket is never 0 here (sockets take descriptors
+  from `LWIP_SOCKET_OFFSET` = 64 - 16 = 48), so 0 can only mean the zeroed
+  context. No core patch: the pinned platform stays as it is.
+- **Checked** on the StickS3 (streamed, debug build): four TLS requests in a
+  boot (the portal's catalog, three downloads through the portal's `/deck`),
+  no `close(0)`, no file on descriptor 0 any more, the deck readable
+  throughout. The debug build lives on the branch `debug/dead-pack-file`.
