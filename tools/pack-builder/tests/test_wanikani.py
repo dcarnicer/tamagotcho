@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from tangocho_pack import cli, wanikani
-from tangocho_pack.kanjidic import MAX_MEANINGS
+from tamagotcho_pack import cli, wanikani
+from tamagotcho_pack.kanjidic import MAX_MEANINGS
 
 DATA = Path(__file__).parent / "data" / "wanikani"
 TOKEN = "test-token-not-real"
@@ -220,7 +220,7 @@ def test_cli_missing_font_is_a_clear_error(monkeypatch, capsys, tmp_path):
     rc = cli.main(["build", "--font", str(missing), "-o", str(tmp_path / "out.tgc")])
     assert rc == 2
     err = capsys.readouterr().err
-    assert "NoSuchFont.otf not found" in err and "tangocho-pack fetch" in err
+    assert "NoSuchFont.otf not found" in err and "tamagotcho-pack fetch" in err
     assert "env-secret" not in err
 
 

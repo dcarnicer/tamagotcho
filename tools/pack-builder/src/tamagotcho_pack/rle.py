@@ -14,7 +14,7 @@ row-major pixel sequence that runs on from the end of a row into the next.
 
 The encoders are greedy (one pass, no tables) and the decoders are the
 reference for the firmware's ``pack/Rle.cpp``; both sides are cross-checked
-with ``fixtures/rle_vectors.bin`` (``tangocho-pack fixture``).
+with ``fixtures/rle_vectors.bin`` (``tamagotcho-pack fixture``).
 """
 
 from __future__ import annotations

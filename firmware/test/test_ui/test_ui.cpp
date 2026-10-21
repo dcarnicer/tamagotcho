@@ -5,6 +5,7 @@
 
 #include <initializer_list>
 
+#include "Credits.h"
 #include "ui/Icons.h"
 #include "ui/InputPrefs.h"
 #include "ui/ListView.h"
@@ -306,6 +307,50 @@ void test_ui_font_numeral() {
     TEST_ASSERT_TRUE(f.capHeight > uifont::kLabel.capHeight);
 }
 
+// The app's name, たまごっちょ (Credits.h): the Label face draws it as the About
+// title and the Kana face in the 16 px header (render/Widgets drawHeader picks
+// the Kana face for a title it can draw entirely). Every kana is in both faces,
+// the ink stays inside the header above its 2 px progress bar / hairline and
+// inside a 20 px label line, and the name fits the narrowest header (the
+// StickS3 in portrait, 135 px) beside the Wi-Fi icon and the battery, so it is
+// never cut.
+void test_ui_font_app_name() {
+    const char* name = credits::kAppName;
+    TEST_ASSERT_EQUAL_STRING("\xE3\x81\x9F\xE3\x81\xBE\xE3\x81\x94\xE3\x81\xA3\xE3\x81\xA1\xE3\x82\x87",
+                             name);  // たまごっちょ
+    const UiFace& kana = uifont::kKana;
+    const UiFace& label = uifont::kLabel;
+    checkFace(kana);
+    TEST_ASSERT_EQUAL(12, kana.px);
+    TEST_ASSERT_EQUAL(6, kana.count);  // only the app's name
+    TEST_ASSERT_TRUE(uiCanDraw(kana, name));
+    TEST_ASSERT_TRUE(uiCanDraw(label, name));
+    // Other titles stay in Font0 captions.
+    for (const char* t : {"SETTINGS", "AJUSTES", "JLPT N5", "TAMAGOTCHO", " "})
+        TEST_ASSERT_FALSE_MESSAGE(uiCanDraw(kana, t), t);
+    TEST_ASSERT_EQUAL(kana.capHeight, -uiGlyph(kana, 0x305F)->yOff);  // た
+
+    // Renderer::drawLabel's baseline in a box of height h: (h + cap) / 2.
+    const int headerBase = (theme::kHeaderH - 1 + kana.capHeight) / 2;
+    const int labelBase = (label.pitch + label.capHeight) / 2;
+    for (const char* p = name; uint32_t cp = utf8Next(&p);) {
+        const UiGlyph* g = uiGlyph(kana, cp);
+        TEST_ASSERT_NOT_NULL(g);
+        TEST_ASSERT_TRUE(headerBase + g->yOff >= 0);
+        TEST_ASSERT_TRUE(headerBase + g->yOff + g->height <= theme::kHeaderH - 2);
+        const UiGlyph* l = uiGlyph(label, cp);
+        TEST_ASSERT_NOT_NULL(l);
+        TEST_ASSERT_TRUE(labelBase + l->yOff >= 0);
+        TEST_ASSERT_TRUE(labelBase + l->yOff + l->height <= label.pitch);
+    }
+
+    constexpr int kNarrowestW = 135;
+    const int titleEnd = theme::kGutter + uiTextWidth(kana, name, 0);
+    const int rightStart = kNarrowestW - theme::kGutter - 13 - 5 - kIconWifi.w - 5;
+    TEST_ASSERT_TRUE(titleEnd + 6 <= rightStart);
+    TEST_ASSERT_TRUE(uiTextWidth(label, name, 0) <= kNarrowestW - 2 * theme::kGutter);
+}
+
 // Settings > Study > Delete progress (main.cpp's UiStrings; these are copies):
 // every row label fits a portrait page row's 107 px in both languages, which
 // "Delete progress" (130 px) and "Borrar progreso" (133 px) do not -- the
@@ -355,6 +400,7 @@ int main() {
     RUN_TEST(test_icons_packing);
     RUN_TEST(test_ui_font_label);
     RUN_TEST(test_ui_font_numeral);
+    RUN_TEST(test_ui_font_app_name);
     RUN_TEST(test_delete_progress_labels);
     RUN_TEST(test_input_prefs);
     return UNITY_END();

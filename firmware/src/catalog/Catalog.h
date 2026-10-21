@@ -1,5 +1,5 @@
 #pragma once
-// Parser for the line-oriented deck catalog written by `tangocho-pack catalog`
+// Parser for the line-oriented deck catalog written by `tamagotcho-pack catalog`
 // (format v2: tools/pack-builder/README.md, "Catalog format"; published as
 // `catalog-v2.txt`), plus the small URL and file-name helpers the on-device "Get
 // decks" screen needs. Pure C++, no Arduino: unit tested natively in
@@ -10,7 +10,9 @@
 //     n5-en<TAB>JLPT N5<TAB>en<TAB>79<TAB>703123<TAB>ab12...<TAB>https://.../n5-en.tgc
 //
 // The first non-blank line must carry the format tag and version 2; any other
-// version (v1, which had no title column, included) is refused as a whole.
+// version (v1, which had no title column, included) is refused as a whole. The
+// tag keeps the project's former name (Tangochō) on purpose: it is part of the
+// format the published catalogs carry (docs/decisions.md, 2026-10-21).
 // Every other `#` line and every blank line is skipped. A record that does not
 // validate (wrong field count, bad title, number or digest, unsafe name,
 // unusable URL, duplicate name) is skipped and counted, so one bad line does not

@@ -1,4 +1,4 @@
-"""tangocho-pack command line."""
+"""tamagotcho-pack command line."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def _meaning_order(raw: list, lang: str) -> list | None:
     missing = [p for p in need if not p.exists()]
     if missing:
         print("error: --meaning-order needs " + ", ".join(p.name for p in missing)
-              + ": run `tangocho-pack fetch --readings --meanings`", file=sys.stderr)
+              + ": run `tamagotcho-pack fetch --readings --meanings`", file=sys.stderr)
         return None
     try:
         overrides = load_overrides(paths.MEANING_OVERRIDES)
@@ -64,7 +64,7 @@ def _common_readings(raw: list) -> tuple[list, object] | None:
     missing = [p for p in need if not p.exists()]
     if missing:
         print("error: --common-readings needs " + ", ".join(p.name for p in missing)
-              + ": run `tangocho-pack fetch --readings`", file=sys.stderr)
+              + ": run `tamagotcho-pack fetch --readings`", file=sys.stderr)
         return None
     from .joyo_table import load_pdf
     from .readings import compute_scores, load_jlpt_vocab, reorder_raw
@@ -123,7 +123,7 @@ def cmd_build(a) -> int:
                   file=sys.stderr)
             return 2
         if not paths.KANJIDIC_GZ.exists():
-            print("error: run `tangocho-pack fetch` first", file=sys.stderr)
+            print("error: run `tamagotcho-pack fetch` first", file=sys.stderr)
             return 2
         new = None
         if paths.KANJI_JSON.exists():
@@ -193,7 +193,7 @@ def cmd_build(a) -> int:
         # Reported here, after the selection, so argument and token errors come first.
         if Path(a.font).is_file():
             raise
-        print(f"error: font {a.font} not found (run `tangocho-pack fetch`, or pass --font)",
+        print(f"error: font {a.font} not found (run `tamagotcho-pack fetch`, or pass --font)",
               file=sys.stderr)
         return 2
     out = Path(a.output)
@@ -339,7 +339,7 @@ def cmd_catalog(a) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="tangocho-pack")
+    ap = argparse.ArgumentParser(prog="tamagotcho-pack")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("fetch", help="download KANJIDIC2, JLPT levels, Noto Sans JP and KanjiVG "
@@ -386,7 +386,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--option-px", type=int, default=20,
                    help="size of set 3 (large text for reading answers); 0 to omit")
     s.add_argument("--strokes", action="store_true",
-                   help="include KanjiVG stroke-order masks (needs `tangocho-pack fetch`)")
+                   help="include KanjiVG stroke-order masks (needs `tamagotcho-pack fetch`)")
     s.add_argument("--strokes-px", type=int,
                    help="em square for stroke masks; must equal --large-px (the default)")
     s.add_argument("--common-readings", action="store_true",

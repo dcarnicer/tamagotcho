@@ -8,10 +8,10 @@ import sqlite3
 
 import pytest
 
-from tangocho_pack import build, cli, joyo_table, paths
-from tangocho_pack.joyo_table import JoyoReading, classify, parse_pages
-from tangocho_pack.kanjidic import RawKanji, parse_kanjidic
-from tangocho_pack.readings import (
+from tamagotcho_pack import build, cli, joyo_table, paths
+from tamagotcho_pack.joyo_table import JoyoReading, classify, parse_pages
+from tamagotcho_pack.kanjidic import RawKanji, parse_kanjidic
+from tamagotcho_pack.readings import (
     RANK_COMMON,
     RANK_NONE,
     UK_FACTOR,
@@ -238,7 +238,7 @@ def test_order_by_score_bound_tier_and_ties():
 
 
 def test_reorder_raw_keeps_every_reading():
-    from tangocho_pack.readings import ReadingScores
+    from tamagotcho_pack.readings import ReadingScores
 
     raw = [RawKanji(ord("九"), {"en": ["nine"]}, ["キュウ", "ク"], ["ここの", "ここの.つ"],
                     4, 1, 2, 55),
@@ -292,7 +292,7 @@ def test_segments_falls_back_for_one_kanji_words():
 
 
 def test_worth_asking_and_drop_rules():
-    from tangocho_pack.readings import ReadingScores
+    from tamagotcho_pack.readings import ReadingScores
 
     joyo = {"百": [JoyoReading("ヒャク", False)],
             "茨": [JoyoReading("いばら", True)],
@@ -326,8 +326,8 @@ def test_worth_asking_and_drop_rules():
 
 
 def test_reading_distractors_avoid_a_dropped_kind():
-    from tangocho_pack.distractors import reading_distractors
-    from tangocho_pack.kanjidic import Card
+    from tamagotcho_pack.distractors import reading_distractors
+    from tamagotcho_pack.kanjidic import Card
 
     # Say 生's kun'yomi were emptied; 木's first kun'yomi き is one of them.
     sei = Card(ord("生"), ["life"], ["セイ"], [], jlpt=5, valid_kunyomi=["い.きる", "き"])
@@ -340,9 +340,9 @@ def test_reading_distractors_avoid_a_dropped_kind():
 
 
 def test_empty_kind_roundtrip_and_validation():
-    from tangocho_pack.glyphs import Glyph
-    from tangocho_pack.kanjidic import Card
-    from tangocho_pack.pack import read_pack, write_pack
+    from tamagotcho_pack.glyphs import Glyph
+    from tamagotcho_pack.kanjidic import Card
+    from tamagotcho_pack.pack import read_pack, write_pack
 
     cards = [Card(ord("百"), ["hundred"], ["ヒャク"], [], jlpt=5)]
     glyphs = [Glyph(ord("百"), 0, 4, 4, 0, -4, 32, b"\x00" * 8),
@@ -419,7 +419,7 @@ def test_classify():
     assert classify("コウ", None) == "other"
 
 
-@pytest.mark.skipif(not paths.JOYO_PDF.exists(), reason="run `tangocho-pack fetch --readings`")
+@pytest.mark.skipif(not paths.JOYO_PDF.exists(), reason="run `tamagotcho-pack fetch --readings`")
 def test_real_joyo_table():
     t = joyo_table.load_pdf(paths.JOYO_PDF)    # checks 2,136 kanji / 4,388 readings itself
     assert sum(1 for v in t.values() for r in v if r.indented) == 178
@@ -538,9 +538,9 @@ REAL = [paths.KANJIDIC_GZ, paths.JMDICT_GZ, paths.JMDICT_FURIGANA, paths.WORDFRE
         paths.TATOEBA_JPN, paths.JOYO_PDF, *paths.JLPT_VOCAB.values()]
 
 
-@pytest.mark.skipif(not all(p.exists() for p in REAL), reason="run `tangocho-pack fetch --readings`")
+@pytest.mark.skipif(not all(p.exists() for p in REAL), reason="run `tamagotcho-pack fetch --readings`")
 def test_real_data_sanity():
-    from tangocho_pack.readings import compute_scores
+    from tamagotcho_pack.readings import compute_scores
 
     raw = [k for k in parse_kanjidic(paths.KANJIDIC_GZ)
            if chr(k.codepoint) in "九食下上日入弟木行出明生四一大気"]

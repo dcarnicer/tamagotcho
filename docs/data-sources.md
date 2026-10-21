@@ -4,7 +4,7 @@ Code in this repository is MIT. **Generated packs (`*.tgc`) contain data
 derived from KANJIDIC2** and, when built with `--strokes`, from **KanjiVG**,
 and are licensed **CC BY-SA** (KANJIDIC2 is CC BY-SA 4.0, KanjiVG is CC BY-SA
 3.0 and ShareAlike permits redistribution of the combined work as a later
-version). Anything downloaded by `tangocho-pack fetch` lands in
+version). Anything downloaded by `tamagotcho-pack fetch` lands in
 `tools/pack-builder/cache/` (git-ignored) and is never committed. The only
 third-party-derived files in the repo are the three kanji in
 `tools/pack-builder/tests/data/mini_kanjidic2.xml` (a KANJIDIC2 excerpt), the
@@ -93,12 +93,12 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
   `20170710`, the current (and so far only) documented revision,
   https://docs.api.wanikani.com/. Endpoints used: `/assignments` (which kanji
   the user has unlocked) and `/subjects` (their characters, meanings, readings).
-- Owner: **Tofugu LLC. WaniKani is a trademark of Tofugu LLC.** Tangochō is an
+- Owner: **Tofugu LLC. WaniKani is a trademark of Tofugu LLC.** Tamagotcho is an
   unofficial third-party tool; it is not affiliated with, endorsed by or
   sponsored by WaniKani or Tofugu.
 - Licence/terms: WaniKani's content (subject meanings, readings, mnemonics…)
   is © Tofugu LLC and is governed by the WaniKani terms of service and the API
-  terms. **Tangochō ships and redistributes no WaniKani content**: nothing is
+  terms. **Tamagotcho ships and redistributes no WaniKani content**: nothing is
   fetched unless the user runs the importer with their *own* personal API token,
   and a pack built this way is **the user's own responsibility**. It is intended
   for that user's personal study, must not be redistributed, and must respect
@@ -169,12 +169,13 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
   bitmaps at build time. Only the Regular weight is used: Medium clogged dense
   kanji at the 40 px option size (docs/decisions.md, 2026-10-18).
 - Also used for: **the firmware's UI font**. `tools/ui-font/gen_ui_font.py`
-  renders ASCII, Latin-1 and `· … › ‹ « » – — ✓ ▲ ▼` at 18 px and the digits
-  with `%:/+-.` at 32 px from the same Regular OTF, with the builder's
-  `FontRenderer`, into `firmware/src/ui/UiFont.h` (216 glyphs, ~15 KB of 4bpp
-  bitmaps). That header is committed and compiled into every firmware image,
-  so the firmware distributes these bitmaps; they carry the font's credit
-  (README, Settings › Device › About "UI font").
+  renders ASCII, Latin-1, `· … › ‹ « » – — ✓ ▲ ▼` and the six kana of the
+  app's name (たまごっちょ) at 18 px, the digits with `%:/+-.` at 32 px and
+  those six kana again at 12 px (the header) from the same Regular OTF, with
+  the builder's `FontRenderer`, into `firmware/src/ui/UiFont.h` (228 glyphs,
+  ~16 KB of 4bpp bitmaps). That header is committed and compiled into every
+  firmware image, so the firmware distributes these bitmaps; they carry the
+  font's credit (README, Settings › Device › About "UI font").
 - OFL notes: the OFL permits use, embedding and redistribution of the font and
   of output made with it; it does not require the licence of rendered output
   to change. The pre-rendered 4bpp bitmaps in a pack, and those in the
@@ -193,7 +194,7 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 
 - URL: https://github.com/fontworks-fonts/Klee (`fonts/ttf/KleeOne-SemiBold.ttf`,
   `KleeOne-Regular.ttf`, `OFL.txt`), fetched to `cache/fonts/` only with
-  `tangocho-pack fetch --klee-one`.
+  `tamagotcho-pack fetch --klee-one`.
 - Licence: SIL Open Font License 1.1. Copyright Fontworks Inc. The OFL notes
   above apply in the same way.
 - Used for: nothing by default since 2026-10-18 (it was the default font
@@ -210,14 +211,14 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
   BSD-2-Clause (Copyright (c) 2012 Adafruit Industries). It is not content of
   a pack; no attribution is required in generated packs.
 - The pack builder vendors a copy of its 256-glyph bitmap in `glcd.py` so
-  `tangocho-pack preview` can render the same font as the device.
+  `tamagotcho-pack preview` can render the same font as the device.
 
 ## Reading order (optional: `fetch --readings`, `build --common-readings`)
 
 `build --common-readings` reorders each card's on'yomi and kun'yomi so the
 reading the device asks is a useful one, and leaves a kind with nothing worth
 asking empty (docs/common-readings.md). The six inputs below are downloaded
-only by `tangocho-pack fetch --readings`, into `cache/readings/`, and read only
+only by `tamagotcho-pack fetch --readings`, into `cache/readings/`, and read only
 with that flag (and by the scripts in `tools/pack-builder/scripts/`). A pack
 built with it contains no word data from them, only KANJIDIC2's own readings in
 a different order (some kinds left out), but it is derived from them, so it
@@ -328,7 +329,7 @@ device shows (docs/meaning-order.md): the English meanings by a learner signal
 both inputs of `--common-readings` above), the Spanish ones in the order of
 the English ones they translate (the dictionary below), then a short
 project-authored override table. The dictionary is downloaded only by
-`tangocho-pack fetch --meanings`, into `cache/meanings/`, and read only with
+`tamagotcho-pack fetch --meanings`, into `cache/meanings/`, and read only with
 that flag. A pack built with it contains no word or dictionary data, only
 KANJIDIC2's own meanings in another order (the caps then keep the first ones),
 but the order is derived from these sources, so the pack carries their
@@ -370,7 +371,7 @@ it; the decks published so far use none of it.
   repository (not downloaded): a short hand-checked table (39 lines) that puts
   one of KANJIDIC2's own meanings first for a kanji and language where the
   steps above go wrong (機 "machine", 申 "decir"), with the reason.
-- Authored by the Tangochō project. Licence: it is distributed with the packs
+- Authored by the Tamagotcho project. Licence: it is distributed with the packs
   under CC BY-SA (and with the code, MIT); it holds no third-party text beyond
   the KANJIDIC2 meanings it names, each of which the builder checks against
   KANJIDIC2 (an override can only choose among them, never add text).
@@ -419,7 +420,7 @@ A pack built with `--meaning-order` adds (the FreeDict part for Spanish):
 > Meaning order from Jonathan Waller's JLPT vocabulary lists (tanos.co.uk,
 > CC BY) and JMdict (EDRDG, CC BY-SA 4.0); Spanish meaning order from FreeDict's
 > English-Spanish dictionary (WikDict, from Wiktionary via DBnary), CC BY-SA
-> 3.0; and the Tangochō project's meaning overrides.
+> 3.0; and the Tamagotcho project's meaning overrides.
 
 The decks release notes in `decks.yml` carry this text.
 

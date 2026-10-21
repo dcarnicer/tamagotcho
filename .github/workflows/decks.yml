@@ -102,7 +102,7 @@ jobs:
       - name: Check the glyph font credited in the notes
         run: |
           set -euo pipefail
-          font="$(uv run python -c 'from tangocho_pack import paths; print(paths.DEFAULT_FONT.name)')"
+          font="$(uv run python -c 'from tamagotcho_pack import paths; print(paths.DEFAULT_FONT.name)')"
           case "$font" in
             NotoSansJP-*) echo "default font: $font" ;;
             *) echo "error: the release notes credit Noto Sans JP, but the builder's default font is $font; update decks.yml" >&2; exit 1 ;;
@@ -113,7 +113,7 @@ jobs:
       # --meanings what --meaning-order needs (FreeDict's English-Spanish
       # dictionary, pinned and checked against SHA256).
       - name: Fetch data sources (KANJIDIC2, JLPT levels, font, KanjiVG, reading and meaning data)
-        run: uv run tangocho-pack fetch --readings --meanings
+        run: uv run tamagotcho-pack fetch --readings --meanings
 
       # --common-readings: each kind's most useful reading first (the one the
       # device asks), and a kind with nothing worth asking left empty
@@ -132,11 +132,11 @@ jobs:
           mkdir -p out
           for lang in $LANGS; do
             for n in $LEVELS; do
-              uv run tangocho-pack build --jlpt "$n" --lang "$lang" --strokes --common-readings \
+              uv run tamagotcho-pack build --jlpt "$n" --lang "$lang" --strokes --common-readings \
                 --meaning-order -o "out/n${n}-${lang}.tgc"
             done
             if [ "$JOYO" = "true" ]; then
-              uv run tangocho-pack build --joyo --lang "$lang" --strokes --common-readings \
+              uv run tamagotcho-pack build --joyo --lang "$lang" --strokes --common-readings \
                 --meaning-order -o "out/joyo-${lang}.tgc"
             fi
           done
@@ -160,7 +160,7 @@ jobs:
           version=""
           bad=0
           for f in out/*.tgc; do
-            if ! info="$(uv run tangocho-pack inspect "$f")"; then
+            if ! info="$(uv run tamagotcho-pack inspect "$f")"; then
               echo "$info"; echo "error: $f is not a valid pack" >&2; exit 1
             fi
             v="$(printf '%s\n' "$info" | awk '$1 == "version" { print $2; exit }')"
@@ -212,13 +212,13 @@ jobs:
             if [ "$JOYO" = "true" ]; then order="$order joyo-${lang}"; fi
           done
           names="$(uv run python -c \
-            'from tangocho_pack import catalog; print(catalog.FILE_NAME, catalog.JSON_FILE_NAME)')"
+            'from tamagotcho_pack import catalog; print(catalog.FILE_NAME, catalog.JSON_FILE_NAME)')"
           read -r catalog catalog_json <<< "$names"
           case "$catalog $catalog_json" in
             "catalog-v"[0-9]*".txt catalog-v"[0-9]*".json") ;;
             *) echo "error: unexpected catalog file names: $names" >&2; exit 1 ;;
           esac
-          uv run tangocho-pack catalog out --base-url "$BASE_URL" --order "$order" \
+          uv run tamagotcho-pack catalog out --base-url "$BASE_URL" --order "$order" \
             --json "out/$catalog_json" -o "out/$catalog"
           cat "out/$catalog"
           echo "catalog=$catalog" >> "$GITHUB_OUTPUT"
@@ -261,11 +261,12 @@ jobs:
           catalog_v="${catalog_v%.txt}"
           {
           cat <<MD
-          # Tangochō decks (pack format v${VERSION})
+          # Tamagotcho decks (pack format v${VERSION})
 
-          Prebuilt kanji decks for Tangochō, with stroke order. Firmware that reads
-          pack format v${VERSION} downloads them with **Decks > + Get decks** (over
-          the home Wi-Fi) from this release's catalog, its default:
+          Prebuilt kanji decks for Tamagotcho (たまごっちょ), with stroke order.
+          Firmware that reads pack format v${VERSION} downloads them with
+          **Decks > + Get decks** (over the home Wi-Fi) from this release's
+          catalog, its default:
 
               ${url}
 
@@ -335,7 +336,7 @@ jobs:
           > and the Jōyō kanji table (Agency for Cultural Affairs, 2010).
           > Meaning order from the same JLPT vocabulary lists and JMdict; Spanish
           > meaning order from FreeDict's English-Spanish dictionary (WikDict,
-          > from Wiktionary via DBnary), CC BY-SA 3.0; and the Tangochō
+          > from Wiktionary via DBnary), CC BY-SA 3.0; and the Tamagotcho
           > project's meaning overrides. These packs are licensed CC BY-SA.
           MD
           } > notes.md
@@ -356,7 +357,7 @@ jobs:
           CATALOG_JSON: ${{ needs.build.outputs.catalog_json }}
         run: |
           set -euo pipefail
-          title="Tangochō decks (pack format v${VERSION})"
+          title="Tamagotcho decks (pack format v${VERSION})"
           cd dist
           ls -l
           packs=(*.tgc)

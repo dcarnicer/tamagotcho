@@ -1,7 +1,7 @@
 """Prototype report for `build --common-readings` (docs/common-readings.md).
 
 For every kanji of JLPT N5-N1 and the Jōyō list, orders its KANJIDIC2 readings
-the way `build --common-readings` does (tangocho_pack.readings) and prints, as
+the way `build --common-readings` does (tamagotcho_pack.readings) and prints, as
 Markdown:
 
 - how many kanji change the first on'yomi / kun'yomi (the reading the device
@@ -13,7 +13,7 @@ Markdown:
   the Jōyō kanji, before and after;
 - a sanity table for well-known kanji and the full list of N5 changes.
 
-Usage (after `tangocho-pack fetch --readings`):
+Usage (after `tamagotcho-pack fetch --readings`):
 
     uv run python scripts/common_readings_report.py [--kanji 九生日] [--tsv out/changes.tsv]
 """
@@ -25,10 +25,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from tangocho_pack import paths
-from tangocho_pack.joyo_table import classify, load_pdf
-from tangocho_pack.kanjidic import JOYO_GRADES, load_new_jlpt, parse_kanjidic
-from tangocho_pack.readings import bound_forms, compute_scores, load_jlpt_vocab, reorder_raw, share
+from tamagotcho_pack import paths
+from tamagotcho_pack.joyo_table import classify, load_pdf
+from tamagotcho_pack.kanjidic import JOYO_GRADES, load_new_jlpt, parse_kanjidic
+from tamagotcho_pack.readings import bound_forms, compute_scores, load_jlpt_vocab, reorder_raw, share
 
 SANITY = "九生日下上行出明人大何今重楽方間食入四一"
 LEVELS = (5, 4, 3, 2, 1, 0)
@@ -66,7 +66,7 @@ def main() -> int:
             paths.WORDFREQ_JA, paths.TATOEBA_JPN, paths.JOYO_PDF, *paths.JLPT_VOCAB.values()]
     for p in need:
         if not p.exists():
-            print(f"missing {p}: run `tangocho-pack fetch --readings`", file=sys.stderr)
+            print(f"missing {p}: run `tamagotcho-pack fetch --readings`", file=sys.stderr)
             return 2
     raw_all = parse_kanjidic(paths.KANJIDIC_GZ)
     new_jlpt = load_new_jlpt(paths.KANJI_JSON)

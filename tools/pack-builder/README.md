@@ -1,29 +1,30 @@
-# tangocho-pack
+# tamagotcho-pack
 
-Builds Tangochō `.tgc` packs (format: `docs/pack-format.md`) from KANJIDIC2 and
-a font. Python 3.12+, managed with [uv](https://docs.astral.sh/uv/).
+Builds Tamagotcho (たまごっちょ) `.tgc` packs (format: `docs/pack-format.md`)
+from KANJIDIC2 and a font. Python 3.12+, managed with
+[uv](https://docs.astral.sh/uv/).
 
 ```sh
 cd tools/pack-builder
 uv sync
-uv run tangocho-pack fetch            # KANJIDIC2, JLPT N5-N1 table, Noto Sans JP, KanjiVG -> cache/
-uv run tangocho-pack build --jlpt 5 --lang es -o out/n5-es.tgc
-uv run tangocho-pack build --jlpt 5 --lang es --strokes -o out/n5-es-strokes.tgc
-uv run tangocho-pack fetch --klee-one # optional: Klee One (textbook style) -> cache/fonts/
-uv run tangocho-pack build --jlpt 5 --font cache/fonts/KleeOne-SemiBold.ttf -o out/n5-en-klee.tgc
-uv run tangocho-pack build --joyo --lang es --strokes -o out/joyo-es.tgc
-uv run tangocho-pack fetch --readings # optional: word data for --common-readings -> cache/readings/
-uv run tangocho-pack build --jlpt 5 --lang es --common-readings -o out/n5-es-common.tgc
+uv run tamagotcho-pack fetch            # KANJIDIC2, JLPT N5-N1 table, Noto Sans JP, KanjiVG -> cache/
+uv run tamagotcho-pack build --jlpt 5 --lang es -o out/n5-es.tgc
+uv run tamagotcho-pack build --jlpt 5 --lang es --strokes -o out/n5-es-strokes.tgc
+uv run tamagotcho-pack fetch --klee-one # optional: Klee One (textbook style) -> cache/fonts/
+uv run tamagotcho-pack build --jlpt 5 --font cache/fonts/KleeOne-SemiBold.ttf -o out/n5-en-klee.tgc
+uv run tamagotcho-pack build --joyo --lang es --strokes -o out/joyo-es.tgc
+uv run tamagotcho-pack fetch --readings # optional: word data for --common-readings -> cache/readings/
+uv run tamagotcho-pack build --jlpt 5 --lang es --common-readings -o out/n5-es-common.tgc
 uv run python scripts/common_readings_report.py   # what --common-readings changes
-uv run tangocho-pack fetch --meanings # optional: English-Spanish dictionary for --meaning-order (with --readings)
-uv run tangocho-pack build --jlpt 5 --lang es --meaning-order -o out/n5-es-meanings.tgc
+uv run tamagotcho-pack fetch --meanings # optional: English-Spanish dictionary for --meaning-order (with --readings)
+uv run tamagotcho-pack build --jlpt 5 --lang es --meaning-order -o out/n5-es-meanings.tgc
 uv run python scripts/meaning_order_report.py     # what --meaning-order changes
-uv run tangocho-pack build --wanikani-token "$WANIKANI_TOKEN" -o out/wanikani.tgc
-uv run tangocho-pack build --wanikani-level 1 --wanikani-level 2 -o out/wanikani-l1-2.tgc
-uv run tangocho-pack inspect out/n5-es.tgc
-uv run tangocho-pack preview out/n5-es.tgc --card 水 --mode meaning -o out/preview.png
-uv run tangocho-pack preview out/n5-es-strokes.tgc --card 水 --mode strokes --stroke 2 -o out/strokes.png
-uv run tangocho-pack catalog out --base-url "https://example.com/v1" -o out/catalog-v2.txt
+uv run tamagotcho-pack build --wanikani-token "$WANIKANI_TOKEN" -o out/wanikani.tgc
+uv run tamagotcho-pack build --wanikani-level 1 --wanikani-level 2 -o out/wanikani-l1-2.tgc
+uv run tamagotcho-pack inspect out/n5-es.tgc
+uv run tamagotcho-pack preview out/n5-es.tgc --card 水 --mode meaning -o out/preview.png
+uv run tamagotcho-pack preview out/n5-es-strokes.tgc --card 水 --mode strokes --stroke 2 -o out/strokes.png
+uv run tamagotcho-pack catalog out --base-url "https://example.com/v1" -o out/catalog-v2.txt
 uv run pytest
 ```
 
@@ -164,6 +165,8 @@ n5-en<TAB>JLPT N5<TAB>en<TAB>79<TAB>703123<TAB>ab12cd…<TAB>https://example.com
 
 - The **first line** is a `#` comment that also carries the format version, so a
   reader can detect the format and refuse an unknown version before parsing.
+  Its tag, `#tangocho-catalog`, keeps the project's former name (Tangochō) on
+  purpose: it is part of the format, and firmware in the field checks it.
 - Every line starting with `#` is a comment; blank lines are ignored.
 - A **record** is exactly seven TAB-separated fields:
   - `name` — the file name without `.tgc`; the name the device should save the
@@ -197,7 +200,7 @@ are independent. The published file is named after the **catalog** format,
 `catalog-v<N>.txt` (`catalog-v2.txt` now, with `catalog-v2.json` for people);
 the decks release tag `decks-v<N>` is named after the **pack** format. So the
 firmware's default catalog,
-`https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog-v2.txt`,
+`https://github.com/dcarnicer/tamagotcho/releases/download/decks-v2/catalog-v2.txt`,
 is catalog format v2 listing packs of format v2, and either version can change
 without the other.
 

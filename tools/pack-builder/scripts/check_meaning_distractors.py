@@ -24,8 +24,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from tangocho_pack import paths
-from tangocho_pack.pack import MEANING_SEP, read_pack
+from tamagotcho_pack import paths
+from tamagotcho_pack.pack import MEANING_SEP, read_pack
 
 WRONG_OPTIONS = 3
 
@@ -37,7 +37,7 @@ def items(s: str) -> list[str]:
 def main(argv: list[str]) -> int:
     full: dict[int, dict[str, list[str]]] = {}
     if paths.KANJIDIC_GZ.exists():
-        from tangocho_pack.kanjidic import parse_kanjidic
+        from tamagotcho_pack.kanjidic import parse_kanjidic
 
         full = {k.codepoint: k.meanings for k in parse_kanjidic(paths.KANJIDIC_GZ)}
     else:

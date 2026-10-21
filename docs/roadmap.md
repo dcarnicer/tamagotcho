@@ -134,7 +134,7 @@ Scope for now: **kanji only** (no vocabulary decks).
       and in the builder's distractor lists.
 - [~] **Phase 4 – Connectivity.** The on-device **Wi-Fi portal** is done: it
       serves a single self-contained page from a phone/laptop on its own open
-      access point (`Tangocho-XXXX`, `http://192.168.4.1`) to upload, delete and
+      access point (`Tamagotcho-XXXX`, `http://192.168.4.1`) to upload, delete and
       download packs and to read the SRS statistics (`/`, `/api/stats`); it also
       lets a fresh, pack-less device boot into an "upload a `.tgc`" state and
       continue into the quiz once a pack arrives. Pending:
@@ -191,7 +191,7 @@ Scope for now: **kanji only** (no vocabulary decks).
       - [x] **WaniKani importer** (user's own token, unlocked kanji only). The
         builder can build a pack from the kanji a user has unlocked on their own
         WaniKani account instead of (or as well as) KANJIDIC2, via
-        `tangocho-pack build --wanikani-token ... [--wanikani-level N]`. Nothing
+        `tamagotcho-pack build --wanikani-token ... [--wanikani-level N]`. Nothing
         is shipped, nothing is fetched without the flag, and the token is never
         logged or cached; a WaniKani-derived pack is the user's own
         responsibility and is not redistributed (docs/data-sources.md).
@@ -210,7 +210,7 @@ Scope for now: **kanji only** (no vocabulary decks).
       single-file image** per board plus an **ESP Web Tools `manifest.json`**,
       published by `.github/workflows/release.yml` on tags `v*` (and manual
       dispatch); CI (`.github/workflows/ci.yml`) runs the native tests and both
-      board builds plus the pack-builder tests; a `tangocho-pack catalog` command
+      board builds plus the pack-builder tests; a `tamagotcho-pack catalog` command
       that writes the small line-oriented catalog the device is meant to read;
       README with the licence/attribution and flashing instructions.
       The **device-side catalog fetch/parse** is done (`firmware/src/catalog/`,
@@ -349,8 +349,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       combined attribution in the notes, to the release `decks-v<pack format>`
       (`decks-v2`), which is never marked "latest" so firmware releases cannot
       hide it. The device's default Get decks catalog is now
-      `releases/download/decks-v2/catalog-v2.txt` on `dcarnicer/tangocho`
-      (catalog format v2, 2026-10-18); the first run published the v1
+      `releases/download/decks-v2/catalog-v2.txt` on `dcarnicer/tamagotcho`
+      (`dcarnicer/tangocho` before the rename of 2026-10-21; catalog format v2,
+      2026-10-18); the first run published the v1
       `catalog.txt`, the second (2026-10-18) published `catalog-v2.txt` and
       deleted `catalog.txt`, which only v0.1.0 reads. The former blockers (the
       JLPT lists' licence, the 5 MiB cap in pack format v1) were resolved first.

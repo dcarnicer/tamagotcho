@@ -2532,6 +2532,71 @@ Branch `feature/delete-deck-progress`; the rules are docs/srs.md §2.1.
 - **Cost.** sticks3 flash 1,452,049 -> 1,461,329 B (+9.3 KB, 69.7 % of the
   2 MB app slot).
 
+## 2026-10-21 – Rename: たまごっちょ (Tamagotcho)
+
+Branch `feature/rename-tamagotcho`. The dated entries above keep the old name
+as they were written (2026-10-16: "Name: Tangochō").
+
+- **Why.** The maintainer's "marketing" rename: **たまごっちょ**, romanised
+  **Tamagotcho** (Hepburn: っちょ → tcho), a 電子単語帳 (*denshi tangochō*,
+  electronic flashcard book). The name crosses Tamagotchi with *tangochō* and
+  fits the small device. The README says once that it was formerly Tangochō.
+  Scope agreed: what users see plus the repository's tooling; internal
+  identifiers and on-disk/wire formats stay.
+- **The device shows the kana.** The error and done headers (`UiStrings`
+  `appName`, which was "TANGOCHO") and the About title (which drew "Tangochō"
+  with a hand-made macron) show たまごっちょ, from `credits::kAppName` in
+  `Credits.h`. The UI font gains exactly the six kana (た ま ご っ ち ょ): in the
+  18 px Label face for About, and in a new **12 px Kana face** with only those
+  six for the header, which is drawn in Font0 captions (no kana) and is 16 px
+  tall (18 px kana have ~16 px of ink). `widgets::drawHeader` draws a title in
+  the Kana face when that face has every character of it, so every other title
+  stays a caption. The name is 72 px in the header and 108 px in About, so it
+  fits the narrowest panel (StickS3 portrait, 135 px) and is never cut; a native
+  test (`test_ui`) checks the kana in both faces, the ink inside the header and
+  a label line, and that width.
+- **Romanised where only ASCII goes** (`credits::kAppNameLatin`): the boot log
+  line (`Tamagotcho <version>`) and `version.py`'s build line, the setup-mode
+  SSID `Tamagotcho-XXXX`, the mDNS host `tamagotcho.local`. The portal page's
+  heading is `たまごっちょ Tamagotcho` (the phone has Japanese fonts), its title
+  and footers say Tamagotcho.
+- **Repository and tools.** `kRepo`, the default catalog URL and every
+  `github.com/dcarnicer/tangocho` link point at `dcarnicer/tamagotcho`; the
+  maintainer renames the GitHub repository after the merge, and GitHub
+  redirects the old URLs. The pack builder is `tamagotcho-pack` (package
+  `tamagotcho_pack`), still version 0.2.0: nothing outside this repository
+  installs it. Firmware releases publish `tamagotcho-<env>.bin`,
+  `-merged.bin` and `-manifest.json` (v0.1.0 to v0.2.1 keep their
+  `tangocho-*` files). README, docs, CLAUDE.md, the LICENSE holder line
+  ("Tamagotcho contributors"), the UX mockups and the release notes follow.
+- **Unchanged on purpose.**
+  - The pack format: magic `TNGC`, the `.tgc` extension, version 2.
+  - The catalog tag `#tangocho-catalog` (and `"format": "tangocho-catalog"` in
+    the JSON companion): firmware in the field checks it, so a new tag would
+    make one side's catalogs "not a catalog". With the release tag `decks-v2`
+    and the file names unchanged too, the published decks release stays valid
+    and needs no rebuild. Its records carry absolute
+    `github.com/dcarnicer/tangocho/...` URLs, which GitHub redirects after the
+    repository rename (the firmware follows redirects); a later decks run
+    writes the new name (the base URL comes from `github.repository`).
+  - The NVS namespace `tangocho`, so the settings (language, home Wi-Fi, time
+    zone, orientation, ...) survive an app-only update; `main.cpp` says so
+    where it opens it.
+  - `TGC_*` macros, the `tgc::` namespace, file names; the local checkout's
+    directory.
+- **Consequences.**
+  - The join QR payload `WIFI:T:nopass;S:Tamagotcho-XXXX;;` is 33 bytes, one
+    more than a version 2 code holds at ECC L, so it is version 3 (29 modules):
+    on the StickS3 in portrait 3 px modules (99 px) instead of 4 (116 px); in
+    landscape 3 px either way (99 px, from 87). To check that phones still
+    scan it.
+  - Phones that saved `Tangocho-XXXX` see a new network, and
+    `tangocho.local` bookmarks stop answering.
+  - Until the repository is renamed, the new default catalog URL answers 404
+    (Get decks: no catalog published), so merge, rename, then flash.
+- **Cost.** sticks3 flash 1,462,105 -> 1,463,337 B (+1.2 KB, 69.8 % of the
+  2 MB app slot): +961 B of glyph bitmaps, +120 B of glyph tables.
+
 ## 2026-10-21 – T-Display-S3 checked on hardware; a USB host stands in for VBUS
 
 First run of the firmware on a real LilyGO T-Display-S3 (ESP32-S3R8, 16 MB),

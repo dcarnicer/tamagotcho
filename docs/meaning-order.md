@@ -1,7 +1,7 @@
 # Meanings in a useful order
 
 Status (2026-10-20): researched and implemented on the branch
-`feature/es-meanings` as `tangocho-pack build --meaning-order`. The first
+`feature/es-meanings` as `tamagotcho-pack build --meaning-order`. The first
 version ordered the Spanish meanings by KANJIDIC2's English order (the
 maintainer's decision); after reviewing it, the maintainer decided (second
 version, below) to order the **English** meanings first by a learner signal,
@@ -109,7 +109,7 @@ Bartel, builds the bilingual dictionaries, CC BY-SA) → FreeDict release
 License with the same License Elements", so it fits the packs' CC BY-SA 4.0, as
 KanjiVG's CC BY-SA 3.0 already does.
 
-## Method (`tangocho_pack/meanings.py`)
+## Method (`tamagotcho_pack/meanings.py`)
 
 ### A. English, by a learner signal (`EnglishOrder`)
 

@@ -1,7 +1,7 @@
 """Report for `build --meaning-order` (docs/meaning-order.md).
 
 For every kanji of JLPT N5-N1 and the Jōyō list, orders its KANJIDIC2 meanings
-the way `build --meaning-order` does (tangocho_pack.meanings): English by the
+the way `build --meaning-order` does (tamagotcho_pack.meanings): English by the
 learner signal, Spanish by the new English order, then the overrides. Prints,
 as Markdown:
 
@@ -16,7 +16,7 @@ as Markdown:
   through a related form, or an old first that matched nothing (a gap in the
   dictionary?) next to a new one that translates a later English gloss.
 
-Usage (after `tangocho-pack fetch --readings --meanings`):
+Usage (after `tamagotcho-pack fetch --readings --meanings`):
 
     uv run python scripts/meaning_order_report.py [--kanji 持界題] [--tsv out/changes.tsv]
 """
@@ -28,11 +28,11 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from tangocho_pack import paths
-from tangocho_pack.kanjidic import JOYO_GRADES, MAX_MEANINGS, load_new_jlpt, parse_kanjidic
-from tangocho_pack.meanings import (EnglishOrder, MeaningOrder, load_freedict, load_learner_vocab,
+from tamagotcho_pack import paths
+from tamagotcho_pack.kanjidic import JOYO_GRADES, MAX_MEANINGS, load_new_jlpt, parse_kanjidic
+from tamagotcho_pack.meanings import (EnglishOrder, MeaningOrder, load_freedict, load_learner_vocab,
                                     load_overrides, reorder_raw)
-from tangocho_pack.readings import load_jlpt_vocab
+from tamagotcho_pack.readings import load_jlpt_vocab
 
 SANITY = ("持界題院安重生行明気日上下大人中女子書毎聞見食小天先半後前"
           "私機原験計申背支頂更御処積言帰教失難種眠来")
@@ -57,7 +57,7 @@ def main() -> int:
             *paths.JLPT_VOCAB.values()]
     for p in need:
         if not p.exists():
-            print(f"missing {p}: run `tangocho-pack fetch --readings --meanings`", file=sys.stderr)
+            print(f"missing {p}: run `tamagotcho-pack fetch --readings --meanings`", file=sys.stderr)
             return 2
     new_jlpt = load_new_jlpt(paths.KANJI_JSON)
     raw = [k for k in parse_kanjidic(paths.KANJIDIC_GZ)

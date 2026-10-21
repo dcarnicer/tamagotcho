@@ -7,7 +7,7 @@
 // native build.
 //
 // Two modes, the same page:
-//   - Setup mode: the device's own open access point "Tangocho-XXXX" at
+//   - Setup mode: the device's own open access point "Tamagotcho-XXXX" at
 //     http://192.168.4.1/, for the first setup (no home Wi-Fi saved yet) or on
 //     request. Its page saves the home Wi-Fi and then offers to switch to home
 //     mode (Hooks::onSwitchToHome) or to run Get decks on the device screen.
@@ -150,7 +150,7 @@ public:
     const char* ssid() const { return ssid_; }
     // The page's address: "http://192.168.4.1/", or "http://<station ip>/".
     const char* url() const { return url_; }
-    // Home mode with mDNS up: "http://tangocho.local/"; else "".
+    // Home mode with mDNS up: "http://tamagotcho.local/"; else "".
     const char* mdnsUrl() const;
     // Home mode: the station link is up (false while the driver reconnects
     // after a drop). Always true in setup mode.
@@ -170,7 +170,8 @@ public:
     }
 
     static constexpr const char* kApUrl = "http://192.168.4.1/";
-    static constexpr const char* kMdnsHost = "tangocho";
+    static constexpr const char* kMdnsHost = "tamagotcho";
+    static constexpr const char* kMdnsUrl = "http://tamagotcho.local/";
     static constexpr const char* kPacksDir = "/packs";
     // A pack larger than this is refused outright: the StickS3 filesystem is
     // ~5.9 MB and the portal keeps a reserve free for /state and temp files.

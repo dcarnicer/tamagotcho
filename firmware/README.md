@@ -1,4 +1,4 @@
-# Tangochō firmware
+# Tamagotcho (たまごっちょ) firmware
 
 PlatformIO project for the M5Stack StickS3 (primary) and the LilyGO
 T-Display-S3 (dev stand-in). Phase 2: open the saved pack in `/packs` and run a
@@ -14,11 +14,11 @@ pio run -e sticks3            # build for StickS3
 pio run -e tdisplay-s3        # build for T-Display-S3
 ```
 
-Each build prints `Tangocho version: ...`: `scripts/version.py` takes
+Each build prints `Tamagotcho version: ...`: `scripts/version.py` takes
 `$TGC_VERSION` (the release workflow sets the tag), else `git describe --tags
 --always --dirty --match "v[0-9]*"`, else `dev`, and compiles it into
 `src/Version.cpp` only (a new version recompiles one file). The device logs it
-on boot (`Tangocho <version>`) and shows it under Settings › Device › About.
+on boot (`Tamagotcho <version>`) and shows it under Settings › Device › About.
 
 ## Flash
 
@@ -39,9 +39,9 @@ it as a release: anything on the cable can press the buttons.
 
 ### Prebuilt images from a release
 
-A GitHub release carries, per board, the app-only `tangocho-<env>.bin` (the same
+A GitHub release carries, per board, the app-only `tamagotcho-<env>.bin` (the same
 file `pio run` produces, e.g. for M5Launcher) and a **merged**
-`tangocho-<env>-merged.bin` that `esptool write_flash 0x0 …` or a browser (ESP
+`tamagotcho-<env>-merged.bin` that `esptool write_flash 0x0 …` or a browser (ESP
 Web Tools, via the release's `manifest.json`) can flash in one go. A merged image
 carries **no filesystem**: the first boot formats the data partition when it
 holds no LittleFS (erased or foreign), so a fresh device asks for its language

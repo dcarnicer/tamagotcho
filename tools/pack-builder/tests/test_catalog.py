@@ -1,14 +1,14 @@
-"""Tests for `tangocho-pack catalog` (the line-oriented device catalog)."""
+"""Tests for `tamagotcho-pack catalog` (the line-oriented device catalog)."""
 
 import hashlib
 import json
 from pathlib import Path
 
-from tangocho_pack import catalog, paths
-from tangocho_pack.cli import main
-from tangocho_pack.glyphs import Glyph
-from tangocho_pack.kanjidic import RawKanji, make_cards
-from tangocho_pack.pack import read_pack, write_pack
+from tamagotcho_pack import catalog, paths
+from tamagotcho_pack.cli import main
+from tamagotcho_pack.glyphs import Glyph
+from tamagotcho_pack.kanjidic import RawKanji, make_cards
+from tamagotcho_pack.pack import read_pack, write_pack
 
 MINI = paths.FIXTURES / "mini.tgc"
 

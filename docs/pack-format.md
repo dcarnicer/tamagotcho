@@ -1,4 +1,4 @@
-# Tangochō pack format (v2)
+# Tamagotcho pack format (v2)
 
 A **pack** is a single binary file (`*.tgc`) that holds one deck of kanji cards
 plus every pre-rendered glyph the device needs to show them. The device never
@@ -76,6 +76,12 @@ version bump). Version 2 changed the stroke block layout (see below).
 | 55  | u8       | option_ascent    | baseline offset from line top for set 3, px    |
 | 56  | u32      | build_time       | unix seconds                                   |
 | 60  | u32      | stroke_off       | absolute offset of the stroke section, 0 = none. Was `reserved` in earlier packs |
+
+The magic `TNGC` and the `.tgc` extension come from the project's former name,
+Tangochō, and stay as they are after the rename to Tamagotcho, as does the
+deck catalog's tag `#tangocho-catalog` (`tools/pack-builder/README.md`): they
+are part of the formats the published packs and catalogs carry
+(docs/decisions.md, 2026-10-21).
 
 ## Card (32 bytes)
 

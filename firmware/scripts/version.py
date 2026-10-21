@@ -52,7 +52,7 @@ def _version():
 
 
 VERSION, SOURCE = _version()
-print("Tangocho version: %s (%s)" % (VERSION, SOURCE))
+print("Tamagotcho version: %s (%s)" % (VERSION, SOURCE))
 
 _VERSION_SRC = os.path.normcase(os.path.join(env.subst("$PROJECT_SRC_DIR"), "Version.cpp"))
 

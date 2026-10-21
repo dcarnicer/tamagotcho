@@ -39,7 +39,7 @@ API_BASE = "https://api.wanikani.com/v2/"
 REVISION = "20170710"
 # The API throttles to 60 requests per minute; requests are spaced accordingly.
 REQUESTS_PER_MINUTE = 60
-USER_AGENT = "tangocho-pack"
+USER_AGENT = "tamagotcho-pack"
 # WaniKani meanings are English. A request for another language falls back to
 # English with the card's fallback flag set (docs/decisions.md).
 MEANING_LANGS = frozenset({"en"})

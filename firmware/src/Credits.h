@@ -37,7 +37,14 @@ constexpr const char kGlyphs[] = "Noto" TGC_NBSP "Sans" TGC_NBSP "JP, SIL" TGC_N
 // The firmware's own UI font (ui/UiFont.h): glyphs pre-rendered from the
 // same font, so the same credit (About shows it with the firmware).
 constexpr const char kUiFont[] = "Noto" TGC_NBSP "Sans" TGC_NBSP "JP, SIL" TGC_NBSP "OFL" TGC_NBSP "1.1";
-constexpr const char kRepo[] = "github.com/dcarnicer/tangocho";
+constexpr const char kRepo[] = "github.com/dcarnicer/tamagotcho";
+
+// The app's name (docs/decisions.md, 2026-10-21; formerly Tangochō): in
+// hiragana on screen (the UI font has these six kana: the Label face for the
+// About title, the Kana face for the 16 px header), romanised where only
+// ASCII goes (the serial log, the access point's SSID, the mDNS host).
+constexpr const char kAppName[] = "たまごっちょ";
+constexpr const char kAppNameLatin[] = "Tamagotcho";
 
 }  // namespace credits
 }  // namespace tgc

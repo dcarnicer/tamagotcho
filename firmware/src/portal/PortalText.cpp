@@ -129,7 +129,7 @@ PortalText makeSpanish() {
         "el mazo cuando acabe.";
     t.catalogTitle = "Catálogo de mazos";
     t.catalogPlaceholder = "catálogo por defecto";
-    t.catalogDefaultFmt = "Vacío = la publicación de mazos de Tangochō: %s";
+    t.catalogDefaultFmt = "Vacío = la publicación de mazos de Tamagotcho: %s";
     t.catalogUrlBad =
         "No guardada: usa una URL http:// o https:// de 256 caracteres como mucho, o déjala "
         "vacía para la de por defecto.";
@@ -202,7 +202,7 @@ PortalText makeSpanish() {
         "El dispositivo deja la red y se une a <b>%s</b>, así que esta página deja de responder "
         "un momento. Luego abre la dirección que muestra el dispositivo (puede cambiar).";
 
-    t.footVersionFmt = "Tangochō %s &middot; firmware con licencia MIT";
+    t.footVersionFmt = "Tamagotcho %s &middot; firmware con licencia MIT";
     t.footDecksFmt =
         "Mazos: CC BY-SA. Datos de kanji: %s; orden de trazos: %s; niveles JLPT: %s; glifos: %s; "
         "orden de lecturas: %s; orden de significados: %s.";

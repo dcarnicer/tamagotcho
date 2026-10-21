@@ -2,7 +2,7 @@
 
 Status (2026-10-20): researched, decided by the maintainer (below) and
 implemented on the branch `feature/common-readings` as
-`tangocho-pack build --common-readings`. `decks.yml` is prepared to use it for
+`tamagotcho-pack build --common-readings`. `decks.yml` is prepared to use it for
 the published decks but has not been run: the maintainer reviews the N5
 changes first. Without the flag the builder's output is byte-identical to
 before.
@@ -150,7 +150,7 @@ https://jiten.moe/guides/deck-licensing, https://www.jiten.moe/guides/api-and-sc
 8. **Common non-approved readings** (等 など, 経 た.つ, 被 かぶ.る): later, a
    roadmap follow-up.
 
-## What `--common-readings` does (`tangocho_pack/readings.py`)
+## What `--common-readings` does (`tamagotcho_pack/readings.py`)
 
 1. **Words.** Every JMdict (kanji form, reading) pair, skipping forms or
    readings marked rare, search-only, outdated or irregular, `re_nokanji`, and

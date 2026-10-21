@@ -1,5 +1,5 @@
-# Meaning overrides for `tangocho-pack build --meaning-order` (docs/meaning-order.md).
-# Authored by the Tangocho project; distributed with the packs under CC BY-SA
+# Meaning overrides for `tamagotcho-pack build --meaning-order` (docs/meaning-order.md).
+# Authored by the Tamagotcho project; distributed with the packs under CC BY-SA
 # (docs/data-sources.md). Only for clear errors in JLPT N5-N3 that the learner
 # signal and the English-Spanish matching leave; each line puts one of
 # KANJIDIC2's own meanings for that kanji and language first (never new text).

@@ -1,5 +1,5 @@
 #pragma once
-// Reader for Tangocho packs (*.tgc), format v1 and v2. See docs/pack-format.md.
+// Reader for Tamagotcho packs (*.tgc), format v1 and v2. See docs/pack-format.md.
 // Pure C++, no Arduino. Caches header, card table, glyph table and the string
 // pool in memory (obtained through a pluggable allocator, PSRAM on device);
 // bitmaps and distractor lists are read on demand through a PackSource, and

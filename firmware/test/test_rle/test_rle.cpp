@@ -1,6 +1,6 @@
 // Native tests for the pack v2 decoders (src/pack/Rle.*) and the v2 mini.tgc.
 // The vectors come from the Python encoder: tools/pack-builder/fixtures/
-// rle_vectors.bin, written by `tangocho-pack fixture` (format in the builder's
+// rle_vectors.bin, written by `tamagotcho-pack fixture` (format in the builder's
 // fixture.py): synthetic edge cases, every glyph and stroke mask of mini.tgc
 // with its decoded bitmap, and malformed streams that must be rejected.
 #include <unity.h>
@@ -117,7 +117,7 @@ void tearDown() {}
 
 void test_vectors_present() {
     const auto vs = loadVectors();
-    if (vs.empty()) TEST_FAIL_MESSAGE("rle_vectors.bin missing or malformed: run `tangocho-pack fixture`");
+    if (vs.empty()) TEST_FAIL_MESSAGE("rle_vectors.bin missing or malformed: run `tamagotcho-pack fixture`");
     int per[4] = {0, 0, 0, 0};
     for (const auto& v : vs) ++per[v.source & 3];
     TEST_ASSERT_TRUE(per[kSynthetic] >= 20);

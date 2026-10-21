@@ -5,8 +5,8 @@ then visual similarity, then stroke-count distance. These tests pin each part
 of that key with hand-built cards (no font needed).
 """
 
-from tangocho_pack.distractors import meaning_distractors
-from tangocho_pack.kanjidic import Card
+from tamagotcho_pack.distractors import meaning_distractors
+from tamagotcho_pack.kanjidic import Card
 
 
 def _order(cards, visual, i=0, **kw):

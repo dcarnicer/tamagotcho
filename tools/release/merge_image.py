@@ -23,7 +23,7 @@ Usage (see README.md "Releases"):
     python3 tools/release/merge_image.py \\
         --build-dir .pio/build/sticks3 \\
         --partitions firmware/partitions/sticks3_8MB.csv \\
-        --flash-size 8MB --out dist/tangocho-sticks3-merged.bin
+        --flash-size 8MB --out dist/tamagotcho-sticks3-merged.bin
 """
 
 from __future__ import annotations

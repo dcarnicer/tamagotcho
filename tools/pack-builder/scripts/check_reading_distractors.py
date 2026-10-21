@@ -23,8 +23,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from tangocho_pack import paths
-from tangocho_pack.pack import READING_SEP, read_pack
+from tamagotcho_pack import paths
+from tamagotcho_pack.pack import READING_SEP, read_pack
 
 WRONG_OPTIONS = 3
 
@@ -40,7 +40,7 @@ def all_of(s: str) -> set[str]:
 def main(argv: list[str]) -> int:
     full: dict[int, tuple[set[str], set[str]]] = {}
     if paths.KANJIDIC_GZ.exists():
-        from tangocho_pack.kanjidic import parse_kanjidic
+        from tamagotcho_pack.kanjidic import parse_kanjidic
 
         for k in parse_kanjidic(paths.KANJIDIC_GZ):
             full[k.codepoint] = ({r.replace(".", "") for r in k.onyomi},

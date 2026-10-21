@@ -122,7 +122,7 @@ def fetch_all(force: bool = False, klee_one: bool = False, readings: bool = Fals
                 continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         print(f"get   {url}")
-        req = urllib.request.Request(url, headers={"User-Agent": "tangocho-pack"})
+        req = urllib.request.Request(url, headers={"User-Agent": "tamagotcho-pack"})
         with urllib.request.urlopen(req, timeout=120) as r:
             data = r.read()
         if want and hashlib.sha256(data).hexdigest() != want:

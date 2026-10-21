@@ -480,8 +480,8 @@ is the single entry point for every source (NTP below calls it too). It is
 not part of the SRS file.
 
 **Time zone.** NTP only yields UTC, so the device keeps a zone in NVS
-(`tangocho`): `tzr` (the rule the page last sent) and `tzn` (its IANA name);
-`tz` (int16, minutes east, the offset the page last sent), which is all a page
+(namespace `tangocho`, the project's former name, kept): `tzr` (the rule the
+page last sent) and `tzn` (its IANA name); `tz` (int16, minutes east, the offset the page last sent), which is all a page
 from before the rule left and is then read as a fixed rule; and `tzm`, the
 IANA name of a zone chosen by hand in **Settings › Date › Time zone** from a
 short list (`srs/TimeZone`, `kTzZones`: tzdata's own POSIX rules). The zone in
@@ -609,7 +609,7 @@ list. Rebuilt on boot and on every pack change.
 3. **New cards**, ordered by the pack's `level` hint then codepoint — the
    builder's "learn earlier" order, which for the N5 deck means frequency-ish
    and for the Jōyō deck is school order (grade 1..6, then 8, each by
-   frequency; `tangocho-pack build --order`, tools/pack-builder/README.md).
+   frequency; `tamagotcho-pack build --order`, tools/pack-builder/README.md).
    Take at most `new_per_day` minus **this deck's** cards introduced today
    (records with flags bit0 set and `last_day == now_day`), then append. The
    cap is per deck, as in Anki: another deck's new cards do not use it up, and

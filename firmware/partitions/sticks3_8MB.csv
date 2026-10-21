@@ -1,4 +1,4 @@
-# Tangocho, 8 MB flash (M5Stack StickS3).
+# Tamagotcho, 8 MB flash (M5Stack StickS3).
 # No OTA: firmware is updated over USB, so a single app slot is enough and
 # nearly all flash goes to LittleFS for packs. App slot is 2 MB (current build
 # is well under 1.5 MB); raise it here if the app outgrows it.

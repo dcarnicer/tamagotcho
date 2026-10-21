@@ -56,13 +56,16 @@ public:
     static bool builtinCanDraw(const char* s);
 
     // The firmware's UI font (docs/ux-refresh.md §2.3): kTextUi is the Label
-    // face (Noto Sans JP 18 px: ASCII, Latin-1, UI punctuation), kTextUiNumeral
-    // the Numeral face (32 px digits). Their line box is the compact UI pitch
-    // (20 / 36 px) with the cap height centred in it. A character the face
-    // lacks comes from the loaded pack's text set when it has it (a kanji in a
+    // face (Noto Sans JP 18 px: ASCII, Latin-1, UI punctuation, the kana of
+    // the app's name), kTextUiNumeral the Numeral face (32 px digits),
+    // kTextUiKana the Kana face (12 px: only the app's name, たまごっちょ, for
+    // the 16 px header). Their line box is the compact UI pitch (20 / 36 /
+    // 14 px) with the cap height centred in it. A character the face lacks
+    // comes from the loaded pack's text set when it has it (a kanji in a
     // network name), else it is a box.
     static constexpr uint8_t kTextUi = 0xFD;
     static constexpr uint8_t kTextUiNumeral = 0xFC;
+    static constexpr uint8_t kTextUiKana = 0xFB;
 
     // Text metrics per set. `set` is 2 (small text), 3 (large option text),
     // kTextBuiltin(Small) or kTextUi(Numeral). Set 3 falls back to set 2 when

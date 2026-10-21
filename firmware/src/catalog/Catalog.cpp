@@ -8,6 +8,7 @@ namespace tgc {
 
 namespace {
 
+// The project's former name on purpose: the format's tag (Catalog.h).
 constexpr char kTag[] = "#tangocho-catalog";
 constexpr size_t kTagLen = sizeof(kTag) - 1;
 constexpr size_t kFields = 7;  // name, title, lang, cards, bytes, sha256, url

@@ -1,5 +1,5 @@
 // Native tests for the deck catalog parser (src/catalog). The first two
-// fixtures are verbatim `tangocho-pack catalog` output (catalog format v2) for
+// fixtures are verbatim `tamagotcho-pack catalog` output (catalog format v2) for
 // two copies of the builder's fixtures/mini.tgc (deck name "JLPT N5"), without
 // and with --base-url.
 #include <unity.h>
@@ -14,7 +14,7 @@ using namespace tgc;
 namespace {
 
 const char* kDefaultUrl =
-    "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/catalog-v2.txt";
+    "https://github.com/dcarnicer/tamagotcho/releases/download/decks-v2/catalog-v2.txt";
 
 const char* kBuilderBare =
     "#tangocho-catalog\t2\n"
@@ -28,10 +28,10 @@ const char* kBuilderAbsolute =
     "#tangocho-catalog\t2\n"
     "# name\ttitle\tlang\tcards\tbytes\tsha256\turl\n"
     "n5-en\tJLPT N5\ten\t3\t6732\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75"
-    "\thttps://github.com/dcarnicer/tangocho/releases/download/v0.3.0/n5-en.tgc\n"
+    "\thttps://github.com/dcarnicer/tamagotcho/releases/download/v0.3.0/n5-en.tgc\n"
     "n5-es-strokes\tJLPT N5\ten\t3\t6732"
     "\tdc4b83c07f8cdca6cccbe77306936d340a4404dd6dff57ad38febfadf83eee75"
-    "\thttps://github.com/dcarnicer/tangocho/releases/download/v0.3.0/n5-es-strokes.tgc\n";
+    "\thttps://github.com/dcarnicer/tamagotcho/releases/download/v0.3.0/n5-es-strokes.tgc\n";
 
 // What the decks release published before catalog v2 (`catalog.txt`, no title).
 const char* kCatalogV1 =
@@ -87,10 +87,10 @@ void test_builder_output_bare_urls() {
     TEST_ASSERT_EQUAL_HEX8(0x75, a.sha256[31]);
     // A bare file name is resolved next to the catalog itself.
     TEST_ASSERT_EQUAL_STRING(
-        "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/n5-en.tgc", a.url.c_str());
+        "https://github.com/dcarnicer/tamagotcho/releases/download/decks-v2/n5-en.tgc", a.url.c_str());
     TEST_ASSERT_EQUAL_STRING("n5-es-strokes", r.entries[1].name.c_str());
     TEST_ASSERT_EQUAL_STRING(
-        "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/n5-es-strokes.tgc",
+        "https://github.com/dcarnicer/tamagotcho/releases/download/decks-v2/n5-es-strokes.tgc",
         r.entries[1].url.c_str());
 }
 
@@ -98,7 +98,7 @@ void test_builder_output_absolute_urls() {
     const CatalogParse r = parse(kBuilderAbsolute);
     TEST_ASSERT_EQUAL(static_cast<int>(CatalogError::Ok), static_cast<int>(r.error));
     TEST_ASSERT_EQUAL(2u, r.entries.size());
-    TEST_ASSERT_EQUAL_STRING("https://github.com/dcarnicer/tangocho/releases/download/v0.3.0/n5-en.tgc",
+    TEST_ASSERT_EQUAL_STRING("https://github.com/dcarnicer/tamagotcho/releases/download/v0.3.0/n5-en.tgc",
                              r.entries[0].url.c_str());
 }
 
@@ -112,7 +112,7 @@ void test_comments_blank_lines_crlf_and_bom() {
     TEST_ASSERT_EQUAL_STRING("a", r.entries[0].name.c_str());
     TEST_ASSERT_EQUAL_STRING("b", r.entries[1].name.c_str());
     TEST_ASSERT_EQUAL_STRING(
-        "https://github.com/dcarnicer/tangocho/releases/download/decks-v2/x.tgc",
+        "https://github.com/dcarnicer/tamagotcho/releases/download/decks-v2/x.tgc",
         r.entries[1].url.c_str());
 }
 
@@ -391,7 +391,7 @@ void test_order_for_lang() {
     // A record keeps its fields when it moves.
     TEST_ASSERT_EQUAL_STRING("n4-en", v[1].name.c_str());
     TEST_ASSERT_EQUAL_STRING("en", v[1].lang.c_str());
-    TEST_ASSERT_EQUAL_STRING("https://github.com/dcarnicer/tangocho/releases/download/decks-v2/x.tgc",
+    TEST_ASSERT_EQUAL_STRING("https://github.com/dcarnicer/tamagotcho/releases/download/decks-v2/x.tgc",
                              v[1].url.c_str());
 
     // No deck in the UI language, or no language at all: the catalog order.
