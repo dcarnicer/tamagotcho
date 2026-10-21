@@ -101,7 +101,7 @@ struct CatalogFetch {
 // portal page in home mode; each maps the failures to its own words.
 CatalogFetch fetchCatalog(const String& url);
 
-// First 4 bytes are "TNGC" and a cheap PackReader probe (PSRAM-backed) opens it.
+// First 4 bytes are "TNGC" and a PackReader probe opens it (packMemory()).
 bool validatePackFile(const String& path);
 
 // One "[net] <what>: internal heap ..." line (free, largest block, minimum since

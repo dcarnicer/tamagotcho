@@ -282,6 +282,18 @@ Scope for now: **kanji only** (no vocabulary decks).
       in a left column and the options on the right, and shrinks the list rows to
       fit the shorter screen.
 
+- [~] **Third board: M5Stack Cardputer ADV** (2026-10-21, branch
+      `feature/cardputer-adv`). Envs `cardputer-adv` and `cardputer-adv-shots`:
+      landscape only (no Orientation row, no Auto), the keyboard drives every
+      screen (arrows, Enter, Esc/del, Tab as the menu key; arrows repeat on
+      lists) and the hint bar names keys; G0 is the front button; deep sleep
+      wakes on G0 or any key. No PSRAM: packs open streamed (a few KB instead
+      of up to 237 KB), the glyph cache has a 16 KB budget, the SRS table
+      grows by steps (docs/architecture.md, "Memory without PSRAM").
+      **Built and native-tested only, not run on hardware yet**: rotation, key
+      map, battery, sleep and wake, and the heap with Wi-Fi and TLS need a real
+      device (the hardware checklist is in the decisions entry).
+
 - [~] **Power management** (2026-10-18). Done: dim after 30 s, deep sleep
       after 2 min on battery (front button wakes; panel-off only on USB), 5 min
       Wi-Fi portal timeout, CPU at 80 MHz (240 while the portal or the home

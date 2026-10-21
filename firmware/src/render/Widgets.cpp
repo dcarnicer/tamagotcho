@@ -163,6 +163,9 @@ void drawHeader(lgfx::LovyanGFX& d, Renderer& r, int w, const Header& h) {
 
 namespace {
 HintSpec hintSpec(const Hints& h) {
+    if (h.keys)
+        return keyHintSpec(h.tap, h.tapKey, h.hold, h.side ? &h.sideKey : nullptr, h.sideWord,
+                           h.sideHold);
     HintSpec s;
     s.tap = h.tap;
     s.hold = h.hold;
@@ -189,16 +192,37 @@ void drawHintBar(lgfx::LovyanGFX& d, Renderer& r, int w, int h, const Hints& hin
         if (word) drawCaption(d, r, word, x + mark.w + kHintMarkGap, row + 2, wordInk, kBg);
         return x + hintItemW(mark.w, word) + kHintItemGap;
     };
-    int x = kGutter;
-    if (hints.tap) x = item(x, y, kIconTap, hints.tap, kText, kTextDim);
-    if (hints.hold) {
-        const bool lit = hints.holding || gPress >= 0.0f;
-        item(x, y, kIconHold, hints.hold, lit ? kAccentHi : kText, lit ? kText : kTextDim);
-    }
+    // A keycap mark (keyboard boards): its box from 1 px under the row's top,
+    // the icon centred in it or the caption on the row's text line.
+    auto keyItem = [&](int x, int row, const KeyCap& key, const char* word, uint16_t markInk,
+                       uint16_t wordInk) {
+        const int w = keyCapW(key);
+        d.fillRect(x, row + 1, w, kKeyCapH, kSurfaceHi);
+        if (key.icon)
+            drawIcon(d, *key.icon, x + kKeyCapPadX, row + 1 + (kKeyCapH - key.icon->h) / 2, markInk);
+        else
+            drawCaption(d, r, key.text, x + kKeyCapPadX, row + 2, markInk, kSurfaceHi);
+        if (word) drawCaption(d, r, word, x + w + kHintMarkGap, row + 2, wordInk, kBg);
+        return x + hintItemW(w, word) + kHintItemGap;
+    };
     const int sy = plan.twoRows ? y - kHintH : y;
-    if (hints.side)
-        item(plan.sideX, sy, *hints.side, plan.sideWord ? hints.sideWord : nullptr,
-             hints.sideDim ? kTextFaint : kText, hints.sideDim ? kTextFaint : kTextDim);
+    const bool lit = hints.holding || gPress >= 0.0f;
+    const uint16_t sideInk = hints.sideDim ? kTextFaint : kText;
+    const uint16_t sideWordInk = hints.sideDim ? kTextFaint : kTextDim;
+    const char* sideWord = plan.sideWord ? hints.sideWord : nullptr;
+    int x = kGutter;
+    if (hints.keys) {
+        if (hints.tap) x = keyItem(x, y, hints.tapKey, hints.tap, kText, kTextDim);
+        if (hints.hold)
+            keyItem(x, y, kKeyEnter, hints.hold, lit ? kAccentHi : kText, lit ? kText : kTextDim);
+        if (hints.side) keyItem(plan.sideX, sy, hints.sideKey, sideWord, sideInk, sideWordInk);
+        if (hints.sideHold) keyItem(plan.sideHoldX, sy, kKeyEsc, hints.sideHold, kText, kTextDim);
+        return;
+    }
+    if (hints.tap) x = item(x, y, kIconTap, hints.tap, kText, kTextDim);
+    if (hints.hold)
+        item(x, y, kIconHold, hints.hold, lit ? kAccentHi : kText, lit ? kText : kTextDim);
+    if (hints.side) item(plan.sideX, sy, *hints.side, sideWord, sideInk, sideWordInk);
     if (hints.sideHold) item(plan.sideHoldX, sy, kIconHold, hints.sideHold, kText, kTextDim);
 }
 

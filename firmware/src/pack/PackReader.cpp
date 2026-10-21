@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <new>
 
 namespace tgc {
 
@@ -31,7 +32,82 @@ const char* packErrorString(PackError e) {
     return "?";
 }
 
-void PackReader::close() {
+// --- streamed tables (PackMemory::Streamed) ---------------------------------
+// The card table and the glyph table are read a block at a time into a few
+// cached blocks (the least recently used goes first); strings into
+// kStringSlots slots, each a buffer grown to the longest string it held. Next
+// to the caches: every card's code point (deck summaries and queue rebuilds go
+// over all of them) and the key of every glyph block's first entry, so a
+// lookup is a binary search in memory and at most one block read.
+namespace {
+constexpr uint32_t kNone = 0xFFFFFFFFu;
+constexpr uint32_t kCardsPerBlock = 16;   // 512 bytes of card table
+constexpr uint32_t kGlyphsPerBlock = 32;  // 512 bytes of glyph table
+constexpr uint32_t kCardBlockSlots = 2;
+constexpr uint32_t kStrChunk = 64;        // a string is read this much at a time
+
+// (set, codepoint) as one ordered key. Code points are 21 bits, but a pack may
+// hold any u32, so the set goes above bit 31.
+inline uint64_t glyphKey(uint8_t set, uint32_t cp) {
+    return (static_cast<uint64_t>(set) << 32) | cp;
+}
+
+// Glyph table entry `e` (16 bytes) as a Glyph.
+inline void readGlyphEntry(const uint8_t* e, Glyph* g) {
+    g->codepoint = rd32(e);
+    g->set = e[4];
+    g->encoding = e[5];
+    g->width = e[6];
+    g->height = e[7];
+    g->xOff = static_cast<int8_t>(e[8]);
+    g->yOff = static_cast<int8_t>(e[9]);
+    g->advance = e[10];
+    g->dataOff = rd32(e + 12);
+}
+
+// Binary search of `n` glyphs sorted by (set, codepoint).
+const Glyph* searchGlyphs(const Glyph* glyphs, uint32_t n, uint8_t set, uint32_t codepoint) {
+    uint32_t lo = 0, hi = n;
+    while (lo < hi) {
+        uint32_t mid = lo + (hi - lo) / 2;
+        const Glyph& g = glyphs[mid];
+        if (g.set == set && g.codepoint == codepoint) return &g;
+        if (g.set < set || (g.set == set && g.codepoint < codepoint)) lo = mid + 1;
+        else hi = mid;
+    }
+    return nullptr;
+}
+}  // namespace
+
+struct PackReader::Stream {
+    struct CardBlock {
+        uint32_t block = kNone;
+        uint32_t used = 0;
+        uint8_t bytes[kCardsPerBlock * kCardSize];
+    };
+    struct GlyphBlock {
+        uint32_t block = kNone;
+        uint32_t used = 0;
+        uint32_t count = 0;
+        Glyph g[kGlyphsPerBlock];
+    };
+    struct StringSlot {
+        uint32_t off = kNone;
+        uint32_t used = 0;
+        uint32_t cap = 0;
+        char* buf = nullptr;
+    };
+    CardBlock cards[kCardBlockSlots];
+    GlyphBlock glyphs[kGlyphBlockSlots];
+    StringSlot strings[kStringSlots];
+    uint32_t* cps = nullptr;        // every card's code point
+    uint64_t* blockKeys = nullptr;  // glyphKey() of each glyph block's first entry
+    uint32_t glyphBlocks = 0;
+    uint32_t tick = 0;              // the use counter of the LRU caches
+    size_t stringBytes = 0;         // the slots' buffers
+};
+
+void PackReader::releaseTables() {
     if (alloc_.release) {
         if (cards_) alloc_.release(cards_);
         if (glyphs_) alloc_.release(glyphs_);
@@ -40,8 +116,33 @@ void PackReader::close() {
     cards_ = nullptr;
     glyphs_ = nullptr;
     strings_ = nullptr;
+}
+
+void PackReader::close() {
+    releaseTables();
+    if (stream_) {
+        if (alloc_.release) {
+            for (Stream::StringSlot& s : stream_->strings)
+                if (s.buf) alloc_.release(s.buf);
+            if (stream_->cps) alloc_.release(stream_->cps);
+            if (stream_->blockKeys) alloc_.release(stream_->blockKeys);
+            stream_->~Stream();
+            alloc_.release(stream_);
+        }
+        stream_ = nullptr;
+    }
     src_ = nullptr;
     hdr_ = PackHeader{};
+}
+
+size_t PackReader::memoryBytes() const {
+    if (stream_)
+        return sizeof(Stream) + sizeof(uint32_t) * hdr_.cardCount +
+               sizeof(uint64_t) * (stream_->glyphBlocks ? stream_->glyphBlocks : 1) +
+               stream_->stringBytes;
+    if (!cards_) return 0;
+    return static_cast<size_t>(hdr_.cardCount) * kCardSize +
+           sizeof(Glyph) * (hdr_.glyphCount ? hdr_.glyphCount : 1) + hdr_.stringsSize;
 }
 
 namespace {
@@ -142,30 +243,56 @@ PackError readPackCodepoints(PackSource& src, std::vector<uint32_t>* out) {
     return PackError::Ok;
 }
 
-PackError PackReader::open(PackSource& src, Allocator alloc) {
-    close();
-    alloc_ = alloc;
-    const uint32_t total = src.size();
-    PackHeader hd;
-    const PackError he = readHeader(src, &hd);
-    if (he != PackError::Ok) return he;
-    const bool v2 = hd.version >= 2;
+// One glyph entry: sorted after `prev`, a known encoding, its data inside the
+// file.
+PackError PackReader::checkGlyphEntry(const Glyph& g, const Glyph* prev) const {
+    const uint32_t total = src_->size();
+    if (g.set > kGlyphSetOption) return PackError::BadTable;
+    if (prev && (g.set < prev->set || (g.set == prev->set && g.codepoint <= prev->codepoint)))
+        return PackError::BadTable;
+    if (g.encoding == kGlyphEncRaw) {
+        if (!inBounds(g.dataOff, bitmapSize(g), total)) return PackError::BadTable;
+    } else if (g.encoding == kGlyphEncRle && hdr_.version >= 2) {
+        // The stream length is implied by its codes; it starts inside the glyph
+        // data and is checked while decoding (readGlyphBitmap).
+        if (bitmapSize(g) == 0 || g.dataOff < hdr_.glyphDataOff || g.dataOff >= total)
+            return PackError::BadTable;
+    } else {
+        return PackError::BadTable;  // unknown encoding, or RLE in a v1 pack
+    }
+    return PackError::Ok;
+}
+
+// One card: its string offsets inside the pool, its distractor lists inside
+// the file.
+PackError PackReader::checkCardEntry(const uint8_t* c) const {
+    const uint32_t total = src_->size();
+    for (int f = 4; f <= 12; f += 4) {
+        const uint32_t so = rd32(c + f);
+        if (so < hdr_.stringsOff || so - hdr_.stringsOff >= hdr_.stringsSize)
+            return PackError::BadTable;
+    }
+    const uint32_t d = rd32(c + 16);
+    if (d < hdr_.distractOff || !inBounds(d, 2, total)) return PackError::BadTable;
+    const uint32_t dr = rd32(c + 28);
+    if (dr != 0 && (dr < hdr_.distractOff || !inBounds(dr, 2, total))) return PackError::BadTable;
+    return PackError::Ok;
+}
+
+PackError PackReader::loadTables() {
+    const PackHeader& hd = hdr_;
+    PackSource& src = *src_;
     const uint64_t cardBytes = static_cast<uint64_t>(hd.cardCount) * kCardSize;
+    cards_ = static_cast<uint8_t*>(alloc_.alloc(static_cast<size_t>(cardBytes)));
+    glyphs_ = static_cast<Glyph*>(alloc_.alloc(sizeof(Glyph) * (hd.glyphCount ? hd.glyphCount : 1)));
+    strings_ = static_cast<char*>(alloc_.alloc(hd.stringsSize));
+    if (!cards_ || !glyphs_ || !strings_) {
+        releaseTables();
+        return PackError::NoMemory;
+    }
 
-    // --- load tables -------------------------------------------------------
-    cards_ = static_cast<uint8_t*>(alloc.alloc(static_cast<size_t>(cardBytes)));
-    glyphs_ = static_cast<Glyph*>(alloc.alloc(sizeof(Glyph) * (hd.glyphCount ? hd.glyphCount : 1)));
-    strings_ = static_cast<char*>(alloc.alloc(hd.stringsSize));
-    src_ = &src;  // so close() below releases correctly
-    hdr_ = hd;
-    auto fail = [&](PackError e) {
-        close();
-        return e;
-    };
-    if (!cards_ || !glyphs_ || !strings_) return fail(PackError::NoMemory);
-
-    if (!src.read(hd.cardsOff, cards_, static_cast<size_t>(cardBytes))) return fail(PackError::Io);
-    if (!src.read(hd.stringsOff, strings_, hd.stringsSize)) return fail(PackError::Io);
+    if (!src.read(hd.cardsOff, cards_, static_cast<size_t>(cardBytes))) return PackError::Io;
+    if (!src.read(hd.stringsOff, strings_, hd.stringsSize)) return PackError::Io;
     // Guarantee termination so string access can never run off the pool.
     strings_[hd.stringsSize - 1] = 0;
 
@@ -174,68 +301,120 @@ PackError PackReader::open(PackSource& src, Allocator alloc) {
     for (uint32_t i = 0; i < hd.glyphCount;) {
         uint32_t n = hd.glyphCount - i;
         if (n > 32) n = 32;
-        if (!src.read(hd.glyphsOff + i * kGlyphEntrySize, chunk, n * kGlyphEntrySize)) return fail(PackError::Io);
+        if (!src.read(hd.glyphsOff + i * kGlyphEntrySize, chunk, n * kGlyphEntrySize)) return PackError::Io;
         for (uint32_t k = 0; k < n; ++k, ++i) {
-            const uint8_t* e = chunk + k * kGlyphEntrySize;
-            Glyph& g = glyphs_[i];
-            g.codepoint = rd32(e);
-            g.set = e[4];
-            g.encoding = e[5];
-            g.width = e[6];
-            g.height = e[7];
-            g.xOff = static_cast<int8_t>(e[8]);
-            g.yOff = static_cast<int8_t>(e[9]);
-            g.advance = e[10];
-            g.dataOff = rd32(e + 12);
-            if (g.set > kGlyphSetOption) return fail(PackError::BadTable);
-            if (i > 0) {
-                const Glyph& p = glyphs_[i - 1];
-                if (g.set < p.set || (g.set == p.set && g.codepoint <= p.codepoint)) return fail(PackError::BadTable);
-            }
-            if (g.encoding == kGlyphEncRaw) {
-                if (!inBounds(g.dataOff, bitmapSize(g), total)) return fail(PackError::BadTable);
-            } else if (g.encoding == kGlyphEncRle && v2) {
-                // The stream length is implied by its codes; it starts inside
-                // the glyph data and is checked while decoding (readGlyphBitmap).
-                if (bitmapSize(g) == 0 || g.dataOff < hd.glyphDataOff || g.dataOff >= total)
-                    return fail(PackError::BadTable);
-            } else {
-                return fail(PackError::BadTable);  // unknown encoding, or RLE in a v1 pack
-            }
+            readGlyphEntry(chunk + k * kGlyphEntrySize, &glyphs_[i]);
+            const PackError e = checkGlyphEntry(glyphs_[i], i > 0 ? &glyphs_[i - 1] : nullptr);
+            if (e != PackError::Ok) return e;
         }
     }
 
-    // Card table: validate string offsets and distractor offsets.
     for (uint32_t i = 0; i < hd.cardCount; ++i) {
-        const uint8_t* c = cards_ + i * kCardSize;
-        for (int f = 4; f <= 12; f += 4) {
-            uint32_t so = rd32(c + f);
-            if (so < hd.stringsOff || so - hd.stringsOff >= hd.stringsSize) return fail(PackError::BadTable);
+        const PackError e = checkCardEntry(cards_ + i * kCardSize);
+        if (e != PackError::Ok) return e;
+    }
+    return PackError::Ok;
+}
+
+// The streamed state: the caches, every card's code point and the glyph
+// index, after the same checks as loadTables() (both tables are read through
+// once, a block at a time).
+PackError PackReader::loadIndex() {
+    const PackHeader& hd = hdr_;
+    PackSource& src = *src_;
+    void* mem = alloc_.alloc(sizeof(Stream));
+    if (!mem) return PackError::NoMemory;
+    stream_ = new (mem) Stream();
+    Stream& st = *stream_;
+    st.glyphBlocks = (hd.glyphCount + kGlyphsPerBlock - 1) / kGlyphsPerBlock;
+    st.cps = static_cast<uint32_t*>(alloc_.alloc(sizeof(uint32_t) * hd.cardCount));
+    st.blockKeys = static_cast<uint64_t*>(
+        alloc_.alloc(sizeof(uint64_t) * (st.glyphBlocks ? st.glyphBlocks : 1)));
+    if (!st.cps || !st.blockKeys) return PackError::NoMemory;
+
+    // The caches' own buffers serve as scratch; they start empty (kNone).
+    uint8_t chunk[kGlyphsPerBlock * kGlyphEntrySize];
+    Glyph* g = st.glyphs[0].g;
+    Glyph prev{};
+    for (uint32_t b = 0; b < st.glyphBlocks; ++b) {
+        const uint32_t first = b * kGlyphsPerBlock;
+        uint32_t n = hd.glyphCount - first;
+        if (n > kGlyphsPerBlock) n = kGlyphsPerBlock;
+        if (!src.read(hd.glyphsOff + first * kGlyphEntrySize, chunk, n * kGlyphEntrySize))
+            return PackError::Io;
+        for (uint32_t k = 0; k < n; ++k) {
+            readGlyphEntry(chunk + k * kGlyphEntrySize, &g[k]);
+            const PackError e = checkGlyphEntry(g[k], first + k > 0 ? &prev : nullptr);
+            if (e != PackError::Ok) return e;
+            prev = g[k];
         }
-        uint32_t d = rd32(c + 16);
-        if (d < hd.distractOff || !inBounds(d, 2, total)) return fail(PackError::BadTable);
-        uint32_t dr = rd32(c + 28);
-        if (dr != 0 && (dr < hd.distractOff || !inBounds(dr, 2, total)))
-            return fail(PackError::BadTable);
+        st.blockKeys[b] = glyphKey(g[0].set, g[0].codepoint);
     }
 
-    // Stroke section (optional; stroke_off != 0). Validate the whole index,
-    // every block and every mask so a corrupt pack is rejected here, exactly
-    // like the other tables, instead of failing at draw time.
-    if (hd.strokeOff != 0) {
-        if ((hd.strokeOff & 3u) || !inBounds(hd.strokeOff, static_cast<uint64_t>(hd.cardCount) * 4, total))
-            return fail(PackError::BadTable);
-        uint8_t idx[256];
-        for (uint32_t i = 0; i < hd.cardCount;) {
-            uint32_t m = hd.cardCount - i;
-            if (m > sizeof(idx) / 4) m = sizeof(idx) / 4;
-            if (!src.read(hd.strokeOff + i * 4u, idx, m * 4u)) return fail(PackError::Io);
-            for (uint32_t q = 0; q < m; ++q, ++i) {
-                const uint32_t blk = rd32(idx + q * 4);
-                if (blk == 0) continue;  // no stroke data for this card
-                const PackError e = checkStrokeBlock(blk, total);
-                if (e != PackError::Ok) return fail(e);
-            }
+    uint8_t* cards = st.cards[0].bytes;
+    for (uint32_t first = 0; first < hd.cardCount; first += kCardsPerBlock) {
+        uint32_t n = hd.cardCount - first;
+        if (n > kCardsPerBlock) n = kCardsPerBlock;
+        if (!src.read(hd.cardsOff + first * kCardSize, cards, n * kCardSize)) return PackError::Io;
+        for (uint32_t k = 0; k < n; ++k) {
+            const uint8_t* c = cards + k * kCardSize;
+            const PackError e = checkCardEntry(c);
+            if (e != PackError::Ok) return e;
+            st.cps[first + k] = rd32(c);
+        }
+    }
+    return PackError::Ok;
+}
+
+PackError PackReader::open(PackSource& src, Allocator alloc, PackMemory mem) {
+    close();
+    alloc_ = alloc;
+    PackHeader hd;
+    const PackError he = readHeader(src, &hd);
+    if (he != PackError::Ok) return he;
+    src_ = &src;  // so close() below releases correctly
+    hdr_ = hd;
+    auto fail = [&](PackError e) {
+        close();
+        return e;
+    };
+
+    bool stream = mem == PackMemory::Streamed;
+    if (!stream) {
+        const PackError e = loadTables();
+        if (e == PackError::NoMemory && mem == PackMemory::InMemoryOrStreamed)
+            stream = true;  // loadTables() released what it had
+        else if (e != PackError::Ok)
+            return fail(e);
+    }
+    if (stream) {
+        const PackError e = loadIndex();
+        if (e != PackError::Ok) return fail(e);
+    }
+    const PackError e = checkStrokes();
+    if (e != PackError::Ok) return fail(e);
+    return PackError::Ok;
+}
+
+// Stroke section (optional; stroke_off != 0). Validate the whole index, every
+// block and every mask so a corrupt pack is rejected at open(), exactly like
+// the other tables, instead of failing at draw time.
+PackError PackReader::checkStrokes() const {
+    const PackHeader& hd = hdr_;
+    if (hd.strokeOff == 0) return PackError::Ok;
+    const uint32_t total = src_->size();
+    if ((hd.strokeOff & 3u) || !inBounds(hd.strokeOff, static_cast<uint64_t>(hd.cardCount) * 4, total))
+        return PackError::BadTable;
+    uint8_t idx[256];
+    for (uint32_t i = 0; i < hd.cardCount;) {
+        uint32_t m = hd.cardCount - i;
+        if (m > sizeof(idx) / 4) m = sizeof(idx) / 4;
+        if (!src_->read(hd.strokeOff + i * 4u, idx, m * 4u)) return PackError::Io;
+        for (uint32_t q = 0; q < m; ++q, ++i) {
+            const uint32_t blk = rd32(idx + q * 4);
+            if (blk == 0) continue;  // no stroke data for this card
+            const PackError e = checkStrokeBlock(blk, total);
+            if (e != PackError::Ok) return e;
         }
     }
     return PackError::Ok;
@@ -282,17 +461,96 @@ PackError PackReader::checkStrokeBlock(uint32_t blk, uint32_t total) const {
 
 const char* PackReader::str(uint32_t off) const {
     // String offsets are absolute file offsets like every other offset.
-    if (!strings_ || off < hdr_.stringsOff || off - hdr_.stringsOff >= hdr_.stringsSize) return "";
-    return strings_ + (off - hdr_.stringsOff);
+    if (off < hdr_.stringsOff || off - hdr_.stringsOff >= hdr_.stringsSize) return "";
+    if (strings_) return strings_ + (off - hdr_.stringsOff);
+    return stream_ ? streamStr(off) : "";
 }
 
-bool PackReader::card(uint32_t idx, Card* out) const {
-    if (!cards_ || idx >= hdr_.cardCount) return false;
-    const uint8_t* c = cards_ + idx * kCardSize;
+// The string at `off` (inside the pool) from its slot: a hit, or the least
+// recently used slot refilled. It ends at its NUL or, as in memory, at the
+// pool's last byte, which counts as a NUL whatever it holds.
+const char* PackReader::streamStr(uint32_t off) const {
+    Stream& st = *stream_;
+    Stream::StringSlot* slot = &st.strings[0];
+    for (Stream::StringSlot& s : st.strings) {
+        if (s.off == off) {
+            s.used = ++st.tick;
+            return s.buf;
+        }
+        if (s.used < slot->used) slot = &s;
+    }
+    slot->off = kNone;
+    const uint32_t end = hdr_.stringsOff + hdr_.stringsSize - 1;  // the forced NUL
+    uint32_t len = 0;
+    for (;;) {
+        const uint32_t left = end - (off + len);
+        const uint32_t n = left < kStrChunk ? left : kStrChunk;
+        if (slot->cap < len + n + 1) {
+            const uint32_t cap = (len + n + 1 + 31) & ~31u;
+            char* buf = static_cast<char*>(alloc_.alloc(cap));
+            if (!buf) return "";
+            if (slot->buf) {
+                std::memcpy(buf, slot->buf, len);
+                alloc_.release(slot->buf);
+            }
+            st.stringBytes += cap - slot->cap;
+            slot->buf = buf;
+            slot->cap = cap;
+        }
+        if (n == 0) break;
+        if (!src_->read(off + len, slot->buf + len, n)) return "";
+        const void* z = std::memchr(slot->buf + len, 0, n);
+        if (z) {
+            len = static_cast<uint32_t>(static_cast<const char*>(z) - slot->buf);
+            break;
+        }
+        len += n;
+    }
+    slot->buf[len] = 0;
+    slot->off = off;
+    slot->used = ++st.tick;
+    return slot->buf;
+}
+
+// Card `idx`'s 32 bytes from its cached block (read on a miss); null on a read
+// error.
+const uint8_t* PackReader::streamCard(uint32_t idx) const {
+    Stream& st = *stream_;
+    const uint32_t block = idx / kCardsPerBlock;
+    Stream::CardBlock* slot = &st.cards[0];
+    for (Stream::CardBlock& c : st.cards) {
+        if (c.block == block) {
+            c.used = ++st.tick;
+            return c.bytes + (idx % kCardsPerBlock) * kCardSize;
+        }
+        if (c.used < slot->used) slot = &c;
+    }
+    const uint32_t first = block * kCardsPerBlock;
+    uint32_t n = hdr_.cardCount - first;
+    if (n > kCardsPerBlock) n = kCardsPerBlock;
+    slot->block = kNone;
+    if (!src_->read(hdr_.cardsOff + first * kCardSize, slot->bytes, n * kCardSize)) return nullptr;
+    slot->block = block;
+    slot->used = ++st.tick;
+    return slot->bytes + (idx % kCardsPerBlock) * kCardSize;
+}
+
+uint32_t PackReader::codepointAt(uint32_t idx) const {
+    if (idx >= hdr_.cardCount) return 0;
+    if (cards_) return rd32(cards_ + idx * kCardSize);
+    return stream_ ? stream_->cps[idx] : 0;
+}
+
+bool PackReader::card(uint32_t idx, Card* out, bool text) const {
+    if (idx >= hdr_.cardCount) return false;
+    const uint8_t* c = cards_ ? cards_ + idx * kCardSize : (stream_ ? streamCard(idx) : nullptr);
+    if (!c) return false;
+    // Streamed, `c` points into a card block; the strings have caches of their
+    // own, so reading them leaves it in place.
     out->codepoint = rd32(c);
-    out->meanings = str(rd32(c + 4));
-    out->onyomi = str(rd32(c + 8));
-    out->kunyomi = str(rd32(c + 12));
+    out->meanings = text ? str(rd32(c + 4)) : "";
+    out->onyomi = text ? str(rd32(c + 8)) : "";
+    out->kunyomi = text ? str(rd32(c + 12)) : "";
     out->distractorOff = rd32(c + 16);
     out->distractorReadOff = rd32(c + 28);
     out->jlpt = c[20];
@@ -327,17 +585,71 @@ uint16_t PackReader::distractors(const Card& c, uint16_t* out, uint16_t cap, uin
     return done;
 }
 
+// Glyph block `block` (kGlyphsPerBlock entries, fewer in the last one) from
+// the cache, read on a miss; null on a read error.
+const Glyph* PackReader::streamGlyphBlock(uint32_t block, uint32_t* count) const {
+    Stream& st = *stream_;
+    Stream::GlyphBlock* slot = &st.glyphs[0];
+    for (Stream::GlyphBlock& g : st.glyphs) {
+        if (g.block == block) {
+            g.used = ++st.tick;
+            *count = g.count;
+            return g.g;
+        }
+        if (g.used < slot->used) slot = &g;
+    }
+    const uint32_t first = block * kGlyphsPerBlock;
+    uint32_t n = hdr_.glyphCount - first;
+    if (n > kGlyphsPerBlock) n = kGlyphsPerBlock;
+    uint8_t chunk[kGlyphsPerBlock * kGlyphEntrySize];
+    slot->block = kNone;
+    if (!src_->read(hdr_.glyphsOff + first * kGlyphEntrySize, chunk, n * kGlyphEntrySize))
+        return nullptr;
+    for (uint32_t k = 0; k < n; ++k) readGlyphEntry(chunk + k * kGlyphEntrySize, &slot->g[k]);
+    slot->block = block;
+    slot->count = n;
+    slot->used = ++st.tick;
+    *count = n;
+    return slot->g;
+}
+
 const Glyph* PackReader::findGlyph(uint8_t set, uint32_t codepoint) const {
-    if (!glyphs_) return nullptr;
-    uint32_t lo = 0, hi = hdr_.glyphCount;
+    if (glyphs_) return searchGlyphs(glyphs_, hdr_.glyphCount, set, codepoint);
+    if (!stream_ || stream_->glyphBlocks == 0) return nullptr;
+    // The last block whose first entry is not after the key.
+    const uint64_t key = glyphKey(set, codepoint);
+    const uint64_t* keys = stream_->blockKeys;
+    uint32_t lo = 0, hi = stream_->glyphBlocks;
     while (lo < hi) {
-        uint32_t mid = lo + (hi - lo) / 2;
-        const Glyph& g = glyphs_[mid];
-        if (g.set == set && g.codepoint == codepoint) return &g;
-        if (g.set < set || (g.set == set && g.codepoint < codepoint)) lo = mid + 1;
+        const uint32_t mid = lo + (hi - lo) / 2;
+        if (keys[mid] <= key) lo = mid + 1;
         else hi = mid;
     }
-    return nullptr;
+    if (lo == 0) return nullptr;  // before the first glyph
+    uint32_t n = 0;
+    const Glyph* g = streamGlyphBlock(lo - 1, &n);
+    return g ? searchGlyphs(g, n, set, codepoint) : nullptr;
+}
+
+const Glyph* PackReader::glyphAt(uint32_t idx) const {
+    if (idx >= hdr_.glyphCount) return nullptr;
+    if (glyphs_) return &glyphs_[idx];
+    if (!stream_) return nullptr;
+    uint32_t n = 0;
+    const Glyph* g = streamGlyphBlock(idx / kGlyphsPerBlock, &n);
+    return g && idx % kGlyphsPerBlock < n ? &g[idx % kGlyphsPerBlock] : nullptr;
+}
+
+uint32_t PackReader::glyphIndex(const Glyph* g) const {
+    if (glyphs_) {
+        if (g >= glyphs_ && g < glyphs_ + hdr_.glyphCount) return static_cast<uint32_t>(g - glyphs_);
+        return hdr_.glyphCount;
+    }
+    if (stream_)
+        for (const Stream::GlyphBlock& b : stream_->glyphs)
+            if (b.block != kNone && g >= b.g && g < b.g + b.count)
+                return b.block * kGlyphsPerBlock + static_cast<uint32_t>(g - b.g);
+    return hdr_.glyphCount;
 }
 
 bool PackReader::readGlyphBitmap(const Glyph& g, uint8_t* buf, size_t cap) const {

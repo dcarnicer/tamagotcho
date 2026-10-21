@@ -391,6 +391,113 @@ void test_caption_chars_counts_code_points() {
     TEST_ASSERT_EQUAL(21, captionChars("\xC2\xBFqu\xC3\xA9 kanji significa?"));
 }
 
+// ---------------------------------------------------------------- keyboard bars
+// The Cardputer ADV's bars (main.cpp boardHints(), 240 px landscape only):
+// every screen's words in English and Spanish, copied from UiStrings, with
+// their keycaps. Each must fit one row with the side word shown.
+struct KeyBar {
+    const char* tap;
+    const KeyCap* tapKey;
+    const char* hold;
+    const KeyCap* side;
+    const char* sideWord;
+    const char* sideHold;
+};
+
+static void checkKeyBar(const KeyBar& b) {
+    const HintSpec s =
+        keyHintSpec(b.tap, b.tapKey ? *b.tapKey : kKeyMove, b.hold, b.side, b.sideWord, b.sideHold);
+    const HintPlan p = planHints(240, s);
+    TEST_ASSERT_FALSE(p.twoRows);
+    TEST_ASSERT_EQUAL(theme::kHintH, p.height);
+    if (b.side && b.sideWord) TEST_ASSERT_TRUE(p.sideWord);
+    const int frontEnd = hintFrontEnd(s.tap, s.hold, s.tapMarkW, s.holdMarkW);
+    if (b.side) TEST_ASSERT_TRUE(p.sideX >= frontEnd + kHintItemGap);
+    if (b.sideHold)
+        TEST_ASSERT_EQUAL(240 - theme::kGutter,
+                          p.sideHoldX + hintItemW(keyCapW(kKeyEsc), s.sideHold));
+}
+
+void test_keycap_widths() {
+    TEST_ASSERT_EQUAL(15, keyCapW(kKeyMove));
+    TEST_ASSERT_EQUAL(11, keyCapW(kKeyEnter));
+    TEST_ASSERT_EQUAL(11, keyCapW(kKeyRight));
+    TEST_ASSERT_EQUAL(11, keyCapW(kKeyLeft));
+    TEST_ASSERT_EQUAL(22, keyCapW(kKeyEsc));
+    TEST_ASSERT_EQUAL(22, keyCapW(kKeyMenu));
+    // Every icon fits the keycap's height with a pixel to spare.
+    for (const KeyCap* k : {&kKeyMove, &kKeyEnter, &kKeyRight, &kKeyLeft})
+        TEST_ASSERT_TRUE(k->icon->h <= kKeyCapH - 2);
+}
+
+void test_keyboard_bars_fit_one_row() {
+    const KeyCap* esc = &kKeyEsc;
+    const KeyCap* menu = &kKeyMenu;
+    const KeyCap* move = &kKeyMove;
+    const KeyCap* right = &kKeyRight;
+    const KeyCap* enter = &kKeyEnter;
+    const KeyBar bars[] = {
+        // quiz: question, after a correct / a wrong answer; detail card; done
+        {"move", move, "answer", menu, "settings", nullptr},
+        {"mover", move, "responder", menu, "ajustes", nullptr},
+        {"next", enter, nullptr, menu, "settings", nullptr},
+        {"siguiente", enter, nullptr, menu, "ajustes", nullptr},
+        {"details", enter, nullptr, menu, "settings", nullptr},
+        {"detalles", enter, nullptr, menu, "ajustes", nullptr},
+        {nullptr, nullptr, "study more", menu, "settings", nullptr},
+        {nullptr, nullptr, "estudiar más", menu, "ajustes", nullptr},
+        // menus and pickers
+        {"move", move, "open", esc, "back", nullptr},
+        {"mover", move, "abrir", esc, "atrás", nullptr},
+        {"move", move, "choose", esc, "back", nullptr},
+        {"mover", move, "elegir", esc, "atrás", nullptr},
+        // date stepper: right +1 day, Enter OK, left -1 day, esc cancel
+        {"+1 day", right, "OK", &kKeyLeft, "-1 day", "cancel"},
+        {"+1 d\xC3\xAD" "a", right, "OK", &kKeyLeft, "-1 d\xC3\xAD" "a", "cancelar"},
+        {"by hand", enter, nullptr, nullptr, nullptr, nullptr},
+        {"a mano", enter, nullptr, nullptr, nullptr, nullptr},
+        // About, statistics, network test
+        {"more", right, nullptr, esc, "back", nullptr},
+        {"m\xC3\xA1s", right, nullptr, esc, "atr\xC3\xA1s", nullptr},
+        {nullptr, nullptr, "test again", esc, "back", nullptr},
+        {nullptr, nullptr, "repetir", esc, "atr\xC3\xA1s", nullptr},
+        // Wi-Fi portal: setup mode, failed join, the boot-time screen, a download
+        {"other QR", right, "get decks", esc, "stop", nullptr},
+        {"otro QR", right, "descargar", esc, "parar", nullptr},
+        {"retry", right, "setup", esc, "stop", nullptr},
+        {"repetir", right, "config.", esc, "parar", nullptr},
+        {"other QR", right, nullptr, esc, "study", nullptr},
+        {"otro QR", right, nullptr, esc, "estudiar", nullptr},
+        {nullptr, nullptr, nullptr, esc, "cancel", nullptr},
+        {nullptr, nullptr, nullptr, esc, "cancelar", nullptr},
+        // Get decks: the list (download, update, study), an error
+        {"move", move, "get", esc, "back", nullptr},
+        {"mover", move, "actualizar", esc, "atr\xC3\xA1s", nullptr},
+        {"mover", move, "estudiar", esc, "atr\xC3\xA1s", nullptr},
+        {nullptr, nullptr, "retry", esc, "back", nullptr},
+        {nullptr, nullptr, "repetir", esc, "atr\xC3\xA1s", nullptr},
+        // Delete progress: the confirmation; the first-boot language picker
+        {nullptr, nullptr, "delete", esc, "cancel", nullptr},
+        {nullptr, nullptr, "borrar", esc, "cancelar", nullptr},
+        {"other", move, "OK", nullptr, nullptr, nullptr},
+        {"otro", move, "OK", nullptr, nullptr, nullptr},
+    };
+    for (const KeyBar& b : bars) checkKeyBar(b);
+}
+
+// The keyboard's esc mark replaces the hold mark in the side group's width.
+void test_side_hold_mark_of_its_own() {
+    HintSpec s;
+    s.sideIconW = 11;
+    s.sideWord = "-1 day";
+    s.sideHold = "cancel";
+    s.holdMarkW = kIconHold.w;
+    const HintPlan button = planHints(240, s);
+    s.sideHoldMarkW = keyCapW(kKeyEsc);
+    const HintPlan key = planHints(240, s);
+    TEST_ASSERT_EQUAL(button.sideHoldX - (keyCapW(kKeyEsc) - kIconHold.w), key.sideHoldX);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_progress_counts_the_open_question);
@@ -413,5 +520,8 @@ int main(int, char**) {
     RUN_TEST(test_hint_plan_date_stepper);
     RUN_TEST(test_hint_plan_side_hold_fallbacks);
     RUN_TEST(test_caption_chars_counts_code_points);
+    RUN_TEST(test_keycap_widths);
+    RUN_TEST(test_keyboard_bars_fit_one_row);
+    RUN_TEST(test_side_hold_mark_of_its_own);
     return UNITY_END();
 }

@@ -1,7 +1,9 @@
 # Tamagotcho (たまごっちょ) firmware
 
-PlatformIO project for the M5Stack StickS3 (primary) and the LilyGO
-T-Display-S3 (dev stand-in). Phase 2: open the saved pack in `/packs` and run a
+PlatformIO project for the M5Stack StickS3 (primary), the LilyGO
+T-Display-S3 (dev stand-in) and the M5Stack Cardputer ADV (keyboard,
+landscape only, no PSRAM; built and native-tested, **not run on hardware
+yet**). Phase 2: open the saved pack in `/packs` and run a
 multiple-choice quiz (kanji -> meaning / reading / meaning -> kanji) scheduled
 from persisted FSRS review state (`/state/srs.bin`).
 
@@ -12,6 +14,7 @@ cd firmware
 pio test -e native            # unit tests for pack/, quiz/, srs/, imu/, catalog/, portal/ (host, no Arduino)
 pio run -e sticks3            # build for StickS3
 pio run -e tdisplay-s3        # build for T-Display-S3
+pio run -e cardputer-adv      # build for Cardputer ADV
 ```
 
 Each build prints `Tamagotcho version: ...`: `scripts/version.py` takes
@@ -36,6 +39,12 @@ StickS3 build with the serial remote (`TGC_REMOTE`): over the USB cable,
 runs test hooks (the power-cut date question, a home Wi-Fi join that fails);
 see [tools/screenshots/README.md](../tools/screenshots/README.md). Never flash
 it as a release: anything on the cable can press the buttons.
+
+`-e cardputer-adv` is the Cardputer ADV (`-e cardputer-adv-shots` with the
+serial remote, which also types its keys); it uses the StickS3's 8 MB
+partitions, so `uploadfs` works the same. The ESP32-S3's USB Serial/JTAG
+flashes it while the app runs; if it does not answer (asleep, or hung), hold
+G0 while switching it on to start the ROM's download mode.
 
 ### Prebuilt images from a release
 
@@ -101,6 +110,7 @@ No OTA: one 2 MB app slot, everything else is LittleFS (partition label
 |---------------|-------|--------|------------------|
 | StickS3       | 8 MB  | 2 MB   | 0x5F0000 = 5.94 MB |
 | T-Display-S3  | 16 MB | 2 MB   | 0xDF0000 = 13.94 MB |
+| Cardputer ADV | 8 MB  | 2 MB   | 0x5F0000 = 5.94 MB (the StickS3's table) |
 
 ## Controls
 
@@ -135,6 +145,26 @@ offers Auto (follow the loaded deck's language), English and Español. A device
 that keeps its decks through a merged-image flash, which erases the settings,
 starts in Auto.
 
+### Cardputer ADV
+
+The keyboard drives every screen; the G0 button is the front button (tap and
+hold as above). There is no text entry anywhere, so the arrow keys work with
+or without Fn, and so does Esc. The hint bar names the keys.
+
+| key                         | does                                                       |
+|-----------------------------|------------------------------------------------------------|
+| `.` (down) and `/` (right)  | what the front tap does: the next option, row, day or page |
+| `;` (up) and `,` (left)     | the previous option (quiz) or day (date stepper); a list's row up, wrapping; nothing elsewhere |
+| Enter                       | what the front hold does, at once (no hold, no fill)       |
+| `` ` `` (Esc) and del       | back, or cancel (pickers, the date stepper, a download); in the quiz, the detail card and the done screen, the settings home |
+| Tab                         | the settings home (from the quiz; from a settings screen without Wi-Fi on); on the home, back where it was opened |
+
+Held arrows repeat (after 0.4 s, every 0.12 s) on the lists and the date
+stepper. Any key wakes a dimmed or dark screen like a button (on a dark one
+that press only wakes it) and keeps it from sleeping. The Delete progress
+confirmation ignores an Enter in its first half second, so a double Enter on
+its row does not delete.
+
 ## Orientation
 
 Settings › Device › Orientation: on the StickS3, **Auto** (the default),
@@ -145,7 +175,8 @@ Upside down and lying flat keep the current layout. A turn takes effect after
 about half a second, never in the middle of a button press, and does not count
 as activity for dimming or sleep. Only the picture turns; the buttons keep their
 roles. The T-Display-S3 has no IMU and offers only the fixed choices (portrait
-by default).
+by default). The Cardputer ADV is always landscape, over its keyboard, and has
+no Orientation row.
 
 ## Power
 
@@ -165,6 +196,12 @@ To flash a sleeping device on battery, wake it first. The CPU runs at 80 MHz
 while the portal in home mode, Get decks or the network test is open, or for a
 few seconds while the date question after a power-off fetches the network time;
 a download or a join counts as activity).
+
+On the **Cardputer ADV** G0 or any key wakes it, and "on USB power" means
+plugged into a computer: the app has no VBUS reading there, so it takes the USB
+host's frames as the sign; on a plain charger it sleeps as on battery. Its
+power switch cuts everything, so the next start asks for the date. It has no
+power button: the **Sleep** row sleeps on demand.
 
 **Sleep on demand.** On the StickS3 a **click of the power button** (the M5PM1's
 button, which used to restart the device) saves and deep-sleeps right away, after
@@ -187,12 +224,12 @@ saves, shows "Battery low" and deep-sleeps, before the cell dies and takes the
 day clock with it. Woken while still below 6 % and unplugged, it shows the
 notice again and goes back to sleep. Plug in USB to use it.
 
-| button            | StickS3            | T-Display-S3 |
-|-------------------|--------------------|--------------|
-| confirm (hold)    | front button (A)   | GPIO0 (BOOT) |
-| next / tap        | side button (B)    | GPIO14       |
-| deck menu (hold)  | side button (B)    | GPIO14       |
-| sleep now (click) | power button (PM1) | --           |
+| button            | StickS3            | T-Display-S3 | Cardputer ADV          |
+|-------------------|--------------------|--------------|------------------------|
+| confirm (hold)    | front button (A)   | GPIO0 (BOOT) | G0, or Enter           |
+| next / tap        | side button (B)    | GPIO14       | G0 tap, or `.` `/`     |
+| deck menu (hold)  | side button (B)    | GPIO14       | Tab (or Esc in the quiz) |
+| sleep now (click) | power button (PM1) | --           | -- (the Sleep row)     |
 
 ## Date
 

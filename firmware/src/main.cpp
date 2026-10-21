@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <Preferences.h>
+#include <esp_heap_caps.h>
 #include <esp_partition.h>
 
 #include <algorithm>
@@ -388,6 +389,12 @@ struct UiStrings {
     const char* hintDelete;          // hint bar: the confirmation's hold
     const char* resetDoneFmt;        // Study page note after a deck: %u kanji
     const char* resetAllDone;        // Study page note after Everything
+    // A board with a keyboard (the Cardputer ADV; keysOr()): the texts that
+    // name the front button elsewhere name keys, or its G0 button, there.
+    const char* sleepHintKeys;
+    const char* batteryHintKeys;
+    const char* dateExplainKeys;           // caption, wrapped (21 characters a line)
+    const char* errNoFilesystemHintKeys;
 };
 
 const UiStrings kUiEn = {
@@ -492,6 +499,10 @@ const UiStrings kUiEn = {
     "delete",
     "Deleted: %u kanji",
     "Progress deleted",
+    "Progress saved. Any key wakes me.",
+    "Charge me, then press a key.",
+    "Press Enter when it shows today.",
+    "Hold the G0 button to erase it. Decks and progress are lost.",
 };
 
 const UiStrings kUiEs = {
@@ -597,10 +608,18 @@ const UiStrings kUiEs = {
     "borrar",
     "Borrados: %u kanji",
     "Progreso borrado",
+    "Progreso guardado. Cualquier tecla me despierta.",
+    "Cárgame y pulsa una tecla.",
+    "Pulsa Enter cuando sea hoy.",
+    "Mantén el botón G0 para borrarla. Se pierden mazos y progreso.",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
 const UiStrings& ui() { return *gUi; }
+// `keys` on a board with a keyboard, else `buttons` (the UiStrings *Keys texts).
+const char* keysOr(const char* buttons, const char* keys) {
+    return tgc::board::hasKeyboard() ? keys : buttons;
+}
 
 // NVS `tangocho`/`ui`: the UI-language preference (Auto/English/Spanish). Auto,
 // the default, follows the pack language exactly as before.
@@ -616,7 +635,7 @@ void setUiForLang(const char* lang) {
 // the pack's language under Auto, as setUiForLang() last resolved it.
 const char* uiLangCode() { return gUi == &kUiEs ? "es" : "en"; }
 
-lgfx::LGFX_Sprite* gCanvas = nullptr;  // full-screen back buffer in PSRAM
+lgfx::LGFX_Sprite* gCanvas = nullptr;  // full-screen back buffer (PSRAM when there is some)
 std::unique_ptr<tgc::PackReader> gPack = std::make_unique<tgc::PackReader>();
 std::unique_ptr<tgc::FsPackSource> gSource;
 tgc::Renderer gRender;
@@ -826,6 +845,7 @@ uint32_t gLastPowerCheck = 0;
 bool gDimmed = false;
 bool gScreenOff = false;        // idle on USB power: panel off, still running
 bool gSwallowInput = false;     // drop button events until all buttons are up
+tgc::KeyRepeat gKeyRepeat;      // the held arrow of a keyboard (keyTurn())
 bool gSrsLoaded = false;        // the state file loaded at boot
 // The quiz header's battery figure, re-read every kBatteryCheckMs.
 constexpr uint32_t kBatteryCheckMs = 30000;
@@ -901,7 +921,8 @@ void presentRegion(int x, int y, int w, int h) {
 }
 
 // (Re)create the full-screen back buffer for the current W x H, PSRAM first with
-// an internal-RAM fallback. Used at boot and on an orientation change.
+// an internal-RAM fallback (a board without PSRAM goes straight to internal
+// RAM: 64.8 KB at 240 x 135). Used at boot and on an orientation change.
 void createCanvas() {
     auto& disp = tgc::board::display();
     if (gCanvas) {
@@ -910,7 +931,7 @@ void createCanvas() {
     }
     gCanvas = new lgfx::LGFX_Sprite(&disp);
     gCanvas->setColorDepth(16);
-    gCanvas->setPsram(true);
+    gCanvas->setPsram(psramFound());
     if (!gCanvas->createSprite(W, H)) {
         gCanvas->setPsram(false);  // fall back to internal RAM
         gCanvas->createSprite(W, H);
@@ -1021,6 +1042,34 @@ bool questionCard(tgc::Card* out) {
     return gPack->isOpen() && gQ.count > 0 && gPack->card(gQ.cardIndex, out);
 }
 
+// The hint bar in this board's terms. On a board with a keyboard the words
+// stay and the marks become keys (ui/HintBar.h keycaps, docs/decisions.md
+// 2026-10-21): `tapKey` for the front tap (kKeyMove where it moves a focus,
+// kKeyRight where it steps or turns a page, kKeyEnter where any key goes on),
+// Enter for the hold, esc for the side's back or cancel, the menu key and the
+// word "settings" for the side's settings icon, and on the date stepper (the
+// only bar with a side hold) left for the side tap and esc for the side hold.
+// The buttons' boards get `h` as it is.
+tgc::widgets::Hints boardHints(tgc::widgets::Hints h, const tgc::KeyCap& tapKey = tgc::kKeyMove) {
+    if (!tgc::board::hasKeyboard()) return h;
+    h.keys = true;
+    h.tapKey = tapKey;
+    if (h.sideHold) {
+        h.sideKey = tgc::kKeyLeft;
+    } else if (h.side == &tgc::kIconMenu) {
+        h.sideKey = tgc::kKeyMenu;
+        if (!h.sideWord) h.sideWord = ui().hintSettings;
+    } else {
+        h.sideKey = tgc::kKeyEsc;
+    }
+    return h;
+}
+
+void drawHints(lgfx::LovyanGFX& d, const tgc::widgets::Hints& h,
+               const tgc::KeyCap& tapKey = tgc::kKeyMove) {
+    tgc::widgets::drawHintBar(d, gRender, W, H, boardHints(h, tapKey));
+}
+
 // Stand-in for the quiz or detail screen when questionCard() fails (a deck that
 // could not be loaded): says so and how to get out, since a side hold opens
 // the settings home on both screens.
@@ -1028,7 +1077,8 @@ void drawNoQuestion() {
     tgc::widgets::Hints h;
     h.side = &tgc::kIconMenu;
     h.sideWord = ui().hintSettings;
-    showError(ui().errOpenPack, ui().errOpenPackMenu, &h);
+    const tgc::widgets::Hints keys = boardHints(h);
+    showError(ui().errOpenPack, ui().errOpenPackMenu, &keys);
 }
 
 // The quiz prompt's set-0 kanji. With TGC_QUIZ_LOG it also traces the draw
@@ -1164,8 +1214,10 @@ void drawQuizTile(lgfx::LovyanGFX& d, int i, float fill) {
     wg::TileState st = quizTileState(i);
     if (fill >= 0.0f && st == wg::TileState::Focus) st = wg::TileState::Holding;
     if (gQ.mode == tgc::QuizMode::MeaningToKanji) {
-        tgc::Card oc;
-        const uint32_t cp = gPack->card(gQ.optionCard[i], &oc) ? oc.codepoint : '?';
+        // The code point only (a streamed pack would read the card's text too,
+        // on every hold-fill frame).
+        const uint32_t cp =
+            gQ.optionCard[i] < gPack->cardCount() ? gPack->codepointAt(gQ.optionCard[i]) : '?';
         wg::drawKanjiTile(d, gRender, g.tx[i], g.ty[i], g.tw, g.th, st, cp, g.set, fill);
         return;
     }
@@ -1260,7 +1312,8 @@ void drawQuizPrompt(lgfx::LovyanGFX& d, const tgc::Card& card) {
 
 // The quiz's hint bar: "• move ▬ answer" on a question, "• next" after a
 // correct answer, "• details" after a wrong one; the side button's icon is
-// the settings one (side hold). `holding` lights the hold item.
+// the settings one (side hold). `holding` lights the hold item. Keys: up/down
+// move, Enter answers (and goes on: any key does), Tab the settings.
 void drawQuizHints(lgfx::LovyanGFX& d, bool holding) {
     wg::Hints h;
     if (!gRevealed) {
@@ -1271,7 +1324,7 @@ void drawQuizHints(lgfx::LovyanGFX& d, bool holding) {
         h.tap = gLastCorrect ? ui().hintNext : ui().hintDetails;
     }
     h.side = &tgc::kIconMenu;
-    wg::drawHintBar(d, gRender, W, H, h);
+    drawHints(d, h, gRevealed ? tgc::kKeyEnter : tgc::kKeyMove);
 }
 
 // The auto-advance countdown: a 2 px bar along the bottom edge that drains
@@ -1361,17 +1414,18 @@ void menuHints(lgfx::LovyanGFX& d, const char* holdWord) {
     h.hold = holdWord;
     h.side = &tgc::kIconBack;
     h.sideWord = ui().hintBack;
-    wg::drawHintBar(d, gRender, W, H, h);
+    drawHints(d, h);
 }
 
-// The hint bar of a screen whose side button only goes back.
+// The hint bar of a screen whose side button only goes back. Its tap (About's
+// next page) is the right arrow on a keyboard.
 void backHints(lgfx::LovyanGFX& d, const char* tap = nullptr, const char* hold = nullptr) {
     wg::Hints h;
     h.tap = tap;
     h.hold = hold;
     h.side = &tgc::kIconBack;
     h.sideWord = ui().hintBack;
-    wg::drawHintBar(d, gRender, W, H, h);
+    drawHints(d, h, tgc::kKeyRight);
 }
 
 // Lines of `text` wrapped in the caption font to `w` px, drawn from y one
@@ -1443,10 +1497,14 @@ struct PartialPush {
 PartialPush gPartial;
 void dropPartialPush() { gPartial.armed = false; }
 
-void moveListFocus(tgc::ListView& list) {
+// `dir` 1 is the next row (the front tap), -1 the previous one (a key's up).
+void moveListFocus(tgc::ListView& list, int dir = 1) {
     const int oldFocus = list.focus();
     const int oldFirst = list.first();
-    list.next();
+    if (dir < 0)
+        list.prev();
+    else
+        list.next();
     gPartial.armed = list.first() == oldFirst;
     gPartial.list = &list;
     gPartial.oldFocus = oldFocus;
@@ -1480,6 +1538,8 @@ st::Page gMenuPage = st::Page::Home;
 tgc::ListView gMenuLists[st::kPageCount];  // each page keeps its focus
 char gMenuNote[32] = "";  // a page's note (after Delete progress), until the next press
 tgc::ListView& menuList() { return gMenuLists[static_cast<int>(gMenuPage)]; }
+// A page's rows on this board: a landscape-only one has no Orientation row.
+st::PageItems pageRows(st::Page p) { return st::pageItems(p, tgc::board::fixedLandscape()); }
 
 // One row of a settings page: its label, its value (none when `value` is null
 // or writes "") and what a hold does. menuItem() has one per st::Item.
@@ -1574,7 +1634,7 @@ void drawMenuRow(lgfx::LovyanGFX& d, st::Item id, int x, int y, int w, int h, bo
 void drawMenu() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    const st::PageItems items = st::pageItems(gMenuPage);
+    const st::PageItems items = pageRows(gMenuPage);
     tgc::ListView& list = menuList();
     list.setCount(items.count);
     auto row = [&](int i, int x, int y, int w, int h, bool f) {
@@ -1602,7 +1662,7 @@ void drawMenu() {
 // A group row of the home opened its page: from the top.
 void openMenuPage(st::Page p) {
     gMenuPage = p;
-    menuList().setCount(st::pageItems(p).count);
+    menuList().setCount(pageRows(p).count);
     menuList().reset(0);
     gScreen = Screen::Menu;
     drawScreen();
@@ -1856,7 +1916,7 @@ void drawFirstLang() {
     wg::Hints hints;
     hints.tap = hl.firstLangTap;
     hints.hold = hl.firstLangHold;
-    wg::drawHintBar(d, gRender, W, H, hints);
+    drawHints(d, hints);
     present();  // the hints follow the focus: the whole frame
 }
 
@@ -1920,7 +1980,7 @@ void drawDone() {
         h.hold = ui().hintStudyMore;
     }
     h.side = &tgc::kIconMenu;
-    wg::drawHintBar(d, gRender, W, H, h);
+    drawHints(d, h);
     present();
 }
 
@@ -2005,7 +2065,7 @@ void drawDateNet() {
     drawCaptionLines(d, line, 4, mid + 8, W - 8, 2, kTextDim);
     wg::Hints h;
     h.tap = ui().hintByHand;
-    wg::drawHintBar(d, gRender, W, H, h);
+    drawHints(d, h, tgc::kKeyEnter);
     present();
 }
 
@@ -2031,7 +2091,8 @@ void drawDate() {
     h.sideWord = ui().dateBackOneDay;
     h.sideDim = gDateSteps <= gSrs.manualStepsMin();
     h.sideHold = ui().hintCancel;
-    const tgc::layout::Date l = tgc::layout::dateFor(W, H, wg::hintBarHeight(W, h));
+    const tgc::layout::Date l =
+        tgc::layout::dateFor(W, H, wg::hintBarHeight(W, boardHints(h, tgc::kKeyRight)));
     const bool land = W > H;
     const tgc::Align align = land ? tgc::Align::Left : tgc::Align::Centre;
     char line[64], day[32];
@@ -2074,10 +2135,10 @@ void drawDate() {
         lines = drawCaptionLines(d, status, e.x, e.y, e.w, maxLines, kWarn, align);
         ++lines;  // a blank line under it
     }
-    drawCaptionLines(d, ui().dateExplain, e.x, e.y + 10 * lines, e.w, maxLines - lines, kTextDim,
-                     align);
+    drawCaptionLines(d, keysOr(ui().dateExplain, ui().dateExplainKeys), e.x, e.y + 10 * lines,
+                     e.w, maxLines - lines, kTextDim, align);
 
-    wg::drawHintBar(d, gRender, W, H, h);
+    drawHints(d, h, tgc::kKeyRight);
     present();
 }
 
@@ -2530,7 +2591,7 @@ void drawWifi() {
                          failed ? kText : kAccentHi);
         if (failed) hints.tap = ui().wifiTapRetry;
         hints.hold = ui().wifiHoldSetup;
-        wg::drawHintBar(d, gRender, W, H, hints);
+        drawHints(d, hints, tgc::kKeyRight);
         present();
         return;
     }
@@ -2590,7 +2651,7 @@ void drawWifi() {
         wg::Hints busy;
         busy.side = &tgc::kIconBack;
         busy.sideWord = ui().hintCancel;
-        wg::drawHintBar(d, gRender, W, H, busy);
+        drawHints(d, busy);
         present();
         return;
     }
@@ -2606,7 +2667,7 @@ void drawWifi() {
     if (!home) hints.tap = ui().wifiTapOtherQr;
     if (gWifiBootUpload && !gPack->isOpen() && tgc::HomeWifi::hasCredentials())
         hints.hold = ui().wifiGetDecksHint;
-    wg::drawHintBar(d, gRender, W, H, hints);
+    drawHints(d, hints, tgc::kKeyRight);
     present();
 }
 
@@ -2719,7 +2780,7 @@ void drawGetDecks() {
         wg::Hints h;
         h.side = &tgc::kIconBack;
         h.sideWord = ui().hintCancel;
-        wg::drawHintBar(d, gRender, W, H, h);
+        drawHints(d, h);
         present();
         return;
     }
@@ -2818,7 +2879,7 @@ void drawGetDecks() {
                                                        : ui().netHoldDownload;
         }
     }
-    wg::drawHintBar(d, gRender, W, H, h);
+    drawHints(d, h);
     present();
 }
 
@@ -2947,7 +3008,7 @@ void drawDetail() {
         wg::Hints hints;
         hints.tap = ui().hintNext;
         hints.side = &tgc::kIconMenu;
-        wg::drawHintBar(d, gRender, W, H, hints);
+        drawHints(d, hints, tgc::kKeyEnter);
     }
     present();
 }
@@ -3329,8 +3390,13 @@ void applyRotation(uint8_t r) {
 bool orientAuto() { return gOrientPref == kOrientAuto && tgc::board::hasAccel(); }
 
 // The rotation a fixed setting asks for. Auto on a board whose accelerometer is
-// missing or failed to start behaves as portrait (the setting is kept).
-uint8_t fixedRotation() { return gOrientPref == kOrientLandscape ? 1 : 0; }
+// missing or failed to start behaves as portrait (the setting is kept). A
+// landscape-only board (the Cardputer ADV) is always landscape, whatever the
+// setting says (it has no Orientation row).
+uint8_t fixedRotation() {
+    if (tgc::board::fixedLandscape()) return 1;
+    return gOrientPref == kOrientLandscape ? 1 : 0;
+}
 
 // The setting as the Device page and its picker show it: that Auto reads as
 // Portrait, which is what it draws (the T-Display-S3 has no accelerometer).
@@ -3399,7 +3465,8 @@ bool loadPack(const String& path) {
     auto src = std::make_unique<tgc::FsPackSource>(LittleFS.open(path, "r"));
     if (!src->ok()) return false;
     auto next = std::make_unique<tgc::PackReader>();
-    if (next->open(*src, tgc::psramAllocator()) != tgc::PackError::Ok) return false;
+    if (next->open(*src, tgc::psramAllocator(), tgc::packMemory()) != tgc::PackError::Ok)
+        return false;
     // Progress is global (keyed by codepoint), so persist it before the swap.
     if (gDirty) {
         gSrs.save(gSrsIo);
@@ -3408,7 +3475,7 @@ bool loadPack(const String& path) {
     gRender.end();
     gPack = std::move(next);  // the old reader closes before its source goes
     gSource = std::move(src);
-    if (!gRender.begin(*gPack)) {
+    if (!gRender.begin(*gPack, tgc::glyphCacheBudget())) {
         // Out of memory for the glyph cache: leave a consistent "no pack" state
         // rather than a pack the renderer cannot draw.
         gPack->close();
@@ -3418,8 +3485,13 @@ bool loadPack(const String& path) {
     setUiForLang(gPack->header().lang);
     gCurrentPack = path;
     gQueue.rebuild(*gPack, gSrs, gRng);
-    Serial.printf("pack %s: %u cards, %u glyphs, lang %s\n", gPack->deckName(),
-                  (unsigned)gPack->cardCount(), (unsigned)gPack->glyphCount(), gPack->header().lang);
+    Serial.printf("pack %s: %u cards, %u glyphs, lang %s, tables %s (%u bytes); internal heap "
+                  "%u free, %u largest\n",
+                  gPack->deckName(), (unsigned)gPack->cardCount(), (unsigned)gPack->glyphCount(),
+                  gPack->header().lang, gPack->streamed() ? "streamed" : "in memory",
+                  (unsigned)gPack->memoryBytes(),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     return true;
 }
 
@@ -3840,7 +3912,7 @@ void openMenu() {
     gBeforeMenu = gScreen;
     gScreen = Screen::Menu;
     gMenuPage = st::Page::Home;
-    menuList().setCount(st::pageItems(gMenuPage).count);
+    menuList().setCount(pageRows(gMenuPage).count);
     menuList().reset(0);
     drawScreen();
 }
@@ -4042,6 +4114,7 @@ tgc::ListView gResetList;
 tgc::ListView gResetConfirmList;  // the confirmation's one row
 char gResetNote[32] = "";         // the list's note ("Nothing to delete")
 bool gResetAll = false;           // the confirmation is for Everything
+uint32_t gResetConfirmAt = 0;     // millis() when it opened (keyAction()'s Enter guard)
 std::vector<uint32_t> gResetCps;  // This deck: its kanji, sorted and unique
 tgc::DeckReset gResetPreview;     // This deck: its kanji with progress, shared ones
 int gResetSharedDecks = 0;        // other installed decks that share some of them
@@ -4135,6 +4208,7 @@ void openResetConfirm() {
     gResetConfirmList.setCount(1);
     gResetConfirmList.reset(0);
     gScreen = Screen::ResetConfirm;
+    gResetConfirmAt = millis();
     drawScreen();
 }
 
@@ -4181,7 +4255,7 @@ void drawResetConfirm() {
     hints.hold = ui().hintDelete;
     hints.side = &tgc::kIconBack;
     hints.sideWord = ui().hintCancel;
-    wg::drawHintBar(d, gRender, W, H, hints);
+    drawHints(d, hints);
     present();
 }
 
@@ -4307,7 +4381,7 @@ const MenuItem& menuItem(st::Item id) {
 
 // A hold on the focused settings row.
 void activateSetting() {
-    menuItem(st::itemAt(gMenuPage, menuList().focus())).action();
+    menuItem(st::itemAt(gMenuPage, menuList().focus(), tgc::board::fixedLandscape())).action();
 }
 
 // loop() on the settings tree: tap moves, hold activates, the side button goes
@@ -4536,6 +4610,17 @@ bool netProgress(size_t done, size_t total, void*) {
         gNetInputAt = now;
         tgc::board::update();
         if (tgc::board::isHeld(Button::Next)) return false;
+        // A keyboard's esc (or del) cancels as well. The other keys pressed
+        // meanwhile are dropped, as presses during a blocking step are, and a
+        // held arrow stops repeating (its release may be among them).
+        tgc::KeyEvent ev;
+        bool cancel = false, keys = false;
+        while (tgc::board::nextKeyEvent(&ev)) {
+            keys = true;
+            if (ev.down && tgc::keyAction(ev.key) == tgc::KeyAction::Back) cancel = true;
+        }
+        if (keys) gKeyRepeat.cancel();
+        if (cancel) return false;
         if (tgc::board::powerButtonClicked()) {
             gNetSleep = NetSleep::User;
             return false;
@@ -4897,16 +4982,21 @@ struct Key {
 //   'd'        the boot-time date question as after a power cut: "Getting the
 //              date via <ssid>..." first, then the stepper (with the reason when
 //              the network failed). It writes nothing itself: a hold on the
-//              stepper confirms (saved), a side tap cancels, and a network time
+//              stepper confirms (saved), a side hold cancels, and a network time
 //              that answers is applied as by every sync (a same-day one writes
 //              nothing)
 //   'f'        the next home Wi-Fi join is pinned to an access point that does
 //              not exist: the pinned step fails, any access point after 25 s
 //   'x'        the next join is pinned there for good: it fails after 40 s ("No
 //              network: set it by hand" on the date question)
+// Keys (a board with a keyboard, cardputer-adv-shots; two bytes, 'k' and the
+// key): 'u' 'd' 'l' 'r' the arrows, 'e' Enter, 'x' Esc, 'm' the menu key (Tab),
+// 'b' Backspace (del); 'U' 'D' 'L' 'R' hold an arrow for kRemoteKeyHoldMs (its
+// auto-repeat). A key goes down, and up 80 ms later, through the same path as
+// the keyboard's (keyTurn()). An unknown key is ignored.
 // A press is a virtual button that goes through Key like a real one: it counts
 // as activity, a dim panel brightens and acts, a dark one only wakes. While a
-// virtual button is down the next bytes wait, so a burst runs in order.
+// virtual button or key is down the next bytes wait, so a burst runs in order.
 struct RemoteKey {
     uint32_t upAt = 0;     // millis() when a tap comes up; 0: up
     bool holding = false;  // a hold that has not fired yet
@@ -4914,8 +5004,53 @@ struct RemoteKey {
 RemoteKey gRemote[2];
 void wakeScreen();
 
+// The remote's key: down (`sent` once delivered), up at `upAt`.
+constexpr uint32_t kRemoteKeyTapMs = 80;
+constexpr uint32_t kRemoteKeyHoldMs = 1000;
+struct RemoteKeyPress {
+    tgc::Key key = tgc::Key::None;
+    bool sent = false;
+    uint32_t upAt = 0;
+};
+RemoteKeyPress gRemoteKey;
+bool gRemoteKeyPrefix = false;  // a 'k' came: the next byte names the key
+
 bool remoteBusy() {
-    return gRemote[0].upAt || gRemote[0].holding || gRemote[1].upAt || gRemote[1].holding;
+    return gRemote[0].upAt || gRemote[0].holding || gRemote[1].upAt || gRemote[1].holding ||
+           gRemoteKey.key != tgc::Key::None;
+}
+
+// The key a 'k' command names; `held`: an upper-case arrow.
+tgc::Key remoteKeyFor(int c, bool* held) {
+    using tgc::Key;
+    *held = c == 'U' || c == 'D' || c == 'L' || c == 'R';
+    switch (c) {
+        case 'u': case 'U': return Key::Up;
+        case 'd': case 'D': return Key::Down;
+        case 'l': case 'L': return Key::Left;
+        case 'r': case 'R': return Key::Right;
+        case 'e': return Key::Enter;
+        case 'x': return Key::Esc;
+        case 'm': return Key::Tab;
+        case 'b': return Key::Backspace;
+        default: return Key::None;
+    }
+}
+
+// keyTurn()'s source after the board's: the remote key's press, then (once
+// its time is up) its release.
+bool remoteNextKey(tgc::KeyEvent* ev, uint32_t now) {
+    RemoteKeyPress& k = gRemoteKey;
+    if (k.key == tgc::Key::None) return false;
+    if (!k.sent) {
+        k.sent = true;
+        *ev = tgc::KeyEvent{k.key, true};
+        return true;
+    }
+    if (static_cast<int32_t>(now - k.upAt) < 0) return false;
+    *ev = tgc::KeyEvent{k.key, false};
+    k = RemoteKeyPress{};
+    return true;
 }
 
 bool remoteDown(int k, uint32_t now) {
@@ -4972,7 +5107,20 @@ void remoteDateQuestion() {
 void remotePoll(uint32_t now) {
     while (!remoteBusy() && Serial.available() > 0) {
         const int c = Serial.read();
-        if (c == 'a' || c == 'b') {
+        if (gRemoteKeyPrefix) {
+            gRemoteKeyPrefix = false;
+            bool held = false;
+            const tgc::Key key = remoteKeyFor(c, &held);
+            if (key == tgc::Key::None) {
+                Serial.printf("remote: no key '%c'\n", c);
+                continue;
+            }
+            gRemoteKey.key = key;
+            gRemoteKey.sent = false;
+            gRemoteKey.upAt = now + (held ? kRemoteKeyHoldMs : kRemoteKeyTapMs);
+        } else if (c == 'k') {
+            gRemoteKeyPrefix = true;
+        } else if (c == 'a' || c == 'b') {
             gRemote[c == 'b'].upAt = now + 80;
         } else if (c == 'A' || c == 'B') {
             gRemote[c == 'B'].holding = true;
@@ -5114,9 +5262,10 @@ void sleepNow(bool critical) {
     if (gScreenOff) tgc::board::setDisplayOn(true);
     tgc::board::setBrightness(gBrightness);
     if (critical)
-        showNotice(ui().batteryTitle, ui().batteryHint, tgc::theme::kWarn);
+        showNotice(ui().batteryTitle, keysOr(ui().batteryHint, ui().batteryHintKeys),
+                   tgc::theme::kWarn);
     else
-        showNotice(ui().sleepTitle, ui().sleepHint, kWhite);
+        showNotice(ui().sleepTitle, keysOr(ui().sleepHint, ui().sleepHintKeys), kWhite);
     delay(critical ? kBatteryNoticeMs : kSleepNoticeMs);
     gSleptCritical = critical;
     gSleepUiEs = gUi == &kUiEs;
@@ -5210,7 +5359,8 @@ bool mountFilesystem() {
 [[noreturn]] void askFormat() {
     wg::Hints hints;
     hints.hold = ui().hintErase;
-    showError(ui().errNoFilesystem, ui().errNoFilesystemHint, &hints);
+    showError(ui().errNoFilesystem, keysOr(ui().errNoFilesystemHint, ui().errNoFilesystemHintKeys),
+              &hints);
     bool released = !tgc::board::isHeld(tgc::board::Button::Select);
     const uint32_t start = millis();
     for (;;) {
@@ -5333,7 +5483,8 @@ void setup() {
         Serial.printf("power: critical wake, battery %d%%%s\n", pct, external ? " (usb)" : "");
         if (!tgc::BatteryGuard::canResume(pct, external)) {
             gUi = gSleepUiEs ? &kUiEs : &kUiEn;
-            showNotice(ui().batteryTitle, ui().batteryHint, tgc::theme::kWarn);
+            showNotice(ui().batteryTitle, keysOr(ui().batteryHint, ui().batteryHintKeys),
+                       tgc::theme::kWarn);
             delay(kBatteryNoticeMs);
             tgc::board::deepSleep();
         }
@@ -5613,50 +5764,13 @@ bool holdTick(uint32_t now, bool down, bool longFired, uint32_t downAt, int even
     return false;
 }
 
-void loop() {
-    tgc::board::update();
-    const uint32_t t = millis();
-    gSrs.tick(t);
-    static Key keyA, keyB;
-#if defined(TGC_REMOTE)
-    remotePoll(t);
-    const bool downA = tgc::board::isHeld(Button::Select) || remoteDown(0, t);
-    const bool downB = tgc::board::isHeld(Button::Next) || remoteDown(1, t);
-#else
-    const bool downA = tgc::board::isHeld(Button::Select);
-    const bool downB = tgc::board::isHeld(Button::Next);
-#endif
-    const uint32_t holdMs = tgc::holdMsFor(gHoldPref);
-    int a = keyA.poll(downA, t, holdMs);
-    int b = keyB.poll(downB, t, holdMs);
-#if defined(TGC_REMOTE)
-    remoteKeyEvent(0, a, t);
-    remoteKeyEvent(1, b, t);
-#endif
-    if (downA || downB || a || b) {
-        gLastInputAt = t;
-        // A dark panel only wakes up: that press (through its release) is
-        // dropped. A dimmed panel brightens and the press acts as usual.
-        if (gScreenOff) gSwallowInput = true;
-        if (gScreenOff || gDimmed) wakeScreen();
-    }
-    if (gSwallowInput) {
-        a = b = 0;
-        if (!downA && !downB) gSwallowInput = false;
-    }
-    // The power button (StickS3 M5PM1, click reset disabled) means "sleep now";
-    // on a dark panel (idle on USB) it only wakes the panel, like the others.
-    if (tgc::board::powerButtonClicked()) {
-        gLastInputAt = t;
-        if (!gScreenOff) sleepNow(false);
-        wakeScreen();
-    }
-    // Hold progress first, so the fill never outlives its press; then the
-    // input. A fill that ended needs a frame without it: the handler's own
-    // (plus the hint bar, whose hold item was lit, after a partial push), or
-    // a redraw when the press did nothing.
-    const bool fillEnded = holdTick(t, keyA.down, keyA.longFired, keyA.downAt, a, holdMs);
-    const uint32_t framesBefore = gFrames;
+// One turn of the current screen's own loop with this turn's events: `a`
+// the front button's, `b` the side button's (1 tap, 2 hold, 0 none),
+// `pressedAt` when the front press went down (the quiz grades from it), `t`
+// now and `down` whether a button is down. loop() calls it once a turn with
+// the buttons' events; a key calls it once more with the events it stands
+// for (keyAction()).
+void handleInput(int a, int b, uint32_t pressedAt, uint32_t t, bool down) {
     if (gScreen == Screen::Menu) {
         menuLoop(a, b);
     } else if (gScreen == Screen::Decks) {
@@ -5796,14 +5910,261 @@ void loop() {
     } else if (gScreen == Screen::ResetConfirm) {
         resetConfirmLoop(a, b);
     } else {
-        quizLoop(a, b, keyA.downAt, t, downA || downB);
+        quizLoop(a, b, pressedAt, t, down);
     }
+}
+
+// --- Keyboard (board::hasKeyboard(): the Cardputer ADV) -------------------------
+// Each key press is one action (ui/KeyInput.h: next, previous, confirm, back,
+// menu) on the screen it lands on. keyAction() is the one place that turns an
+// action into the screen's own: mostly the button event it stands for, through
+// handleInput(), so every screen keeps a single behaviour; the rest is the
+// lists' focus up (listFocusUp()) and the menu key's way to the settings home.
+// Held arrows repeat (gKeyRepeat) on the lists and the date stepper.
+
+// A confirmation that deletes (Delete progress) ignores an Enter this soon
+// after it opened: the Enter that opened it, pressed twice, must not also
+// confirm it. A hold of the front button takes longer anyway.
+constexpr uint32_t kConfirmGuardMs = 500;
+
+// The list screens' focus up (the up and left keys), wrapping as the front tap
+// wraps down, with what a move does there (a note goes, a partial push). False
+// on a screen that is not a list.
+bool listFocusUp() {
+    switch (gScreen) {
+        case Screen::Menu: {
+            const bool note = gMenuNote[0] != 0;
+            gMenuNote[0] = 0;
+            moveListFocus(menuList(), -1);
+            if (note) dropPartialPush();
+            break;
+        }
+        case Screen::Decks:
+            gDeckList.setCount(static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
+            moveListFocus(gDeckList, -1);
+            break;
+        case Screen::Choice:
+            moveListFocus(gChoiceList, -1);
+            break;
+        case Screen::DateMenu:
+            gDateMenuList.prev();
+            gDateMenuNote[0] = 0;
+            break;
+        case Screen::TzList:
+            moveListFocus(gTzListView, -1);
+            break;
+        case Screen::WifiMenu:
+            gWifiMenuList.prev();
+            gWifiMenuNote[0] = 0;
+            break;
+        case Screen::FirstLang:
+            gFirstLangList.prev();
+            break;
+        case Screen::Reset: {
+            const bool note = gResetNote[0] != 0;
+            gResetNote[0] = 0;
+            moveListFocus(gResetList, -1);
+            if (note) dropPartialPush();
+            break;
+        }
+        case Screen::GetDecks: {
+            if (gNetStep != NetStep::List || gCatalog.empty() || gNetBusy) return false;
+            const int n = static_cast<int>(gCatalog.size());
+            gNetSel = (gNetSel + n - 1) % n;
+            gNetNote[0] = 0;
+            break;
+        }
+        default:
+            return false;
+    }
+    drawScreen();
+    return true;
+}
+
+// The screens a held arrow repeats on.
+bool keyRepeatsHere() {
+    switch (gScreen) {
+        case Screen::Menu:
+        case Screen::Decks:
+        case Screen::Choice:
+        case Screen::DateMenu:
+        case Screen::TzList:
+        case Screen::WifiMenu:
+        case Screen::FirstLang:
+        case Screen::Reset:
+            return true;
+        case Screen::GetDecks:
+            return gNetStep == NetStep::List;
+        case Screen::Date:
+            return gDateSync != DateSync::Joining;
+        default:
+            return false;
+    }
+}
+
+// The screens of the settings tree the menu key leaves for its home: those
+// without a radio to stop (the Wi-Fi screens leave with esc) and not the
+// boot-time date question.
+bool menuKeyGoesHome() {
+    switch (gScreen) {
+        case Screen::Decks:
+        case Screen::Choice:
+        case Screen::Stats:
+        case Screen::About:
+        case Screen::DateMenu:
+        case Screen::TzList:
+        case Screen::WifiMenu:
+        case Screen::Reset:
+        case Screen::ResetConfirm:
+            return true;
+        case Screen::Date:
+            return gAfterDate != Screen::Quiz;
+        default:
+            return false;
+    }
+}
+
+// One key action on the current screen (see above). The quiz, the detail card
+// and the done screen have no "back": there esc opens the settings home, as
+// the menu key does (the side hold). The date stepper's esc cancels (its side
+// hold); a picker's, a list's or a page's goes back (the side tap).
+void keyAction(tgc::KeyAction act, uint32_t now) {
+    using A = tgc::KeyAction;
+    const bool quizFlow =
+        gScreen == Screen::Quiz || gScreen == Screen::Detail || gScreen == Screen::Done;
+    const bool stepper = gScreen == Screen::Date && gDateSync != DateSync::Joining;
+    switch (act) {
+        case A::Next:
+            handleInput(1, 0, now, now, false);  // the front tap
+            break;
+        case A::Confirm:
+            if (gScreen == Screen::ResetConfirm && now - gResetConfirmAt < kConfirmGuardMs) break;
+            handleInput(2, 0, now, now, false);  // the front hold, at once
+            break;
+        case A::Prev:
+            // The side tap where it is "previous": the quiz's option up, the
+            // stepper's day less (and any key gives up the network time).
+            if ((gScreen == Screen::Quiz && !gRevealed) || gScreen == Screen::Date)
+                handleInput(0, 1, now, now, false);
+            else
+                listFocusUp();  // a list's focus up; elsewhere nothing
+            break;
+        case A::Back:
+            if (gScreen == Screen::FirstLang) break;  // nothing to go back to
+            handleInput(0, quizFlow || stepper ? 2 : 1, now, now, false);
+            break;
+        case A::Menu:
+            if (quizFlow) {
+                handleInput(0, 2, now, now, false);  // the settings home
+            } else if (gScreen == Screen::Menu) {
+                handleInput(0, 1, now, now, false);  // a page: its home; the home: out
+            } else if (menuKeyGoesHome()) {
+                gMenuPage = st::Page::Home;
+                gMenuNote[0] = 0;
+                gScreen = Screen::Menu;
+                drawScreen();
+            }
+            break;
+        case A::None:
+            break;
+    }
+}
+
+// The next key event: the board's, then (TGC_REMOTE) the serial remote's.
+bool nextKey(tgc::KeyEvent* ev, uint32_t now) {
+    if (tgc::board::nextKeyEvent(ev)) return true;
+#if defined(TGC_REMOTE)
+    return remoteNextKey(ev, now);
+#else
+    (void)now;
+    return false;
+#endif
+}
+
+// loop()'s keyboard turn, after the buttons'. A press is input for the idle
+// timers and wakes the panel as a button does: on a dark panel that press only
+// wakes it (dropped, and it does not repeat), on a dim one it also acts.
+// Presses read while `swallow` (input dropped after a blocking step, or a
+// button woke the panel this turn) are dropped too.
+void keyTurn(uint32_t t, bool swallow) {
+    tgc::KeyEvent ev;
+    while (nextKey(&ev, t)) {
+        if (!ev.down) {
+            gKeyRepeat.up(ev.key);
+            continue;
+        }
+        gLastInputAt = t;
+        if (gScreenOff) {
+            wakeScreen();
+            continue;
+        }
+        if (gDimmed) wakeScreen();
+        if (swallow) continue;
+        gKeyRepeat.down(ev.key, t);
+        keyAction(tgc::keyAction(ev.key), t);
+    }
+    const tgc::Key r = gKeyRepeat.poll(t);
+    if (r != tgc::Key::None && !gScreenOff) {
+        gLastInputAt = t;
+        if (keyRepeatsHere()) keyAction(tgc::keyAction(r), t);
+    }
+}
+
+void loop() {
+    tgc::board::update();
+    const uint32_t t = millis();
+    gSrs.tick(t);
+    // Input dropped after a blocking step covers the keys read this turn too
+    // (the buttons below clear the flag once they are up).
+    const bool swallowKeys = gSwallowInput;
+    static Key keyA, keyB;
+#if defined(TGC_REMOTE)
+    remotePoll(t);
+    const bool downA = tgc::board::isHeld(Button::Select) || remoteDown(0, t);
+    const bool downB = tgc::board::isHeld(Button::Next) || remoteDown(1, t);
+#else
+    const bool downA = tgc::board::isHeld(Button::Select);
+    const bool downB = tgc::board::isHeld(Button::Next);
+#endif
+    const uint32_t holdMs = tgc::holdMsFor(gHoldPref);
+    int a = keyA.poll(downA, t, holdMs);
+    int b = keyB.poll(downB, t, holdMs);
+#if defined(TGC_REMOTE)
+    remoteKeyEvent(0, a, t);
+    remoteKeyEvent(1, b, t);
+#endif
+    if (downA || downB || a || b) {
+        gLastInputAt = t;
+        // A dark panel only wakes up: that press (through its release) is
+        // dropped. A dimmed panel brightens and the press acts as usual.
+        if (gScreenOff) gSwallowInput = true;
+        if (gScreenOff || gDimmed) wakeScreen();
+    }
+    if (gSwallowInput) {
+        a = b = 0;
+        if (!downA && !downB) gSwallowInput = false;
+    }
+    // The power button (StickS3 M5PM1, click reset disabled) means "sleep now";
+    // on a dark panel (idle on USB) it only wakes the panel, like the others.
+    if (tgc::board::powerButtonClicked()) {
+        gLastInputAt = t;
+        if (!gScreenOff) sleepNow(false);
+        wakeScreen();
+    }
+    // Hold progress first, so the fill never outlives its press; then the
+    // input. A fill that ended needs a frame without it: the handler's own
+    // (plus the hint bar, whose hold item was lit, after a partial push), or
+    // a redraw when the press did nothing.
+    const bool fillEnded = holdTick(t, keyA.down, keyA.longFired, keyA.downAt, a, holdMs);
+    const uint32_t framesBefore = gFrames;
+    handleInput(a, b, keyA.downAt, t, downA || downB);
     if (fillEnded) {
         if (gFrames == framesBefore)
             drawScreen();
         else if (gLastPushPartial)
             presentRegion(0, H - kHintH, W, kHintH);
     }
+    keyTurn(t, swallowKeys || gSwallowInput);
     if (gDirty >= 8 || (gDirty > 0 && t - gLastAnswerAt > 120000)) {
         gSrs.save(gSrsIo);
         gDirty = 0;

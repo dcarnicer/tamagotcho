@@ -3,7 +3,7 @@
 // statistics and the done screen show them: cards in the deck, never reviewed
 // ("new"), due by today and by tomorrow, and from those the coverage (seen /
 // total). Progress is global (SRS records are keyed by code point), so a deck
-// counts the records of its own cards only. One pass over the card table with
+// counts the records of its own cards only. One pass over its code points with
 // a binary search per card. Pure C++, no Arduino (native-tested in
 // test_settings).
 #include <cstdint>
@@ -27,10 +27,10 @@ inline DeckSummary deckSummary(const PackReader& pack, const SrsStore& srs) {
     if (!pack.isOpen()) return s;
     const uint32_t today = srs.today();
     for (uint32_t i = 0; i < pack.cardCount(); ++i) {
-        Card c;
-        if (!pack.card(i, &c)) continue;
+        // The code points are in memory however the pack is read (a streamed
+        // pack reads its card table on demand).
         ++s.total;
-        const Record* r = srs.find(c.codepoint);
+        const Record* r = srs.find(pack.codepointAt(i));
         if (r && introducedOn(*r, static_cast<uint16_t>(today))) ++s.introducedToday;
         if (!r || r->dueDay == 0) {
             ++s.fresh;

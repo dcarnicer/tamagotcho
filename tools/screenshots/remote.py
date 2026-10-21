@@ -2,7 +2,9 @@
 # requires-python = ">=3.11"
 # dependencies = ["pyserial>=3.5", "Pillow>=10.3"]
 # ///
-"""Drive a StickS3 running the sticks3-shots firmware over USB and read its screen.
+"""Drive a device running a -shots firmware over USB and read its screen.
+
+The StickS3 (sticks3-shots) or the Cardputer ADV (cardputer-adv-shots).
 
     uv run tools/screenshots/remote.py [options] STEP...
     uv run tools/screenshots/remote.py [options] -f scenario.txt [STEP...]
@@ -12,7 +14,11 @@ quotes for text with spaces):
 
     tap, tap-side          tap the front / side button  (also a, b)
     hold, hold-side        hold it until the hold fires (also A, B)
-    STEP:N                 a press N times, e.g. tap:3 (or tap*3, quoted in zsh)
+    key:KEY                a key of a keyboard (the Cardputer ADV): up, down,
+                           left, right, enter, esc, menu (Tab), del
+    key-hold:ARROW         hold an arrow for a second (its auto-repeat)
+    STEP:N                 a press N times, e.g. tap:3 or key:down:3 (or tap*3,
+                           quoted in zsh)
     shot[:NAME]            save the screen as NAME.png (shot-001.png, ...); with
                            --scale N also NAME@Nx.png
     wait:SECONDS           pause, printing the device log
@@ -49,6 +55,13 @@ PRESSES = {
     "tap-side": b"b", "b": b"b",
     "hold-side": b"B", "B": b"B",
 }
+# Keys: 'k' and a letter (a board with a keyboard); upper case holds an arrow.
+KEYS = {"up": b"u", "down": b"d", "left": b"l", "right": b"r",
+        "enter": b"e", "esc": b"x", "menu": b"m", "del": b"b"}
+PRESSES.update({f"key:{name}": b"k" + c for name, c in KEYS.items()})
+HELD_KEYS = {f"key-hold:{name}": b"k" + c.upper()
+             for name, c in KEYS.items() if name in ("up", "down", "left", "right")}
+PRESSES.update(HELD_KEYS)
 HOOKS = {"wake": b"w", "date": b"d", "fail-pin": b"f", "fail-join": b"x"}
 
 ROW_RE = re.compile(r"#r (\d+) ([0-9a-f]+)$")
@@ -227,8 +240,8 @@ class Device:
             self.note(f"shot {attempt}/{tries}: {bad} of {s.height} rows missing or damaged, again")
         if self.headers == headers:
             raise SystemExit(
-                "no screen dump from the device: is the sticks3-shots firmware on it "
-                "(cd firmware && pio run -e sticks3-shots -t upload)?"
+                "no screen dump from the device: is a -shots firmware on it "
+                "(cd firmware && pio run -e sticks3-shots -t upload, or cardputer-adv-shots)?"
             )
         raise SystemExit(f"no complete screen dump in {tries} tries")
 
@@ -295,7 +308,7 @@ def run(dev: Device, steps: list[str], args: argparse.Namespace, last_input: flo
             last_input = time.monotonic()
             # The firmware takes the next byte once this press is over; the gap
             # leaves time for what the press started (a redraw, a list scroll).
-            hold = PRESSES[step] in (b"A", b"B")
+            hold = PRESSES[step] in (b"A", b"B") or step in HELD_KEYS
             time.sleep(args.gap + (args.hold if hold else 0.1))
         elif step in HOOKS:
             dev.note(step)
@@ -338,8 +351,8 @@ def run(dev: Device, steps: list[str], args: argparse.Namespace, last_input: flo
 def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__.split("\n\n")[0],
-        epilog="Steps: tap tap-side hold hold-side STEP:N shot[:NAME] wait:S "
-        "until:[S:]TEXT wake date fail-pin fail-join. See tools/screenshots/README.md.",
+        epilog="Steps: tap tap-side hold hold-side key:KEY key-hold:ARROW STEP:N shot[:NAME] "
+        "wait:S until:[S:]TEXT wake date fail-pin fail-join. See tools/screenshots/README.md.",
     )
     p.add_argument("steps", nargs="*", help="steps to run, after those of --file")
     p.add_argument("-f", "--file", action="append", default=[], help="scenario file(s)")

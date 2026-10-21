@@ -51,6 +51,10 @@ inline constexpr Item kStudyItems[] = {Item::NewPerDay, Item::HardAfter, Item::A
 inline constexpr Item kDeviceItems[] = {Item::Orientation, Item::Brightness, Item::Language,
                                         Item::HoldTime,    Item::Date,       Item::Sleep,
                                         Item::About};
+// A board whose panel has one orientation only (the Cardputer ADV, landscape
+// over its keyboard) has no Orientation row.
+inline constexpr Item kDeviceItemsFixed[] = {Item::Brightness, Item::Language, Item::HoldTime,
+                                             Item::Date,       Item::Sleep,    Item::About};
 
 struct PageItems {
     const Item* items;
@@ -62,15 +66,17 @@ constexpr PageItems pageItemsOf(const Item (&items)[N]) {
     return PageItems{items, static_cast<int>(N)};
 }
 
-constexpr PageItems pageItems(Page p) {
-    return p == Page::Study    ? pageItemsOf(kStudyItems)
-           : p == Page::Device ? pageItemsOf(kDeviceItems)
-                               : pageItemsOf(kHomeItems);
+// `fixedOrientation`: the board's panel turns no way (board::fixedLandscape()).
+constexpr PageItems pageItems(Page p, bool fixedOrientation = false) {
+    return p == Page::Study ? pageItemsOf(kStudyItems)
+           : p == Page::Device
+               ? (fixedOrientation ? pageItemsOf(kDeviceItemsFixed) : pageItemsOf(kDeviceItems))
+               : pageItemsOf(kHomeItems);
 }
 
 // Row `row` of page `p` (clamped into the page).
-constexpr Item itemAt(Page p, int row) {
-    const PageItems pi = pageItems(p);
+constexpr Item itemAt(Page p, int row, bool fixedOrientation = false) {
+    const PageItems pi = pageItems(p, fixedOrientation);
     return pi.items[row < 0 ? 0 : (row >= pi.count ? pi.count - 1 : row)];
 }
 

@@ -235,6 +235,10 @@ public:
 
     size_t count() const { return records_.size(); }
     const std::vector<Record>& records() const { return records_; }
+    // Records the table has room for (its memory, kSrsRecordSize bytes each):
+    // it grows kRecordGrowth at a time, never by doubling.
+    static constexpr size_t kRecordGrowth = 64;
+    size_t capacity() const { return records_.capacity(); }
 
     // --- forgetting (docs/srs.md section 2.1) ----------------------------
     // Removes the records of `codepoints` (any order, duplicates allowed; a

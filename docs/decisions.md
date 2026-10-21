@@ -2630,3 +2630,159 @@ flash at ~11 KB/s over USB-Serial/JTAG and failed at 921600 baud ("Serial data
 stream stopped"); PlatformIO's bundled esptool 4.9.0 read it at ~80 KB/s.
 Use the bundled one for flash backups.
 
+## 2026-10-21 – M5Stack Cardputer ADV: a third board, with a keyboard
+
+Branch `feature/cardputer-adv`. Envs `cardputer-adv` and `cardputer-adv-shots`.
+**Built and native-tested only: no Cardputer ADV was at hand**, so everything
+marked *to confirm* needs the device.
+
+- **The board.** Stamp-S3A (ESP32-S3FN8: 8 MB flash, no PSRAM), the 1.14"
+  ST7789V2, a 56-key keyboard behind a TCA8418 on the internal I2C bus (SDA
+  G8, SCL G9, INT G11), the G0 button, the battery on G10, a power switch.
+  M5GFX and M5Unified (the pinned commit; M5GFX follows M5Unified's
+  `>=0.2.31`, as for the StickS3, and resolved to 0.2.34 in this worktree
+  against 0.2.33 in an older checkout) detect it as `board_M5CardputerADV`:
+  panel, backlight, In_I2C, BtnA = G0 and the battery ADC come from them. The
+  env is `esp32-s3-devkitc-1` with `qio_qspi` and no `BOARD_HAS_PSRAM` or
+  PSRAM workaround, the StickS3's 8 MB partitions, no M5PM1.
+  `[common_esp32s3]` lost its PSRAM settings to `[common_psram]`, which
+  `sticks3` and `tdisplay-s3` extend: a verbose StickS3 build gives the same
+  flag set for each of its 111 compile and link commands (only `TGC_VERSION`
+  moves).
+- **Landscape only, no Auto.** Rotation 1, the one M5Stack's Cardputer
+  examples and M5GFX's autodetect use (the keyboard below the picture; *to
+  confirm*). `board::fixedLandscape()` drops the Orientation row from the
+  Device page (`settings::pageItems(p, true)`) and `fixedRotation()` returns
+  1 whatever NVS holds. The board has a BMI270, but a device with a keyboard
+  under its screen is not turned to read it: `hasAccel()` is false and
+  M5Unified does not even start the IMU (it stays in its power-on suspend),
+  nor the speaker and the microphone.
+- **Keys as actions, not fake presses.** `ui/KeyInput.h` maps each key to one
+  of five actions and `keyAction()` (main.cpp) turns an action into the
+  screen's own, mostly the button event it stands for, through the screen's
+  existing loop (the per-screen dispatch moved unchanged into
+  `handleInput()`):
+  - down `.` and right `/` = the front tap (next option, row, day, page);
+  - up `;` and left `,` = the side tap where it already means previous (the
+    quiz's options, the date stepper's day less), a list's focus up
+    (wrapping, every list screen: `listFocusUp()`), nothing elsewhere (after
+    an answer, the detail card, the done screen);
+  - Enter = the front hold, at once on the press: no hold timing, no fill;
+  - Esc (`` ` ``, Esc in its Fn layer) and del = the screen's back or cancel
+    (the side tap of menus and lists, the side hold of the date stepper and
+    pickers); the quiz, the detail card and the done screen have no back, so
+    there it opens the settings home like the menu key;
+  - Tab = the menu key: the side hold of the quiz flow (the settings home),
+    on the settings home itself back where it was opened (a toggle), from the
+    settings screens without a radio (decks, pickers, statistics, About, the
+    Date and Wi-Fi submenus, Delete progress) straight to the settings home.
+    The Wi-Fi screens, Get decks and the network test leave with Esc, which
+    also stops their radio; the boot-time date question and the first-boot
+    language picker ignore Tab.
+
+  The arrows' legends need Fn, but there is no text entry anywhere, so the
+  plain keys are arrows too and Fn does not matter (nor for Esc). **Tab** is
+  the menu key rather than `opt`: an ordinary key with its own legend, right
+  under Esc in the left column, so "leave this" and "the menu" sit together;
+  `opt`, `alt`, `ctrl`, `fn` and `shift` are modifiers (the M5Cardputer
+  library reports them as held state), easy to press with another key by
+  accident. Tab's usual "next field" does not apply: there are no fields.
+- **Repeat, wake, swallow.** Held arrows repeat after 400 ms every 120 ms,
+  on the lists and the date stepper only (`keyRepeatsHere()`); only the last
+  key pressed repeats, and a late loop turn gets one repeat, never a burst.
+  Enter, Esc and Tab never repeat. A key press is input for the idle timers
+  and wakes the panel like a button: a dim panel brightens and the key acts, a
+  dark one only wakes (that press is dropped and does not repeat). Presses
+  read while input is swallowed (after a blocking catalog read, join or
+  download) are dropped. During a download Esc or del cancels it like the
+  side button. The Delete progress confirmation ignores an Enter in its first
+  500 ms: Enter on the list row opens it, and a double Enter must not delete.
+- **Hint bars name keys.** The same words; the marks become keycaps (a
+  surface-hi box with an icon or a caption: up/down, right, left, the return
+  arrow, `esc`, `tab`). `boardHints()` picks the front tap's key (up/down
+  where it moves a focus, right where it steps or turns a page, Enter where
+  any key goes on), Enter for the hold, esc for back or cancel, `tab` with the
+  word "settings" for the side's settings icon, and on the date stepper left
+  for its side tap with esc for its side hold ("→ +1 day ↵ OK … ← -1 day
+  esc cancel"). Every screen's bar fits one 240 px row in both languages
+  (test_quizui). The damaged-storage screen keeps the button marks: only a G0
+  hold erases there. The sleep, battery, date and damaged-storage texts that
+  name the front button get keyboard forms ("Any key wakes me", "Press Enter
+  when it shows today", "Hold the G0 button").
+- **Buttons.** G0 is `Button::Select`, with the StickS3 front button's tap
+  and hold; there is no `Button::Next` (never down). The remote's virtual side
+  button still works, for tests.
+- **TCA8418: a small driver of our own**, not the M5Cardputer library: the
+  register setup and the key numbering are taken from its ADV reader (MIT,
+  credited in `ui/KeyInput.h` and the board file) and the mapping is a pure,
+  tested function; the library would bring its own M5Unified dependency, an
+  ISR and a vector of held keys. The FIFO is read when INT is low, and every
+  100 ms anyway (in case INT is not wired as assumed); an overflow is reported
+  as "every key up", so a lost release cannot leave an arrow repeating. *Key
+  numbering, the setup and INT to confirm.*
+- **Deep sleep wakes on G0 or any key** (ext1, any low, G0 and G11). First G0
+  and every key must be up (a release asserts INT too), the FIFO drained and
+  the interrupt cleared, so INT is high when the chip sleeps; a key still down
+  after 3 s leaves G0 as the only wake source. The waking key is flushed from
+  the FIFO at boot, as the StickS3 drops its waking press. *To confirm, with
+  the sleep current.*
+- **Power.** `batteryPercent()` is M5Unified's reading of G10 (3.3 to 4.15 V
+  mapped to 0-100; *to check against the cell*). `isCharging()` stays false
+  (M5Unified reports the charger as unknown on this board). `externalPower()`
+  is Arduino's `HWCDC::isPlugged()`, true while a USB host sends start-of-frame
+  packets: plugged into a computer, with or without a terminal open
+  (`isConnected()` would also want the CDC port read); a plain charger reads as
+  battery, so the app sleeps there as on battery. The backlight keeps M5GFX's
+  256 Hz PWM (the StickS3's 25 kHz change was about its charger's buzz,
+  unknown here). No power button: `powerButtonClicked()` is false.
+- **Memory without PSRAM** (the numbers are in docs/architecture.md, "Memory
+  without PSRAM"). The canvas (64.8 KB), the packs' tables, the renderer's
+  cache and the SRS table move from PSRAM to the internal heap, next to Wi-Fi
+  and TLS. With the tables in memory N1 (142 KB with the renderer's index)
+  and Jōyō (251 KB) cannot fit beside the canvas and Wi-Fi at all, and N2-N3
+  (54 KB) leave little room once TLS is up. So:
+  - `PackReader` gets `PackMemory::Streamed`: the card table, the glyph table
+    and the string pool read on demand through the `PackSource`, with small
+    LRU caches (two card blocks, six glyph blocks, sixteen string slots) and,
+    in memory, every card's code point and the first key of every 32 glyphs:
+    6.9 KB for N5 up to 17 KB for Jōyō. Same validation at open. Pointers to
+    strings and glyphs live until enough others were read: `buildQuestion()`
+    copies the target's strings, and the passes over every card use
+    `codepointAt()` or `card(i, &c, false)`. A board without PSRAM always opens
+    packs this way (also the probe of a downloaded pack); a board with PSRAM
+    keeps the tables in memory (`InMemoryOrStreamed`: streamed only if they
+    ever do not fit). The native suite runs the pack and quiz tests in both
+    modes, and a comparison over all twelve published decks (`TGC_PACK_DIR`)
+    finds every card, glyph, bitmap, stroke mask and question identical.
+  - The renderer's cache of decoded small glyphs gets a 16 KB budget (96
+    slots, the least recently drawn first) without PSRAM; with PSRAM it stays
+    unbounded (a whole Jōyō deck's small kanji would be 1.5 MB).
+  - The SRS table grows 64 records at a time instead of doubling, and the
+    queue rebuild reserves its lists: a doubling of 32 KB next to the old copy
+    is the kind of request a fragmented internal heap refuses.
+  - The estimate with Wi-Fi and a TLS download running leaves about 30 to
+    70 KB free (more with smaller decks or fewer records); *to measure*: the
+    `pack ...: tables streamed` line gives the heap after a deck loads, the
+    `[net]` lines the heap around TLS.
+- **Cost.** cardputer-adv: flash 1,416,817 B (67.6 % of the 2 MB app slot),
+  static RAM 55,084 B (`.dram0.data` 23,692 + `.bss` 31,392), IRAM 75,838 B.
+  sticks3: 1,462,105 -> 1,467,497 B (+5.4 KB, 70.0 %), static RAM 55,180 ->
+  55,212 B.
+- **Hardware checklist** (flash `cardputer-adv-shots`, then `cardputer-adv`):
+  1. Boot: the log says `kbd: TCA8418 ready`, the picture is upright over the
+     keyboard (else change the rotation in `BoardCardputerAdv.cpp` begin()),
+     the hint bar shows keycaps, the Device page has no Orientation row.
+  2. Keys, by hand and with `remote.py key:...`: every key of the table in
+     firmware/README.md on the quiz, a list (focus up wraps), a picker, the
+     date stepper (left -1 day, right +1 day, Esc cancels), About (right
+     turns the page), Get decks (up/down, Enter downloads, Esc cancels a
+     download); `key-hold:down` on a long list repeats; letters only wake. A
+     wrong key on the screen means the numbering in `ui/KeyInput.h` is off.
+  3. The battery percent in the header against a meter; on a charger and on
+     a computer (`externalPower()`): idle 2 min on the computer only blanks
+     the panel, on the charger it sleeps.
+  4. Sleep from Settings › Device › Sleep; wake with G0, then with a letter
+     key; hold a key while it goes to sleep (it must not bounce back up).
+  5. Memory: load Jōyō, open Get decks and download N1 while watching the
+     `pack ...` and `[net]` heap lines; the minimum since boot should stay
+     above ~20 KB.

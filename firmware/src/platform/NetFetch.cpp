@@ -351,11 +351,12 @@ bool validatePackFile(const String& path) {
     f.close();
     if (n != sizeof magic || std::memcmp(magic, "TNGC", 4) != 0) return false;
 
-    // Cheap structural probe (PSRAM-backed); freed again before we return.
+    // Structural probe (the whole validation of open(), in the memory mode the
+    // app opens packs in, so no PSRAM is needed); freed again before we return.
     auto src = std::make_unique<FsPackSource>(LittleFS.open(path, "r"));
     if (!src->ok()) return false;
     PackReader probe;
-    const PackError e = probe.open(*src, psramAllocator());
+    const PackError e = probe.open(*src, psramAllocator(), packMemory());
     if (e != PackError::Ok) Serial.printf("[wifi] pack probe failed: %s\n", packErrorString(e));
     return e == PackError::Ok;
 }

@@ -26,7 +26,8 @@ private:
     uint32_t size_;
 };
 
-// Prefer PSRAM, fall back to internal heap.
+// Prefer PSRAM, fall back to internal heap (all of it on a board without
+// PSRAM, where ps_malloc() returns null).
 inline Allocator psramAllocator() {
     return Allocator{
         [](size_t n) -> void* {
@@ -35,5 +36,18 @@ inline Allocator psramAllocator() {
         },
         [](void* p) { free(p); }};
 }
+
+// How the app opens packs (docs/architecture.md, "Memory"): with PSRAM the
+// tables in memory, as always, read on demand only if they ever do not fit;
+// without PSRAM (the Cardputer ADV) always on demand, so the internal heap
+// keeps room for the canvas, Wi-Fi and TLS whatever the deck.
+inline PackMemory packMemory() {
+    return psramFound() ? PackMemory::InMemoryOrStreamed : PackMemory::Streamed;
+}
+
+// The renderer's glyph cache: unbounded in PSRAM, else a budget of internal
+// heap (Renderer::begin()).
+constexpr size_t kGlyphCacheBudgetNoPsram = 16u * 1024u;
+inline size_t glyphCacheBudget() { return psramFound() ? 0 : kGlyphCacheBudgetNoPsram; }
 
 }  // namespace tgc

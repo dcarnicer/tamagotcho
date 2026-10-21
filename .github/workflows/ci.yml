@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   firmware:
-    name: Firmware (native tests + StickS3/T-Display-S3 build)
+    name: Firmware (native tests + StickS3/T-Display-S3/Cardputer ADV build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -55,6 +55,9 @@ jobs:
 
       - name: Build T-Display-S3
         run: pio run -e tdisplay-s3
+
+      - name: Build Cardputer ADV
+        run: pio run -e cardputer-adv
 
   pack-builder:
     name: Pack builder (uv run pytest)

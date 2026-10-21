@@ -1,28 +1,53 @@
 #pragma once
 // Board HAL: one implementation per target, selected by build flag
-// (TGC_BOARD_STICKS3 / TGC_BOARD_TDISPLAY_S3). UI code is written against the
-// LovyanGFX API only, so it is identical on both boards.
+// (TGC_BOARD_STICKS3 / TGC_BOARD_TDISPLAY_S3 / TGC_BOARD_CARDPUTER_ADV). UI
+// code is written against the LovyanGFX API only, so it is identical on every
+// board.
 #include <cstdint>
 
-#if defined(TGC_BOARD_STICKS3)
+#include "ui/KeyInput.h"
+
+#if defined(TGC_BOARD_STICKS3) || defined(TGC_BOARD_CARDPUTER_ADV)
 #include <M5GFX.h>
 #elif defined(TGC_BOARD_TDISPLAY_S3)
 #include <LovyanGFX.hpp>
 #else
-#error "Define TGC_BOARD_STICKS3 or TGC_BOARD_TDISPLAY_S3"
+#error "Define TGC_BOARD_STICKS3, TGC_BOARD_TDISPLAY_S3 or TGC_BOARD_CARDPUTER_ADV"
 #endif
 
 namespace tgc {
 namespace board {
 
 enum class Button : uint8_t {
-    Next,    // StickS3: side button (B). T-Display-S3: GPIO14.
-    Select,  // StickS3: front button (A). T-Display-S3: GPIO0 (BOOT).
+    Next,    // StickS3: side button (B). T-Display-S3: GPIO14. Cardputer ADV: none
+             // (never down; its keyboard has the actions, see nextKeyEvent()).
+    Select,  // StickS3: front button (A). T-Display-S3: GPIO0 (BOOT). Cardputer
+             // ADV: the G0 button.
 };
+
+// --- Capabilities and keyboard ------------------------------------------------
+// fixedLandscape(): the panel is used one way only (Cardputer ADV: landscape,
+// rotation 1, over the keyboard), so the app has no Orientation setting.
+// hasKeyboard(): the board has a keyboard (Cardputer ADV); the hint bar names
+// keys and nextKeyEvent() delivers them.
+// nextKeyEvent(): the next key event update() read, oldest first; false when
+// there is none (always on a board without a keyboard). Key::None going up
+// means every key is up (events were lost).
+#if defined(TGC_BOARD_CARDPUTER_ADV)
+bool fixedLandscape();
+bool hasKeyboard();
+bool nextKeyEvent(KeyEvent* out);
+#else
+// No keyboard, every orientation: the StickS3 and the T-Display-S3.
+inline bool fixedLandscape() { return false; }
+inline bool hasKeyboard() { return false; }
+inline bool nextKeyEvent(KeyEvent*) { return false; }
+#endif
 
 constexpr uint32_t kHoldMs = 600;  // threshold for wasHeld()
 
-// Initialise display (portrait), buttons, power. Call once from setup().
+// Initialise display (portrait; the Cardputer ADV landscape), buttons, the
+// keyboard, power. Call once from setup().
 void begin();
 // Poll inputs; call once per loop() iteration before querying buttons.
 void update();
@@ -74,7 +99,8 @@ bool wokeFromSleep();
 bool externalPower();
 // Panel and backlight on/off without sleeping; off keeps the frame buffer.
 void setDisplayOn(bool on);
-// Blanks the panel and puts the chip in deep sleep. The Select button wakes it,
+// Blanks the panel and puts the chip in deep sleep. The Select button wakes it
+// (on the Cardputer ADV any key too, which is not delivered as a key event),
 // and the chip then boots through setup() again. Never returns.
 [[noreturn]] void deepSleep();
 // Microseconds since the RTC timer started. It keeps counting through deep

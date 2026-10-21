@@ -487,6 +487,30 @@ void test_store_cap() {
     TEST_ASSERT_EQUAL_UINT32(1, srs.answeredTotal());
 }
 
+// The table grows a step at a time, never by doubling (a board without PSRAM
+// keeps it in its internal heap), up to the cap.
+void test_records_grow_by_steps() {
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    for (uint32_t cp = 1; cp <= 2000; ++cp) {
+        srs.getOrCreate(cp * 7).reps = 1;
+        TEST_ASSERT_TRUE(srs.capacity() - srs.count() < SrsStore::kRecordGrowth);
+    }
+    // Saved and loaded: exactly the records, then one more step.
+    srs.save(io);
+    SrsStore back;
+    TEST_ASSERT_TRUE(back.begin(io));
+    TEST_ASSERT_EQUAL_UINT32(2000, static_cast<uint32_t>(back.capacity()));
+    back.getOrCreate(3).reps = 1;
+    TEST_ASSERT_EQUAL_UINT32(2000 + SrsStore::kRecordGrowth, static_cast<uint32_t>(back.capacity()));
+    // Never past the cap.
+    SrsStore full;
+    full.begin(io);
+    for (uint32_t cp = 1; cp <= SrsStore::kMaxRecords + 10; ++cp) full.getOrCreate(cp);
+    TEST_ASSERT_TRUE(full.capacity() <= SrsStore::kMaxRecords);
+}
+
 // Sums the whole table: seen/learned/answers/reps/lapses. The threshold is a
 // stability of 21 days (centidays >= 2100). See docs/roadmap.md "Statistics".
 void test_stats() {
@@ -1915,6 +1939,7 @@ int main() {
     RUN_TEST(test_serialize_rejects);
     RUN_TEST(test_codepoint_identity);
     RUN_TEST(test_store_cap);
+    RUN_TEST(test_records_grow_by_steps);
     RUN_TEST(test_stats);
     RUN_TEST(test_clock_boot_and_uptime);
     RUN_TEST(test_queue_due_before_new);

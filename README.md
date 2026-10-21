@@ -211,7 +211,7 @@ Honest status — **not verified on hardware**:
 
 Every push to `main` and every pull request runs
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml): a firmware job (native
-tests plus StickS3 and T-Display-S3 builds, with `~/.platformio` cached and the
+tests plus StickS3, T-Display-S3 and Cardputer ADV builds, with `~/.platformio` cached and the
 cache keyed on the PlatformIO version) and a pack-builder job (`uv run pytest`).
 A newer push on the same ref cancels the superseded run.
 
@@ -340,7 +340,7 @@ in its footer.
 
 | path                  | what                                    |
 |-----------------------|-----------------------------------------|
-| `firmware/`           | PlatformIO firmware (StickS3, T-Display-S3) |
+| `firmware/`           | PlatformIO firmware (StickS3, T-Display-S3, Cardputer ADV) |
 | `tools/pack-builder/` | Python CLI that builds `.tgc` packs     |
 | `tools/release/`      | release helper: merge a build into one flashable image |
 | `tools/ui-font/`      | generator of the firmware's UI font (`firmware/src/ui/UiFont.h`) |

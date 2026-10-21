@@ -151,6 +151,25 @@ void test_tree_pages() {
     TEST_ASSERT_TRUE(device.items[6] == Item::About);
 }
 
+void test_tree_fixed_orientation_has_no_orientation_row() {
+    // A landscape-only board (the Cardputer ADV): the Device page without
+    // Orientation, everything else as it was, in the same order.
+    const settings::PageItems all = settings::pageItems(Page::Device);
+    const settings::PageItems fixed = settings::pageItems(Page::Device, true);
+    TEST_ASSERT_EQUAL(all.count - 1, fixed.count);
+    for (int r = 0; r < fixed.count; ++r) {
+        TEST_ASSERT_TRUE(fixed.items[r] == all.items[r + 1]);
+        TEST_ASSERT_TRUE(settings::itemAt(Page::Device, r, true) == all.items[r + 1]);
+    }
+    TEST_ASSERT_TRUE(settings::itemAt(Page::Device, 0, true) == Item::Brightness);
+    TEST_ASSERT_TRUE(settings::itemAt(Page::Device, 99, true) == Item::About);
+    // The other pages do not change.
+    TEST_ASSERT_EQUAL(settings::pageItems(Page::Home).count,
+                      settings::pageItems(Page::Home, true).count);
+    TEST_ASSERT_EQUAL(settings::pageItems(Page::Study).count,
+                      settings::pageItems(Page::Study, true).count);
+}
+
 void test_tree_every_item_once() {
     // Each item is on exactly one page, and rowOf / itemAt / pageOf agree.
     int seen[settings::kItemCount] = {};
@@ -482,6 +501,7 @@ void test_peek_long_utf8_name() {
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_tree_pages);
+    RUN_TEST(test_tree_fixed_orientation_has_no_orientation_row);
     RUN_TEST(test_tree_every_item_once);
     RUN_TEST(test_tree_groups_and_marks);
     RUN_TEST(test_values);

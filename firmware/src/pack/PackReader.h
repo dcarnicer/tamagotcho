@@ -1,8 +1,10 @@
 #pragma once
 // Reader for Tamagotcho packs (*.tgc), format v1 and v2. See docs/pack-format.md.
-// Pure C++, no Arduino. Caches header, card table, glyph table and the string
-// pool in memory (obtained through a pluggable allocator, PSRAM on device);
-// bitmaps and distractor lists are read on demand through a PackSource, and
+// Pure C++, no Arduino. By default caches the card table, the glyph table and
+// the string pool in memory (obtained through a pluggable allocator, PSRAM on
+// the StickS3); a board without PSRAM reads them on demand instead, through
+// small caches (PackMemory::Streamed, docs/architecture.md "Memory"). Bitmaps
+// and distractor lists are always read on demand through a PackSource, and
 // v2's compressed bitmaps are decoded on the way (pack/Rle.h).
 #include <cstddef>
 #include <cstdint>
@@ -31,6 +33,19 @@ struct Allocator {
 };
 // malloc/free.
 Allocator defaultAllocator();
+
+// How open() keeps the card table, the glyph table and the string pool.
+enum class PackMemory : uint8_t {
+    // In memory, from the allocator: NoMemory when they do not fit. About 110
+    // bytes a card for the published decks (237 KB for the Joyo deck).
+    InMemory,
+    // Read on demand through the source, with small caches: about 6 KB, plus
+    // 4 bytes a card (the code points) and 8 bytes per 32 glyphs (an index
+    // of the glyph table), whatever the strings. For boards without PSRAM.
+    Streamed,
+    // InMemory, else Streamed when the allocator cannot provide the tables.
+    InMemoryOrStreamed,
+};
 
 constexpr uint16_t kPackVersionMin = 1;  // oldest readable pack version
 constexpr uint16_t kPackVersionMax = 2;  // newest readable pack version
@@ -93,10 +108,17 @@ public:
     PackReader(const PackReader&) = delete;
     PackReader& operator=(const PackReader&) = delete;
 
-    // `src` must outlive the reader. On failure the reader stays closed.
-    PackError open(PackSource& src, Allocator alloc = defaultAllocator());
+    // `src` must outlive the reader. On failure the reader stays closed. Every
+    // mode validates the whole pack the same way.
+    PackError open(PackSource& src, Allocator alloc = defaultAllocator(),
+                   PackMemory mem = PackMemory::InMemory);
     void close();
     bool isOpen() const { return src_ != nullptr; }
+    // True when the tables are read on demand (PackMemory::Streamed, or the
+    // fallback of InMemoryOrStreamed).
+    bool streamed() const { return stream_ != nullptr; }
+    // Bytes the reader holds from its allocator (the tables, or the caches).
+    size_t memoryBytes() const;
 
     const PackHeader& header() const { return hdr_; }
     uint32_t cardCount() const { return hdr_.cardCount; }
@@ -104,8 +126,21 @@ public:
     const char* deckName() const { return str(hdr_.deckNameOff); }
     const Allocator& allocator() const { return alloc_; }
 
-    // False if idx is out of range.
-    bool card(uint32_t idx, Card* out) const;
+    // Lifetimes. Strings (str(), deckName() and a Card's three) point into the
+    // string pool; when streamed, into a cache of the last kStringSlots strings
+    // read, so such a pointer stays valid until that many other strings were
+    // read (a card with text reads three). A Glyph pointer stays valid until
+    // kGlyphBlockSlots other blocks of the glyph table were read. Copy what
+    // must live longer. In memory, both live until close().
+    static constexpr int kStringSlots = 16;
+    static constexpr int kGlyphBlockSlots = 6;
+
+    // False if idx is out of range (or, streamed, on a read error). With
+    // `text` false the three strings are left "" (streamed, that saves three
+    // reads): for passes over every card that need the numbers only.
+    bool card(uint32_t idx, Card* out, bool text = true) const;
+    // A card's code point, from memory in both modes; 0 if out of range.
+    uint32_t codepointAt(uint32_t idx) const;
 
     // String pool access by absolute file offset; "" if out of range.
     const char* str(uint32_t off) const;
@@ -119,9 +154,10 @@ public:
 
     // Binary search by (set, codepoint). Null if absent.
     const Glyph* findGlyph(uint8_t set, uint32_t codepoint) const;
-    const Glyph* glyphAt(uint32_t idx) const { return idx < hdr_.glyphCount ? &glyphs_[idx] : nullptr; }
-    // Index of a Glyph returned by findGlyph/glyphAt.
-    uint32_t glyphIndex(const Glyph* g) const { return static_cast<uint32_t>(g - glyphs_); }
+    const Glyph* glyphAt(uint32_t idx) const;
+    // Index of a Glyph returned by findGlyph/glyphAt (while it is valid, see
+    // above); glyphCount() for a pointer that is not one.
+    uint32_t glyphIndex(const Glyph* g) const;
 
     // Bytes of the decoded (raw 4bpp) bitmap of this glyph: ceil(w/2)*h.
     static size_t bitmapSize(const Glyph& g) { return static_cast<size_t>((g.width + 1) / 2) * g.height; }
@@ -152,12 +188,32 @@ private:
     // Validates one card's stroke block at open() time.
     PackError checkStrokeBlock(uint32_t blk, uint32_t total) const;
 
+    // In memory: allocates and reads the three tables. NoMemory leaves them
+    // released for the caller to fall back.
+    PackError loadTables();
+    void releaseTables();
+    // Streamed: the caches, the code points and the glyph index.
+    PackError loadIndex();
+    // Both modes, at open(): one glyph entry (sorted after `prev`, a known
+    // encoding, its data inside the file) and one card (string and distractor
+    // offsets inside their sections).
+    PackError checkGlyphEntry(const Glyph& g, const Glyph* prev) const;
+    PackError checkCardEntry(const uint8_t* c) const;
+    PackError checkStrokes() const;
+
+    // Streamed helpers (stream_ set).
+    struct Stream;
+    const uint8_t* streamCard(uint32_t idx) const;
+    const Glyph* streamGlyphBlock(uint32_t block, uint32_t* count) const;
+    const char* streamStr(uint32_t off) const;
+
     PackSource* src_ = nullptr;
     Allocator alloc_{nullptr, nullptr};
     PackHeader hdr_{};
     uint8_t* cards_ = nullptr;  // raw card table
     Glyph* glyphs_ = nullptr;
     char* strings_ = nullptr;
+    Stream* stream_ = nullptr;  // streamed: the caches
 };
 
 // What a deck list shows of a pack without opening it: the deck name, the
