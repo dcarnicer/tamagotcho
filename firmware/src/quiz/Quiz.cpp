@@ -140,6 +140,14 @@ bool buildQuestion(const PackReader& pack, uint32_t cardIndex, QuizMode mode, Rn
                    ReadingKind readingKind) {
     Card target;
     if (!pack.card(cardIndex, &target)) return false;
+    // The candidates below read many cards; a streamed pack's string cache
+    // would not keep the target's strings that long, so they are copied.
+    const std::string targetMeanings = target.meanings;
+    const std::string targetOn = target.onyomi;
+    const std::string targetKun = target.kunyomi;
+    target.meanings = targetMeanings.c_str();
+    target.onyomi = targetOn.c_str();
+    target.kunyomi = targetKun.c_str();
 
     ReadingKind kind = ReadingKind::None;
     if (mode == QuizMode::Reading) {

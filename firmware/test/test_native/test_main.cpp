@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -17,6 +18,11 @@
 #include "ui/UiLang.h"
 
 using namespace tgc;
+
+// How the pack tests open their packs: main() runs them once with the tables
+// in memory and once streamed (PackMemory::Streamed), which must not change a
+// single answer.
+PackMemory gPackMem = PackMemory::InMemory;
 
 // ---------------------------------------------------------------- generator
 namespace {
@@ -305,7 +311,7 @@ void test_open_and_header() {
     auto buf = makePack(sixCards(), someGlyphs());
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     TEST_ASSERT_EQUAL_UINT32(6, r.cardCount());
     TEST_ASSERT_EQUAL_UINT32(16, r.glyphCount());
     TEST_ASSERT_EQUAL_STRING("Test Deck", r.deckName());
@@ -320,7 +326,7 @@ void test_cards() {
     auto buf = makePack(sixCards(), someGlyphs());
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     Card c;
     TEST_ASSERT_TRUE(r.card(1, &c));
     TEST_ASSERT_EQUAL_UINT32(0x6708, c.codepoint);
@@ -353,7 +359,7 @@ void test_reading_distractor_list() {
     auto buf = makePack(cs, someGlyphs());
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     Card c;
     uint16_t d[4], total;
     r.card(0, &c);
@@ -372,7 +378,7 @@ void test_glyph_lookup_and_bitmap() {
     auto buf = makePack(sixCards(), someGlyphs());
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     const Glyph* g = r.findGlyph(0, 0x65E5);
     TEST_ASSERT_NOT_NULL(g);
     TEST_ASSERT_EQUAL_UINT8(19, g->width);
@@ -405,32 +411,32 @@ void test_rejects_bad_packs() {
     {
         auto b = good; b[0] = 'X';
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadMagic, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadMagic, r.open(s, defaultAllocator(), gPackMem));
     }
     {
         auto b = good; b[4] = 3;  // newer than this reader
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadVersion, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadVersion, r.open(s, defaultAllocator(), gPackMem));
     }
     {
         auto b = good; b[4] = 0;
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadVersion, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadVersion, r.open(s, defaultAllocator(), gPackMem));
     }
     {
         auto b = good; b[16] = 0xFF; b[17] = 0xFF;  // cards_off way out
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadHeader, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadHeader, r.open(s, defaultAllocator(), gPackMem));
     }
     {
         std::vector<uint8_t> b(good.begin(), good.begin() + 40);
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadHeader, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadHeader, r.open(s, defaultAllocator(), gPackMem));
     }
     {
         std::vector<uint8_t> b(good.begin(), good.end() - 10);  // glyph data truncated
         MemorySource s(b);
-        PackError e = r.open(s);
+        PackError e = r.open(s, defaultAllocator(), gPackMem);
         TEST_ASSERT_TRUE(e == PackError::BadTable || e == PackError::BadHeader);
     }
     TEST_ASSERT_FALSE(r.isOpen());
@@ -445,16 +451,16 @@ void test_rejects_unsupported_glyph_encoding() {
         auto buf = makePack(sixCards(), someGlyphs());
         buf[glyphsOff + 5] = 1;  // first glyph entry's encoding byte: RLE in a v1 pack
         MemorySource src(buf);
-        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(src));
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(src, defaultAllocator(), gPackMem));
     }
     {
         auto buf = makePack(sixCards(), someGlyphs(), {}, 2);
         MemorySource ok(buf);
-        TEST_ASSERT_EQUAL(PackError::Ok, r.open(ok));  // v2 with raw glyphs only
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(ok, defaultAllocator(), gPackMem));  // v2 with raw glyphs only
         r.close();
         buf[glyphsOff + 5] = 2;  // unknown in v2 too
         MemorySource src(buf);
-        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(src));
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(src, defaultAllocator(), gPackMem));
     }
     TEST_ASSERT_FALSE(r.isOpen());
 }
@@ -472,7 +478,7 @@ void test_v2_pack_decodes_glyphs_and_masks() {
     auto buf = makePack(sixCards(), g, st, 2);
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     TEST_ASSERT_EQUAL_UINT16(2, r.header().version);
 
     const Glyph* rle = r.findGlyph(3, 0x30CB);
@@ -521,39 +527,39 @@ void test_v2_rejects_bad_masks_and_glyphs() {
     PackReader r;
     {
         MemorySource s(good);
-        TEST_ASSERT_EQUAL(PackError::Ok, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(s, defaultAllocator(), gPackMem));
         r.close();
     }
     {  // unknown mask encoding
         auto b = good;
         b[blk + 8 + 8 + 4] = 3;
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s, defaultAllocator(), gPackMem));
     }
     {  // raw mask whose size is not ceil(w/8)*h
         auto b = good;
         b[blk + 8 + 6] = 2;
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s, defaultAllocator(), gPackMem));
     }
     {  // encoded mask larger than its raw size
         auto b = good;
         b[blk + 8 + 8 + 6] = 5;
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s, defaultAllocator(), gPackMem));
     }
     {  // first mask offset past the end of the file
         auto b = good;
         b[blk + 4] = 0xF0; b[blk + 5] = 0xFF; b[blk + 6] = 0xFF; b[blk + 7] = 0x7F;
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s, defaultAllocator(), gPackMem));
     }
     {  // a corrupt RLE stream opens (streams are checked when read) but fails to decode
         std::vector<GlyphSpec> g = someGlyphs();
         g.push_back({3, 0x30CB, 5, 3, 1, {0xF0, 0x00, 0x00}});  // reserved "F 0"
         auto b = makePack(sixCards(), g, {}, 2);
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::Ok, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(s, defaultAllocator(), gPackMem));
         uint8_t bm[16];
         TEST_ASSERT_FALSE(r.readGlyphBitmap(*r.findGlyph(3, 0x30CB), bm, sizeof bm));
         r.close();
@@ -565,7 +571,7 @@ void test_v2_rejects_bad_masks_and_glyphs() {
         const uint32_t e = 64 + 6 * 32 + (static_cast<uint32_t>(g.size()) - 1) * 16;  // set 3: last
         b[e + 12] = 0; b[e + 13] = 0; b[e + 14] = 0; b[e + 15] = 0;  // data_off 0
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s, defaultAllocator(), gPackMem));
     }
     TEST_ASSERT_FALSE(r.isOpen());
 }
@@ -575,7 +581,7 @@ void test_stroke_section_read() {
     auto buf = makePack(sixCards(), someGlyphs(), someStrokes());
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     TEST_ASSERT_TRUE(r.hasStrokeOrder());
 
     uint16_t count = 0, px = 0;
@@ -616,28 +622,28 @@ void test_rejects_bad_stroke_section() {
         auto b = good;
         b[60] = 0xFF; b[61] = 0xFF; b[62] = 0xFF; b[63] = 0x7F;
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s, defaultAllocator(), gPackMem));
     }
     {  // an index entry pointing out of bounds
         auto b = good;
         b[base] = static_cast<uint8_t>(b.size() - 2);
         b[base + 1] = b[base + 2] = b[base + 3] = 0;
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s, defaultAllocator(), gPackMem));
     }
     {  // a mask data_off past the end of the file
         auto b = good;
         uint32_t blk = rd32le(good, base);  // first card's block
         b[blk + 12] = 0xFF; b[blk + 13] = 0xFF; b[blk + 14] = 0xFF; b[blk + 15] = 0x7F;
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s, defaultAllocator(), gPackMem));
     }
     {  // a block px that disagrees with the header
         auto b = good;
         uint32_t blk = rd32le(good, base);
         b[blk + 2] = 99;
         MemorySource s(b);
-        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s));
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(s, defaultAllocator(), gPackMem));
     }
     TEST_ASSERT_FALSE(r.isOpen());
 }
@@ -662,7 +668,7 @@ void test_quiz_meaning() {
     auto buf = makePack(sixCards(), someGlyphs());
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(12345);
     const char* meanings[] = {"day; sun; Japan", "month; moon",       "fire",
                               "water",            "tree; wood",        "middle"};
@@ -686,7 +692,7 @@ void test_quiz_meaning_to_kanji() {
     auto buf = makePack(sixCards(), someGlyphs());
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(11);
     for (int iter = 0; iter < 100; ++iter) {
         Question q;
@@ -714,7 +720,7 @@ void test_quiz_reading_excludes_target_readings() {
     auto buf = makePack(cs, someGlyphs());
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(21);
     for (int iter = 0; iter < 100; ++iter) {
         Question q;
@@ -725,6 +731,24 @@ void test_quiz_reading_excludes_target_readings() {
         TEST_ASSERT_EQUAL_STRING("ニチ", q.options[q.correct].c_str());
         for (int i = 0; i < q.count; ++i) TEST_ASSERT_TRUE(q.optionCard[i] != 2);
     }
+}
+
+// A card whose strings outlive later reads: a streamed reader's string cache
+// keeps only the last PackReader::kStringSlots strings, and these tests hold
+// the target across many questions.
+struct HeldCard {
+    Card c{};
+    std::string meanings, onyomi, kunyomi;
+};
+bool holdCard(const PackReader& r, uint32_t idx, HeldCard* h) {
+    if (!r.card(idx, &h->c)) return false;
+    h->meanings = h->c.meanings;
+    h->onyomi = h->c.onyomi;
+    h->kunyomi = h->c.kunyomi;
+    h->c.meanings = h->meanings.c_str();
+    h->c.onyomi = h->onyomi.c_str();
+    h->c.kunyomi = h->kunyomi.c_str();
+    return true;
 }
 
 void test_quiz_relaxed_pass_excludes_target_readings_of_both_kinds() {
@@ -741,10 +765,11 @@ void test_quiz_relaxed_pass_excludes_target_readings_of_both_kinds() {
     auto buf = makePack(cs, cardGlyphs(cs));
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(31);
-    Card t;
-    TEST_ASSERT_TRUE(r.card(0, &t));
+    HeldCard held;
+    TEST_ASSERT_TRUE(holdCard(r, 0, &held));
+    const Card& t = held.c;
     for (int iter = 0; iter < 200; ++iter) {
         const ReadingKind want = (iter & 1) ? ReadingKind::On : ReadingKind::Kun;
         Question q;
@@ -774,12 +799,13 @@ void test_quiz_sparse_kun_fallback_and_options() {
     auto buf = makePack(cs, cardGlyphs(cs));
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(77);
     const ReadingKind wants[] = {ReadingKind::On, ReadingKind::Kun};
     for (uint32_t idx = 0; idx < cs.size(); ++idx) {
-        Card t;
-        TEST_ASSERT_TRUE(r.card(idx, &t));
+        HeldCard held;
+        TEST_ASSERT_TRUE(holdCard(r, idx, &held));
+        const Card& t = held.c;
         for (ReadingKind want : wants) {
             for (int iter = 0; iter < 40; ++iter) {
                 Question q;
@@ -841,15 +867,16 @@ void test_quiz_sparse_kun_alternation() {
     auto buf = makePack(cs, cardGlyphs(cs));
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(5);
     ReadingTurn turn;
     ReadingKind prev = ReadingKind::None;
     int on = 0, kun = 0, none = 0;
     for (uint32_t i = 0; i < 400; ++i) {
         const uint32_t idx = (i * 7) % cs.size();  // every card, in a mixed order
-        Card c;
-        TEST_ASSERT_TRUE(r.card(idx, &c));
+        HeldCard held;
+        TEST_ASSERT_TRUE(holdCard(r, idx, &held));
+        const Card& c = held.c;
         const ReadingKind want = turn.want();
         Question q;
         if (!buildQuestion(r, idx, QuizMode::Reading, rng, &q, want)) {
@@ -874,7 +901,7 @@ void test_quiz_distractor_priority_and_shuffle() {
     auto buf = makePack(sixCards(), someGlyphs());
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(7);
     int pos[4] = {0, 0, 0, 0};
     for (int iter = 0; iter < 400; ++iter) {
@@ -896,7 +923,7 @@ void test_quiz_reading_kinds() {
     auto buf = makePack(sixCards(), someGlyphs());
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(99);
     // Card 0 has on'yomi: with no kind requested it asks on'yomi; every option
     // is an on'yomi (katakana), so the kun-only card 5 is excluded.
@@ -936,7 +963,7 @@ void test_quiz_unavailable_and_tiny() {
     auto buf = makePack(cs, gl);
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(1);
     Question q;
     TEST_ASSERT_FALSE(buildQuestion(r, 0, QuizMode::Reading, rng, &q));  // no reading
@@ -959,7 +986,7 @@ void test_quiz_meaning_gloss_collisions() {
     auto buf = makePack(cs, gl);
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(5);
     for (int iter = 0; iter < 100; ++iter) {
         Question q;
@@ -987,7 +1014,7 @@ void test_quiz_meaning_to_kanji_excludes_cards_with_the_prompt() {
     auto buf = makePack(cs, gl);
     MemorySource src(buf);
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(9);
     for (int iter = 0; iter < 100; ++iter) {
         Question q;
@@ -1041,7 +1068,7 @@ void test_mini_v1_fixture() {
     if (!src.ok()) TEST_IGNORE_MESSAGE("mini_v1.tgc not found");
     TEST_ASSERT_EQUAL_UINT32(8288, src.size());
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     const PackHeader& h = r.header();
     TEST_ASSERT_EQUAL_UINT16(1, h.version);
     TEST_ASSERT_EQUAL_UINT32(3, h.cardCount);
@@ -1187,7 +1214,7 @@ void test_real_pack_if_present() {
     StdioSource src("../tools/pack-builder/out/n5-en.tgc");
     if (!src.ok()) TEST_IGNORE_MESSAGE("n5-en.tgc not built");
     PackReader r;
-    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src));
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
     XorShiftRng rng(42);
     int made = 0;
     for (uint32_t i = 0; i < r.cardCount(); ++i) {
@@ -1204,6 +1231,364 @@ void test_real_pack_if_present() {
         }
     }
     TEST_ASSERT_TRUE(made > 0);
+}
+
+// ------------------------------------------ streamed tables (PackMemory)
+
+// An allocator with a byte budget that counts what is live, so a test can
+// see what a reader holds (memoryBytes()) and that close() returns it all.
+size_t gBudget = static_cast<size_t>(-1);
+size_t gLive = 0;
+void* budgetAlloc(size_t n) {
+    if (gLive + n > gBudget) return nullptr;
+    auto* p = static_cast<size_t*>(std::malloc(n + 16));
+    if (!p) return nullptr;
+    *p = n;
+    gLive += n;
+    return reinterpret_cast<char*>(p) + 16;
+}
+void budgetFree(void* q) {
+    if (!q) return;
+    auto* p = reinterpret_cast<size_t*>(static_cast<char*>(q) - 16);
+    gLive -= *p;
+    std::free(p);
+}
+Allocator budgetAllocator() { return Allocator{budgetAlloc, budgetFree}; }
+
+void assertSameGlyph(const Glyph* a, const Glyph* b) {
+    TEST_ASSERT_NOT_NULL(a);
+    TEST_ASSERT_NOT_NULL(b);
+    TEST_ASSERT_EQUAL_UINT32(a->codepoint, b->codepoint);
+    TEST_ASSERT_EQUAL_UINT8(a->set, b->set);
+    TEST_ASSERT_EQUAL_UINT8(a->encoding, b->encoding);
+    TEST_ASSERT_EQUAL_UINT8(a->width, b->width);
+    TEST_ASSERT_EQUAL_UINT8(a->height, b->height);
+    TEST_ASSERT_EQUAL_INT8(a->xOff, b->xOff);
+    TEST_ASSERT_EQUAL_INT8(a->yOff, b->yOff);
+    TEST_ASSERT_EQUAL_UINT8(a->advance, b->advance);
+    TEST_ASSERT_EQUAL_UINT32(a->dataOff, b->dataOff);
+}
+
+// Opens `src` both ways and checks that the streamed reader answers exactly as
+// the in-memory one: every card (its strings too), every glyph by index and by
+// lookup (and the absent keys next to each), every bitmap and stroke mask, and
+// every question built from the same seeds.
+void checkModesAgree(PackSource& src) {
+    PackReader mem, str;
+    TEST_ASSERT_EQUAL(PackError::Ok, mem.open(src, defaultAllocator(), PackMemory::InMemory));
+    TEST_ASSERT_EQUAL(PackError::Ok, str.open(src, defaultAllocator(), PackMemory::Streamed));
+    TEST_ASSERT_FALSE(mem.streamed());
+    TEST_ASSERT_TRUE(str.streamed());
+    TEST_ASSERT_EQUAL_UINT32(mem.cardCount(), str.cardCount());
+    TEST_ASSERT_EQUAL_UINT32(mem.glyphCount(), str.glyphCount());
+    TEST_ASSERT_EQUAL_STRING(mem.deckName(), str.deckName());
+
+    for (uint32_t i = 0; i < mem.cardCount(); ++i) {
+        Card a, b;
+        TEST_ASSERT_TRUE(mem.card(i, &a));
+        TEST_ASSERT_TRUE(str.card(i, &b));
+        TEST_ASSERT_EQUAL_UINT32(a.codepoint, b.codepoint);
+        TEST_ASSERT_EQUAL_STRING(a.meanings, b.meanings);
+        TEST_ASSERT_EQUAL_STRING(a.onyomi, b.onyomi);
+        TEST_ASSERT_EQUAL_STRING(a.kunyomi, b.kunyomi);
+        TEST_ASSERT_EQUAL_UINT32(a.distractorOff, b.distractorOff);
+        TEST_ASSERT_EQUAL_UINT32(a.distractorReadOff, b.distractorReadOff);
+        TEST_ASSERT_EQUAL_UINT16(a.level, b.level);
+        TEST_ASSERT_EQUAL_UINT16(a.freq, b.freq);
+        TEST_ASSERT_EQUAL_UINT8(a.jlpt, b.jlpt);
+        TEST_ASSERT_EQUAL_UINT8(a.strokes, b.strokes);
+        TEST_ASSERT_EQUAL_UINT32(a.codepoint, str.codepointAt(i));
+        TEST_ASSERT_EQUAL_UINT32(a.codepoint, mem.codepointAt(i));
+        // Without text: the numbers, no strings, in both modes.
+        TEST_ASSERT_TRUE(str.card(i, &b, false));
+        TEST_ASSERT_TRUE(mem.card(i, &a, false));
+        TEST_ASSERT_EQUAL_UINT32(a.codepoint, b.codepoint);
+        TEST_ASSERT_EQUAL_UINT16(a.level, b.level);
+        TEST_ASSERT_EQUAL_STRING("", b.meanings);
+        TEST_ASSERT_EQUAL_STRING("", a.kunyomi);
+        // Strokes.
+        TEST_ASSERT_EQUAL_UINT16(mem.strokeCount(i), str.strokeCount(i));
+        for (uint16_t k = 0; k < mem.strokeCount(i); ++k) {
+            Stroke sa, sb;
+            TEST_ASSERT_TRUE(mem.strokeAt(i, k, &sa));
+            TEST_ASSERT_TRUE(str.strokeAt(i, k, &sb));
+            TEST_ASSERT_EQUAL_UINT32(sa.dataOff, sb.dataOff);
+            std::vector<uint8_t> ba(PackReader::strokeBitmapSize(sa)), bb(ba.size());
+            TEST_ASSERT_TRUE(mem.readStrokeBitmap(sa, ba.data(), ba.size()));
+            TEST_ASSERT_TRUE(str.readStrokeBitmap(sb, bb.data(), bb.size()));
+            TEST_ASSERT_TRUE(ba == bb);
+        }
+    }
+    TEST_ASSERT_FALSE(str.card(str.cardCount(), nullptr));
+    TEST_ASSERT_EQUAL_UINT32(0, str.codepointAt(str.cardCount()));
+
+    for (uint32_t i = 0; i < mem.glyphCount(); ++i) {
+        const Glyph* a = mem.glyphAt(i);
+        const Glyph* b = str.glyphAt(i);
+        assertSameGlyph(a, b);
+        TEST_ASSERT_EQUAL_UINT32(i, str.glyphIndex(b));
+        const Glyph* f = str.findGlyph(a->set, a->codepoint);
+        assertSameGlyph(a, f);
+        TEST_ASSERT_EQUAL_UINT32(i, str.glyphIndex(f));
+        TEST_ASSERT_EQUAL_UINT32(i, mem.glyphIndex(mem.findGlyph(a->set, a->codepoint)));
+        // The keys around it are found (or not) alike.
+        for (uint32_t cp : {a->codepoint - 1, a->codepoint + 1}) {
+            const Glyph* x = mem.findGlyph(a->set, cp);
+            const Glyph* y = str.findGlyph(a->set, cp);
+            TEST_ASSERT_EQUAL(x != nullptr, y != nullptr);
+            if (x) assertSameGlyph(x, y);
+        }
+        std::vector<uint8_t> ba(PackReader::bitmapSize(*a)), bb(ba.size());
+        TEST_ASSERT_TRUE(mem.readGlyphBitmap(*a, ba.data(), ba.size()));
+        TEST_ASSERT_TRUE(str.readGlyphBitmap(*b, bb.data(), bb.size()));
+        TEST_ASSERT_TRUE(ba == bb);
+    }
+    TEST_ASSERT_NULL(str.glyphAt(str.glyphCount()));
+    TEST_ASSERT_NULL(str.findGlyph(0, 0));     // before the first entry
+    TEST_ASSERT_NULL(str.findGlyph(9, 0x41));  // after the last set
+    Glyph stray{};
+    TEST_ASSERT_EQUAL_UINT32(str.glyphCount(), str.glyphIndex(&stray));
+    TEST_ASSERT_EQUAL_UINT32(mem.glyphCount(), mem.glyphIndex(&stray));
+
+    for (uint32_t i = 0; i < mem.cardCount(); ++i)
+        for (QuizMode m : {QuizMode::Meaning, QuizMode::Reading, QuizMode::MeaningToKanji}) {
+            XorShiftRng ra(1000 + i), rb(1000 + i);
+            Question qa, qb;
+            const bool oa = buildQuestion(mem, i, m, ra, &qa);
+            TEST_ASSERT_EQUAL(oa, buildQuestion(str, i, m, rb, &qb));
+            if (!oa) continue;
+            TEST_ASSERT_EQUAL(qa.count, qb.count);
+            TEST_ASSERT_EQUAL(qa.correct, qb.correct);
+            for (int k = 0; k < qa.count; ++k) {
+                TEST_ASSERT_EQUAL_STRING(qa.options[k].c_str(), qb.options[k].c_str());
+                TEST_ASSERT_EQUAL_UINT16(qa.optionCard[k], qb.optionCard[k]);
+            }
+        }
+}
+
+void test_streamed_matches_in_memory() {
+    {
+        auto buf = makePack(sixCards(), someGlyphs(), someStrokes());
+        MemorySource src(buf);
+        checkModesAgree(src);
+    }
+    {
+        auto g = someGlyphs();
+        auto buf = makePack(sixCards(), g, someStrokes(), 2);
+        MemorySource src(buf);
+        checkModesAgree(src);
+    }
+    StdioSource v1(kMiniV1);
+    if (v1.ok()) checkModesAgree(v1);
+    StdioSource v2("../tools/pack-builder/fixtures/mini.tgc");
+    if (v2.ok()) checkModesAgree(v2);
+}
+
+// The published decks, when a directory with them is given in $TGC_PACK_DIR
+// (not committed; e.g. the decks-v2 release downloaded somewhere): every pack
+// in it is read both ways.
+void test_streamed_matches_real_packs() {
+    const char* dir = std::getenv("TGC_PACK_DIR");
+    if (!dir || !*dir) TEST_IGNORE_MESSAGE("set TGC_PACK_DIR to a directory of .tgc packs");
+    int checked = 0;
+    for (const char* name : {"n5-en", "n5-es", "n4-en", "n4-es", "n3-en", "n3-es", "n2-en",
+                             "n2-es", "n1-en", "n1-es", "joyo-en", "joyo-es"}) {
+        const std::string path = std::string(dir) + "/" + name + ".tgc";
+        StdioSource src(path.c_str());
+        if (!src.ok()) continue;
+        checkModesAgree(src);
+        ++checked;
+        // What each mode holds (64-bit host sizes; docs/architecture.md has the
+        // ESP32's), after a pass over every card's text.
+        PackReader mem, str;
+        mem.open(src, defaultAllocator(), PackMemory::InMemory);
+        str.open(src, defaultAllocator(), PackMemory::Streamed);
+        for (uint32_t i = 0; i < str.cardCount(); ++i) {
+            Card c;
+            str.card(i, &c);
+        }
+        char msg[96];
+        snprintf(msg, sizeof msg, "%s: in memory %u bytes, streamed %u bytes", name,
+                 (unsigned)mem.memoryBytes(), (unsigned)str.memoryBytes());
+        TEST_MESSAGE(msg);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(checked > 0, "no packs in TGC_PACK_DIR");
+}
+
+// A big deck: the streamed reader holds a few KB plus 4 bytes a card, the
+// in-memory one the whole tables; memoryBytes() says exactly what is live and
+// close() gives it all back.
+std::vector<CardSpec> manyCards(int n, std::vector<std::string>* text) {
+    text->clear();
+    text->reserve(3 * static_cast<size_t>(n));
+    std::vector<CardSpec> cs;
+    for (int i = 0; i < n; ++i) {
+        // Meanings of 20 to 200 bytes: some need several reads of a string.
+        std::string m = "meaning " + std::to_string(i);
+        while (m.size() < static_cast<size_t>(20 + (i * 37) % 180)) m += "; more";
+        text->push_back(m);
+        text->push_back("オン" + std::to_string(i % 7));
+        text->push_back(i % 3 ? "くん" : "");
+    }
+    for (int i = 0; i < n; ++i) {
+        const std::string* t = &(*text)[3 * static_cast<size_t>(i)];
+        cs.push_back({static_cast<uint32_t>(0x4E00 + i), t[0].c_str(), t[1].c_str(), t[2].c_str(),
+                      {static_cast<uint16_t>((i + 1) % n), static_cast<uint16_t>((i + 2) % n)},
+                      {}});
+    }
+    return cs;
+}
+
+std::vector<GlyphSpec> glyphsFor(const std::vector<CardSpec>& cs) {
+    std::vector<GlyphSpec> g;
+    for (const CardSpec& c : cs) {
+        g.push_back({0, c.cp, 6, 6});
+        g.push_back({1, c.cp, 4, 4});
+    }
+    for (uint32_t cp = 0x20; cp < 0x7F; ++cp) g.push_back({2, cp, 3, 5});
+    return g;
+}
+
+void test_streamed_memory_is_small_and_released() {
+    std::vector<std::string> text;
+    const auto cs = manyCards(2000, &text);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    gBudget = static_cast<size_t>(-1);
+    size_t inMemory = 0;
+    {
+        PackReader r;
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, budgetAllocator(), PackMemory::InMemory));
+        TEST_ASSERT_EQUAL(gLive, r.memoryBytes());
+        inMemory = r.memoryBytes();
+        r.close();
+        TEST_ASSERT_EQUAL(0, gLive);
+    }
+    {
+        PackReader r;
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, budgetAllocator(), PackMemory::Streamed));
+        TEST_ASSERT_EQUAL(gLive, r.memoryBytes());
+        // Read every string: the slots grow to the longest they held, no more.
+        for (uint32_t i = 0; i < r.cardCount(); ++i) {
+            Card c;
+            TEST_ASSERT_TRUE(r.card(i, &c));
+            TEST_ASSERT_EQUAL_STRING(text[3 * i].c_str(), c.meanings);
+            TEST_ASSERT_EQUAL_STRING(text[3 * i + 1].c_str(), c.onyomi);
+            TEST_ASSERT_EQUAL_STRING(text[3 * i + 2].c_str(), c.kunyomi);
+        }
+        TEST_ASSERT_EQUAL(gLive, r.memoryBytes());
+        TEST_ASSERT_TRUE(r.memoryBytes() < 8 * 1024 + 4 * 2000 + 16 * 256);
+        TEST_ASSERT_TRUE(r.memoryBytes() * 8 < inMemory);
+    }
+    TEST_ASSERT_EQUAL(0, gLive);
+}
+
+// InMemoryOrStreamed falls back when the tables do not fit; InMemory fails.
+void test_in_memory_or_streamed_falls_back() {
+    std::vector<std::string> text;
+    const auto cs = manyCards(1000, &text);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    gBudget = 32 * 1024;  // under the tables (~180 KB), over the streamed state
+    {
+        PackReader r;
+        TEST_ASSERT_EQUAL(PackError::NoMemory, r.open(src, budgetAllocator(), PackMemory::InMemory));
+        TEST_ASSERT_FALSE(r.isOpen());
+        TEST_ASSERT_EQUAL(0, gLive);
+        TEST_ASSERT_EQUAL(PackError::Ok,
+                          r.open(src, budgetAllocator(), PackMemory::InMemoryOrStreamed));
+        TEST_ASSERT_TRUE(r.streamed());
+        Card c;
+        TEST_ASSERT_TRUE(r.card(999, &c));
+        TEST_ASSERT_EQUAL_STRING(text[3 * 999].c_str(), c.meanings);
+        TEST_ASSERT_NOT_NULL(r.findGlyph(1, c.codepoint));
+    }
+    TEST_ASSERT_EQUAL(0, gLive);
+    // Plenty of memory: the tables.
+    gBudget = static_cast<size_t>(-1);
+    {
+        PackReader r;
+        TEST_ASSERT_EQUAL(PackError::Ok,
+                          r.open(src, budgetAllocator(), PackMemory::InMemoryOrStreamed));
+        TEST_ASSERT_FALSE(r.streamed());
+    }
+    // Not even the streamed state fits.
+    gBudget = 1024;
+    {
+        PackReader r;
+        TEST_ASSERT_EQUAL(PackError::NoMemory,
+                          r.open(src, budgetAllocator(), PackMemory::InMemoryOrStreamed));
+        TEST_ASSERT_EQUAL(0, gLive);
+    }
+    gBudget = static_cast<size_t>(-1);
+}
+
+// A string pointer stays valid while fewer than kStringSlots other strings
+// are read; the pool's last byte ends a string as in memory; corrupt packs
+// are refused the same way.
+void test_streamed_string_cache_and_pool_end() {
+    std::vector<std::string> text;
+    const auto cs = manyCards(40, &text);
+    auto buf = makePack(cs, glyphsFor(cs));
+    {
+        MemorySource src(buf);
+        PackReader r;
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), PackMemory::Streamed));
+        Card first;
+        TEST_ASSERT_TRUE(r.card(0, &first));
+        const char* kept = first.meanings;
+        // Its own two readings and four more cards with text: 14 other
+        // strings, fewer than the slots, so the meaning (the least recent
+        // string) is still there.
+        for (uint32_t i = 1; i <= 4; ++i) {
+            Card c;
+            TEST_ASSERT_TRUE(r.card(i, &c));
+        }
+        TEST_ASSERT_EQUAL_STRING(text[0].c_str(), kept);
+        TEST_ASSERT_EQUAL_STRING("Test Deck", r.deckName());
+        TEST_ASSERT_EQUAL_STRING("", r.str(0));                     // before the pool
+        TEST_ASSERT_EQUAL_STRING("", r.str(r.header().stringsOff + r.header().stringsSize));
+    }
+    // The pool cut in the middle of the last card's meaning: its last byte
+    // becomes the string's end in both modes.
+    {
+        std::vector<uint8_t> cut = buf;
+        MemorySource probe(cut);
+        PackReader r;
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(probe));
+        Card last;
+        TEST_ASSERT_TRUE(r.card(39, &last));
+        const uint32_t meaningOff = static_cast<uint32_t>(cut[64 + 39 * 32 + 4]) |
+                                    static_cast<uint32_t>(cut[64 + 39 * 32 + 5]) << 8 |
+                                    static_cast<uint32_t>(cut[64 + 39 * 32 + 6]) << 16 |
+                                    static_cast<uint32_t>(cut[64 + 39 * 32 + 7]) << 24;
+        const uint32_t size = meaningOff + 11 - r.header().stringsOff;  // 10 bytes + the cut
+        r.close();
+        // Every later card string must stay inside: drop the last card's
+        // readings' offsets onto its meaning.
+        for (int f = 8; f <= 12; f += 4)
+            for (int k = 0; k < 4; ++k) cut[64 + 39 * 32 + f + k] = cut[64 + 39 * 32 + 4 + k];
+        for (int k = 0; k < 4; ++k) cut[32 + k] = static_cast<uint8_t>(size >> (8 * k));
+        MemorySource src(cut);
+        for (PackMemory m : {PackMemory::InMemory, PackMemory::Streamed}) {
+            PackReader q;
+            TEST_ASSERT_EQUAL(PackError::Ok, q.open(src, defaultAllocator(), m));
+            Card c;
+            TEST_ASSERT_TRUE(q.card(39, &c));
+            TEST_ASSERT_EQUAL_STRING(text[3 * 39].substr(0, 10).c_str(), c.meanings);
+        }
+    }
+    // A bad card offset is refused streamed as well.
+    {
+        std::vector<uint8_t> bad = buf;
+        bad[64 + 5 * 32 + 4] = 0;  // a meaning offset before the pool
+        bad[64 + 5 * 32 + 5] = 0;
+        bad[64 + 5 * 32 + 6] = 0;
+        bad[64 + 5 * 32 + 7] = 0;
+        MemorySource src(bad);
+        PackReader r;
+        TEST_ASSERT_EQUAL(PackError::BadTable, r.open(src, defaultAllocator(), PackMemory::Streamed));
+    }
 }
 
 void setUp() {}
@@ -1413,8 +1798,8 @@ void test_text_pages() {
     TEST_ASSERT_EQUAL(2, s[2].page);
 }
 
-int main() {
-    UNITY_BEGIN();
+// The pack and quiz tests: main() runs them once per PackMemory mode.
+void runPackTests() {
     RUN_TEST(test_open_and_header);
     RUN_TEST(test_cards);
     RUN_TEST(test_reading_distractor_list);
@@ -1438,10 +1823,24 @@ int main() {
     RUN_TEST(test_quiz_unavailable_and_tiny);
     RUN_TEST(test_quiz_meaning_gloss_collisions);
     RUN_TEST(test_quiz_meaning_to_kanji_excludes_cards_with_the_prompt);
-    RUN_TEST(test_glcd_cp437_map);
-    RUN_TEST(test_blend);
     RUN_TEST(test_mini_v1_fixture);
     RUN_TEST(test_real_pack_if_present);
+}
+
+int main() {
+    UNITY_BEGIN();
+    for (PackMemory m : {PackMemory::InMemory, PackMemory::Streamed}) {
+        gPackMem = m;
+        runPackTests();
+    }
+    gPackMem = PackMemory::InMemory;
+    RUN_TEST(test_streamed_matches_in_memory);
+    RUN_TEST(test_streamed_matches_real_packs);
+    RUN_TEST(test_streamed_memory_is_small_and_released);
+    RUN_TEST(test_in_memory_or_streamed_falls_back);
+    RUN_TEST(test_streamed_string_cache_and_pool_end);
+    RUN_TEST(test_glcd_cp437_map);
+    RUN_TEST(test_blend);
     RUN_TEST(test_ui_lang_code);
     RUN_TEST(test_first_boot_lang_picker);
     RUN_TEST(test_battery_guard);

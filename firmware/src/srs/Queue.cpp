@@ -38,10 +38,23 @@ void Queue::rebuild(const PackReader& pack, const SrsStore& srs, XorShiftRng& rn
     const uint16_t today = srs.today();
     std::vector<DueEntry> due;
     std::vector<NewEntry> fresh;
+    // Their sizes first (the code points are in memory however the pack is
+    // read), so neither list grows by doubling: without PSRAM a Joyo-sized
+    // deck would otherwise need about three times its final size for a moment.
+    size_t nDue = 0, nFresh = 0;
+    for (uint32_t i = 0; i < n; ++i) {
+        const Record* r = srs.find(pack.codepointAt(i));
+        if (!r || r->dueDay == 0)
+            ++nFresh;
+        else if (r->dueDay <= today)
+            ++nDue;
+    }
+    due.reserve(nDue);
+    fresh.reserve(nFresh);
     uint16_t introduced = 0;  // this deck's cards introduced today
     for (uint32_t i = 0; i < n; ++i) {
         Card c;
-        if (!pack.card(i, &c)) continue;
+        if (!pack.card(i, &c, /*text=*/false)) continue;
         const Record* r = srs.find(c.codepoint);
         if (r && introducedOn(*r, today) && introduced < 0xFFFF) ++introduced;
         if (!r || r->dueDay == 0) {
