@@ -240,7 +240,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       glyphs). Its "What's new" comes from `docs/releases/v0.3.0.md`.
       **v0.4.0** (2026-10-21) adds the `m5stack` image, one build for the
       StickS3 and the Cardputer ADV, which is the one on M5Burner, and small
-      fixes (NTP's second try, values cut short in portrait).
+      fixes (NTP's second try, values cut short in portrait). **v0.4.1**
+      (2026-10-21) fixes the deck that went unreadable after the second
+      download of a session (the TLS client's `close(0)`).
       The **README** is a landing page since 2026-10-21: a cover and a
       gallery of real screens (`tools/screenshots/readme_images.py`, shots
       from a StickS3 through the serial remote), with the long manual moved
