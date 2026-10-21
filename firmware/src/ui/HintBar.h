@@ -4,11 +4,14 @@
 // optionally a word, and optionally a side-hold item: ▬ and a word). When a
 // screen gives the side button a tap and a hold word and the two groups do
 // not fit one row, the side group gets a second row above the front one.
+// On a board with a keyboard (the Cardputer ADV) the same plan names keys:
+// every mark is a keycap (see "keys" below).
 // Pure C++, no Arduino: render/Widgets draws from planHints(), and the native
 // suite test_quizui checks every string's fit.
 //
 // Captions are Font0 at 1x: 6 px a character, whatever its UTF-8 length.
 #include "pack/Utf8.h"
+#include "ui/Icons.h"
 #include "ui/Theme.h"
 
 namespace tgc {
@@ -46,7 +49,8 @@ inline int hintFrontEnd(const char* tap, const char* hold, int tapW, int holdW) 
 // ---------------------------------------------------------------- plan
 // What a bar shows: the front tap and hold words with their marks' widths,
 // the side tap's icon width (0: no side tap item) and optional word, and the
-// side hold's optional word (drawn with the hold mark).
+// side hold's optional word (drawn with the hold mark, or with a mark of its
+// own `sideHoldMarkW` px wide when that is not 0: a keyboard's esc).
 struct HintSpec {
     const char* tap = nullptr;
     const char* hold = nullptr;
@@ -55,6 +59,7 @@ struct HintSpec {
     int sideIconW = 0;
     const char* sideWord = nullptr;
     const char* sideHold = nullptr;
+    int sideHoldMarkW = 0;
 };
 
 // Where the side group goes. The front row is always the bottom kHintH px;
@@ -86,7 +91,7 @@ inline HintPlan planHints(int w, const HintSpec& s) {
     }
 
     // Two side actions: the side tap (its words included), 6 px, the hold item.
-    const int holdW = hintItemW(s.holdMarkW, s.sideHold);
+    const int holdW = hintItemW(s.sideHoldMarkW ? s.sideHoldMarkW : s.holdMarkW, s.sideHold);
     auto groupW = [&](int tapW) { return tapW + (tapW > 0 ? kHintItemGap : 0) + holdW; };
     p.sideWord = hasWord;
     int start = right - groupW(p.sideWord ? withWord : iconOnly);
@@ -103,6 +108,52 @@ inline HintPlan planHints(int w, const HintSpec& s) {
     p.sideX = start;
     p.sideHoldX = right - holdW;
     return p;
+}
+
+// ---------------------------------------------------------------- keys
+// On a board with a keyboard the bar names keys instead of the buttons' marks
+// (docs/decisions.md, 2026-10-21): each mark is a keycap, a surface-hi box
+// kKeyCapH px tall, 1 px under the bar's top, holding an icon or a caption
+// ("esc", "tab") kKeyCapPadX px in from its sides; the word follows as usual.
+// The plan above is unchanged, only the marks are wider.
+struct KeyCap {
+    const Icon* icon = nullptr;
+    const char* text = nullptr;
+};
+constexpr int kKeyCapPadX = 2;
+constexpr int kKeyCapH = 10;
+
+inline int keyCapW(const KeyCap& k) {
+    const int content = k.icon ? k.icon->w : captionChars(k.text) * kCaptionCharW;
+    return content + 2 * kKeyCapPadX;
+}
+
+// The keys of the bar. A front tap that moves a focus is up/down; one that
+// steps or turns a page is right; one that any key does (go on after an
+// answer) is Enter. The hold is Enter; the side's back or cancel is esc, its
+// settings the menu key (Tab), and on the date stepper the side tap (a day
+// less) is left, with esc for the side hold (cancel).
+inline constexpr KeyCap kKeyMove{&kIconKeyUpDown, nullptr};
+inline constexpr KeyCap kKeyRight{&kIconKeyRight, nullptr};
+inline constexpr KeyCap kKeyLeft{&kIconKeyLeft, nullptr};
+inline constexpr KeyCap kKeyEnter{&kIconKeyEnter, nullptr};
+inline constexpr KeyCap kKeyEsc{nullptr, "esc"};
+inline constexpr KeyCap kKeyMenu{nullptr, "tab"};
+
+// The keyboard form of a bar: `tapKey` for the front tap, Enter for the hold,
+// `sideKey` (null: none) for the side tap and esc for the side hold.
+inline HintSpec keyHintSpec(const char* tap, const KeyCap& tapKey, const char* hold,
+                            const KeyCap* sideKey, const char* sideWord, const char* sideHold) {
+    HintSpec s;
+    s.tap = tap;
+    s.hold = hold;
+    s.tapMarkW = keyCapW(tapKey);
+    s.holdMarkW = keyCapW(kKeyEnter);
+    s.sideIconW = sideKey ? keyCapW(*sideKey) : 0;
+    s.sideWord = sideWord;
+    s.sideHold = sideHold;
+    s.sideHoldMarkW = keyCapW(kKeyEsc);
+    return s;
 }
 
 }  // namespace tgc

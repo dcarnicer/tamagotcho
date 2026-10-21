@@ -11,6 +11,7 @@
 
 #include "board/Board.h"
 #include "render/Renderer.h"
+#include "ui/HintBar.h"
 #include "ui/Icons.h"
 #include "ui/ListView.h"
 #include "ui/Theme.h"
@@ -60,6 +61,10 @@ void drawBattery(lgfx::LovyanGFX& d, int x, int y, int pct);
 // front one: the bar is then hintBarHeight() = 24 px tall, which the screen
 // must leave free (ui/HintBar.h, docs/ux-refresh.md §2.4). `sideDim` draws the
 // side tap's icon and word in text-faint (not available right now).
+// On a board with a keyboard the app sets `keys` (main.cpp boardHints()): the
+// marks are keycaps (ui/HintBar.h): `tapKey` for the front tap, Enter for the
+// hold, `sideKey` for the side tap (drawn when `side` is set) and esc for the
+// side hold. The words stay the same.
 struct Hints {
     const char* tap = nullptr;
     const char* hold = nullptr;
@@ -68,6 +73,9 @@ struct Hints {
     const char* sideHold = nullptr;
     bool sideDim = false;
     bool holding = false;
+    bool keys = false;
+    KeyCap tapKey = kKeyMove;
+    KeyCap sideKey = kKeyEsc;
 };
 // The bar's height for `hints` on a `w` px wide panel: kHintH, or twice that.
 int hintBarHeight(int w, const Hints& hints);

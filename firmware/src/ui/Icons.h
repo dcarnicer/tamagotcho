@@ -193,6 +193,36 @@ inline constexpr auto kFlameBits = pack<7, 7>(  // streak
     "#######"
     ".#####.");
 
+// --- keys (the hint bar on a board with a keyboard: ui/HintBar.h keycaps)
+inline constexpr auto kKeyUpDownBits = pack<11, 7>(  // the up and down arrows: move
+    "..#.....#.."
+    ".###....#.."
+    "#.#.#...#.."
+    "..#.....#.."
+    "..#...#.#.#"
+    "..#....###."
+    "..#.....#..");
+inline constexpr auto kKeyRightBits = pack<7, 5>(
+    "....#.."
+    ".....#."
+    "#######"
+    ".....#."
+    "....#..");
+inline constexpr auto kKeyLeftBits = pack<7, 5>(
+    "..#...."
+    ".#....."
+    "#######"
+    ".#....."
+    "..#....");
+inline constexpr auto kKeyEnterBits = pack<7, 7>(  // the return arrow
+    "......#"
+    "......#"
+    "..#...#"
+    ".#....#"
+    "#######"
+    ".#....."
+    "..#....");
+
 // --- list scroll markers: rows hidden above / below
 inline constexpr auto kMoreUpBits = pack<5, 3>(
     "..#.."
@@ -223,6 +253,10 @@ inline constexpr Icon kIconChart = {9, 9, icons::kChartBits.b};
 inline constexpr Icon kIconWifi9 = {9, 9, icons::kWifi9Bits.b};
 inline constexpr Icon kIconGear = {9, 9, icons::kGearBits.b};
 inline constexpr Icon kIconFlame = {7, 7, icons::kFlameBits.b};
+inline constexpr Icon kIconKeyUpDown = {11, 7, icons::kKeyUpDownBits.b};
+inline constexpr Icon kIconKeyRight = {7, 5, icons::kKeyRightBits.b};
+inline constexpr Icon kIconKeyLeft = {7, 5, icons::kKeyLeftBits.b};
+inline constexpr Icon kIconKeyEnter = {7, 7, icons::kKeyEnterBits.b};
 inline constexpr Icon kIconMoreUp = {5, 3, icons::kMoreUpBits.b};
 inline constexpr Icon kIconMoreDown = {5, 3, icons::kMoreDownBits.b};
 
