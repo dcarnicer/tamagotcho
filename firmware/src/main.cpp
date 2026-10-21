@@ -1215,8 +1215,10 @@ void drawQuizTile(lgfx::LovyanGFX& d, int i, float fill) {
     wg::TileState st = quizTileState(i);
     if (fill >= 0.0f && st == wg::TileState::Focus) st = wg::TileState::Holding;
     if (gQ.mode == tgc::QuizMode::MeaningToKanji) {
-        tgc::Card oc;
-        const uint32_t cp = gPack->card(gQ.optionCard[i], &oc) ? oc.codepoint : '?';
+        // The code point only (a streamed pack would read the card's text too,
+        // on every hold-fill frame).
+        const uint32_t cp =
+            gQ.optionCard[i] < gPack->cardCount() ? gPack->codepointAt(gQ.optionCard[i]) : '?';
         wg::drawKanjiTile(d, gRender, g.tx[i], g.ty[i], g.tw, g.th, st, cp, g.set, fill);
         return;
     }
