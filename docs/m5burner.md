@@ -9,9 +9,10 @@ build that runs on both boards (the board is found at boot; docs/decisions.md,
 publish form asks for, to add a version with each release.
 
 The entry: <https://burner.m5stack.com/firmware/2112925841991487490>, account
-`dabidesu`. v0.4.0 and v0.4.1 were submitted as Public on 2026-10-21 and
-wait for M5Stack's review (until then the page answers "firmware not
-visible"). A new version: `/developer/firmware/2112925841991487490/versions/new`
+`dabidesu`. v0.4.1 was submitted as Public on 2026-10-21 and waits for
+M5Stack's review (until then the page answers "firmware not visible"); v0.4.0,
+submitted first, was withdrawn the same day (back to a private draft) for the
+download bug v0.4.1 fixes. A new version: `/developer/firmware/2112925841991487490/versions/new`
 (My homepage › the entry › View all versions); it keeps the entry's name,
 categories, devices and description, and asks for the version, its notes,
 the release's `tamagotcho-m5stack-merged.bin`, the visibility and the cover.
