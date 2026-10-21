@@ -2832,3 +2832,25 @@ marked *to confirm* needs the device.
   - A switch to katakana and back on the same question (地: たちこし ↔
     タチコシ).
   - A wrong answer whose card shows × タ and ON チ、ジ.
+
+## 2026-10-21 – v0.3.0: the new name, the Cardputer ADV, notes from a file
+
+- **What.** The third firmware release, from `main` d9fa864 plus this
+  release's docs, workflow and version changes. It brings the rename to
+  たまごっちょ (Tamagotcho), the Cardputer ADV, on'yomi answers in hiragana
+  and everything since v0.2.1 (Delete progress, the date screen's buttons,
+  reading questions when a card lacks a kind). The decks were rebuilt the same
+  day (`decks-v2`, run 39589421091).
+- **Cardputer ADV images.** `release.yml` builds `cardputer-adv` like the other
+  boards: app-only, merged (8 MB, the StickS3's partition table) and an ESP
+  Web Tools manifest. A local `tools/release/merge_image.py` run made its
+  merged image (DIO header, as the StickS3's).
+- **"What's new" from a file.** The release job checks out `docs/releases`
+  and puts `docs/releases/<tag>.md` between the title and the assets (a
+  warning when it is missing). Before, it was added by hand after the run. The
+  notes no longer say which images were checked: each release's file says.
+- **Updating from v0.2.1** keeps everything. The NVS namespace stays
+  `tangocho`. `srs.bin` is v1-compatible: `again_total` starts from the
+  records' lapses. The new `onkana` key starts at katakana.
+- **Pack builder 0.3.0**: the `tamagotcho-pack` name, the reading and meaning
+  order, and the hiragana glyphs for on'yomi.

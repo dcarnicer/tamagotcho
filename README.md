@@ -236,13 +236,14 @@ build by hand: `TGC_VERSION=v0.1.0-rc1 pio run -e sticks3`.
 
 ```sh
 cd firmware
-pio run -e sticks3 -t upload      # app (also -e tdisplay-s3)
+pio run -e sticks3 -t upload      # app (also -e tdisplay-s3, -e cardputer-adv)
 pio run -e sticks3 -t uploadfs    # LittleFS image built from data/
 ```
 
 ### Flash a merged image (esptool or a browser)
 
-A release's `tamagotcho-sticks3-merged.bin` (and the `tdisplay-s3` one) is one
+A release's `tamagotcho-sticks3-merged.bin` (and the `tdisplay-s3` and
+`cardputer-adv` ones) is one
 file flashed at offset 0, so it needs no offset list (releases up to v0.2.1
 name their files `tangocho-…`):
 
@@ -303,8 +304,9 @@ and the zone again.
 > a v0.1.0 candidate's merged image written at `0x0` booted, kept its decks and
 > progress, and started with the settings erased. From the **browser**
 > (esptool-js), Erase Flash and then the merged image at `0x0` gave a new
-> device: language picker, setup mode, portal. The T-Display-S3 images are
-> built but not verified on hardware.
+> device: language picker, setup mode, portal. The T-Display-S3 and Cardputer
+> ADV images are built but not verified on hardware; their firmware is, flashed
+> with PlatformIO (2026-10-21).
 
 ### Prebuilt decks and their licence
 

@@ -81,6 +81,10 @@ jobs:
             name: T-Display-S3
             partitions: tdisplay_s3_16MB.csv
             flash_size: 16MB
+          - env: cardputer-adv
+            name: Cardputer ADV
+            partitions: sticks3_8MB.csv
+            flash_size: 8MB
     defaults:
       run:
         working-directory: firmware
@@ -184,6 +188,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The release's "What's new": docs/releases/<tag>.md when there is one.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: docs/releases
+          path: repo
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -194,19 +204,29 @@ jobs:
           DECKS_CATALOG: ${{ needs.resolve.outputs.decks_catalog }}
         run: |
           tag="${{ needs.resolve.outputs.tag }}"
+          whatsnew="repo/docs/releases/${tag}.md"
           {
           cat <<MD
           # Tamagotcho (たまごっちょ) ${tag}
 
-          Firmware for the **M5Stack StickS3** and the **LilyGO T-Display-S3**.
+          Firmware for the **M5Stack StickS3**, the **LilyGO T-Display-S3** and the
+          **M5Stack Cardputer ADV**.
 
+          MD
+          if [ -f "$whatsnew" ]; then
+            cat "$whatsnew"
+            echo
+          else
+            echo "::warning::no $whatsnew: the notes have no What's new"
+          fi
+          cat <<MD
           ## Assets
 
           | file | what |
           |---|---|
           | \`tamagotcho-sticks3.bin\` | app-only image (M5Launcher, \`pio run -t upload\`) |
-          | \`tamagotcho-tdisplay-s3.bin\` | app-only image (T-Display-S3) |
-          | \`tamagotcho-sticks3-merged.bin\`, \`tamagotcho-tdisplay-s3-merged.bin\` | single images for a first install (offset 0x0) |
+          | \`tamagotcho-tdisplay-s3.bin\`, \`tamagotcho-cardputer-adv.bin\` | app-only images (T-Display-S3, Cardputer ADV) |
+          | \`tamagotcho-<board>-merged.bin\` | single images for a first install (offset 0x0), one per board |
           | \`tamagotcho-*-manifest.json\` | ESP Web Tools manifests (for an install page) |
 
           ## Flash it
@@ -218,13 +238,11 @@ jobs:
           - **Update:** \`esptool --chip esp32s3 write_flash 0x10000 tamagotcho-sticks3.bin\`.
             The merged image also erases the settings (home Wi-Fi, preferences);
             the app-only image keeps them. Decks and study progress survive both.
-          - **M5Launcher:** install the app-only \`tamagotcho-sticks3.bin\`, then put a
-            deck on the device over Wi-Fi (a device with no deck boots into the
-            Wi-Fi upload screen).
-
-          The StickS3 merged image was verified on a real device with esptool and
-          from the browser (esptool-js, after Erase Flash); the T-Display-S3
-          images are built but not verified on hardware (see docs/decisions.md).
+          - **M5Launcher:** install the app-only \`tamagotcho-sticks3.bin\` (or the
+            Cardputer ADV's), then put a deck on the device over Wi-Fi (a device
+            with no deck boots into the Wi-Fi upload screen).
+          - The other boards' files take the same commands with
+            \`tdisplay-s3\` or \`cardputer-adv\` in place of \`sticks3\`.
 
           ## Decks
 

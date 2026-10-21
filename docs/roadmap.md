@@ -232,13 +232,17 @@ Scope for now: **kanji only** (no vocabulary decks).
       2026-10-19). **v0.2.1** (2026-10-19) has the fixes from that day's
       hardware test: home Wi-Fi joins pinned to the strongest access point,
       statistics in their own section of the page, Auto orientation by default.
+      **v0.3.0** (2026-10-21) is the first as たまごっちょ (Tamagotcho) and the
+      first with Cardputer ADV images; it adds on'yomi answers in hiragana,
+      Delete progress and the new date screen buttons, and goes with the
+      `decks-v2` rebuild of that day (reading and meaning order, hiragana
+      glyphs). Its "What's new" comes from `docs/releases/v0.3.0.md`.
       Pending: **README photos** (`tools/screenshots` takes the screen
       captures from a StickS3 since 2026-10-20), and the T-Display-S3 release
       images on real hardware (the firmware itself was checked on a T-Display-S3
       on 2026-10-21, see docs/decisions.md).
-      - [ ] `release.yml` writes generic notes only: the "What's new" section
-        is added by hand after each release; let the workflow take it from a
-        file or the tag message.
+      - [x] `release.yml` puts `docs/releases/<tag>.md` in the notes as the
+        "What's new" (from v0.3.0; before, it was added by hand).
       - [ ] CI: also build `sticks3-shots` (the serial remote), so its code
         keeps compiling.
 
