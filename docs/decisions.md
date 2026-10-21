@@ -2531,3 +2531,37 @@ Branch `feature/delete-deck-progress`; the rules are docs/srs.md §2.1.
   `confirm()` is no hold. Deleting a deck there already deletes its progress.
 - **Cost.** sticks3 flash 1,452,049 -> 1,461,329 B (+9.3 KB, 69.7 % of the
   2 MB app slot).
+
+## 2026-10-21 – T-Display-S3 checked on hardware; a USB host stands in for VBUS
+
+First run of the firmware on a real LilyGO T-Display-S3 (ESP32-S3R8, 16 MB),
+through the serial remote (new env `tdisplay-s3-shots`, like `sticks3-shots`):
+the settings tour, the quiz (meaning, reading and kanji questions, reveal,
+detail card with stroke order), the date stepper, About, setup mode with its
+QR code and Get decks without a home network, in portrait (170×320) and
+landscape (320×170), with N5 (es) and N4 (en) from decks-v2. The panel, its
+offset and the buttons (GPIO0 confirm, GPIO14 side) work as configured. Found
+and fixed:
+
+- **Deep sleep on USB.** `externalPower()` was always false, so after 2 min
+  idle the board deep-slept while on a computer and its USB port vanished until
+  someone pressed BOOT. The board has no VBUS sense, so it now reports
+  `HWCDC::isPlugged()`: the USB-Serial/JTAG peripheral sees the host's
+  start-of-frame packets every millisecond (Arduino-ESP32 2.0.17 checks them
+  in a tick hook). A plain charger sends none, so on one the board still
+  sleeps after 2 min as on battery; that is the price of no extra hardware.
+- **Orientation read "Auto"** on a board without an accelerometer (the
+  default since 2026-10-19), where it draws portrait. The Device page and the
+  picker now show what is drawn; the stored setting stays Auto, as before.
+- **Get decks error title over its detail.** The title was centred in a 40 px
+  box while the detail started 26 px below the box's top: a one-line title
+  (any landscape panel, also the StickS3's) overlapped it. The box is now as
+  tall as the title's lines.
+- `tools/screenshots/scenarios/tour.txt` still cancelled the date stepper with
+  a side tap, which has meant -1 day since 2026-10-20; it now uses a side hold.
+
+esptool note: Homebrew's esptool 5.2.0 read this board's (and the StickS3's)
+flash at ~11 KB/s over USB-Serial/JTAG and failed at 921600 baud ("Serial data
+stream stopped"); PlatformIO's bundled esptool 4.9.0 read it at ~80 KB/s.
+Use the bundled one for flash backups.
+

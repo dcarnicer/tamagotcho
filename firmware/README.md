@@ -157,6 +157,9 @@ itself is ignored. Time spent asleep is measured by the ESP32's RTC timer and
 advances the SRS day, so the date question (below) only appears after a real
 power-off. **On USB power** it only turns the panel off (the serial port stays up
 for flashing and logs); any press turns it back on, and unplugging lets it sleep.
+The T-Display-S3 cannot sense USB power: it counts as plugged in while a
+computer is on the USB port (the USB-Serial/JTAG link), so on a plain USB
+charger it sleeps as on battery.
 To flash a sleeping device on battery, wake it first. The CPU runs at 80 MHz
 (240 MHz while the Wi-Fi portal or the home Wi-Fi is up; the home Wi-Fi only
 while the portal in home mode, Get decks or the network test is open, or for a

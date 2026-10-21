@@ -16,7 +16,7 @@ tap-side
 tap hold       shot:device        # Device page
 tap:4 hold     shot:date-menu     # Device > Date
 hold           shot:date          # the stepper (a hold here would set the date)
-tap-side                          # cancel: back to the Date menu
+hold-side                         # cancel: back to the Date menu (a side tap is -1 day)
 tap-side                          # back to the Device page, "Date" focused
 tap:2 hold     shot:about         # About: the two taps pass over "Sleep"
 tap            shot:about-2

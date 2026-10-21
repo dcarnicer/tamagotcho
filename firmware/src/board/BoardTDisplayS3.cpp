@@ -156,7 +156,10 @@ void setBrightness(uint8_t level) {
 }
 
 bool wokeFromSleep() { return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0; }
-bool externalPower() { return false; }  // no VBUS sense wired up yet
+// No VBUS sense on this board: a USB host sending start-of-frame packets (the
+// USB-Serial/JTAG port, HWCDC) stands in for it. A plain USB charger does not
+// count, so on one the board sleeps as on battery.
+bool externalPower() { return HWCDC::isPlugged(); }
 
 void setDisplayOn(bool on) {
     if (on) {

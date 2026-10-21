@@ -6,8 +6,10 @@ and taking the README screenshots without anyone at the buttons, by hand or by
 an agent.
 
 It needs a firmware with the serial remote, the **`sticks3-shots`** env
-(`sticks3` plus `-DTGC_REMOTE=1`). **Never flash it as a release or leave it on
-someone else's device**: anything on the USB cable can press its buttons.
+(`sticks3` plus `-DTGC_REMOTE=1`), or `tdisplay-s3-shots` on a LilyGO
+T-Display-S3 (with two boards on USB, name the port with `--port`). **Never
+flash it as a release or leave it on someone else's device**: anything on the
+USB cable can press its buttons.
 The release workflow builds `sticks3` and `tdisplay-s3` only, which carry none
 of this code.
 

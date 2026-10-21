@@ -2729,10 +2729,15 @@ void drawGetDecks() {
         return;
     }
     if (gNetStep == NetStep::Error) {
+        // The title's box is as tall as its lines (drawCentred centres in it),
+        // so the detail starts below the ink of a one-line title too.
         const int top = kHeaderH + 6;
-        const int titleLines = gRender.drawCentred(d, gNetErrTitle, 4, top, W - 8, 40, 2, kWarn,
-                                                   kBg, tgc::Renderer::kTextUi);
-        const int detailY = top + 20 * std::max(titleLines, 1) + 6;
+        const int lh = gRender.lineHeight(tgc::Renderer::kTextUi);
+        const int titleLines =
+            gRender.textWidth(gNetErrTitle, tgc::Renderer::kTextUi) <= W - 8 ? 1 : 2;
+        gRender.drawCentred(d, gNetErrTitle, 4, top, W - 8, titleLines * lh, 2, kWarn, kBg,
+                            tgc::Renderer::kTextUi);
+        const int detailY = top + titleLines * lh + 6;
         drawCaptionLines(d, gNetErrDetail, 4, detailY, W - 8, (H - kHintH - 2 - detailY) / 10,
                          kText);
         backHints(d, nullptr, ui().netHoldRetry);
@@ -3332,6 +3337,12 @@ bool orientAuto() { return gOrientPref == kOrientAuto && tgc::board::hasAccel();
 // missing or failed to start behaves as portrait (the setting is kept).
 uint8_t fixedRotation() { return gOrientPref == kOrientLandscape ? 1 : 0; }
 
+// The setting as the Device page and its picker show it: that Auto reads as
+// Portrait, which is what it draws (the T-Display-S3 has no accelerometer).
+uint8_t shownOrientPref() {
+    return gOrientPref == kOrientAuto && !orientAuto() ? kOrientPortrait : gOrientPref;
+}
+
 // The orientation setting. Up to 2026-10-18 it was the bool `land`; that key
 // is read once, rewritten as `orient` and removed, so a landscape user keeps
 // landscape. New users get Auto (2026-10-19, once the axes were confirmed on
@@ -3890,7 +3901,7 @@ void openChoice(Choice which) {
         gChoiceValues[gChoiceCount++] = kOrientPortrait;
         gChoiceValues[gChoiceCount++] = kOrientLandscape;
         for (int i = 0; i < gChoiceCount; ++i)
-            if (gChoiceValues[i] == gOrientPref) saved = i;
+            if (gChoiceValues[i] == shownOrientPref()) saved = i;
         showChoice(saved);
         return;
     }
@@ -4272,7 +4283,7 @@ const MenuItem& menuItem(st::Item id) {
          [] { openReset(true); }},
         // --- Device
         {I::Orientation, [] { return ui().deviceRows[0]; },
-         [](char* o, size_t n) { snprintf(o, n, "%s", ui().orientRows[gOrientPref % 3]); },
+         [](char* o, size_t n) { snprintf(o, n, "%s", ui().orientRows[shownOrientPref() % 3]); },
          [] { openChoice(Choice::Orientation); }},
         {I::Brightness, [] { return ui().deviceRows[1]; },
          [](char* o, size_t n) { snprintf(o, n, "%u%%", (unsigned)(gBrightness * 100u / 255u)); },
@@ -4877,7 +4888,8 @@ struct Key {
 };
 
 #if defined(TGC_REMOTE)
-// Serial remote for tools/screenshots (env sticks3-shots, never a release).
+// Serial remote for tools/screenshots (envs sticks3-shots, tdisplay-s3-shots;
+// never a release).
 // One byte a command over USB serial, read by loop():
 //   'a' / 'b'  tap the front / side button (down for 80 ms)
 //   'A' / 'B'  hold it (down until the hold fires, then up)

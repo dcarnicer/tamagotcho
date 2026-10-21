@@ -233,8 +233,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       hardware test: home Wi-Fi joins pinned to the strongest access point,
       statistics in their own section of the page, Auto orientation by default.
       Pending: **README photos** (`tools/screenshots` takes the screen
-      captures from a StickS3 since 2026-10-20), and the T-Display-S3 images on
-      real hardware.
+      captures from a StickS3 since 2026-10-20), and the T-Display-S3 release
+      images on real hardware (the firmware itself was checked on a T-Display-S3
+      on 2026-10-21, see docs/decisions.md).
       - [ ] `release.yml` writes generic notes only: the "What's new" section
         is added by hand after each release; let the workflow take it from a
         file or the tag message.
