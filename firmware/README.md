@@ -75,7 +75,7 @@ page there (home mode; the screen shows the address and a QR code of it), or
 starts the device's own open access point when no network is saved; **Home:
 <network>** tests the saved network (IP, signal, catalog, network time, then
 radio off); **Setup mode** forces the access point (QR code to join it, a tap
-for the page's QR, `http://192.168.4.1`); **Forget network** asks first. A
+for the page's QR, `http://192.168.4.1`); **Forget Wi-Fi** asks first. A
 device with no pack boots straight into the portal: home mode with a saved
 network (setup mode if the join fails), else setup mode. In setup mode the page
 saves the home Wi-Fi and then offers **Switch to my Wi-Fi**; in home mode it
@@ -129,7 +129,7 @@ resets the loaded deck's progress (**This deck**, shared kanji included) or all
 of it and the statistics (**Everything**), after a confirmation that only a
 hold accepts (docs/srs.md §2.1).
 **Wi-Fi »** opens its own list (Web portal / Home network / Setup mode / Forget
-network) that works the same way, and so does **Date »** (Date / Time zone, see
+Wi-Fi) that works the same way, and so does **Date »** (Date / Time zone, see
 [Date](#date)). **About** shows the
 firmware version and licence, the decks' licence, the repository, and the loaded
 deck's name with its data credits; a tap turns the page when it needs two, the

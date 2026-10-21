@@ -342,7 +342,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       phase 5 polish (kanji fade-in, maybe slides). The two values cut short
       in portrait seen on 2026-10-20 are fixed (2026-10-21): narrow screens
       show the Date page's values under their labels, and the Spanish Wi-Fi
-      menu's "Modo configuración" row is "Configurar".
+      menu's "Modo configuración" row is "Configurar"; the English "Forget
+      network" (cut to "Forget net...") is "Forget Wi-Fi".
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
       (picking an option on the device takes longer than in Anki).
 - [ ] **Learning mode** (idea, 2026-10-18). A mode for learning kanji, not

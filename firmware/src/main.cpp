@@ -438,7 +438,7 @@ const UiStrings kUiEn = {
     "An update needs room for both copies. Delete the old one first: Settings > Wi-Fi > Web portal",
     "Not a valid deck", "Download failed", "Cancelled",
     "get decks",
-    {"Web portal", "Home", "Setup mode", "Forget network"}, "none", "No home network saved",
+    {"Web portal", "Home", "Setup mode", "Forget Wi-Fi"}, "none", "No home network saved",
     "Network forgotten", "FORGET WI-FI?", {"Cancel", "Forget"},
     "Scan to join", "Scan to open the page", "other QR", "via %s", "Connecting to",
     "setup", "retry", "Connection lost...", "study", "%s %u%%",
