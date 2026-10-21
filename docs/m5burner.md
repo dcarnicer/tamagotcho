@@ -8,6 +8,12 @@ build that runs on both boards (the board is found at boot; docs/decisions.md,
 "One image for the StickS3 and the Cardputer ADV"). This page keeps what the
 publish form asks for, to add a version with each release.
 
+The entry: <https://burner.m5stack.com/firmware/2112925841991487490>, account
+`dabidesu`. v0.4.0 was submitted as Public on 2026-10-21 and waits for
+M5Stack's review (until then the page answers "firmware not visible"). A new
+version: My homepage › the entry › View all versions › add one, with the
+release's `tamagotcho-m5stack-merged.bin`.
+
 | field | value |
 |---|---|
 | Name | `Tamagotcho` |
