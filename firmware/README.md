@@ -155,6 +155,7 @@ or without Fn, and so does Esc. The hint bar names the keys.
 |-----------------------------|------------------------------------------------------------|
 | `.` (down) and `/` (right)  | what the front tap does: the next option, row, day or page |
 | `;` (up) and `,` (left)     | the previous option (quiz) or day (date stepper); a list's row up, wrapping; nothing elsewhere |
+| arrows on the 2×2 answers   | up and down change row, left and right column (each wraps), as the tiles look |
 | Enter                       | what the front hold does, at once (no hold, no fill)       |
 | `` ` `` (Esc) and del       | back, or cancel (pickers, the date stepper, a download); in the quiz, the detail card and the done screen, the settings home |
 | Tab                         | the settings home (from the quiz; from a settings screen without Wi-Fi on); on the home, back where it was opened |

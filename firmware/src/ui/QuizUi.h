@@ -10,6 +10,7 @@
 // captions are Font0 at 1x (6 px a character), a pill is its text plus 6 px of
 // padding plus its icon and 3 px, and the hint bar puts a mark, 3 px, the word
 // and 6 px per front-button item from the left gutter.
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -70,6 +71,24 @@ inline int nextOption(int sel, int count) {
 inline int prevOption(int sel, int count) {
     if (count <= 0) return 0;
     return ((sel % count + count) % count + count - 1) % count;
+}
+
+// The arrow keys on options laid out in a grid of `cols` columns, row-major
+// (the 2x2 tiles): dy -1/+1 changes row and dx -1/+1 column, each wrapping
+// within its line, so a keyboard moves the way the tiles look, not in the
+// buttons' order. A move into the missing cells of a short last row lands on
+// the last option.
+inline int gridOption(int sel, int count, int cols, int dx, int dy) {
+    if (count <= 0 || cols <= 0) return 0;
+    sel = (sel % count + count) % count;
+    const int rows = (count + cols - 1) / cols;
+    int r = sel / cols, c = sel % cols;
+    if (dy) r = ((r + dy) % rows + rows) % rows;
+    if (dx) {
+        const int inRow = std::min(cols, count - (sel / cols) * cols);
+        c = ((c + dx) % inRow + inRow) % inRow;
+    }
+    return std::min(r * cols + c, count - 1);
 }
 
 // ---------------------------------------------------------------- hint bar

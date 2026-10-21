@@ -68,6 +68,26 @@ void test_option_navigation_wraps_both_ways() {
         }
 }
 
+void test_grid_option_moves_by_row_and_column() {
+    // 2x2, row-major: 0 1 / 2 3.
+    TEST_ASSERT_EQUAL(2, gridOption(0, 4, 2, 0, +1));
+    TEST_ASSERT_EQUAL(2, gridOption(0, 4, 2, 0, -1));  // two rows: up wraps down
+    TEST_ASSERT_EQUAL(1, gridOption(0, 4, 2, +1, 0));
+    TEST_ASSERT_EQUAL(1, gridOption(0, 4, 2, -1, 0));
+    TEST_ASSERT_EQUAL(1, gridOption(3, 4, 2, 0, -1));
+    TEST_ASSERT_EQUAL(2, gridOption(3, 4, 2, -1, 0));
+    // Three options: 0 1 / 2. Down from 1 has no cell below: the last option.
+    TEST_ASSERT_EQUAL(2, gridOption(1, 3, 2, 0, +1));
+    TEST_ASSERT_EQUAL(2, gridOption(2, 3, 2, +1, 0));  // alone in its row
+    TEST_ASSERT_EQUAL(0, gridOption(2, 3, 2, 0, -1));
+    // One column (the list layout): up and down are previous and next.
+    TEST_ASSERT_EQUAL(nextOption(1, 4), gridOption(1, 4, 1, 0, +1));
+    TEST_ASSERT_EQUAL(prevOption(0, 4), gridOption(0, 4, 1, 0, -1));
+    // Out of range or no options: never out of [0, count).
+    TEST_ASSERT_EQUAL(2, gridOption(4, 4, 2, 0, +1));
+    TEST_ASSERT_EQUAL(0, gridOption(1, 0, 2, 0, +1));
+}
+
 // ---------------------------------------------------------------- hint bar
 
 void test_hints_always_while_learning() {
@@ -502,6 +522,7 @@ int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_progress_counts_the_open_question);
     RUN_TEST(test_option_navigation_wraps_both_ways);
+    RUN_TEST(test_grid_option_moves_by_row_and_column);
     RUN_TEST(test_hints_always_while_learning);
     RUN_TEST(test_hints_after_idle_on_open_question);
     RUN_TEST(test_hints_never_idle_on_a_revealed_answer);

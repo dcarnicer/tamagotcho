@@ -1359,14 +1359,17 @@ void drawQuiz() {
 // A focus move (front tap: down, side tap: up, wrapping): only the two tiles
 // change, so only they are redrawn and pushed. The hint bar is redrawn into
 // the buffer too (unlit): loop() pushes it when a hold fill ended with this tap.
-void moveQuizFocus(bool down) {
+// `to(sel, count)` picks the new focus (the arrow keys on the 2x2 grid move by
+// row and column, see quizGridKey()).
+template <typename To>
+void moveQuizFocusTo(To to) {
     tgc::Card card;
     if (!questionCard(&card)) return;  // also keeps gQ.count from being 0 below
 #if defined(TGC_QUIZ_LOG)
     const uint32_t t0 = micros();
 #endif
     const int old = gSel;
-    gSel = down ? tgc::nextOption(gSel, gQ.count) : tgc::prevOption(gSel, gQ.count);
+    gSel = to(gSel, gQ.count);
     ++gNavTaps;
     auto& d = *gCanvas;
     drawQuizTile(d, old, -1.0f);
@@ -1380,6 +1383,26 @@ void moveQuizFocus(bool down) {
     presentRegion(x0, y0, x1 - x0, y1 - y0);
     QLOG("F quiz focus %d -> %d: %u us, push %u us (%d rows)\n", old, gSel,
          (unsigned)(micros() - t0), (unsigned)gPushUs, gPushRows);
+}
+
+void moveQuizFocus(bool down) {
+    moveQuizFocusTo([down](int sel, int count) {
+        return down ? tgc::nextOption(sel, count) : tgc::prevOption(sel, count);
+    });
+}
+
+// An arrow key on the quiz's 2x2 answer grid moves by row (up, down) and by
+// column (left, right), as the tiles look; keys elsewhere, and the arrows on
+// the one-column layout, go through keyAction() (previous / next). True when
+// the key was used here.
+bool quizGridKey(tgc::Key k, uint32_t now) {
+    if (gScreen != Screen::Quiz || gRevealed || !gQuizG.grid) return false;
+    const int dx = k == tgc::Key::Left ? -1 : k == tgc::Key::Right ? 1 : 0;
+    const int dy = k == tgc::Key::Up ? -1 : k == tgc::Key::Down ? 1 : 0;
+    if (!dx && !dy) return false;
+    gQuizHints.input(now);
+    moveQuizFocusTo([dx, dy](int sel, int count) { return tgc::gridOption(sel, count, 2, dx, dy); });
+    return true;
 }
 
 // --- Menu screens (docs/ux-refresh.md §2.4) ---------------------------------
@@ -6101,6 +6124,7 @@ void keyTurn(uint32_t t, bool swallow) {
         if (gDimmed) wakeScreen();
         if (swallow) continue;
         gKeyRepeat.down(ev.key, t);
+        if (quizGridKey(ev.key, t)) continue;
         keyAction(tgc::keyAction(ev.key), t);
     }
     const tgc::Key r = gKeyRepeat.poll(t);

@@ -2667,6 +2667,11 @@ marked *to confirm* needs the device.
     quiz's options, the date stepper's day less), a list's focus up
     (wrapping, every list screen: `listFocusUp()`), nothing elsewhere (after
     an answer, the detail card, the done screen);
+  - on the quiz's 2x2 answer grid (readings, kanji) the arrows go by the
+    layout instead: up and down change row, left and right column, each
+    wrapping (`gridOption()` in ui/QuizUi.h). Added after the first hardware
+    test: stepping through the tiles in order, as the buttons do, felt wrong
+    on a keyboard (maintainer, 2026-10-21);
   - Enter = the front hold, at once on the press: no hold timing, no fill;
   - Esc (`` ` ``, Esc in its Fn layer) and del = the screen's back or cancel
     (the side tap of menus and lists, the side hold of the date stepper and
