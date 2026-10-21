@@ -238,10 +238,14 @@ Scope for now: **kanji only** (no vocabulary decks).
       Delete progress and the new date screen buttons, and goes with the
       `decks-v2` rebuild of that day (reading and meaning order, hiragana
       glyphs). Its "What's new" comes from `docs/releases/v0.3.0.md`.
-      Pending: **README photos** (`tools/screenshots` takes the screen
-      captures from a StickS3 since 2026-10-20), and the T-Display-S3 release
-      images on real hardware (the firmware itself was checked on a T-Display-S3
-      on 2026-10-21, see docs/decisions.md).
+      The **README** is a landing page since 2026-10-21: a cover and a
+      gallery of real screens (`tools/screenshots/readme_images.py`, shots
+      from a StickS3 through the serial remote), with the long manual moved
+      to `docs/user-guide.md`. The v0.3.0 merged images of the StickS3 and
+      the T-Display-S3 booted as new devices on real hardware (2026-10-21).
+      Pending: a **Cardputer ADV** screen for the README and the Cardputer's
+      merged image on hardware; publishing on **M5Burner** (StickS3 and
+      Cardputer ADV).
       - [x] `release.yml` puts `docs/releases/<tag>.md` in the notes as the
         "What's new" (from v0.3.0; before, it was added by hand).
       - [ ] CI: also build `sticks3-shots` (the serial remote), so its code
