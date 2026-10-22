@@ -11,7 +11,10 @@ publish form asks for, to add a version with each release.
 The entry: <https://burner.m5stack.com/firmware/2112925841991487490>, account
 `dabidesu`. v0.4.1 was submitted as Public on 2026-10-21 and approved on
 2026-10-22 (published at 04:16 CEST); v0.4.0, submitted first, was withdrawn
-the same day (back to a private draft) for the download bug v0.4.1 fixes. A new
+the same day (back to a private draft) for the download bug v0.4.1 fixes.
+**v0.4.2** is the GitHub release of 2026-10-22 and is ready to add as the next
+Public version with `tamagotcho-m5stack-merged.bin`; its version description
+is the first lines of `docs/releases/v0.4.2.md`. A new
 version: `/developer/firmware/2112925841991487490/versions/new`
 (My homepage › the entry › View all versions); it keeps the entry's name,
 categories, devices and description, and asks for the version, its notes,
@@ -20,7 +23,7 @@ the release's `tamagotcho-m5stack-merged.bin`, the visibility and the cover.
 | field | value |
 |---|---|
 | Name | `Tamagotcho` |
-| Version | the release tag, e.g. `v0.4.0` |
+| Version | the release tag, e.g. `v0.4.2` |
 | Devices | StickS3, Cardputer ADV |
 | Categories | Development & Learning, Productivity |
 | Project link | `https://github.com/dcarnicer/tamagotcho` |
