@@ -122,10 +122,18 @@ catalog.
 ## Verification
 
 - Native tests: `catalogDeckState()` already covers the New / OnDevice /
-  Update classification (`test/test_catalog`); the update count and the boot
-  screen are device-only code.
+  Update classification (`test/test_catalog`); `deckUpdateCheckDue()` covers
+  the daily / weekly / 50 % policy. The update count and the boot screen are
+  device-only code.
 - Both boards build (`pio run -e sticks3`, `-e m5stack`).
-- Hardware: save a home Wi-Fi, put a deck with an old size in `/packs`, boot on
-  USB and confirm the check screen, the badge, the updates list, the download
-  and that progress survives; also with the network off (skip and failure),
-  and on battery above and below 50 %.
+- **StickS3, 2026-10-22.** The boot check joined the saved home Wi-Fi
+  ("Shimokitazawa"), read the catalog and showed "All decks are up to date";
+  the radio was off before the quiz. A deliberately replaced `n4-en.tgc`
+  (189,660 B, built without stroke order) was detected by the **Updates** row
+  and the filtered list showed "JLPT N4 · update"; a hold downloaded the
+  catalog build (238,688 B, size and SHA-256 checked), removed the row and
+  left the loaded N5 at 5 due / 67 new. The device ran the normal `m5stack`
+  build afterwards.
+- Not exercised: the automatic result with N > 0, the skip and failure paths,
+  and the Cardputer ADV keyboard. The detection and count path is the one the
+  manual list used; the boot screen with zero updates was seen.
