@@ -104,8 +104,9 @@ The count is a badge, not a cache of the catalog: the updates list always
 reads the catalog again, so a stale count corrects itself there. A failed or
 skipped automatic check still records the day (the device tried; the next
 automatic try is tomorrow or next week), but leaves the count and `updok` as
-they were, so the row shows "check" until a read succeeds. Opening Get decks,
-normal or update mode, refreshes all three when it reads a catalog.
+they were: the row says "check" only while no read has ever succeeded.
+Opening Get decks, normal or update mode, refreshes all three when it reads a
+catalog.
 
 ## Out of scope (follow-ups)
 
