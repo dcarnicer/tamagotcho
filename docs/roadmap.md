@@ -219,15 +219,15 @@ Scope for now: **kanji only** (no vocabulary decks).
       - [~] **Deck update checks over the home Wi-Fi** (2026-10-22; design
         docs/deck-updates.md). v1 on `main`: at boot, once a day on USB power
         (or once a week on battery from 50 %), the device joins the home
-        network, reads the catalog and compares the installed files' sizes.
-        Decks shows "N updates" and a new Updates row opens the filtered Get
-        decks list, where a hold replaces a deck in place (progress survives).
-        The check result is a two-second, skippable screen; it never downloads
-        by itself. Checked on a StickS3 and a Cardputer ADV (2026-10-22): boot
-        check, Updates row, detection, download and progress preservation, with
-        the keyboard on the Cardputer. Pending: capturing the automatic result
-        screen with N > 0, the skip/failure paths, hashing installed packs to
-        catch a same-size rebuild, and tuning the battery policy.
+        network, reads the catalog and compares the installed files' sizes and,
+        when they match, SHA-256 (2026-10-22). Decks shows "N updates" and a new
+        Updates row opens the filtered Get decks list, where a hold replaces a
+        deck in place (progress survives). The check result is a two-second,
+        skippable screen; it never downloads by itself. Checked on a StickS3 and
+        a Cardputer ADV (2026-10-22): boot check, Updates row, detection,
+        download and progress preservation, with the keyboard on the Cardputer.
+        Pending: capturing the automatic result screen with N > 0, the
+        skip/failure paths, and tuning the battery policy.
       - [~] **M5Launcher compatibility.** The app-only `.bin` that
         `pio run -e sticks3` produces can be installed as a launcher app, and
         the Wi-Fi upload is the intended way to populate `/packs` once it runs

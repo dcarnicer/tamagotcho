@@ -24,17 +24,21 @@ check only tells; the user chooses the deck and holds to update it.
 The catalog (`docs/pack-format.md`, `catalog-v2.txt`) has one record per
 published deck: `name`, `title`, `lang`, `cards`, exact `bytes`, `sha256` and
 `url`. An installed file `/packs/<name>.tgc` whose catalog record has a
-different `bytes` is an **update** (`tgc::DeckState::Update`, the same state
-Get decks already shows as "update"). Consequences:
+different `bytes` is an **update**, and so is one with the same size but a
+different SHA-256 (`tgc::DeckState::Update`, the same state Get decks already
+shows as "update"). Consequences:
 
 - A catalog entry with a name that is not installed is **not** an update; Get
   decks lists it as new.
 - A pack installed from outside the catalog (a WaniKani build, a file uploaded
   from the portal) is ignored: the catalog has no record for it.
-- **Size only in v1.** A rebuild that keeps the exact same byte count is not
-  detected. Hashing the installed file against the catalog's SHA-256 is the
-  next step; it costs a read of every installed pack (up to a few MB) and is
-  pointless on every boot until the cheap check says otherwise.
+- **Size then SHA-256.** The installed file is hashed only when its size equals
+  the catalog's; a file whose size already differs is an update without reading
+  it. The digest catches a rebuild that keeps the exact same byte count.
+- **No false update on a read failure.** If the file cannot be opened or read
+  for hashing, the comparison falls back to size only and reports the deck as
+  installed, as before. The next check tries the hash again; no digest is
+  cached.
 - The check never trusts the local file's contents: the download still checks
   the catalog's size and SHA-256 before the atomic rename (`NetFetch`).
 
@@ -77,12 +81,12 @@ first policy; the roadmap keeps the battery thresholds open to tuning.
   "check" (never checked) or "up to date" (checked, nothing found). A hold
   opens the updates list.
 - **Updates list**: the Get decks screen in update mode. It joins the home
-  Wi-Fi, reads the catalog and lists only installed decks whose size differs,
-  with the existing update arrow and size; a hold downloads the new build,
-  checks its size and SHA-256, renames it over the old file and removes the row
-  when it is done. With nothing to update it says "All decks are up to date".
-  The screen keeps the usual side-button back, retry on error and cancel on a
-  download.
+  Wi-Fi, reads the catalog and lists only installed decks whose size or SHA-256
+  differs, with the existing update arrow and size; a hold downloads the new
+  build, checks its size and SHA-256, renames it over the old file and removes
+  the row when it is done. With nothing to update it says "All decks are up to
+  date". The screen keeps the usual side-button back, retry on error and cancel
+  on a download.
 - **Boot check screen**: header "DECK UPDATES"; while joining, "Checking deck
   updates..." and the network name; then "N deck updates available" or "All
   decks are up to date", or the reason it failed. The hint bar offers skip /
@@ -110,7 +114,6 @@ catalog.
 
 ## Out of scope (follow-ups)
 
-- Hashing installed packs to catch a same-size rebuild.
 - A battery-based automatic check more often than weekly (or a scheduled
   wake-up; the device has no RTC alarm, only the RTC timer of a deep sleep).
 - Showing the state on the Wi-Fi portal page or in `/api/stats`.
@@ -121,10 +124,10 @@ catalog.
 
 ## Verification
 
-- Native tests: `catalogDeckState()` already covers the New / OnDevice /
-  Update classification (`test/test_catalog`); `deckUpdateCheckDue()` covers
-  the daily / weekly / 50 % policy. The update count and the boot screen are
-  device-only code.
+- Native tests: `catalogDeckState()` covers the New / OnDevice / Update
+  classification, size-only and size + SHA-256 (`test/test_catalog`);
+  `deckUpdateCheckDue()` covers the daily / weekly / 50 % policy. The update
+  count and the boot screen are device-only code.
 - Both boards build (`pio run -e sticks3`, `-e m5stack`).
 - **StickS3, 2026-10-22.** The boot check joined the saved home Wi-Fi
   ("Shimokitazawa"), read the catalog and showed "All decks are up to date";

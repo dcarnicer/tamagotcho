@@ -22,6 +22,7 @@
 #include "platform/FsSrsFile.h"
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
+#include "platform/PackHash.h"
 #include "platform/WifiPortal.h"
 #include "portal/PortalLogic.h"
 #include "power/BatteryGuard.h"
@@ -1087,7 +1088,8 @@ void netRadioOff();
 void netSyncClock();
 void openDecks();
 void openGetDecks(bool fromBoot, bool updatesOnly = false);
-void setUpdatesFromCatalog(const std::vector<tgc::CatalogEntry>& entries);
+void setUpdatesFromCatalog(const std::vector<tgc::CatalogEntry>& entries,
+                           const std::vector<tgc::DeckState>* states = nullptr);
 void saveUpdateState();
 void updateCheckTick(uint32_t now);
 void updateCheckInput(int a, int b);
@@ -4613,17 +4615,45 @@ void netNote(const char* text, uint16_t color) {
 
 String catalogPath(const tgc::CatalogEntry& e) { return String("/packs/") + e.name.c_str() + ".tgc"; }
 
-// Compares the catalog with /packs (existence and size, catalogDeckState()).
+// Hashing cost of one comparison pass, logged once per pass rather than per deck.
+struct HashStats {
+    uint32_t ms = 0;
+    uint16_t files = 0;
+};
+
+// The state of catalog deck `e` against /packs: existence and exact size first,
+// then -- only when the size matches -- the installed file's SHA-256 against
+// the catalog's (docs/deck-updates.md). A file whose size differs is never
+// hashed. A hash failure falls back to the size-only answer, so a read error
+// never invents an update.
+tgc::DeckState deckStateOnDisk(const tgc::CatalogEntry& e, HashStats* stats = nullptr) {
+    const String path = catalogPath(e);
+    const long size = tgc::fsFileSize(path);
+    if (size < 0) return tgc::DeckState::New;
+    const uint32_t localBytes = static_cast<uint32_t>(size);
+    if (localBytes != e.bytes) return tgc::catalogDeckState(true, localBytes, e.bytes);
+    uint8_t digest[32];
+    const uint32_t t0 = millis();
+    const bool ok = tgc::fsFileSha256(path, digest);
+    if (stats) {
+        stats->ms += millis() - t0;
+        ++stats->files;
+    }
+    return tgc::catalogDeckState(true, localBytes, e.bytes, ok ? digest : nullptr,
+                                 e.sha256);
+}
+
+// Compares the catalog with /packs (existence, size and, when the size matches,
+// SHA-256: catalog/catalogDeckState()).
 void netRefreshStates() {
     listPacks(gPacks);
     gCatalogState.assign(gCatalog.size(), tgc::DeckState::New);
-    for (size_t i = 0; i < gCatalog.size(); ++i) {
-        const String path = catalogPath(gCatalog[i]);
-        const long size = tgc::fsFileSize(path);
-        if (size < 0) continue;
-        gCatalogState[i] =
-            tgc::catalogDeckState(true, static_cast<uint32_t>(size), gCatalog[i].bytes);
-    }
+    HashStats hs;
+    for (size_t i = 0; i < gCatalog.size(); ++i)
+        gCatalogState[i] = deckStateOnDisk(gCatalog[i], &hs);
+    if (hs.files)
+        Serial.printf("[net] decks: hashed %u pack(s) in %u ms\n", (unsigned)hs.files,
+                      (unsigned)hs.ms);
 }
 
 // Opens the Get decks screen and starts joining the home Wi-Fi. `fromBoot`: from
@@ -4740,10 +4770,11 @@ void netLoadCatalog() {
     tgc::orderCatalogForLang(gCatalog, firstLang);
     Serial.printf("[net] catalog: \"%s\" decks first\n", firstLang);
     netRefreshStates();
-    setUpdatesFromCatalog(gCatalog);
+    setUpdatesFromCatalog(gCatalog, &gCatalogState);
     if (gNetUpdatesOnly) {
         // The updates list: only installed decks whose catalog build has
-        // another size (docs/deck-updates.md). The count is already stored.
+        // another size or SHA-256 (docs/deck-updates.md). The count is already
+        // stored.
         std::vector<tgc::CatalogEntry> keep;
         std::vector<tgc::DeckState> keepState;
         for (size_t i = 0; i < gCatalog.size(); ++i) {
@@ -5007,26 +5038,34 @@ void saveUpdateState() {
     if (gUpdateDay) gPrefs.putUInt(kPrefUpdateDay, gUpdateDay);
 }
 
-// Counts catalog records whose installed file has another size: the same
-// `DeckState::Update` Get decks shows. New catalog decks are not updates, and
-// packs the catalog does not list are ignored.
-uint8_t countUpdates(const std::vector<tgc::CatalogEntry>& entries) {
+// Counts catalog records whose installed file is a `DeckState::Update`: another
+// size, or now a same-size rebuild with another SHA-256 (deckStateOnDisk). New
+// catalog decks are not updates, and packs the catalog does not list are
+// ignored. `stats` accumulates the hashing cost for the caller's one log line.
+uint8_t countUpdates(const std::vector<tgc::CatalogEntry>& entries, HashStats* stats) {
     uint8_t n = 0;
-    for (const tgc::CatalogEntry& e : entries) {
-        const String path = String("/packs/") + e.name.c_str() + ".tgc";
-        const long size = tgc::fsFileSize(path);
-        if (size >= 0 &&
-            tgc::catalogDeckState(true, static_cast<uint32_t>(size), e.bytes) ==
-                tgc::DeckState::Update)
-            ++n;
-    }
+    for (const tgc::CatalogEntry& e : entries)
+        if (deckStateOnDisk(e, stats) == tgc::DeckState::Update) ++n;
     return n;
 }
 
 // Stores the count (and the check day, when the clock is real) after a catalog
-// read, writing NVS only when something changed.
-void setUpdatesFromCatalog(const std::vector<tgc::CatalogEntry>& entries) {
-    const uint8_t n = countUpdates(entries);
+// read, writing NVS only when something changed. `states` optionally carries the
+// states netRefreshStates() just computed for the same entries, so Get decks
+// does not hash every installed pack a second time.
+void setUpdatesFromCatalog(const std::vector<tgc::CatalogEntry>& entries,
+                           const std::vector<tgc::DeckState>* states) {
+    uint8_t n = 0;
+    if (states && states->size() == entries.size()) {
+        for (tgc::DeckState s : *states)
+            if (s == tgc::DeckState::Update) ++n;
+    } else {
+        HashStats hs;
+        n = countUpdates(entries, &hs);
+        if (hs.files)
+            Serial.printf("[update] hashed %u pack(s) in %u ms\n", (unsigned)hs.files,
+                          (unsigned)hs.ms);
+    }
     const uint32_t day = currentEpochDay();
     const bool known = gUpdateKnown;
     gUpdateKnown = true;

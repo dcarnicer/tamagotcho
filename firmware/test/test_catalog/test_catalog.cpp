@@ -423,6 +423,43 @@ void test_deck_state() {
                       static_cast<int>(catalogDeckState(true, 0, 703123)));
 }
 
+void test_deck_state_digest() {
+    uint8_t local[32] = {};
+    uint8_t catalog[32] = {};
+    for (size_t i = 0; i < sizeof local; ++i) {
+        local[i] = static_cast<uint8_t>(i);
+        catalog[i] = static_cast<uint8_t>(i);
+    }
+
+    // A missing file is New whatever the digests say.
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::New),
+                      static_cast<int>(catalogDeckState(false, 703123, 703123, local, catalog)));
+    // Same size and digest: the catalog build is installed.
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::OnDevice),
+                      static_cast<int>(catalogDeckState(true, 703123, 703123, local, catalog)));
+    // Same size, other digest: a same-size rebuild is an update.
+    catalog[31] ^= 1;
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::Update),
+                      static_cast<int>(catalogDeckState(true, 703123, 703123, local, catalog)));
+    // Another size is an update even with matching digests.
+    catalog[31] ^= 1;
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::Update),
+                      static_cast<int>(catalogDeckState(true, 703122, 703123, local, catalog)));
+    // Without a local digest (hash failure) or a catalog digest, fall back to
+    // the size-only answer: never a false update.
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::OnDevice),
+                      static_cast<int>(catalogDeckState(true, 703123, 703123, nullptr, catalog)));
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::OnDevice),
+                      static_cast<int>(catalogDeckState(true, 703123, 703123, local, nullptr)));
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::OnDevice),
+                      static_cast<int>(catalogDeckState(true, 703123, 703123, nullptr, nullptr)));
+    // The size-only overload keeps the old behaviour.
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::OnDevice),
+                      static_cast<int>(catalogDeckState(true, 703123, 703123)));
+    TEST_ASSERT_EQUAL(static_cast<int>(DeckState::Update),
+                      static_cast<int>(catalogDeckState(true, 703124, 703123)));
+}
+
 void test_update_check_due() {
     // No real clock: never.
     TEST_ASSERT_FALSE(deckUpdateCheckDue(0, 0, true, 100));
@@ -461,6 +498,7 @@ int main() {
     RUN_TEST(test_lang_matches);
     RUN_TEST(test_order_for_lang);
     RUN_TEST(test_deck_state);
+    RUN_TEST(test_deck_state_digest);
     RUN_TEST(test_update_check_due);
     return UNITY_END();
 }

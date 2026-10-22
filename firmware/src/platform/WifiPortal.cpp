@@ -12,6 +12,7 @@
 #include "platform/FsQuiet.h"
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
+#include "platform/PackHash.h"
 #include "portal/PortalLogic.h"
 #include "portal/PortalText.h"
 #include "srs/TimeZone.h"
@@ -326,12 +327,19 @@ std::vector<std::pair<String, size_t>> listPackFiles(const char* dirPath) {
     return out;
 }
 
-// The state of catalog deck `e` against /packs (catalog/catalogDeckState).
+// The state of catalog deck `e` against /packs (catalog/catalogDeckState):
+// existence and exact size, then -- only when the size matches -- the file's
+// SHA-256, so a same-size rebuild shows as an update on the portal too. A hash
+// failure falls back to the size-only answer rather than claiming an update.
 DeckState deckStateOnDisk(const char* dirPath, const CatalogEntry& e) {
     const String path = String(dirPath) + "/" + e.name.c_str() + ".tgc";
     const long size = fsFileSize(path);
     if (size < 0) return DeckState::New;
-    return catalogDeckState(true, static_cast<uint32_t>(size), e.bytes);
+    const uint32_t localBytes = static_cast<uint32_t>(size);
+    if (localBytes != e.bytes) return catalogDeckState(true, localBytes, e.bytes);
+    uint8_t digest[32];
+    return catalogDeckState(true, localBytes, e.bytes,
+                            fsFileSha256(path, digest) ? digest : nullptr, e.sha256);
 }
 
 String pageHeader(const PortalText& t, int refreshS = 0) {

@@ -319,8 +319,17 @@ void orderCatalogForLang(std::vector<CatalogEntry>& entries, const char* uiLang)
 }
 
 DeckState catalogDeckState(bool present, uint32_t localBytes, uint32_t catalogBytes) {
+    return catalogDeckState(present, localBytes, catalogBytes, nullptr, nullptr);
+}
+
+DeckState catalogDeckState(bool present, uint32_t localBytes, uint32_t catalogBytes,
+                           const uint8_t* localSha256, const uint8_t* catalogSha256) {
     if (!present) return DeckState::New;
-    return localBytes == catalogBytes ? DeckState::OnDevice : DeckState::Update;
+    if (localBytes != catalogBytes) return DeckState::Update;
+    if (localSha256 && catalogSha256 &&
+        std::memcmp(localSha256, catalogSha256, 32) != 0)
+        return DeckState::Update;
+    return DeckState::OnDevice;
 }
 
 }  // namespace tgc

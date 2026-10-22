@@ -113,11 +113,18 @@ bool catalogLangMatches(const std::string& lang, const char* uiLang);
 void orderCatalogForLang(std::vector<CatalogEntry>& entries, const char* uiLang);
 
 // A catalog deck compared with the file of the same name in /packs: not there
-// (New), there with the catalog's exact size (OnDevice), or there with another
-// size, i.e. an older or newer build (Update). Size only: a same-size file with
-// other content is not detected (hashing the local file is a follow-up).
+// (New), there with the catalog's exact size and SHA-256 (OnDevice), or there
+// with another size or digest, i.e. an older or newer build (Update).
 enum class DeckState : uint8_t { New, OnDevice, Update };
+// Size-only comparison: a same-size file with other content is not detected.
+// For callers that cannot hash the installed file.
 DeckState catalogDeckState(bool present, uint32_t localBytes, uint32_t catalogBytes);
+// Size and digest comparison. A null `localSha256` (the file could not be
+// hashed) or `catalogSha256` (no digest known) degrades to the size-only answer,
+// so a read failure never invents an update. With both digests present, a
+// same-size file is OnDevice only when they match.
+DeckState catalogDeckState(bool present, uint32_t localBytes, uint32_t catalogBytes,
+                           const uint8_t* localSha256, const uint8_t* catalogSha256);
 
 // Whether the boot-time deck update check is due (docs/deck-updates.md): once a
 // day on external power, or once a week on battery from 50 %. `today` and

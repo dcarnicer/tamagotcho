@@ -3039,3 +3039,25 @@ marked *to confirm* needs the device.
   `--name` still overrides it and the existing ASCII/catalog warnings still
   apply. There is no CSV, Anki or spreadsheet import: the list is one character
   per line.
+
+## 2026-10-22 – Deck updates compare SHA-256 too
+
+- **Why.** `catalogDeckState()` compared only the installed file's size with the
+  catalog's `bytes`, so a rebuilt pack with the exact same byte count was
+  invisible. The catalog already carries each deck's SHA-256; the update check
+  now uses it and the same `DeckState::Update` is shown by Get decks, the boot
+  check, the updates list and the portal.
+- **Boundary.** The comparison stays pure C++ in `catalog/Catalog.h`: a
+  size-only overload for callers without a digest, and a size + digest overload
+  that takes two optional 32-byte arrays. Hashing itself is Arduino-only
+  (`platform/PackHash.h`, mbedTLS, 4 KB streamed reads) because LittleFS does
+  not exist in the native build. `main.cpp` and `WifiPortal` hash the installed
+  file only after its size matches the catalog's, so a differing size is
+  decided without reading several megabytes.
+- **Fallback.** A null digest (open/read/allocation failure, or no catalog
+  digest) means the size-only answer. A failed hash therefore marks the deck as
+  installed, never as an update. Nothing is cached: the next check hashes
+  again, so replacing a file behind the firmware's back cannot leave a stale
+  "up to date". On Get decks the states computed for the list are handed to the
+  update count instead of hashing every pack twice; a short serial line reports
+  the total hashing time of each pass.
