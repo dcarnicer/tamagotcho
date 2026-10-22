@@ -15,7 +15,9 @@ the same day (back to a private draft) for the download bug v0.4.1 fixes.
 v0.4.2 followed as the 2026-10-22 release with the deck update checks.
 **v0.5.0** is the GitHub release of 2026-10-22 and is ready to add as the next
 Public version with `tamagotcho-m5stack-merged.bin`; its version description
-is the first lines of `docs/releases/v0.5.0.md`. A new
+is the first lines of `docs/releases/v0.5.0.md`. That merged image was booted
+on a Cardputer ADV on 2026-10-22 (board and TCA8418 keyboard detected, first
+boot reached the language picker) as well as on a StickS3. A new
 version: `/developer/firmware/2112925841991487490/versions/new`
 (My homepage › the entry › View all versions); it keeps the entry's name,
 categories, devices and description, and asks for the version, its notes,
