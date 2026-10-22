@@ -20,6 +20,11 @@ constexpr size_t kSrsHeaderSize = 48;
 constexpr size_t kSrsRecordSize = 16;
 constexpr size_t kSrsCrcSize = 4;
 constexpr size_t kSrsMaxRecords = 8192;
+// Smallest and largest v1 file: header + CRC, and header + every record + CRC
+// (131,124 bytes). The portal's progress download and restore use the same
+// bounds (docs/srs.md section 4).
+constexpr size_t kSrsMinFileSize = kSrsHeaderSize + kSrsCrcSize;
+constexpr size_t kSrsMaxFileSize = kSrsHeaderSize + kSrsMaxRecords * kSrsRecordSize + kSrsCrcSize;
 
 // Session clock: one day index per 24 h of uptime (section 5); after a
 // wall-clock sync the day ends at 04:00 local (section 5.1), 23 or 25 h later

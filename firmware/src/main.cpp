@@ -3854,9 +3854,71 @@ tgc::DeckDownloadResult portalDeckDownload(const tgc::CatalogEntry& e, bool upda
     return downloadCatalogDeck(e);
 }
 
-const tgc::WifiPortal::Hooks kPortalHooks = {portalFillStats,    portalPacksChanged, portalTime,
-                                             wifiToGetDecks,     portalUiLang,       portalSwitchToHome,
-                                             portalDeckDownload, portalDeleteDeck};
+// The portal's POST /progress (WifiPortal::Hooks::onRestoreProgress): replace
+// the SRS state with the portal's validated temp file. Order matters: the
+// current state is saved and then kept as /state/srs.before-restore.bin, so a
+// failed rename or reload can put it back -- a restore never loses progress
+// (docs/srs.md section 4). The page posts its clock right after the redirect,
+// which aligns the restored day index with this device's date (section 5.1).
+bool portalRestoreProgress(const char* tmpPath) {
+    if (!tmpPath || std::strcmp(tmpPath, tgc::WifiPortal::kProgressTmp) != 0) return false;
+    const String tmp = tgc::WifiPortal::kProgressTmp;
+    const String state = tgc::FsSrsFile::kPath;
+    const String safety = tgc::FsSrsFile::kBeforeRestore;
+
+    // Persist the answers not yet flushed before they can be displaced.
+    if (!saveProgress()) return false;
+
+    // Keep the live file. An old safety copy is replaced: it is this file's.
+    if (tgc::fsExists(safety) && !LittleFS.remove(safety)) {
+        Serial.printf("srs: restore: cannot remove the old safety copy\n");
+        return false;
+    }
+    if (!LittleFS.rename(state, safety)) {
+        Serial.printf("srs: restore: cannot keep the current state\n");
+        return false;
+    }
+    if (!LittleFS.rename(tmp, state)) {
+        Serial.printf("srs: restore: rename failed, putting the previous state back\n");
+        LittleFS.rename(safety, state);
+        return false;
+    }
+
+    if (!gSrs.begin(gSrsIo)) {
+        // The portal validated the bytes, so this should not happen; if it
+        // does, put the previous file back rather than leave an empty store.
+        Serial.printf("srs: restore: reload failed, putting the previous state back\n");
+        tgc::fsRemoveIfExists(state);
+        LittleFS.rename(safety, state);
+        gSrsLoaded = gSrs.begin(gSrsIo);
+        gSrs.beginSession();
+        gQueue.rebuild(*gPack, gSrs, gRng, extraNewToday());
+        return false;
+    }
+    gSrs.beginSession();
+    gSrsLoaded = true;
+    gBootDay = gSrs.today();
+    gExtraNew = 0;
+    gDirty = 0;
+    // The old question belongs to the old progress: build a fresh one for the
+    // screen the settings home's "Continue" returns to, as after a pack change.
+    if (!gPack->isOpen()) {
+        gQueue.rebuild(*gPack, gSrs, gRng);
+        gBeforeMenu = Screen::Decks;
+    } else {
+        gQueue.rebuild(*gPack, gSrs, gRng, extraNewToday());
+        gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
+    }
+    Serial.printf("srs: restored from the portal: day %u, records %u\n", (unsigned)gSrs.today(),
+                  (unsigned)gSrs.count());
+    return true;
+}
+
+const tgc::WifiPortal::Hooks kPortalHooks = {
+    portalFillStats,      portalPacksChanged, portalTime,          wifiToGetDecks,
+    portalUiLang,         portalSwitchToHome, portalDeckDownload,  portalDeleteDeck,
+    portalRestoreProgress,
+};
 
 // The mode the portal opens in: home once a network is saved, else setup.
 PortalMode defaultPortalMode() {
@@ -5952,7 +6014,8 @@ void setup() {
     // A power cut in the middle of a download or an upload leaves its temp
     // behind (up to 5 MB), which would count against every later free-space
     // check. Nothing can be in flight at boot.
-    for (const char* tmp : {tgc::kFetchTmp, tgc::WifiPortal::kUploadTmp})
+    for (const char* tmp : {tgc::kFetchTmp, tgc::WifiPortal::kUploadTmp,
+                            tgc::WifiPortal::kProgressTmp})
         if (tgc::fsRemoveIfExists(tmp)) Serial.printf("fs: removed stale %s\n", tmp);
     listPacks(gPacks);
     // The time zone first: the slept time (applySleepTime() below) is counted

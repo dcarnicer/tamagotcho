@@ -119,6 +119,26 @@ struct PortalText {
     const char* upInvalid = "not a valid .tgc deck (discarded)";
     const char* upCannotStore = "cannot store the deck";
     const char* upAborted = "upload aborted";
+    const char* progressTitle = "Progress backup";
+    const char* progressDownloadButton = "Download progress file";
+    const char* progressRestoreButton = "Restore progress";
+    const char* progressConfirm =
+        "Replace the progress of all decks with this file? The current progress is kept on the "
+        "device as a safety copy.";
+    const char* progressNote =
+        "The file has the progress of every deck (each kanji's schedule and the lifetime "
+        "counters). Settings such as Wi-Fi, language and time zone are not included.";
+    const char* progressSafetyNote =
+        "A restore saves the previous file on the device as /state/srs.before-restore.bin.";
+    const char* progressRestored =
+        "Progress restored. This page load also sets the device date and time zone from the "
+        "browser.";
+    const char* progressBad =
+        "Not restored: this is not a valid Tamagotcho progress file. Nothing was changed.";
+    const char* progressFailed =
+        "Not restored: the device could not save the file. Your previous progress is still "
+        "loaded.";
+    const char* progressMissing = "No progress file on the device to download yet.";
     const char* urlTitle = "Download from a URL";
     const char* urlNoteSetup =
         "Plain http:// only: on its own network the device has no internet, so this is for a "

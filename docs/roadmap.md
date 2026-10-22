@@ -216,6 +216,15 @@ Scope for now: **kanji only** (no vocabulary decks).
         decks without `uploadfs` and without a computer. Plain `http://` only on
         the portal (its own AP has no internet; Get decks above does HTTPS over
         the home Wi-Fi); no resume yet.
+      - [x] **Progress backup and restore** (2026-10-22). Advanced gains a
+        **Progress backup** section: **Download progress file** streams
+        `/state/srs.bin` as `tangocho-progress.bin` (read-only, no deck needed),
+        and **Restore progress** uploads a file through a size-capped temp that
+        is CRC/format-validated before the swap. The previous state is kept as
+        `/state/srs.before-restore.bin`; a failed upload or restore leaves it
+        loaded. The page's clock post after the redirect aligns the restored
+        day index. Settings and deck files are not in the backup. Design:
+        docs/srs.md section 4, docs/decisions.md 2026-10-22.
       - [~] **Deck update checks over the home Wi-Fi** (2026-10-22; design
         docs/deck-updates.md). v1 on `main`: at boot, once a day on USB power
         (or once a week on battery from 50 %), the device joins the home

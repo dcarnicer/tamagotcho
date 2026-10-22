@@ -89,8 +89,9 @@ setup mode and a tap tries again.
   reviews and one miss, with their right/review counts) and, folded under
   **Advanced**: upload a
   `.tgc` file, download one from a plain `http://` URL, the deck catalog URL,
-  the home Wi-Fi (change, forget, reconnect), the free space and the JSON at
-  `/api/stats` and `/api/status`. The side button on the device stops the portal.
+  a progress backup and restore, the home Wi-Fi (change, forget, reconnect),
+  the free space and the JSON at `/api/stats` and `/api/status`. The side button
+  on the device stops the portal.
 - Without the phone: **Settings → Decks → Get decks** joins the home Wi-Fi and
   lists the catalog's decks by title on the device screen (a check marks a deck
   that is here, a download mark one that is here in another build; tap moves,
@@ -131,6 +132,24 @@ progress** resets **This deck** (all of its kanji, shared ones too: the
 confirmation says how many other decks share) or **Everything** (all progress
 and the statistics; decks and settings stay). Both ask first, and only a hold
 on the confirmation deletes.
+
+### Backup and restore progress
+
+The page can save the progress as a file from **Advanced → Progress backup**
+(**Download progress file**, `tangocho-progress.bin`). It holds every deck's
+kanji -- each card's schedule and the lifetime answers, accuracy, time and
+streaks -- so it is a safety copy before a firmware update or a way to move to
+another device. Wi-Fi, language and time-zone settings are **not** in it, and
+neither are the deck files themselves: install those again with Get decks or an
+upload.
+
+**Restore** in the same section reads a file downloaded from Tamagotcho and
+replaces the progress of **all decks**; it asks first. The file is checked
+before anything changes, and the result appears under Advanced. The device
+keeps the progress it replaced as `/state/srs.before-restore.bin` (only the
+latest one). After the restore the page reloads and sends the browser's clock
+again, so the restored day index is aligned with today's date and time zone.
+Restoring is refused while a deck download is running.
 
 ### Changing networks
 

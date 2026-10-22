@@ -3061,3 +3061,35 @@ marked *to confirm* needs the device.
   "up to date". On Get decks the states computed for the list are handed to the
   update count instead of hashing every pack twice; a short serial line reports
   the total hashing time of each pass.
+
+## 2026-10-22 – Progress backup and restore in the portal
+
+- **Why the whole SRS file.** The portal now downloads `/state/srs.bin` as
+  `tangocho-progress.bin` and can upload it back. The v1 file is the only
+  complete representation of progress: every deck's records plus the lifetime
+  counters (answers, Again answers, time, streaks). A second JSON/text format
+  would have to be kept in sync with the scheduler; the raw file is already
+  versioned and CRC-checked. Settings (Wi-Fi, language, time zone) live in NVS
+  and are deliberately **not** in the backup; deck files are not either (Get
+  decks or an upload installs them). Restore is meant for the same v1 format.
+- **Atomic and validated safety.** Uploads stream to `/state/.progress.tmp`,
+  capped at the exact v1 maximum `kSrsMaxFileSize` (131,124 bytes) and checked
+  against the declared Content-Length early. The temp is loaded into a
+  temporary `SrsStore` with `deserialize()` (magic, version, header size,
+  count/size, CRC, sorted codepoints) before the app is called, so an invalid,
+  truncated or aborted body cannot touch the live file. The app then saves
+  pending answers, renames the current `srs.bin` to
+  `/state/srs.before-restore.bin` (removing the old one first) and renames the
+  temp over `srs.bin`. A failed rename or reload puts the safety copy back and
+  reloads it, so every failure path leaves the previous progress loaded. The
+  safety file stays after success, for a manual recovery.
+- **Clock alignment.** A restored file carries another device's `now_day` and
+  `epoch_anchor`. The page already posts its clock on every load, so the
+  redirect after the restore triggers `POST /time`: `applyWallClock` anchors or
+  advances the restored index to the real study day and aligns the 04:00
+  rollover with this device's zone. This is why the restore result redirects
+  instead of rendering a final page.
+- **Security and UX.** The portal has no password. The download is read-only;
+  the restore replaces all decks' progress, so it is behind a confirm dialog
+  and refuses while a deck download or URL fetch is in progress (the existing
+  Busy notice). The "no file yet" download is a notice, not an error page.

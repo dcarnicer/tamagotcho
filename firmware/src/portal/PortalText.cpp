@@ -116,6 +116,28 @@ PortalText makeSpanish() {
     t.upInvalid = "no es un mazo .tgc válido (descartado)";
     t.upCannotStore = "no se puede guardar el mazo";
     t.upAborted = "subida interrumpida";
+    t.progressTitle = "Copia del progreso";
+    t.progressDownloadButton = "Descargar el progreso";
+    t.progressRestoreButton = "Restaurar progreso";
+    t.progressConfirm =
+        "¿Reemplazar el progreso de todos los mazos con este archivo? El progreso actual se "
+        "guarda en el dispositivo como copia de seguridad.";
+    t.progressNote =
+        "El archivo tiene el progreso de todos los mazos (el calendario de cada kanji y los "
+        "contadores totales). Los ajustes como Wi-Fi, idioma y zona horaria no van incluidos.";
+    t.progressSafetyNote =
+        "Al restaurar, el archivo anterior se guarda en el dispositivo como "
+        "/state/srs.before-restore.bin.";
+    t.progressRestored =
+        "Progreso restaurado. Al cargar esta página, el dispositivo también ajusta la fecha y la "
+        "zona horaria con el navegador.";
+    t.progressBad =
+        "No restaurado: este no es un archivo de progreso de Tamagotcho válido. No se cambió "
+        "nada.";
+    t.progressFailed =
+        "No restaurado: el dispositivo no pudo guardar el archivo. Tu progreso anterior sigue "
+        "cargado.";
+    t.progressMissing = "Aún no hay ningún archivo de progreso en el dispositivo.";
     t.urlTitle = "Descargar desde una URL";
     t.urlNoteSetup =
         "Solo http:// simple: en su propia red el dispositivo no tiene internet, así que es "

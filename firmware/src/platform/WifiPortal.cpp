@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "platform/FsQuiet.h"
+#include "platform/FsSrsFile.h"
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
 #include "platform/PackHash.h"
@@ -311,6 +312,26 @@ String formatSize(size_t bytes) {
     return String(buf);
 }
 
+// The portal's POST /progress temp: the v1 SRS size range and a full
+// SrsStore::deserialize() (magic, version, count, CRC and sorted codepoints),
+// into a temporary store so a bad file cannot touch the live state.
+bool validateProgressFile(const String& path) {
+    if (!fsExists(path)) return false;
+    File f = LittleFS.open(path, "r");
+    if (!f) return false;
+    const size_t n = f.size();
+    if (n < kSrsMinFileSize || n > kSrsMaxFileSize) {
+        f.close();
+        return false;
+    }
+    std::vector<uint8_t> buf(n);
+    const size_t got = n ? f.read(buf.data(), n) : 0;
+    f.close();
+    if (got != n) return false;
+    SrsStore probe;
+    return probe.deserialize(buf.data(), buf.size());
+}
+
 // The *.tgc files in /packs (name, size), sorted like the device's deck list.
 std::vector<std::pair<String, size_t>> listPackFiles(const char* dirPath) {
     std::vector<std::pair<String, size_t>> out;
@@ -533,6 +554,10 @@ void WifiPortal::registerRoutes() {
     server_->on("/deck", HTTP_POST, [this]() { touch(); handleDeck(); });
     server_->on("/upload", HTTP_POST, [this]() { touch(); handleUploadDone(); },
                 [this]() { touch(); handleUploadChunk(); });
+    // Read-only download and destructive restore of /state/srs.bin (Advanced).
+    server_->on("/progress", HTTP_GET, [this]() { touch(); handleProgressDownload(); });
+    server_->on("/progress", HTTP_POST, [this]() { touch(); handleProgressDone(); },
+                [this]() { touch(); handleProgressChunk(); });
     server_->on("/time", HTTP_POST, [this]() { touch(); handleTime(); });
     // Every browser asks for it; unrouted, the core logs "[E] request handler
     // not found" for each page load before onNotFound answers.
@@ -600,8 +625,10 @@ void WifiPortal::poll() {
 
 void WifiPortal::end() {
     if (uploadFile_) uploadFile_.close();
+    if (progressFile_) progressFile_.close();
     // A temp left by an interrupted upload is of no use to anyone.
     fsRemoveIfExists(kUploadTmp);
+    fsRemoveIfExists(kProgressTmp);
     if (server_) {
         server_->stop();
         delete server_;
@@ -619,6 +646,10 @@ void WifiPortal::end() {
     active_ = false;
     uploadOk_ = false;
     uploadName_ = "";
+    progressOk_ = false;
+    progressSawFile_ = false;
+    progressError_ = ProgressError::None;
+    progressWritten_ = 0;
     fetchPending_ = "";
     fetchUrl_ = "";
     leave_ = Leave::None;
@@ -702,6 +733,10 @@ bool WifiPortal::noticeInAdvanced(Notice n, bool firstSetup) const {
         case Notice::CatalogSaved: return mode_ == Mode::Setup;
         case Notice::CatalogBad:
         case Notice::UrlBad: return true;
+        case Notice::ProgressRestored:
+        case Notice::ProgressBad:
+        case Notice::ProgressFailed:
+        case Notice::ProgressMissing: return true;
         default: return false;
     }
 }
@@ -730,6 +765,10 @@ void WifiPortal::appendNotice(String& h) {
         case Notice::UrlBad: text = t.urlBad; ok = false; break;
         case Notice::Busy: text = t.busy; ok = false; break;
         case Notice::UnknownDeck: text = t.unknownDeck; ok = false; break;
+        case Notice::ProgressRestored: text = t.progressRestored; break;
+        case Notice::ProgressBad: text = t.progressBad; ok = false; break;
+        case Notice::ProgressFailed: text = t.progressFailed; ok = false; break;
+        case Notice::ProgressMissing: text = t.progressMissing; ok = false; break;
     }
     h += ok ? "<p class=\"ok\">" : "<p class=\"err\">";
     h += text;
@@ -1108,8 +1147,9 @@ void WifiPortal::appendTrouble(String& h, const PortalStats& st) {
 }
 
 // Everything that is not the main task, collapsed: upload, URL download, the
-// catalog URL, the home Wi-Fi, the free space and the JSON endpoints. Opened
-// when the last action was one of these, so its result is in view.
+// catalog URL, the progress backup/restore, the home Wi-Fi, the free space and
+// the JSON endpoints. Opened when the last action was one of these, so its
+// result is in view.
 void WifiPortal::appendAdvanced(String& h, const String& homeSsid, bool firstSetup, bool open) {
     const PortalText& t = portalText(pageLang());
     h += open ? "<details id=\"adv\" open><summary>" : "<details id=\"adv\"><summary>";
@@ -1144,6 +1184,29 @@ void WifiPortal::appendAdvanced(String& h, const String& homeSsid, bool firstSet
     h += t.save;
     h += "</button></form><p class=\"muted\">";
     h += fmt(t.catalogDefaultFmt, (String("<code>") + HomeWifi::kDefaultCatalogUrl + "</code>").c_str());
+    h += "</p>";
+
+    // Progress backup: the download is read-only; a restore replaces every
+    // deck's progress, so it asks first and the app keeps the replaced file as
+    // a safety copy. The page posts its clock on the next load, which aligns
+    // the restored day index (docs/srs.md section 4).
+    h += "<h3 id=\"progress\">";
+    h += t.progressTitle;
+    h += "</h3><form method=\"get\" action=\"/progress\"><button type=\"submit\">";
+    h += t.progressDownloadButton;
+    h += "</button></form>";
+    if (hooks_.onRestoreProgress) {
+        h += "<form method=\"post\" action=\"/progress\" enctype=\"multipart/form-data\" data-q=\"";
+        h += htmlEscape(t.progressConfirm);
+        h += "\" onsubmit=\"return confirm(this.dataset.q)\"><input type=\"file\" name=\"progress\" ";
+        h += "accept=\".bin\" required> <button type=\"submit\">";
+        h += t.progressRestoreButton;
+        h += "</button></form>";
+    }
+    h += "<p class=\"muted\">";
+    h += t.progressNote;
+    h += " ";
+    h += t.progressSafetyNote;
     h += "</p>";
 
     // Home Wi-Fi: change or forget it. The first setup has its form on top. The
@@ -1745,6 +1808,166 @@ void WifiPortal::handleUploadDone() {
     }
     server_->send(200, "text/html",
                   messagePage(t, String("<p class=\"ok\">") + t.uploadOk + "</p>", true));
+}
+
+// --- progress backup / restore ---------------------------------------------
+
+// GET /progress: the state file as a download. Read-only, and available with
+// no deck open (progress is global); no file yet is a notice, not an error.
+void WifiPortal::handleProgressDownload() {
+    if (!fsExists(FsSrsFile::kPath)) {
+        redirect("/#adv", Notice::ProgressMissing);
+        return;
+    }
+    File f = LittleFS.open(FsSrsFile::kPath, "r");
+    if (!f) {
+        redirect("/#adv", Notice::ProgressMissing);
+        return;
+    }
+    setMsg("sending progress...");
+    server_->sendHeader("Content-Disposition", "attachment; filename=\"tangocho-progress.bin\"",
+                        true);
+    server_->streamFile(f, "application/octet-stream", 200);
+    f.close();
+}
+
+// A restore upload failed: only the temp goes, never the live state file.
+void WifiPortal::abortProgress(ProgressError why) {
+    if (progressFile_) progressFile_.close();
+    fsRemoveIfExists(kProgressTmp);
+    progressOk_ = false;
+    progressSawFile_ = false;  // the connection is gone: the next POST starts clean
+    if (progressError_ == ProgressError::None) progressError_ = why;
+    Serial.printf("[wifi] progress restore failed: error %u\n", (unsigned)why);
+}
+
+// POST /progress, multipart field "progress": stream the body to kProgressTmp,
+// validate it with a temporary SrsStore and only then hand it to the app
+// (Hooks::onRestoreProgress), which keeps the state it replaces. A dropped,
+// oversized or invalid upload leaves /state/srs.bin untouched.
+void WifiPortal::handleProgressChunk() {
+    HTTPUpload& up = server_->upload();
+    switch (up.status) {
+        case UPLOAD_FILE_START: {
+            if (progressSawFile_) break;  // one file per form
+            progressSawFile_ = true;
+            progressWritten_ = 0;
+            progressOk_ = false;
+            progressError_ = ProgressError::None;
+            // A deck download owns the radio and /packs; a restore must wait.
+            if (anyDownload() || leave_ != Leave::None) {
+                progressError_ = ProgressError::Busy;
+                break;
+            }
+            if (!hooks_.onRestoreProgress) {
+                progressError_ = ProgressError::CannotStore;
+                break;
+            }
+            if (up.name != "progress") {
+                progressError_ = ProgressError::BadField;
+                break;
+            }
+            // Discard a temp left by an earlier run before measuring the space.
+            fsRemoveIfExists(kProgressTmp);
+            const int declared = server_->clientContentLength();
+            const size_t bodyLen = declared > 0 ? static_cast<size_t>(declared) : 0;
+            if (bodyLen > kProgressMaxBytes + kMultipartSlack) {
+                progressError_ = ProgressError::TooLarge;
+                break;
+            }
+            const size_t total = LittleFS.totalBytes();
+            const size_t used = LittleFS.usedBytes();
+            const size_t freeB = total > used ? total - used : 0;
+            if (bodyLen && bodyLen + kFsReserveBytes > freeB) {
+                progressError_ = ProgressError::NoSpace;
+                break;
+            }
+            LittleFS.mkdir(FsSrsFile::kDir);
+            progressFree_ = freeB;
+            progressFile_ = LittleFS.open(kProgressTmp, "w");
+            if (!progressFile_) {
+                progressError_ = ProgressError::CannotCreate;
+                break;
+            }
+            progressOk_ = true;
+            break;
+        }
+        case UPLOAD_FILE_WRITE: {
+            if (!progressOk_) break;
+            const size_t n = up.currentSize;
+            if (progressWritten_ + n > kProgressMaxBytes) {
+                abortProgress(ProgressError::TooLarge);
+                break;
+            }
+            if (progressWritten_ + n + kFsReserveBytes > progressFree_) {
+                abortProgress(ProgressError::NoSpace);
+                break;
+            }
+            const size_t w = progressFile_.write(up.buf, n);
+            progressWritten_ += w;
+            if (w != n) abortProgress(ProgressError::WriteFailed);
+            break;
+        }
+        case UPLOAD_FILE_END: {
+            if (!progressOk_) break;
+            progressFile_.close();
+            progressOk_ = false;
+            if (progressWritten_ < kSrsMinFileSize || progressWritten_ > kProgressMaxBytes ||
+                !validateProgressFile(kProgressTmp)) {
+                fsRemoveIfExists(kProgressTmp);
+                progressError_ = ProgressError::Invalid;
+                Serial.printf("[wifi] progress rejected (%u bytes)\n",
+                              (unsigned)progressWritten_);
+                break;
+            }
+            if (!hooks_.onRestoreProgress(kProgressTmp)) {
+                fsRemoveIfExists(kProgressTmp);
+                progressError_ = ProgressError::CannotStore;
+                Serial.printf("[wifi] progress restore refused by the app\n");
+                break;
+            }
+            Serial.printf("[wifi] progress restored from %u bytes\n", (unsigned)progressWritten_);
+            break;
+        }
+        case UPLOAD_FILE_ABORTED:
+            abortProgress(ProgressError::Aborted);
+            break;
+        default:
+            break;
+    }
+}
+
+// The result goes to Advanced, where the forms are; the next page load also
+// posts the browser's clock, which re-aligns the restored day index.
+void WifiPortal::handleProgressDone() {
+    ProgressError e = progressError_;
+    if (e == ProgressError::None && !progressSawFile_) e = ProgressError::BadField;
+    if (progressFile_) progressFile_.close();
+    progressOk_ = false;
+    progressError_ = ProgressError::None;
+    progressSawFile_ = false;
+    progressWritten_ = 0;
+    switch (e) {
+        case ProgressError::None:
+            setMsg("progress restored");
+            redirect("/#adv", Notice::ProgressRestored);
+            return;
+        case ProgressError::Busy:
+            setMsg("busy: progress not restored");
+            redirect("/#adv", Notice::Busy);
+            return;
+        case ProgressError::BadField:
+        case ProgressError::TooLarge:
+        case ProgressError::Invalid:
+        case ProgressError::Aborted:
+            setMsg("progress not restored");
+            redirect("/#adv", Notice::ProgressBad);
+            return;
+        default:
+            setMsg("progress not restored");
+            redirect("/#adv", Notice::ProgressFailed);
+            return;
+    }
 }
 
 // --- URL download ----------------------------------------------------------

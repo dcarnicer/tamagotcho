@@ -18,6 +18,9 @@ public:
     static constexpr const char* kPath = "/state/srs.bin";
     static constexpr const char* kBak = "/state/srs.bak";
     static constexpr const char* kTmp = "/state/srs.tmp";
+    // The portal's restore keeps the state it replaces here, so a failed
+    // restore (or a user who changes their mind) never loses it.
+    static constexpr const char* kBeforeRestore = "/state/srs.before-restore.bin";
 
     // The current file, else the backup from an interrupted write.
     bool load(std::vector<uint8_t>& out) override {

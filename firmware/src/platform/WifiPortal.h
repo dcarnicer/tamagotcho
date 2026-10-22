@@ -1,7 +1,8 @@
 #pragma once
 // On-device Wi-Fi portal (roadmap phase 4): one web page to get decks onto the
-// device, upload, delete and download packs under /packs, save the home Wi-Fi
-// and read the SRS statistics from a phone or laptop -- no computer running
+// device, upload, delete and download packs under /packs, back up and restore
+// the study progress, save the home Wi-Fi and read the SRS statistics from a
+// phone or laptop -- no computer running
 // `uploadfs`. Opening the page also hands the browser's clock to the app, which
 // is how the device learns the real date. Arduino/ESP32 only; not part of the
 // native build.
@@ -20,7 +21,8 @@
 //
 // Security: neither mode has a password. In setup mode anyone in radio range,
 // in home mode anyone on the home network, can list, upload or delete packs,
-// read the stats and replace the saved home Wi-Fi or catalog URL (but never read
+// replace the study progress, read the stats and replace the saved home Wi-Fi
+// or catalog URL (but never read
 // the password) while the Wi-Fi screen is open. The portal is meant to be
 // started for a moment and stopped again; the idle timeout stops it too.
 //
@@ -36,6 +38,7 @@
 
 #include "catalog/Catalog.h"
 #include "platform/NetFetch.h"
+#include "srs/SrsStore.h"
 
 namespace tgc {
 
@@ -128,6 +131,13 @@ public:
         // whose progress went. Null: the portal removes the file itself and
         // calls onPacksChanged (no progress is deleted).
         bool (*onDeleteDeck)(const char* path, uint32_t* forgotten) = nullptr;
+        // POST /progress: replace the SRS state with `tmpPath`, the portal's
+        // temp file under /state whose bytes were already validated
+        // (SrsStore::deserialize). The app saves the current state, keeps it as
+        // /state/srs.before-restore.bin, moves the temp over /state/srs.bin,
+        // reloads the store and rebuilds the queue. False on failure, with the
+        // previous progress still loaded. Null hides the restore form.
+        bool (*onRestoreProgress)(const char* tmpPath) = nullptr;
     };
 
     WifiPortal() = default;
@@ -195,6 +205,12 @@ public:
     // upload can never destroy the pack it was replacing. Hidden name, so the
     // pack listers skip it.
     static constexpr const char* kUploadTmp = "/packs/.upload.tmp";
+    // POST /progress streams its multipart file here first (field name
+    // "progress"), validates it with a temporary SrsStore and only then hands
+    // it to Hooks::onRestoreProgress. Hidden name: the pack listers skip it.
+    static constexpr const char* kProgressTmp = "/state/.progress.tmp";
+    // The largest v1 SRS file (kSrsMaxFileSize, docs/srs.md section 4).
+    static constexpr size_t kProgressMaxBytes = kSrsMaxFileSize;
 
 private:
     // A one-shot line at the top of the next page, set by a POST handler before
@@ -202,10 +218,15 @@ private:
     enum class Notice : uint8_t {
         None, WifiSaved, WifiBad, Forgotten, CatalogSaved, CatalogBad, Deleted, DeleteFailed,
         BadName, UrlStarted, UrlBad, Busy, UnknownDeck,
+        ProgressRestored, ProgressBad, ProgressFailed, ProgressMissing,
     };
     enum class UploadError : uint8_t {
         None, BadName, TooLarge, NoSpace, CannotCreate, WriteFailed, Invalid, CannotStore,
         Aborted, Busy,
+    };
+    enum class ProgressError : uint8_t {
+        None, Busy, BadField, TooLarge, NoSpace, CannotCreate, WriteFailed, Invalid, CannotStore,
+        Aborted,
     };
     enum class CatalogState : uint8_t { None, Pending, Loading, Ready, Failed };
     // Leaving this network a moment after the response page went out.
@@ -220,6 +241,9 @@ private:
     void handleFetchRequest();
     void handleUploadChunk();
     void handleUploadDone();
+    void handleProgressDownload();
+    void handleProgressChunk();
+    void handleProgressDone();
     void handleTime();
     void handleNotFound();
     void handleHomeWifi();
@@ -266,6 +290,7 @@ private:
     // First 4 bytes are "TNGC" and a cheap PackReader probe succeeds.
     bool validatePackFile(const String& path) const;
     void abortUpload(UploadError why);
+    void abortProgress(ProgressError why);
     // printf into msg_ and mark the screen dirty.
     void setMsg(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
     void touch() { lastActivity_ = millis(); }
@@ -298,6 +323,16 @@ private:
     bool uploadOk_ = false;
     size_t uploadWritten_ = 0;
     size_t uploadFree_ = 0;
+
+    // Progress restore state (POST /progress), valid between UPLOAD_FILE_START
+    // and UPLOAD_FILE_END. The body goes to kProgressTmp and is validated with
+    // a temporary SrsStore before the app sees it.
+    File progressFile_;
+    ProgressError progressError_ = ProgressError::None;
+    bool progressOk_ = false;
+    bool progressSawFile_ = false;
+    size_t progressWritten_ = 0;
+    size_t progressFree_ = 0;
 
     // Fetch state. A /fetch request is staged here and runs from poll() so the
     // on-device screen can paint "downloading..." before the loop blocks.

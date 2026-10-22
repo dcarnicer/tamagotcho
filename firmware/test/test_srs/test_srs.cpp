@@ -323,6 +323,30 @@ void setDue(SrsStore& srs, uint32_t cp, uint16_t due, uint16_t stabCds) {
 
 }  // namespace
 
+// The v1 file's size bounds, shared with the portal's progress upload cap
+// (docs/srs.md section 4). 131,124 bytes is the largest possible state file.
+void test_file_size_bounds() {
+    TEST_ASSERT_EQUAL_UINT32(48u, static_cast<uint32_t>(kSrsHeaderSize));
+    TEST_ASSERT_EQUAL_UINT32(16u, static_cast<uint32_t>(kSrsRecordSize));
+    TEST_ASSERT_EQUAL_UINT32(4u, static_cast<uint32_t>(kSrsCrcSize));
+    TEST_ASSERT_EQUAL_UINT32(8192u, static_cast<uint32_t>(kSrsMaxRecords));
+    TEST_ASSERT_EQUAL_UINT32(52u, static_cast<uint32_t>(kSrsMinFileSize));
+    TEST_ASSERT_EQUAL_UINT32(131124u, static_cast<uint32_t>(kSrsMaxFileSize));
+    const size_t expect = kSrsHeaderSize + kSrsMaxRecords * kSrsRecordSize + kSrsCrcSize;
+    TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(expect),
+                             static_cast<uint32_t>(kSrsMaxFileSize));
+    // A short file is rejected without touching the store.
+    SrsStore s;
+    MemoryIo empty;
+    s.begin(empty);
+    s.setToday(7);
+    s.getOrCreate(0x65E5);
+    const std::vector<uint8_t> tiny(kSrsMinFileSize - 1, 0);
+    TEST_ASSERT_FALSE(s.deserialize(tiny.data(), tiny.size()));
+    TEST_ASSERT_EQUAL_UINT16(7, s.today());
+    TEST_ASSERT_NOT_NULL(s.find(0x65E5));
+}
+
 void test_serialize_roundtrip() {
     SrsStore a;
     MemoryIo empty;
@@ -1983,6 +2007,7 @@ int main() {
     RUN_TEST(test_lapse);
     RUN_TEST(test_same_day);
     RUN_TEST(test_monotonic_difficulty);
+    RUN_TEST(test_file_size_bounds);
     RUN_TEST(test_serialize_roundtrip);
     RUN_TEST(test_serialize_rejects);
     RUN_TEST(test_codepoint_identity);

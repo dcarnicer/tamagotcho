@@ -366,6 +366,50 @@ LittleFS rename commits atomically within a directory entry, so a power loss
 leaves either the old, the new, or (worst case, between steps 3 and 4) only the
 `.bak` — all of which load. Two renames per flush, both cheap metadata ops.
 
+### Backup and restore from the portal
+
+The Wi-Fi portal can copy the whole state to a phone/laptop and put it back
+(`WifiPortal` in `platform/`, docs/decisions.md 2026-10-22). This is the only
+backup format: the file is **`/state/srs.bin` exactly as written**, so it
+carries every deck's records and the lifetime header counters, and no separate
+format has to be kept compatible. Settings (home Wi-Fi, UI language, time
+zone) are NVS, not this file, and deck files are not included.
+
+- **Download.** `GET /progress` opens `/state/srs.bin` read-only and streams it
+  with `Content-Disposition: attachment; filename="tangocho-progress.bin"` and
+  `application/octet-stream`. It works with no deck open (progress is global)
+  and changes nothing; with no file yet it redirects to the Advanced section
+  with a "no progress file" notice.
+- **Upload.** `POST /progress` is a multipart form with one file field,
+  `progress`. The body streams to `/state/.progress.tmp`; the declared body
+  length and every write are capped at the v1 maximum,
+  `kSrsMaxFileSize = 48 + 8192 * 16 + 4 = 131,124` bytes (plus multipart
+  slack only for the early Content-Length check). A dropped connection removes
+  the temp; the live file is never the destination of the upload.
+- **Validation before the swap.** Once the body is complete, the temp is loaded
+  into a temporary `SrsStore` with `deserialize()`: magic, version, header
+  size, count/size consistency, CRC-32 and strictly ascending codepoints. An
+  invalid, truncated or CRC-failing file is removed and `/state/srs.bin` is not
+  touched. Only then does the portal call `Hooks::onRestoreProgress`.
+- **The restore.** The app saves pending answers (`saveProgress()`), removes an
+  old `/state/srs.before-restore.bin`, renames the live `/state/srs.bin` to
+  that safety name, and renames the validated temp over `/state/srs.bin`. It
+  then reloads `gSrs` (`begin()` + `beginSession()`) and rebuilds the queue; a
+  failed rename or reload puts the safety copy back and reloads the previous
+  state, so any failure leaves the previous progress loaded. The safety copy
+  stays on the device after a successful restore (one file; the next restore
+  replaces it). A stale `.progress.tmp` is removed at boot like the other
+  download temps.
+- **Clock after a restore.** The file can come from another device and another
+  day. The page posts the browser's clock on every load (`POST /time`, §5.1),
+  so the redirect that follows a restore is itself a page load: `applyWallClock`
+  anchors or advances the restored day index to the current real day and aligns
+  the 04:00 rollover with this device's zone. No extra request is needed.
+- **Busy and safety.** The portal is open, so a restore is destructive by
+  nature: the page asks for confirmation, the download is read-only, and a
+  restore is refused with the existing Busy notice while a deck download or URL
+  fetch is in progress.
+
 ### Flush policy
 
 Full-file rewrite, batched:
