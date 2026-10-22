@@ -362,6 +362,7 @@ String pageHeader(const PortalText& t, int refreshS = 0) {
     h += "h2{font-size:1.05rem;margin:1.2rem 0 .3rem}h3{font-size:.95rem;margin:.9rem 0 .2rem}";
     h += "details{margin:1.2rem 0}summary{font-weight:600;cursor:pointer}progress{width:100%}";
     h += ".muted{color:#666}.err{color:#b00}.ok{color:#070}.status{margin-top:0}";
+    h += "td.kanji{font-size:1.15rem;line-height:1.1}";
     h += "footer{margin-top:1.5rem;padding-top:.4rem;border-top:1px solid #ccc;font-size:.8rem;";
     h += "color:#666}";
     // The name in kana (the phone has Japanese fonts) and romanised.
@@ -1054,6 +1055,48 @@ void WifiPortal::appendStats(String& h, const PortalStats& st) {
     h += " ";
     h += String((unsigned)st.learned);
     h += "</li></ul>";
+    appendTrouble(h, st);
+}
+
+// The per-kanji accuracy view (roadmap "Statistics"): the cards the learner
+// gets wrong most often, worst first, from SrsStore::trouble(). The page only
+// carries the worst few, so it stays small on the device; the card's own
+// counters are the ones the detail card shows.
+void WifiPortal::appendTrouble(String& h, const PortalStats& st) {
+    const PortalText& t = portalText(pageLang());
+    h += "<h3>";
+    h += t.statTrouble;
+    h += "</h3><p class=\"muted\">";
+    h += t.statTroubleNote;
+    h += "</p>";
+    if (st.troubleCount == 0) {
+        h += "<p class=\"muted\">";
+        h += t.statTroubleEmpty;
+        h += "</p>";
+        return;
+    }
+    h += "<table><tr><th></th><th class=\"r\">";
+    h += t.statRight;
+    h += "</th><th class=\"r\">";
+    h += t.statReviews;
+    h += "</th><th class=\"r\">";
+    h += t.statAccuracy;
+    h += "</th></tr>";
+    for (uint8_t i = 0; i < st.troubleCount && i < PortalStats::kTroubleMax; ++i) {
+        const PortalStats::TroubleKanji& k = st.trouble[i];
+        const unsigned right = k.reps > k.lapses ? k.reps - k.lapses : 0;
+        const unsigned pct = k.reps ? right * 100u / k.reps : 0;
+        h += "<tr><td class=\"kanji\">";
+        h += htmlEscape(k.kanji);
+        h += "</td><td class=\"r\">";
+        h += String(right);
+        h += "</td><td class=\"r\">";
+        h += String((unsigned)k.reps);
+        h += "</td><td class=\"r\">";
+        h += String(pct);
+        h += "%</td></tr>";
+    }
+    h += "</table>";
 }
 
 // Everything that is not the main task, collapsed: upload, URL download, the
@@ -1204,6 +1247,25 @@ void WifiPortal::handleApiStats() {
     j += String((unsigned)st.lapses);
     j += ",\"accuracy\":";
     j += String((unsigned)acc);
+    j += ",\"trouble\":[";
+    for (uint8_t i = 0; i < st.troubleCount && i < PortalStats::kTroubleMax; ++i) {
+        const PortalStats::TroubleKanji& k = st.trouble[i];
+        const unsigned right = k.reps > k.lapses ? k.reps - k.lapses : 0;
+        const unsigned pct = k.reps ? right * 100u / k.reps : 0;
+        if (i > 0) j += ",";
+        j += "{\"kanji\":\"";
+        j += jsonEscape(k.kanji);
+        j += "\",\"codepoint\":";
+        j += String((unsigned)k.codepoint);
+        j += ",\"reps\":";
+        j += String((unsigned)k.reps);
+        j += ",\"lapses\":";
+        j += String((unsigned)k.lapses);
+        j += ",\"accuracy\":";
+        j += String(pct);
+        j += "}";
+    }
+    j += "]";
     j += ",\"freeBytes\":";
     j += String((unsigned)freeB);
     j += ",\"totalBytes\":";

@@ -85,7 +85,9 @@ setup mode and a tap tries again.
   and QR code; open it from any phone or laptop on that network. The page has
   **Get decks** (download or update), **Your decks** (the one being studied is
   marked; delete, which deletes its progress too: see [Progress](#progress)),
-  **Statistics** and, folded under **Advanced**: upload a
+  **Statistics** (including the ten kanji you miss most often: at least 3
+  reviews and one miss, with their right/review counts) and, folded under
+  **Advanced**: upload a
   `.tgc` file, download one from a plain `http://` URL, the deck catalog URL,
   the home Wi-Fi (change, forget, reconnect), the free space and the JSON at
   `/api/stats` and `/api/status`. The side button on the device stops the portal.

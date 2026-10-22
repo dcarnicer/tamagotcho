@@ -159,6 +159,11 @@ PortalText makeSpanish() {
     t.statAnswers = "respuestas";
     t.statAccuracy = "precisión";
     t.statLearned = "aprendidas";
+    t.statTrouble = "Kanji más fallados";
+    t.statTroubleNote = "Cartas con al menos 3 repasos y un fallo, de peor a mejor.";
+    t.statTroubleEmpty = "Aún no hay ninguna carta con 3 repasos y un fallo.";
+    t.statRight = "Bien";
+    t.statReviews = "Repasos";
     t.freeSpaceFmt = "Espacio libre: %s de %s";
     t.securitySetup =
         "Esta red es <b>abierta</b>: cualquiera a su alcance puede ver, subir o borrar mazos y "

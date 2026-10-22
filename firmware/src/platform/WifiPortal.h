@@ -42,6 +42,17 @@ namespace tgc {
 // Read-only view of the app state the portal displays. The app fills this; the
 // portal only reads it while building a page.
 struct PortalStats {
+    // One row of the per-kanji accuracy view ("weakest kanji"): the kanji in
+    // UTF-8, the card's counters and the accuracy they give. The app fills
+    // these from SrsStore::trouble().
+    struct TroubleKanji {
+        char kanji[5] = "";  // UTF-8, NUL-terminated
+        uint32_t codepoint = 0;
+        uint8_t reps = 0;
+        uint8_t lapses = 0;
+    };
+    static constexpr int kTroubleMax = 10;
+
     uint32_t day = 0;
     char date[12] = "";       // "YYYY-MM-DD" of `day` (docs/srs.md section 5.1)
     bool dateSynced = false;  // the date comes from a real clock, not the fixed base
@@ -53,6 +64,9 @@ struct PortalStats {
     uint32_t reviewMs = 0;
     uint32_t packCards = 0;   // cards in the loaded pack, 0 when none is open
     char loadedPack[49] = ""; // file name of the loaded pack ("n5-en.tgc"), "" when none
+    // The worst-accuracy kanji (SrsStore::trouble()), worst first.
+    TroubleKanji trouble[kTroubleMax];
+    uint8_t troubleCount = 0;
 };
 
 // What became of a deck download the page asked for (Hooks::onDeckDownload).
@@ -230,6 +244,7 @@ private:
     void appendHomeDecks(String& h, const PortalStats& st);
     void appendYourDecks(String& h, const PortalStats& st);
     void appendStats(String& h, const PortalStats& st);
+    void appendTrouble(String& h, const PortalStats& st);
     void appendAdvanced(String& h, const String& homeSsid, bool firstSetup, bool open);
     bool noticeInAdvanced(Notice n, bool firstSetup) const;
     void appendWifiForm(String& h, const char* formId);

@@ -162,6 +162,12 @@ struct PortalText {
     const char* statAnswers = "answers";
     const char* statAccuracy = "accuracy";
     const char* statLearned = "learned";
+    const char* statTrouble = "Weakest kanji";
+    const char* statTroubleNote =
+        "Cards with at least 3 reviews and one miss, worst first.";
+    const char* statTroubleEmpty = "No card has 3 reviews and a miss yet.";
+    const char* statRight = "Right";
+    const char* statReviews = "Reviews";
     const char* freeSpaceFmt = "Free space: %s of %s";
     const char* securitySetup =
         "This network is <b>open</b>: anyone in range can list, upload or delete decks and read "

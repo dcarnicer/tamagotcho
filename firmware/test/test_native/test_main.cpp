@@ -1133,6 +1133,30 @@ void test_glcd_cp437_map() {
     TEST_ASSERT_EQUAL(-1, glcdIndex(0x6F22));  // 漢
 }
 
+void test_utf8_encode() {
+    char b[5];
+    TEST_ASSERT_EQUAL(0, utf8Encode(0, b));
+    TEST_ASSERT_EQUAL_STRING("", b);
+    TEST_ASSERT_EQUAL(1, utf8Encode('A', b));
+    TEST_ASSERT_EQUAL_STRING("A", b);
+    TEST_ASSERT_EQUAL(2, utf8Encode(0x00E9, b));  // é
+    TEST_ASSERT_EQUAL_STRING("\xC3\xA9", b);
+    TEST_ASSERT_EQUAL(3, utf8Encode(0x7B49, b));  // 等
+    TEST_ASSERT_EQUAL_STRING("等", b);
+    TEST_ASSERT_EQUAL(4, utf8Encode(0x1F600, b));  // 😀
+    TEST_ASSERT_EQUAL_STRING("\xF0\x9F\x98\x80", b);
+    // Invalid input becomes U+FFFD, as in utf8Next().
+    TEST_ASSERT_EQUAL(3, utf8Encode(0xD800, b));
+    TEST_ASSERT_EQUAL_STRING("\xEF\xBF\xBD", b);
+    TEST_ASSERT_EQUAL(3, utf8Encode(0x110000, b));
+    TEST_ASSERT_EQUAL_STRING("\xEF\xBF\xBD", b);
+    // Round trip through the decoder.
+    TEST_ASSERT_EQUAL(3, utf8Encode(0x7B49, b));
+    const char* p = b;
+    TEST_ASSERT_EQUAL_HEX32(0x7B49, utf8Next(&p));
+    TEST_ASSERT_EQUAL('\0', *p);
+}
+
 void test_blend() {
     TEST_ASSERT_EQUAL_HEX16(0xFFFF, blend565(0xFFFF, 0x0000, 15));
     TEST_ASSERT_EQUAL_HEX16(0x0000, blend565(0xFFFF, 0x0000, 0));
@@ -1927,6 +1951,7 @@ int main() {
     RUN_TEST(test_in_memory_or_streamed_falls_back);
     RUN_TEST(test_streamed_string_cache_and_pool_end);
     RUN_TEST(test_glcd_cp437_map);
+    RUN_TEST(test_utf8_encode);
     RUN_TEST(test_blend);
     RUN_TEST(test_ui_lang_code);
     RUN_TEST(test_first_boot_lang_picker);

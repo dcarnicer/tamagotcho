@@ -1,5 +1,6 @@
 #pragma once
-// Minimal UTF-8 decoding. Invalid bytes decode to U+FFFD and advance by one.
+// Minimal UTF-8 decoding and encoding. Invalid bytes decode to U+FFFD and
+// advance by one.
 #include <cstdint>
 
 namespace tgc {
@@ -22,6 +23,39 @@ inline uint32_t utf8Next(const char** p) {
     }
     *p += n;
     return cp;
+}
+
+// Encodes `cp` as UTF-8 into `out` (at least 5 bytes) and NUL-terminates it.
+// Returns the bytes written before the NUL. U+0000 writes just the NUL; a
+// surrogate or a value above U+10FFFF becomes U+FFFD, like utf8Next() does on
+// bad input.
+inline int utf8Encode(uint32_t cp, char* out) {
+    if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) cp = 0xFFFD;
+    if (cp == 0) { out[0] = '\0'; return 0; }
+    if (cp < 0x80) {
+        out[0] = static_cast<char>(cp);
+        out[1] = '\0';
+        return 1;
+    }
+    if (cp < 0x800) {
+        out[0] = static_cast<char>(0xC0 | (cp >> 6));
+        out[1] = static_cast<char>(0x80 | (cp & 0x3F));
+        out[2] = '\0';
+        return 2;
+    }
+    if (cp < 0x10000) {
+        out[0] = static_cast<char>(0xE0 | (cp >> 12));
+        out[1] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = static_cast<char>(0x80 | (cp & 0x3F));
+        out[3] = '\0';
+        return 3;
+    }
+    out[0] = static_cast<char>(0xF0 | (cp >> 18));
+    out[1] = static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+    out[2] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+    out[3] = static_cast<char>(0x80 | (cp & 0x3F));
+    out[4] = '\0';
+    return 4;
 }
 
 }  // namespace tgc

@@ -323,6 +323,36 @@ Stats SrsStore::stats() const {
     return s;
 }
 
+size_t SrsStore::trouble(Trouble* out, size_t max, uint8_t minReps) const {
+    if (!out || max == 0) return 0;
+    size_t n = 0;
+    for (const Record& r : records_) {
+        if (r.reps < minReps || r.lapses == 0) continue;
+        // Worst first: lapses/reps descending without floating point.
+        size_t pos = 0;
+        while (pos < n) {
+            const Trouble& o = out[pos];
+            const unsigned lhs = static_cast<unsigned>(r.lapses) * o.reps;
+            const unsigned rhs = static_cast<unsigned>(o.lapses) * r.reps;
+            if (lhs != rhs) {
+                if (lhs > rhs) break;
+            } else if (r.lapses != o.lapses) {
+                if (r.lapses > o.lapses) break;
+            } else if (r.reps != o.reps) {
+                if (r.reps > o.reps) break;
+            } else if (r.codepoint < o.codepoint) {
+                break;
+            }
+            ++pos;
+        }
+        if (pos >= max) continue;
+        if (n < max) ++n;
+        for (size_t j = n - 1; j > pos; --j) out[j] = out[j - 1];
+        out[pos] = {r.codepoint, r.reps, r.lapses};
+    }
+    return n;
+}
+
 size_t SrsStore::forget(const uint32_t* codepoints, size_t n) {
     if (!codepoints || n == 0 || records_.empty()) return 0;
     // A sorted view of the list, so each record is one binary search.

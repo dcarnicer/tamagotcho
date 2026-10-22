@@ -16,6 +16,7 @@
 #include "catalog/Catalog.h"
 #include "imu/OrientationFilter.h"
 #include "pack/PackReader.h"
+#include "pack/Utf8.h"
 #include "platform/FsPackSource.h"
 #include "platform/FsQuiet.h"
 #include "platform/FsSrsFile.h"
@@ -3566,6 +3567,17 @@ void portalFillStats(tgc::PortalStats& out) {
         const int slash = gCurrentPack.lastIndexOf('/');
         snprintf(out.loadedPack, sizeof out.loadedPack, "%s",
                  gCurrentPack.substring(slash >= 0 ? slash + 1 : 0).c_str());
+    }
+    // The per-kanji accuracy view: the worst cards, for the portal's table.
+    tgc::Trouble rows[tgc::PortalStats::kTroubleMax];
+    const size_t n = gSrs.trouble(rows, tgc::PortalStats::kTroubleMax);
+    out.troubleCount = static_cast<uint8_t>(n);
+    for (size_t i = 0; i < n; ++i) {
+        tgc::PortalStats::TroubleKanji& row = out.trouble[i];
+        row.codepoint = rows[i].codepoint;
+        row.reps = rows[i].reps;
+        row.lapses = rows[i].lapses;
+        tgc::utf8Encode(rows[i].codepoint, row.kanji);
     }
 }
 

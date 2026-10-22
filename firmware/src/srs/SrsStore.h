@@ -89,6 +89,15 @@ struct Stats {
     uint32_t reviewMs;       // total time spent on questions, ms (header field)
 };
 
+// One row of the per-kanji accuracy view (the portal's "weakest kanji"): the
+// card's own counters, as the detail card shows them. Accuracy is
+// (reps - lapses) / reps, the share of its reviews answered right.
+struct Trouble {
+    uint32_t codepoint;
+    uint8_t reps;
+    uint8_t lapses;
+};
+
 // Outcome of SrsStore::syncWallClock() (docs/srs.md section 5.1).
 enum class ClockSync : uint8_t {
     Rejected,    // implausible time or offset: nothing changed
@@ -256,6 +265,12 @@ public:
 
     // Walks the table once and sums the counters above. O(n), no allocation.
     Stats stats() const;
+
+    // Fills `out` with up to `max` tracked kanji that are easiest to get
+    // wrong: at least `minReps` reviews and one Again, worst accuracy first
+    // (lapses / reps; ties: more lapses, then more reps, then codepoint).
+    // Returns how many rows were written. O(n * max), no allocation.
+    size_t trouble(Trouble* out, size_t max, uint8_t minReps = 3) const;
 
     // --- format --------------------------------------------------------
     // Header + records + CRC, v1. False only on an oversized table.

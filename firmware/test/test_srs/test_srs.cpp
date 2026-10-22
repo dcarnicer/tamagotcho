@@ -572,6 +572,54 @@ void test_stats() {
     TEST_ASSERT_EQUAL_UINT32(days + 1, learn.stats().answers);
 }
 
+// The portal's "weakest kanji": at least minReps reviews and one Again, worst
+// accuracy (lapses / reps) first; ties by more lapses, then more reps, then
+// codepoint. Cards with no miss are not trouble.
+void test_trouble() {
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    const auto set = [&](uint32_t cp, uint8_t reps, uint8_t lapses) {
+        Record& r = srs.getOrCreate(cp);
+        r.reps = reps;
+        r.lapses = lapses;
+    };
+    set(0x4E00, 2, 2);  // 一: below minReps
+    set(0x4E8C, 10, 0); // 二: no lapse
+    set(0x4E09, 10, 5); // 三: 50% lapses, 5
+    set(0x56DB, 4, 2);  // 四: 50% lapses, 2
+    set(0x4E94, 3, 2);  // 五: 67% lapses
+    set(0x516D, 5, 4);  // 六: 80% lapses
+    set(0x4E03, 5, 4);  // 七: 80% lapses, same counters as 六, lower codepoint
+
+    Trouble out[8];
+    TEST_ASSERT_EQUAL_UINT32(0, srs.trouble(nullptr, 8));
+    TEST_ASSERT_EQUAL_UINT32(0, srs.trouble(out, 0));
+    size_t n = srs.trouble(out, 8);
+    TEST_ASSERT_EQUAL_UINT32(5, n);
+    TEST_ASSERT_EQUAL_UINT32(0x4E03, out[0].codepoint);
+    TEST_ASSERT_EQUAL_UINT32(0x516D, out[1].codepoint);
+    TEST_ASSERT_EQUAL_UINT32(0x4E94, out[2].codepoint);
+    TEST_ASSERT_EQUAL_UINT32(0x4E09, out[3].codepoint);
+    TEST_ASSERT_EQUAL_UINT32(0x56DB, out[4].codepoint);
+    TEST_ASSERT_EQUAL_UINT8(5, out[0].reps);
+    TEST_ASSERT_EQUAL_UINT8(4, out[0].lapses);
+
+    // Truncated: the few worst rows.
+    n = srs.trouble(out, 3);
+    TEST_ASSERT_EQUAL_UINT32(3, n);
+    TEST_ASSERT_EQUAL_UINT32(0x4E03, out[0].codepoint);
+    TEST_ASSERT_EQUAL_UINT32(0x516D, out[1].codepoint);
+    TEST_ASSERT_EQUAL_UINT32(0x4E94, out[2].codepoint);
+
+    // A higher bar drops the cards with fewer reviews.
+    n = srs.trouble(out, 8, 5);
+    TEST_ASSERT_EQUAL_UINT32(3, n);
+    TEST_ASSERT_EQUAL_UINT32(0x4E03, out[0].codepoint);
+    TEST_ASSERT_EQUAL_UINT32(0x516D, out[1].codepoint);
+    TEST_ASSERT_EQUAL_UINT32(0x4E09, out[2].codepoint);
+}
+
 void test_clock_boot_and_uptime() {
     // beginSession() no longer moves the day by itself (the device has no clock,
     // so the app asks the user); advanceDays() does it explicitly.
@@ -1941,6 +1989,7 @@ int main() {
     RUN_TEST(test_store_cap);
     RUN_TEST(test_records_grow_by_steps);
     RUN_TEST(test_stats);
+    RUN_TEST(test_trouble);
     RUN_TEST(test_clock_boot_and_uptime);
     RUN_TEST(test_queue_due_before_new);
     RUN_TEST(test_queue_new_cap_resets_on_new_day);

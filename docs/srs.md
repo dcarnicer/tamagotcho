@@ -113,6 +113,13 @@ the records' `reps`/`lapses` sums (`/api/stats`), and a deck's due, new and seen
 counts. Nothing can go negative: no counter is decremented, and the derived
 values are recomputed from the table.
 
+`SrsStore::trouble()` reads the same table for the portal's per-kanji view
+("weakest kanji"): the cards with at least 3 reviews and one Again, ordered by
+accuracy `(reps - lapses) / reps` -- the same counter the detail card shows --
+worst first, at most 10. The page renders them as a table and `/api/stats`
+carries them as the `trouble` array. No format change: it only reads `reps`
+and `lapses`.
+
 **Save order when a deck is deleted.** The records are forgotten and the state
 file is saved through the atomic path (§4) **before** the pack file is removed.
 A power cut between the two leaves the deck installed without that progress --

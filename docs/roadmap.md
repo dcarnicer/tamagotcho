@@ -259,14 +259,17 @@ Scope for now: **kanji only** (no vocabulary decks).
 
 ## Cross-cutting
 
-- [~] **Statistics.** Per-kanji accuracy, current streak, review/seen counts and
+- [x] **Statistics.** Per-kanji accuracy, current streak, review/seen counts and
       time spent; a small stats screen on device and richer views in the Wi-Fi
       portal. Depends on the SRS state (phase 2). On-device screen done:
       `SrsStore::stats()` + `Screen::Stats` show the date, current/best streak,
       time on questions, seen/pack total, due/new, lifetime answers, accuracy and
       learned count. Single-card accuracy is on the mistake detail card. The
       Wi-Fi portal shows the same counters on its page and as JSON at
-      `/api/stats`. Pending: an aggregate per-kanji accuracy view.
+      `/api/stats`. An aggregate per-kanji accuracy view is done (2026-10-22):
+      the portal lists the ten kanji with the worst accuracy among those with
+      at least 3 reviews and one miss (worst first, with right/review counts),
+      and `/api/stats` carries the same `trouble` array.
       Deleting progress (2026-10-20, `feature/delete-deck-progress`): deleting
       a deck on the portal forgets its kanji that no other installed deck has;
       Settings › Study › Delete progress resets the loaded deck or everything,
