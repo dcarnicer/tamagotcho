@@ -1706,7 +1706,7 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   manifest together, so "point a page at the release's manifest" (as the docs
   said) does not work. The documented browser path is Espressif's esptool-js
   flasher with the merged image at `0x0`; the manifests stay in the release for
-  a future install page (published 2026-10-22, see the entry below).
+  the install page prepared on 2026-10-22 (see the entry below).
 - **Verified on hardware** (v0.1.0-rc1, StickS3): the esptool path — the merged
   image booted, kept 30 SRS records and the decks, came up with no settings,
   opened setup mode with its QR and served the portal. The browser path was
@@ -3074,11 +3074,16 @@ marked *to confirm* needs the device.
   decks or an upload installs them). Restore is meant for the same v1 format.
 - **Atomic and validated safety.** Uploads stream to `/state/.progress.tmp`,
   capped at the exact v1 maximum `kSrsMaxFileSize` (131,124 bytes) and checked
-  against the declared Content-Length early. The temp is loaded into a
-  temporary `SrsStore` with `deserialize()` (magic, version, header size,
-  count/size, CRC, sorted codepoints) before the app is called, so an invalid,
-  truncated or aborted body cannot touch the live file. The app then saves
-  pending answers, renames the current `srs.bin` to
+  against the declared Content-Length early. The temp is checked with
+  `SrsStore::validateBytes()` (magic, version, header size, count/size, CRC,
+  sorted codepoints) before the app is called, so an invalid, truncated or
+  aborted body cannot touch the live file. That check does not build the record
+  table: on the no-PSRAM Cardputer a maximum-size file (131 KB) would otherwise
+  need a second buffer of the same size, so the validator allocates one buffer
+  and rejects cleanly if even that fails. The download streams the file
+  without loading it, and falls back to `srs.bak` when a power cut left no
+  `srs.bin`, which is the file the app itself loaded.
+  The app then saves pending answers, renames the current `srs.bin` to
   `/state/srs.before-restore.bin` (removing the old one first) and renames the
   temp over `srs.bin`. A failed rename or reload puts the safety copy back and
   reloads it, so every failure path leaves the previous progress loaded. The

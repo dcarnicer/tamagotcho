@@ -98,6 +98,10 @@ def cmd_build(a) -> int:
         print("error: --kanji-file cannot be combined with --wanikani-token or "
               "WANIKANI_TOKEN", file=sys.stderr)
         return 2
+    if a.order == "file" and not a.kanji_file:
+        print("error: --order file is the --kanji-file line order; give --kanji-file",
+              file=sys.stderr)
+        return 2
     if token:
         if a.common_readings:
             print("error: --common-readings orders KANJIDIC2 readings; a WaniKani pack already "

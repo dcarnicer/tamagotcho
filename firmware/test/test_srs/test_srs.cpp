@@ -347,6 +347,29 @@ void test_file_size_bounds() {
     TEST_ASSERT_NOT_NULL(s.find(0x65E5));
 }
 
+// The portal's upload validation: structural checks without building the
+// record table (no allocation), so a max-size file is safe on the Cardputer.
+void test_validate_bytes() {
+    SrsStore a;
+    MemoryIo empty;
+    a.begin(empty);
+    a.getOrCreate(0x65E5);
+    a.getOrCreate(0x6708);
+    std::vector<uint8_t> file;
+    TEST_ASSERT_TRUE(a.serialize(file));
+    TEST_ASSERT_TRUE(SrsStore::validateBytes(file.data(), file.size()));
+
+    // Any changed byte in the payload breaks the CRC.
+    std::vector<uint8_t> bad = file;
+    bad[kSrsHeaderSize] ^= 1;
+    TEST_ASSERT_FALSE(SrsStore::validateBytes(bad.data(), bad.size()));
+    // A truncated file and a short one are refused.
+    TEST_ASSERT_FALSE(SrsStore::validateBytes(file.data(), file.size() - 1));
+    const std::vector<uint8_t> tiny(kSrsMinFileSize - 1, 0);
+    TEST_ASSERT_FALSE(SrsStore::validateBytes(tiny.data(), tiny.size()));
+    TEST_ASSERT_FALSE(SrsStore::validateBytes(nullptr, 0));
+}
+
 void test_serialize_roundtrip() {
     SrsStore a;
     MemoryIo empty;
@@ -2008,6 +2031,7 @@ int main() {
     RUN_TEST(test_same_day);
     RUN_TEST(test_monotonic_difficulty);
     RUN_TEST(test_file_size_bounds);
+    RUN_TEST(test_validate_bytes);
     RUN_TEST(test_serialize_roundtrip);
     RUN_TEST(test_serialize_rejects);
     RUN_TEST(test_codepoint_identity);

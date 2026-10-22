@@ -478,11 +478,12 @@ Scope for now: **kanji only** (no vocabulary decks).
 - [x] Flash a **merged** image on a real StickS3 — in a browser and with
       `esptool write_flash 0x0 …` — to confirm the documented offsets. Done
       2026-10-18 for v0.1.0 (esptool, and esptool-js after Erase Flash).
-- [x] **ESP Web Tools install page** (2026-10-22). Served from GitHub Pages at
-      <https://dcarnicer.github.io/tamagotcho/>: `.github/workflows/pages.yml`
-      downloads each release's merged images and manifests, renders
-      `tools/install-page/index.html`, and deploys them together, because the
-      page and the assets must share an origin (release assets send no CORS
+- [~] **ESP Web Tools install page** (2026-10-22). The workflow is ready:
+      `.github/workflows/pages.yml` downloads each release's merged images and
+      manifests, renders `tools/install-page/index.html`, and deploys them
+      together to <https://dcarnicer.github.io/tamagotcho/>, because the page
+      and the assets must share an origin (release assets send no CORS
       headers). It is a **first-install** path only: the merged image erases the
-      settings, while updates stay on the app-only image. GitHub Pages must be
-      enabled once in **Settings → Pages → Source: GitHub Actions**.
+      settings, while updates stay on the app-only image. Pending: enable
+      GitHub Pages once in **Settings → Pages → Source: GitHub Actions** and
+      run the workflow (it is not deployed yet).

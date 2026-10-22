@@ -147,6 +147,13 @@ def test_cli_kanji_file_conflicts_with_filters(tmp_path, capsys):
         assert "--kanji-file" in capsys.readouterr().err
 
 
+def test_cli_order_file_needs_kanji_file(tmp_path, capsys):
+    rc = cli.main(["build", "--jlpt", "5", "--order", "file",
+                   "-o", str(tmp_path / "out.tgc")])
+    assert rc == 2
+    assert "--order file" in capsys.readouterr().err
+
+
 def test_cli_kanji_file_conflicts_with_wanikani(tmp_path, capsys):
     rc = cli.main(["build", "--kanji-file", str(tmp_path / "missing.txt"),
                    "--wanikani-token", "token", "-o", str(tmp_path / "out.tgc")])

@@ -378,19 +378,24 @@ zone) are NVS, not this file, and deck files are not included.
 - **Download.** `GET /progress` opens `/state/srs.bin` read-only and streams it
   with `Content-Disposition: attachment; filename="tangocho-progress.bin"` and
   `application/octet-stream`. It works with no deck open (progress is global)
-  and changes nothing; with no file yet it redirects to the Advanced section
-  with a "no progress file" notice.
+  and changes nothing; if a power cut left no `srs.bin` and the device loaded
+  the `.bak` fallback, that file is served instead, and with neither file it
+  redirects to the Advanced section with a "no progress file" notice. The
+  stream is not copied into RAM, so a maximum-size state still downloads on the
+  no-PSRAM Cardputer.
 - **Upload.** `POST /progress` is a multipart form with one file field,
   `progress`. The body streams to `/state/.progress.tmp`; the declared body
   length and every write are capped at the v1 maximum,
   `kSrsMaxFileSize = 48 + 8192 * 16 + 4 = 131,124` bytes (plus multipart
   slack only for the early Content-Length check). A dropped connection removes
   the temp; the live file is never the destination of the upload.
-- **Validation before the swap.** Once the body is complete, the temp is loaded
-  into a temporary `SrsStore` with `deserialize()`: magic, version, header
-  size, count/size consistency, CRC-32 and strictly ascending codepoints. An
-  invalid, truncated or CRC-failing file is removed and `/state/srs.bin` is not
-  touched. Only then does the portal call `Hooks::onRestoreProgress`.
+- **Validation before the swap.** Once the body is complete, the temp is checked
+  with `SrsStore::validateBytes()`: magic, version, header size, count/size
+  consistency, CRC-32 and strictly ascending codepoints. It deliberately does
+  not build the record table, so a maximum-size file needs one 131 KB buffer,
+  not two, on the no-PSRAM Cardputer; a failed allocation is a clean rejection.
+  An invalid, truncated or CRC-failing file is removed and `/state/srs.bin` is
+  not touched. Only then does the portal call `Hooks::onRestoreProgress`.
 - **The restore.** The app saves pending answers (`saveProgress()`), removes an
   old `/state/srs.before-restore.bin`, renames the live `/state/srs.bin` to
   that safety name, and renames the validated temp over `/state/srs.bin`. It

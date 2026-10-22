@@ -538,7 +538,7 @@ bool SrsStore::serialize(std::vector<uint8_t>& out) const {
     return true;
 }
 
-bool SrsStore::deserialize(const uint8_t* data, size_t len) {
+bool SrsStore::validateBytes(const uint8_t* data, size_t len) {
     if (!data || len < kSrsHeaderSize + kSrsCrcSize) return false;
     if (std::memcmp(data + kOffMagic, kMagic, sizeof kMagic) != 0) return false;
     if (rd16(data + kOffVersion) != kVersion) return false;
@@ -550,16 +550,25 @@ bool SrsStore::deserialize(const uint8_t* data, size_t len) {
     if (len != expect) return false;
     if (rd32(data + len - kSrsCrcSize) != crc32(data, len - kSrsCrcSize)) return false;
 
-    std::vector<Record> records;
-    records.reserve(count);
     uint32_t prev = 0;
     const uint8_t* p = data + kSrsHeaderSize;
     for (uint16_t i = 0; i < count; ++i, p += kSrsRecordSize) {
-        Record r = readRecord(p);
-        if (i > 0 && r.codepoint <= prev) return false;  // must be strictly sorted
-        prev = r.codepoint;
-        records.push_back(r);
+        const uint32_t codepoint = rd32(p);
+        if (i > 0 && codepoint <= prev) return false;  // must be strictly sorted
+        prev = codepoint;
     }
+    return true;
+}
+
+bool SrsStore::deserialize(const uint8_t* data, size_t len) {
+    if (!validateBytes(data, len)) return false;
+    const uint16_t count = rd16(data + kOffCount);
+
+    std::vector<Record> records;
+    records.reserve(count);
+    const uint8_t* p = data + kSrsHeaderSize;
+    for (uint16_t i = 0; i < count; ++i, p += kSrsRecordSize)
+        records.push_back(readRecord(p));
 
     records_ = std::move(records);
     nowDay_ = rd16(data + kOffNowDay);

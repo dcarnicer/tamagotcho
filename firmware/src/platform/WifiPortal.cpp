@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdarg>
+#include <cstdlib>
 #include <cstring>
 #include <utility>
 
@@ -312,9 +313,12 @@ String formatSize(size_t bytes) {
     return String(buf);
 }
 
-// The portal's POST /progress temp: the v1 SRS size range and a full
-// SrsStore::deserialize() (magic, version, count, CRC and sorted codepoints),
-// into a temporary store so a bad file cannot touch the live state.
+// The portal's POST /progress temp: the v1 SRS size range and the structural
+// checks of SrsStore::validateBytes() (magic, version, count, CRC and sorted
+// codepoints). The record table is deliberately not built here: a validated
+// file can be up to 131 KB, and on the no-PSRAM Cardputer a temporary SrsStore
+// would need a second buffer of the same size. The app loads the file only
+// after this check passes, and a failed allocation is a clean rejection.
 bool validateProgressFile(const String& path) {
     if (!fsExists(path)) return false;
     File f = LittleFS.open(path, "r");
@@ -324,12 +328,16 @@ bool validateProgressFile(const String& path) {
         f.close();
         return false;
     }
-    std::vector<uint8_t> buf(n);
-    const size_t got = n ? f.read(buf.data(), n) : 0;
+    auto* buf = static_cast<uint8_t*>(std::malloc(n));
+    if (!buf) {
+        f.close();
+        return false;
+    }
+    const size_t got = f.read(buf, n);
     f.close();
-    if (got != n) return false;
-    SrsStore probe;
-    return probe.deserialize(buf.data(), buf.size());
+    const bool ok = got == n && SrsStore::validateBytes(buf, n);
+    std::free(buf);
+    return ok;
 }
 
 // The *.tgc files in /packs (name, size), sorted like the device's deck list.
@@ -1814,12 +1822,17 @@ void WifiPortal::handleUploadDone() {
 
 // GET /progress: the state file as a download. Read-only, and available with
 // no deck open (progress is global); no file yet is a notice, not an error.
+// If a power cut interrupted a save, the app loaded the `.bak` fallback and
+// `srs.bin` may be gone: serve that one. The file is not loaded into RAM here:
+// a download must also work for a maximum-size state on the no-PSRAM Cardputer.
 void WifiPortal::handleProgressDownload() {
-    if (!fsExists(FsSrsFile::kPath)) {
+    const char* path = FsSrsFile::kPath;
+    if (!fsExists(path)) path = FsSrsFile::kBak;
+    if (!fsExists(path)) {
         redirect("/#adv", Notice::ProgressMissing);
         return;
     }
-    File f = LittleFS.open(FsSrsFile::kPath, "r");
+    File f = LittleFS.open(path, "r");
     if (!f) {
         redirect("/#adv", Notice::ProgressMissing);
         return;
@@ -1842,7 +1855,7 @@ void WifiPortal::abortProgress(ProgressError why) {
 }
 
 // POST /progress, multipart field "progress": stream the body to kProgressTmp,
-// validate it with a temporary SrsStore and only then hand it to the app
+// validate it with SrsStore::validateBytes() and only then hand it to the app
 // (Hooks::onRestoreProgress), which keeps the state it replaces. A dropped,
 // oversized or invalid upload leaves /state/srs.bin untouched.
 void WifiPortal::handleProgressChunk() {

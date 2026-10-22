@@ -206,8 +206,9 @@ public:
     // pack listers skip it.
     static constexpr const char* kUploadTmp = "/packs/.upload.tmp";
     // POST /progress streams its multipart file here first (field name
-    // "progress"), validates it with a temporary SrsStore and only then hands
-    // it to Hooks::onRestoreProgress. Hidden name: the pack listers skip it.
+    // "progress"), validates it with SrsStore::validateBytes() and only then
+    // hands it to Hooks::onRestoreProgress. Hidden name: the pack listers skip
+    // it.
     static constexpr const char* kProgressTmp = "/state/.progress.tmp";
     // The largest v1 SRS file (kSrsMaxFileSize, docs/srs.md section 4).
     static constexpr size_t kProgressMaxBytes = kSrsMaxFileSize;
@@ -326,7 +327,7 @@ private:
 
     // Progress restore state (POST /progress), valid between UPLOAD_FILE_START
     // and UPLOAD_FILE_END. The body goes to kProgressTmp and is validated with
-    // a temporary SrsStore before the app sees it.
+    // SrsStore::validateBytes() before the app sees it.
     File progressFile_;
     ProgressError progressError_ = ProgressError::None;
     bool progressOk_ = false;

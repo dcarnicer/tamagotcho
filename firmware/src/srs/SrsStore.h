@@ -281,7 +281,11 @@ public:
     // Header + records + CRC, v1. False only on an oversized table.
     bool serialize(std::vector<uint8_t>& out) const;
     // Validates magic, version, header size, count/size consistency, CRC and
-    // ascending codepoints. On failure the store is left unchanged.
+    // ascending codepoints, without touching the store and without allocating
+    // the record table. The portal uses it to reject an uploaded progress file
+    // on a no-PSRAM board before it builds a full SrsStore.
+    static bool validateBytes(const uint8_t* data, size_t len);
+    // Same checks, then loads the file. On failure the store is left unchanged.
     bool deserialize(const uint8_t* data, size_t len);
     bool save(StateIo& io) const;
 

@@ -63,7 +63,8 @@ uv run pytest
   one Unicode character is an error naming the line, and a character KANJIDIC2
   does not have is skipped with a warning. The file order is the introduction
   order (the device's new-card order) unless `--order jlpt` or `--order grade`
-  overrides it. The default deck name is the file stem, made safe for the
+  overrides it; `--order file` is only accepted with `--kanji-file`. The
+  default deck name is the file stem, made safe for the
   header and catalog (non-ASCII characters become spaces; an empty stem is
   `Kanji`); `--name` overrides it. It cannot be combined with `--jlpt`,
   `--grade`, `--joyo` or `--wanikani-token`/`WANIKANI_TOKEN`.

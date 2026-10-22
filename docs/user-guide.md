@@ -251,10 +251,12 @@ and serves the release's manifest and merged image from the same GitHub Pages
 origin (release assets send no CORS headers, so a page on another origin cannot
 load them). The page is **for a first install**: it writes the merged image, so
 the settings are erased as described above, while the decks and the study
-progress stay. For updates use the app-only image below. It is published by
-`.github/workflows/pages.yml` after every successful Release run; GitHub Pages
-must be enabled once in **Settings → Pages → Source: GitHub Actions** for the
-repository (<https://github.com/dcarnicer/tamagotcho/settings/pages>).
+progress stay. For updates use the app-only image at `0x10000` (the commands
+above). The page is published by `.github/workflows/pages.yml` after every
+successful Release run; GitHub Pages must be enabled once in **Settings →
+Pages → Source: GitHub Actions**, then the workflow run once from **Actions →
+Publish install page → Run workflow** for the current release
+(<https://github.com/dcarnicer/tamagotcho/settings/pages>).
 
 Alternatively, Espressif's web flasher
 <https://espressif.github.io/esptool-js/>: press **Connect** and pick the

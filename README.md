@@ -110,8 +110,10 @@ StickS3 and the Cardputer ADV alike: the firmware finds the board at boot.
 connect the device over USB and press **Burn**. One entry serves both boards.
 
 **From the browser, first install** (Chrome or Edge on a computer). Open the
-[install page](https://dcarnicer.github.io/tamagotcho/), pick the board and
-press **Connect**, then **Install**. No download or esptool is needed. It writes
+[install page](https://dcarnicer.github.io/tamagotcho/) (published by
+`.github/workflows/pages.yml`; run it once from Actions if the page is not live
+yet), pick the board and press **Connect**, then **Install**. No download or
+esptool is needed. It writes
 the merged image, so it is a **first install only**: the settings (home Wi-Fi,
 preferences) are erased; decks and study progress stay. For an update use the
 app-only image below or the release page. The page is published by
