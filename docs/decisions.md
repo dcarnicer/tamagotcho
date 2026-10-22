@@ -1706,7 +1706,7 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   manifest together, so "point a page at the release's manifest" (as the docs
   said) does not work. The documented browser path is Espressif's esptool-js
   flasher with the merged image at `0x0`; the manifests stay in the release for
-  a future install page.
+  a future install page (published 2026-10-22, see the entry below).
 - **Verified on hardware** (v0.1.0-rc1, StickS3): the esptool path — the merged
   image booted, kept 30 SRS records and the decks, came up with no settings,
   opened setup mode with its QR and served the portal. The browser path was
@@ -3093,3 +3093,41 @@ marked *to confirm* needs the device.
   the restore replaces all decks' progress, so it is behind a confirm dialog
   and refuses while a deck download or URL fetch is in progress (the existing
   Busy notice). The "no file yet" download is a notice, not an error page.
+
+## 2026-10-22 – Browser install page on GitHub Pages
+
+- **Why GitHub Pages and not the release.** ESP Web Tools fetches the manifest
+  and then the image with `fetch()`. GitHub release assets do not send CORS
+  headers, so a page served anywhere else cannot read them. The page is
+  therefore deployed as one Pages artifact together with the release's
+  manifests and merged images; the manifests' relative paths then resolve on
+  the same origin. GitHub Pages is free for a public repository and needs no
+  other host.
+- **Why `workflow_run`.** A release created with `GITHUB_TOKEN` does not
+  reliably emit `release: published` (GitHub suppresses events from the token
+  to avoid loops), so `.github/workflows/pages.yml` waits for the **Release**
+  workflow to complete successfully instead. A manual dispatch takes an
+  optional tag and otherwise publishes the latest release.
+- **First install only.** The only images in the release that ESP Web Tools can
+  write in one step are the merged images. They start at `0x0` and erase the
+  NVS settings (home Wi-Fi, preferences, time zone); the LittleFS partition
+  with the decks and study progress is untouched. Updates therefore stay on the
+  manual path: the app-only `tamagotcho-<board>.bin` at `0x10000` (or
+  M5Launcher), which keeps the settings. The page says so twice, next to the
+  install buttons and in its own Updates section. The page itself has not been
+  tried on hardware yet (2026-10-22); it writes the same merged image at `0x0`
+  that the esptool and esptool-js runs verified.
+- **Pages setup.** Pages has to be enabled once in **Settings → Pages → Source:
+  GitHub Actions**. The workflow does not use `configure-pages`'s
+  `enablement: true`: that needs repository-admin rights and would flip a
+  maintainer setting silently. At the time of writing the repository's Pages
+  site was not enabled yet, so the first run will stop at `configure-pages`
+  until that setting is changed.
+- **Pinned installer.** The page loads ESP Web Tools 10.4.0 from unpkg
+  (`install-button.js?module`), not `@latest`: the custom element is the only
+  runtime dependency and a fixed version keeps the flash protocol stable. The
+  page remains readable with JavaScript off: the manifest and merged-image
+  links are ordinary downloads.
+- **Renderer.** `tools/install-page/render.py` is stdlib only, replaces
+  `{{TAG}}`/`{{VERSION}}`, and has a `--check` mode that fails on an unreplaced
+  token or a manifest/fallback file missing from the Pages directory.

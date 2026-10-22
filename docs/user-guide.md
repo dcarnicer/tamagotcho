@@ -244,19 +244,30 @@ PlatformIO's USB upload does write `boot_app0.bin` at `0xe000`, over the unused
 bootloader header is written in DIO, as PlatformIO's upload does; the app
 switches the flash to QIO itself (see `docs/decisions.md`).
 
-For a **browser flash** (Chrome or Edge on a desktop), open Espressif's web
-flasher <https://espressif.github.io/esptool-js/>, press **Connect** and pick
-the StickS3's port, add `tamagotcho-sticks3-merged.bin` at address `0x0` and
-press **Program**. The release also carries ESP Web Tools manifests
-(`tamagotcho-*-manifest.json`) for a future install page; ESP Web Tools needs a
-page that serves the image and the manifest together, so it cannot be pointed
-at a release on its own. A merged image carries **no filesystem**:
-on the first boot the firmware finds no LittleFS on the data partition (erased,
-or left by another firmware), formats it ("Preparing storage..."), asks for the
-language (English / Español) and boots into the Wi-Fi portal's setup mode,
-where decks can be fetched or uploaded over the air. A device that still has
-its decks after a merged-image flash does not ask: its settings are gone, so
-the language follows the loaded deck (Auto) until you change it. The flash
+For a **browser flash** (Chrome or Edge on a desktop), the project's install page
+<https://dcarnicer.github.io/tamagotcho/> is the shortest path: pick the board,
+press **Connect** and choose its port, then **Install**. It uses ESP Web Tools
+and serves the release's manifest and merged image from the same GitHub Pages
+origin (release assets send no CORS headers, so a page on another origin cannot
+load them). The page is **for a first install**: it writes the merged image, so
+the settings are erased as described above, while the decks and the study
+progress stay. For updates use the app-only image below. It is published by
+`.github/workflows/pages.yml` after every successful Release run; GitHub Pages
+must be enabled once in **Settings → Pages → Source: GitHub Actions** for the
+repository (<https://github.com/dcarnicer/tamagotcho/settings/pages>).
+
+Alternatively, Espressif's web flasher
+<https://espressif.github.io/esptool-js/>: press **Connect** and pick the
+StickS3's port, add `tamagotcho-sticks3-merged.bin` at address `0x0` and press
+**Program**. The release also carries the ESP Web Tools manifests
+(`tamagotcho-*-manifest.json`) that the install page consumes. A merged image
+carries **no filesystem**: on the first boot the firmware finds no LittleFS on
+the data partition (erased, or left by another firmware), formats it
+("Preparing storage..."), asks for the language (English / Español) and boots
+into the Wi-Fi portal's setup mode, where decks can be fetched or uploaded over
+the air. A device that still has its decks after a merged-image flash does not
+ask: its settings are gone, so the language follows the loaded deck (Auto)
+until you change it. The flash
 counts as a power cut, so it does ask for the **date**, by hand: with the home
 Wi-Fi and the time zone erased it cannot get it from the network first. Set it
 with the stepper (or skip), then open the portal page once to save the Wi-Fi
@@ -271,6 +282,10 @@ and the zone again.
 > booted as new devices on 2026-10-21 (`Tamagotcho v0.3.0`, storage formatted,
 > language picker). The Cardputer ADV image is built but not verified on
 > hardware; its firmware is, flashed with PlatformIO (2026-10-21).
+>
+> The **install page** itself (ESP Web Tools 10.4.0) is new on 2026-10-22 and
+> has not been tried on hardware yet; it writes the same merged image at `0x0`
+> that the esptool and esptool-js runs above verified.
 
 ## M5Launcher and app-only `.bin`s
 

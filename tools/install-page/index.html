@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="Install Tamagotcho {{TAG}} on an M5Stack StickS3, M5Stack Cardputer ADV or LilyGO T-Display-S3 from Chrome or Edge.">
+<title>Install Tamagotcho {{TAG}}</title>
+<style>
+  :root {
+    --bg: #f4eee4;
+    --paper: #fffdf8;
+    --ink: #27221d;
+    --muted: #6d6358;
+    --line: #e2d7c6;
+    --accent: #b23a2e;
+    --accent-dark: #8e2b22;
+    --green: #2f6b5f;
+    --radius: 16px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { color-scheme: light; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
+  }
+
+  a { color: var(--accent-dark); text-underline-offset: 2px; }
+  a:hover { color: var(--accent); }
+
+  .wrap {
+    width: min(1040px, calc(100% - 2rem));
+    margin: 0 auto;
+  }
+
+  header.hero {
+    background:
+      radial-gradient(circle at 85% 15%, rgba(178, 58, 46, .42), transparent 42%),
+      #241f1b;
+    color: #fffaf2;
+    padding: 3.2rem 0 2.8rem;
+  }
+
+  .eyebrow {
+    margin: 0 0 .35rem;
+    color: #e9b8a7;
+    font-size: .82rem;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(2rem, 6vw, 3.4rem);
+    line-height: 1.05;
+    letter-spacing: -.03em;
+  }
+
+  .lede {
+    max-width: 46rem;
+    margin: 1rem 0 1.2rem;
+    color: #e7ded2;
+    font-size: 1.08rem;
+  }
+
+  .release {
+    display: inline-block;
+    margin: 0;
+    padding: .35rem .8rem;
+    border: 1px solid rgba(255, 255, 255, .24);
+    border-radius: 999px;
+    color: #fff;
+    font-size: .92rem;
+  }
+
+  .release a { color: #fff; font-weight: 700; }
+
+  main { padding: 2.2rem 0 1rem; }
+
+  section { margin: 0 0 2.4rem; }
+
+  h2 {
+    margin: 0 0 .6rem;
+    font-size: clamp(1.35rem, 3vw, 1.75rem);
+    line-height: 1.2;
+  }
+
+  h3 { margin: 0 0 .25rem; font-size: 1.12rem; }
+
+  p { margin: .5rem 0; }
+
+  .callout {
+    padding: 1rem 1.15rem;
+    border: 1px solid #ecc9bc;
+    border-left: 4px solid var(--accent);
+    border-radius: 10px;
+    background: #fff4ef;
+  }
+
+  .callout p { margin: .25rem 0; }
+
+  .boards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+    gap: 1rem;
+    margin-top: 1.2rem;
+  }
+
+  .board {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--paper);
+    box-shadow: 0 1px 2px rgba(39, 34, 29, .04);
+  }
+
+  .board img {
+    display: block;
+    width: 100%;
+    height: 125px;
+    margin: 0 0 .8rem;
+    padding: .35rem;
+    border-radius: 10px;
+    background: #f8f2e8;
+    object-fit: contain;
+  }
+
+  .board p { color: var(--muted); font-size: .93rem; }
+
+  .board .files { margin-top: auto; padding-top: .9rem; font-size: .82rem; }
+
+  .board .files a { white-space: nowrap; }
+
+  .needs-js { display: none; margin-top: .8rem; }
+  .js .needs-js { display: block; }
+
+  esp-web-install-button { display: block; }
+
+  .install {
+    width: 100%;
+    padding: .72rem 1rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .install:hover, .install:focus-visible { background: var(--accent-dark); }
+
+  .unsupported { display: block; color: var(--muted); font-size: .86rem; }
+
+  .note {
+    margin-top: 1rem;
+    padding: .8rem 1rem;
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    background: #fbf6ed;
+    color: var(--muted);
+    font-size: .93rem;
+  }
+
+  ol, ul { margin: .6rem 0; padding-left: 1.35rem; }
+  li { margin: .35rem 0; }
+
+  .steps {
+    padding: 1.2rem 1.4rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--paper);
+  }
+
+  code {
+    padding: .12rem .35rem;
+    border-radius: 5px;
+    background: #efe7db;
+    font-size: .88em;
+  }
+
+  pre {
+    overflow-x: auto;
+    padding: .85rem 1rem;
+    border-radius: 10px;
+    background: #241f1b;
+    color: #f7f0e6;
+    font-size: .84rem;
+  }
+
+  pre code { padding: 0; background: none; }
+
+  footer {
+    margin-top: 2rem;
+    padding: 1.8rem 0 2.4rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: .88rem;
+  }
+
+  footer p { margin: .45rem 0; }
+
+  .links a { margin-right: .9rem; white-space: nowrap; }
+
+  @media (max-width: 520px) {
+    header.hero { padding: 2.4rem 0 2rem; }
+    main { padding-top: 1.6rem; }
+    .steps { padding: 1rem; }
+  }
+</style>
+<script>document.documentElement.classList.add("js");</script>
+<script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">たまごっちょ · Tamagotcho</p>
+    <h1>Install Tamagotcho</h1>
+    <p class="lede">
+      Kanji flashcards with spaced repetition for the M5Stack StickS3,
+      M5Stack Cardputer ADV and LilyGO T-Display-S3. Flash the firmware
+      straight from Chrome or Edge — no download and no esptool.
+    </p>
+    <p class="release">
+      Version <strong>{{VERSION}}</strong> ·
+      <a href="https://github.com/dcarnicer/tamagotcho/releases/tag/{{TAG}}">release {{TAG}}</a>
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+  <noscript>
+    <div class="callout">
+      <p><strong>JavaScript is off.</strong> The one-click installer needs it
+      (and Web Serial in Chrome or Edge). The manifest and merged-image links
+      under each board still work: download them and flash the merged image at
+      address <code>0x0</code> with esptool.</p>
+    </div>
+  </noscript>
+
+  <section>
+    <div class="callout">
+      <p><strong>First install only.</strong> This page writes the complete
+      <em>merged</em> image, which erases the device's settings: home Wi-Fi,
+      preferences and time zone. Decks and study progress live in a separate
+      partition and are <strong>not</strong> erased.</p>
+      <p>To <strong>update</strong> a device, use the app-only image from the
+      <a href="https://github.com/dcarnicer/tamagotcho/releases/tag/{{TAG}}">release page</a>
+      and keep the settings; see <a href="#updates">Updates</a> below.</p>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Choose your board</h2>
+    <p>
+      Connect the device with a USB data cable, press <strong>Install</strong>,
+      then pick the serial port. Chrome or Edge on a desktop is required.
+    </p>
+
+    <div class="boards">
+      <article class="board">
+        <img src="board-sticks3.png" alt="M5Stack StickS3 showing a kanji quiz">
+        <h3>M5Stack StickS3</h3>
+        <p>The wrist-sized original: two buttons and an auto-rotating screen.</p>
+        <div class="needs-js">
+          <esp-web-install-button manifest="tamagotcho-sticks3-manifest.json">
+            <button slot="activate" class="install">Install StickS3</button>
+            <span slot="unsupported" class="unsupported">This browser does not support Web Serial. Use Chrome or Edge on a desktop.</span>
+            <span slot="not-allowed" class="unsupported">Web Serial needs a secure page. Open this page over HTTPS.</span>
+          </esp-web-install-button>
+        </div>
+        <p class="files">
+          <a href="tamagotcho-sticks3-manifest.json" data-asset download>manifest</a> ·
+          <a href="tamagotcho-sticks3-merged.bin" data-asset download>merged image</a>
+        </p>
+      </article>
+
+      <article class="board">
+        <img src="board-cardputer.png" alt="M5Stack Cardputer ADV showing a kanji quiz">
+        <h3>M5Stack Cardputer ADV</h3>
+        <p>Keyboard input on a 240×135 screen.</p>
+        <div class="needs-js">
+          <esp-web-install-button manifest="tamagotcho-cardputer-adv-manifest.json">
+            <button slot="activate" class="install">Install Cardputer ADV</button>
+            <span slot="unsupported" class="unsupported">This browser does not support Web Serial. Use Chrome or Edge on a desktop.</span>
+            <span slot="not-allowed" class="unsupported">Web Serial needs a secure page. Open this page over HTTPS.</span>
+          </esp-web-install-button>
+        </div>
+        <p class="files">
+          <a href="tamagotcho-cardputer-adv-manifest.json" data-asset download>manifest</a> ·
+          <a href="tamagotcho-cardputer-adv-merged.bin" data-asset download>merged image</a>
+        </p>
+      </article>
+
+      <article class="board">
+        <img src="board-tdisplay.png" alt="LilyGO T-Display-S3 showing a kanji quiz">
+        <h3>LilyGO T-Display-S3</h3>
+        <p>A larger 1.9″ display and two buttons.</p>
+        <div class="needs-js">
+          <esp-web-install-button manifest="tamagotcho-tdisplay-s3-manifest.json">
+            <button slot="activate" class="install">Install T-Display-S3</button>
+            <span slot="unsupported" class="unsupported">This browser does not support Web Serial. Use Chrome or Edge on a desktop.</span>
+            <span slot="not-allowed" class="unsupported">Web Serial needs a secure page. Open this page over HTTPS.</span>
+          </esp-web-install-button>
+        </div>
+        <p class="files">
+          <a href="tamagotcho-tdisplay-s3-manifest.json" data-asset download>manifest</a> ·
+          <a href="tamagotcho-tdisplay-s3-merged.bin" data-asset download>merged image</a>
+        </p>
+      </article>
+
+      <article class="board">
+        <img src="board-sticks3.png" alt="Tamagotcho on an M5Stack board">
+        <h3>M5Stack — either board</h3>
+        <p>One image for the StickS3 and the Cardputer ADV; the board is detected at boot.</p>
+        <div class="needs-js">
+          <esp-web-install-button manifest="tamagotcho-m5stack-manifest.json">
+            <button slot="activate" class="install">Install M5 combined</button>
+            <span slot="unsupported" class="unsupported">This browser does not support Web Serial. Use Chrome or Edge on a desktop.</span>
+            <span slot="not-allowed" class="unsupported">Web Serial needs a secure page. Open this page over HTTPS.</span>
+          </esp-web-install-button>
+        </div>
+        <p class="files">
+          <a href="tamagotcho-m5stack-manifest.json" data-asset download>manifest</a> ·
+          <a href="tamagotcho-m5stack-merged.bin" data-asset download>merged image</a>
+        </p>
+      </article>
+    </div>
+
+    <p class="note">
+      The combined M5 image and the board-specific StickS3 / Cardputer ADV
+      images do the same thing. Use either; do not install both one after the
+      other. The manifest and image links are the manual fallback when
+      JavaScript is unavailable.
+    </p>
+  </section>
+
+  <section id="how">
+    <h2>Before you start</h2>
+    <div class="steps">
+      <ol>
+        <li><strong>Chrome or Edge on a desktop.</strong> Firefox and Safari do
+        not provide Web Serial, and phones and tablets are not supported here.</li>
+        <li><strong>A USB data cable.</strong> Some cables only charge and never
+        show a serial port. Connect the device directly, without a hub if you
+        can.</li>
+        <li><strong>Close other serial programs</strong> (Arduino IDE,
+        PlatformIO's monitor, another browser tab) so the port is free.</li>
+        <li>Press <strong>Connect</strong>, choose the port, then confirm the
+        install. Keep the cable connected until the page says it is done.</li>
+      </ol>
+      <p>
+        On the first boot the firmware formats its storage, asks for the
+        language and the date, and opens the Wi-Fi setup portal. The
+        <a href="https://github.com/dcarnicer/tamagotcho/blob/main/docs/user-guide.md#first-start">user guide</a>
+        walks through the first start.
+      </p>
+    </div>
+  </section>
+
+  <section id="updates">
+    <h2>Updates: keep your settings</h2>
+    <p>
+      Do not use this page to update an existing device: it always writes the
+      merged image, so the Wi-Fi settings, preferences and time zone are
+      erased. Get the board's <strong>app-only</strong> image
+      (<code>tamagotcho-&lt;board&gt;.bin</code>) from the
+      <a href="https://github.com/dcarnicer/tamagotcho/releases/tag/{{TAG}}">release page</a>
+      and write it at the app offset instead:
+    </p>
+    <pre><code>esptool --chip esp32s3 write_flash 0x10000 tamagotcho-sticks3.bin</code></pre>
+    <p>
+      Use <code>tdisplay-s3</code>, <code>cardputer-adv</code> or
+      <code>m5stack</code> in place of <code>sticks3</code> for the other
+      images. M5Launcher can install the app-only image too. Decks and study
+      progress survive both paths unless the flash was erased first.
+    </p>
+  </section>
+
+  <section>
+    <h2>Troubleshooting</h2>
+    <ul>
+      <li><strong>No port appears:</strong> try another USB data cable and
+      reconnect the device. Close any program that may hold the port.</li>
+      <li><strong>The install button is disabled:</strong> open the page in a
+      current Chrome or Edge on a desktop, over HTTPS.</li>
+      <li><strong>The device already has Tamagotcho:</strong> you can still do
+      a first install this way, but the settings will be erased. To keep them,
+      use the app-only image above.</li>
+      <li><strong>Nothing happens after flashing:</strong> unplug and replug
+      the device, then open the page once more. A merged image has no
+      filesystem, so the first boot prepares it.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p class="links">
+      <a href="https://github.com/dcarnicer/tamagotcho">Repository</a>
+      <a href="https://github.com/dcarnicer/tamagotcho/releases/tag/{{TAG}}">Release {{TAG}}</a>
+      <a href="https://github.com/dcarnicer/tamagotcho/blob/main/docs/user-guide.md">User guide</a>
+      <a href="https://github.com/dcarnicer/tamagotcho/issues">Issues</a>
+    </p>
+    <p>
+      <strong>Licence.</strong> Code is MIT. Decks are CC BY-SA and contain
+      KANJIDIC2 data (© EDRDG, CC BY-SA 4.0) and KanjiVG stroke data
+      (© Ulrich Apel, CC BY-SA 3.0); glyphs are rendered from Noto Sans JP
+      (© Adobe, SIL OFL 1.1). See the repository's
+      <a href="https://github.com/dcarnicer/tamagotcho/blob/main/docs/data-sources.md">data sources</a>
+      for the full attribution.
+    </p>
+    <p>
+      The installer is <a href="https://espressif.github.io/esp-web-tools/">ESP Web Tools</a>
+      (Apache-2.0), loaded from unpkg. Tamagotcho is not affiliated with
+      M5Stack or LilyGO.
+    </p>
+  </footer>
+</main>
+</body>
+</html>

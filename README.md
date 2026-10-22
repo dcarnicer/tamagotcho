@@ -109,8 +109,16 @@ StickS3 and the Cardputer ADV alike: the firmware finds the board at boot.
 (on the web in Chrome or Edge, or the desktop app), search for **Tamagotcho**,
 connect the device over USB and press **Burn**. One entry serves both boards.
 
-**In a browser** (Chrome or Edge on a computer). Open Espressif's
-[web flasher](https://espressif.github.io/esptool-js/), press **Connect** and
+**From the browser, first install** (Chrome or Edge on a computer). Open the
+[install page](https://dcarnicer.github.io/tamagotcho/), pick the board and
+press **Connect**, then **Install**. No download or esptool is needed. It writes
+the merged image, so it is a **first install only**: the settings (home Wi-Fi,
+preferences) are erased; decks and study progress stay. For an update use the
+app-only image below or the release page. The page is published by
+`.github/workflows/pages.yml` after each release.
+
+**With Espressif's web flasher** (Chrome or Edge on a computer). Open
+[esptool-js](https://espressif.github.io/esptool-js/), press **Connect** and
 pick the device's port, add the board's `tamagotcho-<board>-merged.bin` at
 address `0x0` and press **Program**.
 
