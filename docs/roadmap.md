@@ -207,7 +207,7 @@ Scope for now: **kanji only** (no vocabulary decks).
         one in use). Documented in README.md; **not verified on hardware**, and
         whether the launcher-created filesystem partition is large enough for
         packs is an open question.
-- [~] **Phase 5 – Release.** Done so far: the app-only image and a **merged
+- [x] **Phase 5 – Release.** Done so far: the app-only image and a **merged
       single-file image** per board plus an **ESP Web Tools `manifest.json`**,
       published by `.github/workflows/release.yml` on tags `v*` (and manual
       dispatch); CI (`.github/workflows/ci.yml`) runs the native tests and both
@@ -249,8 +249,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       to `docs/user-guide.md`. The v0.3.0 merged images of the StickS3 and
       the T-Display-S3 booted as new devices on real hardware (2026-10-21).
       The Cardputer ADV's v0.3.0 merged image booted on hardware the same
-      day. Pending: publishing on **M5Burner**, one entry for both M5 boards
-      with the `m5stack` image (docs/m5burner.md).
+      day. **Published on M5Burner** on 2026-10-22, when v0.4.1 passed
+      M5Stack's review: one entry for both M5 boards with the `m5stack` image
+      (docs/m5burner.md).
       - [x] `release.yml` puts `docs/releases/<tag>.md` in the notes as the
         "What's new" (from v0.3.0; before, it was added by hand).
       - [x] CI: also build `sticks3-shots` and `cardputer-adv-shots` (the
