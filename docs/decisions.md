@@ -2944,3 +2944,30 @@ marked *to confirm* needs the device.
   boot (the portal's catalog, three downloads through the portal's `/deck`),
   no `close(0)`, no file on descriptor 0 any more, the deck readable
   throughout. The debug build lives on the branch `debug/dead-pack-file`.
+
+## 2026-10-22 – Weakest kanji in the portal
+
+- **Weakest kanji.** The statistics now have the aggregate per-kanji view the
+  roadmap asked for. It lives in the Wi-Fi portal, where the roadmap wanted the
+  richer views and where there is room for a table; the device's stats screen
+  (ring plus six tiles) stays as it is. `SrsStore::trouble()` is pure and
+  native-tested, and `PortalStats` carries at most 10 rows.
+- **Which cards.** At least 3 reviews and one Again: fewer reviews say little,
+  and a card with no miss is not trouble. Accuracy is `(reps - lapses) / reps`,
+  the counter the detail card already shows; the list is worst first, ties by
+  more lapses, then more reviews, then codepoint. No SRS format change: it only
+  reads the existing `reps` and `lapses`.
+- **JSON.** `/api/stats` carries the same rows as `trouble` (kanji, codepoint,
+  reps, lapses, accuracy), so a script gets them without parsing the page.
+
+## 2026-10-22 – Common readings the Jōyō table leaves out
+
+- **Extra common readings.** The Jōyō table is the school curriculum; 等 など,
+  経 た.つ and 被 かぶ.る are everyday readings it does not approve, so
+  `--common-readings` never asked them. The project-authored `EXTRA_COMMON`
+  table (`readings.py`) puts them in the approved tier for the ordering and
+  `worth_asking()`; `classify()` still says "not in the table", so the reports
+  keep showing the table's truth. The other readings stay in the card as valid
+  answers. JLPT N3 now asks 等 など and 経 た.つ, N2 asks 被 かぶ.る.
+- **Decks.** The next `decks.yml` run publishes the three changes (the local
+  N2/N3 builds validate and pass both distractor checks).
