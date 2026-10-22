@@ -98,6 +98,14 @@ setup mode and a tap tries again.
   goes back or cancels a download). In setup mode the page also offers **Get
   decks on the device screen**, and a fresh device's boot screen offers it with
   a hold.
+- With a home Wi-Fi saved, the device also **checks for newer builds of your
+  decks**: at boot, once a day on USB power (or once a week on battery from
+  50 %). A short "Checking deck updates..." screen can be skipped; the radio is
+  off again afterwards. When something is new, **Decks** shows "N updates" and
+  its **Updates** row opens the list of installed decks with a newer build;
+  **hold** one to download and replace it. Progress is kept (it is per kanji),
+  and the device never downloads an update by itself. The same row checks on
+  demand when you want, on battery too.
 - **Settings → Wi-Fi → Home** tests the saved network: it joins,
   shows the IP address, the signal, whether the deck catalog answers and
   whether the network time works, then turns the radio off again.

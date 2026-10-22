@@ -208,26 +208,16 @@ Scope for now: **kanji only** (no vocabulary decks).
         decks without `uploadfs` and without a computer. Plain `http://` only on
         the portal (its own AP has no internet; Get decks above does HTTPS over
         the home Wi-Fi); no resume yet.
-      - [ ] **Deck update checks over the home Wi-Fi** (idea, 2026-10-22). The
-        device itself should notice when the catalog has a newer build of the
-        decks it already has, instead of the user opening Get decks and
-        comparing sizes by hand. Open questions:
-        - **When.** The radio stays off by policy: a check has to join the home
-          network briefly and turn it off again. At boot after the date sync? At
-          most once a day? Only on USB or while charging? Never in the middle of
-          a review, and a failed check must leave everything as it was.
-        - **What counts as newer.** The catalog carries a size and SHA-256 per
-          pack, not a version; compare the installed file with the catalog
-          record of the same name (and title). Replacing a pack in place keeps
-          the progress, which is keyed by kanji (docs/srs.md section 2).
-        - **What to show.** A dot on Decks in the settings summary, a "Deck
-          updates" row, or a line on the boot/done screen; ask before
-          downloading (with cancel) or update automatically? The download uses
-          the same size/SHA-256 checks and battery guard as Get decks.
-        - **Scope.** Only the decks installed, and maybe only the current
-          language; the portal page could show the same "update available"
-          state. A new catalog entry the device does not have is not an update
-          (Get decks lists those).
+      - [~] **Deck update checks over the home Wi-Fi** (2026-10-22; design
+        docs/deck-updates.md). v1 on `main`: at boot, once a day on USB power
+        (or once a week on battery from 50 %), the device joins the home
+        network, reads the catalog and compares the installed files' sizes.
+        Decks shows "N updates" and a new Updates row opens the filtered Get
+        decks list, where a hold replaces a deck in place (progress survives).
+        The check result is a two-second, skippable screen; it never downloads
+        by itself. Pending: hardware check on the StickS3 / Cardputer ADV,
+        hashing installed packs to catch a same-size rebuild, and tuning the
+        battery policy.
       - [~] **M5Launcher compatibility.** The app-only `.bin` that
         `pio run -e sticks3` produces can be installed as a launcher app, and
         the Wi-Fi upload is the intended way to populate `/packs` once it runs

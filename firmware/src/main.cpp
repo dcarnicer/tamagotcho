@@ -399,6 +399,21 @@ struct UiStrings {
     const char* batteryHintKeys;
     const char* dateExplainKeys;           // caption, wrapped (21 characters a line)
     const char* errNoFilesystemHintKeys;
+    // --- Deck update checks (docs/deck-updates.md) ---------------------------
+    const char* updatesRow;       // the deck list's row
+    const char* updatesCheck;     // its value: never checked
+    const char* updatesUpToDate;  // its value: checked, nothing to update
+    const char* updatesCountOne;  // the home Decks row's value: one update
+    const char* updatesCountFmt;  // the home Decks row's value: %u = updates
+    const char* updateTitle;      // boot check and updates list header (ASCII)
+    const char* updateChecking;   // label face while joining
+    const char* updateFoundOne;   // one installed deck with an update
+    const char* updateFoundFmt;   // %u = installed decks with an update
+    const char* updateAllCurrent; // checked, nothing to update
+    const char* updateWhere;      // result: where the updates list is (caption)
+    const char* updateListFmt;    // updates list: %s = network, %u = updates
+    const char* updateSkip;       // hint bar while checking
+    const char* updateContinue;   // hint bar on the result
 };
 
 const UiStrings kUiEn = {
@@ -509,6 +524,10 @@ const UiStrings kUiEn = {
     "Charge me, then press a key.",
     "Press Enter when it shows today.",
     "Hold the G0 button to erase it. Decks and progress are lost.",
+    "Updates", "check", "up to date", "1 update", "%u updates",
+    "DECK UPDATES", "Checking deck updates...", "1 deck update available",
+    "%u deck updates available", "All decks are up to date",
+    "Settings > Decks > Updates", "%s · %u updates", "skip", "continue",
 };
 
 const UiStrings kUiEs = {
@@ -620,6 +639,10 @@ const UiStrings kUiEs = {
     "Cárgame y pulsa una tecla.",
     "Pulsa Enter cuando sea hoy.",
     "Mantén el botón G0 para borrarla. Se pierden mazos y progreso.",
+    "Actualizar", "comprobar", "al día", "1 act.", "%u act.",
+    "ACTUALIZACIONES", "Buscando actualizaciones...", "1 actualización de mazo",
+    "%u actualizaciones de mazos", "Todos los mazos están al día",
+    "Ajustes > Mazos > Actualizar", "%s · %u act.", "saltar", "continuar",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
@@ -690,8 +713,8 @@ uint16_t gExtraNew = 0;
 uint16_t gExtraNewDay = 0;
 
 enum class Screen {
-    Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks, WifiMenu, NetTest, About,
-    FirstLang, DateMenu, TzList, Reset, ResetConfirm
+    Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks, UpdateCheck, WifiMenu,
+    NetTest, About, FirstLang, DateMenu, TzList, Reset, ResetConfirm
 };
 // Screen::Choice is shared by the row pickers (see openChoice()).
 enum class Choice {
@@ -811,6 +834,7 @@ enum class NetStep { Connecting, Catalog, List, Error };
 tgc::HomeWifi gHome;
 NetStep gNetStep = NetStep::Connecting;
 bool gNetFromBoot = false;   // opened from the boot-time upload screen
+bool gNetUpdatesOnly = false;  // the updates list: only installed decks with a new build
 std::string gGetDecksLangHint;  // the phone's language from the portal page, or ""
 std::vector<tgc::CatalogEntry> gCatalog;
 std::vector<tgc::DeckState> gCatalogState;  // per gCatalog entry
@@ -832,6 +856,27 @@ NetSleep gNetSleep = NetSleep::None;
 // TLS stalls are longer than on the local portal; a big pack may take minutes.
 constexpr uint32_t kNetIdleMs = 15000;
 constexpr uint32_t kNetDownloadMs = 10u * 60u * 1000u;
+
+// Deck update checks (docs/deck-updates.md): the boot-time catalog read and
+// the count the Decks rows show. `gUpdateDay` is the epoch day of the last
+// completed check (success or attempt; 0 = never); `gUpdateKnown` says whether
+// a catalog read has ever succeeded; the count is only a badge, because the
+// updates list reads the catalog again. The automatic check runs once a day on
+// external power, or once a week on battery from 50 %.
+enum class UpdateStep : uint8_t { Joining, Catalog, Done, Failed };
+UpdateStep gUpdateStep = UpdateStep::Joining;
+uint32_t gUpdateStartedAt = 0;  // millis() when the join began
+uint32_t gUpdateDoneAt = 0;     // millis() when the result appeared
+uint8_t gUpdateFound = 0;       // updates found by this check
+char gUpdateErr[48] = "";       // the failure's title (join or catalog)
+uint8_t gUpdateCount = 0;       // installed decks with an update (NVS `updcount`)
+uint32_t gUpdateDay = 0;        // epoch day of the last check (NVS `updday`)
+bool gUpdateKnown = false;      // a catalog read succeeded (NVS `updok`)
+constexpr uint32_t kUpdateJoinMs = 30000;  // a tap skips sooner
+constexpr uint32_t kUpdateResultMs = 2000; // the result before the quiz
+constexpr const char* kPrefUpdateDay = "updday";
+constexpr const char* kPrefUpdateCount = "updcount";
+constexpr const char* kPrefUpdateKnown = "updok";
 
 // Power management. After kDimAfterMs without input the backlight dims; after
 // kSleepAfterMs (kWifiIdleMs while the portal is up and no HTTP request came
@@ -1030,6 +1075,7 @@ bool newQuestion() {
 void drawScreen();  // dispatches to the active screen
 void applyRotation(uint8_t r);
 void drawGetDecks();
+void drawUpdateCheck();
 void drawWifiMenu();
 void drawNetTest();
 void drawReset();
@@ -1040,7 +1086,11 @@ void formatDate(uint16_t days, char* out, size_t n);
 void netRadioOff();
 void netSyncClock();
 void openDecks();
-void openGetDecks(bool fromBoot);
+void openGetDecks(bool fromBoot, bool updatesOnly = false);
+void setUpdatesFromCatalog(const std::vector<tgc::CatalogEntry>& entries);
+void saveUpdateState();
+void updateCheckTick(uint32_t now);
+void updateCheckInput(int a, int b);
 void openPortal(PortalMode mode);
 void openDateMenu(bool fresh);
 tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e);
@@ -1749,7 +1799,9 @@ void drawDecks() {
     refreshPackInfo();
     const uint32_t due = deckCounts().due;  // only shown on the loaded pack's row
     const int packs = static_cast<int>(gPacks.size());
-    gDeckList.setCount(packs + 1);  // + "Get decks"
+    const int updatesRow = packs;
+    const int getDecksRow = packs + 1;
+    gDeckList.setCount(packs + 2);  // + "Updates" and "Get decks"
     const bool wide = wideRows();
     layoutList(gDeckList, kHeaderH, H - kHintH, wide ? layout().row1H : layout().row2H);
     wg::drawList(d, gDeckList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
@@ -1757,7 +1809,19 @@ void drawDecks() {
         row.focused = f;
         String stem;
         char caption[48], lang[8];
-        if (i == packs) {
+        if (i == updatesRow) {
+            row.label = ui().updatesRow;
+            row.icon = &tgc::kIconDown;
+            row.chevron = true;
+            char value[24];
+            if (gUpdateCount > 0)
+                snprintf(value, sizeof value, "%u", (unsigned)gUpdateCount);
+            else
+                snprintf(value, sizeof value, "%s",
+                         gUpdateKnown ? ui().updatesUpToDate : ui().updatesCheck);
+            (wide ? row.value : row.caption) = value;
+            row.labelColor = gUpdateCount ? tgc::theme::kAccentHi : tgc::theme::kText;
+        } else if (i == getDecksRow) {
             row.label = ui().getDecksRow;
             row.icon = &tgc::kIconDown;
             row.chevron = true;
@@ -2815,7 +2879,8 @@ void drawGetDecks() {
     constexpr uint8_t kSmall = tgc::Renderer::kTextBuiltinSmall;
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
-    menuHeader(d, ui().getDecksTitle, nullptr, gHome.active());
+    menuHeader(d, gNetUpdatesOnly ? ui().updateTitle : ui().getDecksTitle, nullptr,
+               gHome.active());
     const int mid = kHeaderH + (H - kHeaderH - kHintH) / 2;
 
     if (gNetStep == NetStep::Connecting || gNetStep == NetStep::Catalog) {
@@ -2848,11 +2913,15 @@ void drawGetDecks() {
 
     const int n = static_cast<int>(gCatalog.size());
     char line[72];
-    snprintf(line, sizeof line, ui().netListFmt, gHome.ssid(), (unsigned)n);
+    if (gNetUpdatesOnly)
+        snprintf(line, sizeof line, ui().updateListFmt, gHome.ssid(), (unsigned)n);
+    else
+        snprintf(line, sizeof line, ui().netListFmt, gHome.ssid(), (unsigned)n);
     gRender.drawLabel(d, line, kGutter, kHeaderH + 3, W - 2 * kGutter, 8, kTextDim, kBg, kSmall);
     const int top = kHeaderH + 12;
     if (n == 0) {
-        drawCaptionLines(d, ui().netEmpty, 4, mid - 10, W - 8, 3, kText);
+        drawCaptionLines(d, gNetUpdatesOnly ? ui().updateAllCurrent : ui().netEmpty, 4, mid - 10,
+                         W - 8, 3, kText);
     } else {
         const bool wide = wideRows();
         gNetList.setCount(n);
@@ -3411,6 +3480,7 @@ void drawScreen() {
     else if (gScreen == Screen::Detail) drawDetail();
     else if (gScreen == Screen::Wifi) drawWifi();
     else if (gScreen == Screen::GetDecks) drawGetDecks();
+    else if (gScreen == Screen::UpdateCheck) drawUpdateCheck();
     else if (gScreen == Screen::WifiMenu) drawWifiMenu();
     else if (gScreen == Screen::NetTest) drawNetTest();
     else if (gScreen == Screen::About) drawAbout();
@@ -4001,7 +4071,8 @@ void openDecks() {
     int sel = 0;
     for (size_t i = 0; i < gPacks.size(); ++i)
         if (gPacks[i] == gCurrentPack) sel = static_cast<int>(i);
-    gDeckList.setCount(static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
+    if (gPacks.empty()) sel = 1;  // no deck to focus: "Get decks", not "Updates"
+    gDeckList.setCount(static_cast<int>(gPacks.size()) + 2);  // + "Updates" and "Get decks"
     gDeckList.reset(sel);
     gPackInfoFor.clear();  // read the headers again (drawDecks())
     gScreen = Screen::Decks;
@@ -4394,7 +4465,15 @@ const MenuItem& menuItem(st::Item id) {
     static const MenuItem kItems[] = {
         // --- home
         {I::Decks, [] { return ui().groupRows[0]; },
-         [](char* o, size_t n) { snprintf(o, n, "%u", (unsigned)gPacks.size()); }, openDecks},
+         [](char* o, size_t n) {
+             if (gUpdateCount == 1)
+                 snprintf(o, n, "%s", ui().updatesCountOne);
+             else if (gUpdateCount > 0)
+                 snprintf(o, n, ui().updatesCountFmt, (unsigned)gUpdateCount);
+             else
+                 snprintf(o, n, "%u", (unsigned)gPacks.size());
+         },
+         openDecks},
         {I::Study, [] { return ui().groupRows[1]; },
          [](char* o, size_t n) { snprintf(o, n, ui().studyValueFmt, (unsigned)gSrs.newPerDay()); },
          [] { openMenuPage(st::Page::Study); }},
@@ -4549,8 +4628,9 @@ void netRefreshStates() {
 
 // Opens the Get decks screen and starts joining the home Wi-Fi. `fromBoot`: from
 // the boot-time upload screen (whose portal the caller already stopped).
-void openGetDecks(bool fromBoot) {
+void openGetDecks(bool fromBoot, bool updatesOnly) {
     gNetFromBoot = fromBoot;
+    gNetUpdatesOnly = updatesOnly;
     gScreen = Screen::GetDecks;
     gCatalog.clear();
     gCatalogState.clear();
@@ -4582,6 +4662,7 @@ void closeGetDecks() {
     gGetDecksLangHint.clear();
     gCatalog.clear();
     gCatalogState.clear();
+    gNetUpdatesOnly = false;
     QLOG("N get decks: closed\n");
     if (gNetFromBoot) {
         gNetFromBoot = false;
@@ -4659,6 +4740,23 @@ void netLoadCatalog() {
     tgc::orderCatalogForLang(gCatalog, firstLang);
     Serial.printf("[net] catalog: \"%s\" decks first\n", firstLang);
     netRefreshStates();
+    setUpdatesFromCatalog(gCatalog);
+    if (gNetUpdatesOnly) {
+        // The updates list: only installed decks whose catalog build has
+        // another size (docs/deck-updates.md). The count is already stored.
+        std::vector<tgc::CatalogEntry> keep;
+        std::vector<tgc::DeckState> keepState;
+        for (size_t i = 0; i < gCatalog.size(); ++i) {
+            if (gCatalogState[i] != tgc::DeckState::Update) continue;
+            keep.push_back(std::move(gCatalog[i]));
+            keepState.push_back(gCatalogState[i]);
+        }
+        gCatalog = std::move(keep);
+        gCatalogState = std::move(keepState);
+        gNetSel = 0;
+        gNetStep = NetStep::List;
+        return;
+    }
     // Start on the first deck that is not here yet.
     gNetSel = 0;
     for (size_t i = 0; i < gCatalogState.size(); ++i)
@@ -4810,7 +4908,19 @@ void netDownload(int i) {
         return;
     }
     const tgc::FetchResult& r = d.fetch;
-    netRefreshStates();
+    if (r.status == tgc::FetchStatus::Ok && updating) {
+        if (gUpdateCount > 0) --gUpdateCount;
+        saveUpdateState();
+    }
+    if (r.status == tgc::FetchStatus::Ok && gNetUpdatesOnly && updating) {
+        // The updates list shows only what still needs it: drop the row now.
+        gCatalog.erase(gCatalog.begin() + i);
+        gCatalogState.erase(gCatalogState.begin() + i);
+        if (gNetSel >= static_cast<int>(gCatalog.size()))
+            gNetSel = gCatalog.empty() ? 0 : static_cast<int>(gCatalog.size()) - 1;
+    } else {
+        netRefreshStates();
+    }
     char buf[48];
     if (r.status == tgc::FetchStatus::Ok) {
         snprintf(buf, sizeof buf, ui().netSavedFmt, tgc::catalogDisplayName(e).c_str());
@@ -4839,6 +4949,7 @@ void netStudy(int i) {
     gCatalog.clear();
     gCatalogState.clear();
     gNetFromBoot = false;
+    gNetUpdatesOnly = false;
     gWifiBootUpload = false;
     startQuizFromPortal();
 }
@@ -4867,7 +4978,7 @@ void getDecksLoop(int a, int b) {
         return;
     }
     if (gNetStep == NetStep::Error) {
-        if (a == 2) openGetDecks(gNetFromBoot);  // retry from the start
+        if (a == 2) openGetDecks(gNetFromBoot, gNetUpdatesOnly);  // retry from the start
         return;
     }
     if (gNetStep != NetStep::List || gCatalog.empty()) return;
@@ -4881,6 +4992,226 @@ void getDecksLoop(int a, int b) {
         else
             netDownload(gNetSel);
     }
+}
+
+// --- Deck update checks (docs/deck-updates.md) ------------------------------
+
+// Epoch day of the SRS day clock, or 0 while no real clock has been applied.
+uint32_t currentEpochDay() {
+    return gSrs.hasWallClock() ? static_cast<uint32_t>(gSrs.epochDayOf(gSrs.today())) : 0;
+}
+
+void saveUpdateState() {
+    gPrefs.putUChar(kPrefUpdateCount, gUpdateCount);
+    gPrefs.putUChar(kPrefUpdateKnown, gUpdateKnown ? 1 : 0);
+    if (gUpdateDay) gPrefs.putUInt(kPrefUpdateDay, gUpdateDay);
+}
+
+// Counts catalog records whose installed file has another size: the same
+// `DeckState::Update` Get decks shows. New catalog decks are not updates, and
+// packs the catalog does not list are ignored.
+uint8_t countUpdates(const std::vector<tgc::CatalogEntry>& entries) {
+    uint8_t n = 0;
+    for (const tgc::CatalogEntry& e : entries) {
+        const String path = String("/packs/") + e.name.c_str() + ".tgc";
+        const long size = tgc::fsFileSize(path);
+        if (size >= 0 &&
+            tgc::catalogDeckState(true, static_cast<uint32_t>(size), e.bytes) ==
+                tgc::DeckState::Update)
+            ++n;
+    }
+    return n;
+}
+
+// Stores the count (and the check day, when the clock is real) after a catalog
+// read, writing NVS only when something changed.
+void setUpdatesFromCatalog(const std::vector<tgc::CatalogEntry>& entries) {
+    const uint8_t n = countUpdates(entries);
+    const uint32_t day = currentEpochDay();
+    const bool known = gUpdateKnown;
+    gUpdateKnown = true;
+    if (n == gUpdateCount && known && (day == 0 || day == gUpdateDay)) return;
+    gUpdateCount = n;
+    if (day) gUpdateDay = day;
+    saveUpdateState();
+}
+
+// The automatic check's policy (docs/deck-updates.md: once a day on external
+// power; on battery, once a week and only from 50 %). A power-cut boot skips
+// it because the date screen already uses the network; the next normal boot
+// checks.
+bool updateCheckDue() {
+    if (gPacks.empty() || !tgc::HomeWifi::hasCredentials() || !gSrs.hasWallClock()) return false;
+    const bool external = tgc::board::externalPower() || tgc::board::isCharging();
+    return tgc::deckUpdateCheckDue(gUpdateDay, currentEpochDay(), external,
+                                   tgc::board::batteryPercent());
+}
+
+// Leaves the check (result, failure or skip): the boot flow continues with the
+// first question, or with the done screen when nothing is due.
+void finishUpdateCheck() {
+    netRadioOff();
+    gSwallowInput = true;
+    if (!newQuestion())
+        showDone();
+    else {
+        gScreen = Screen::Quiz;
+        drawScreen();
+    }
+}
+
+// A press during the join gives up without an error; the day is recorded so
+// the device does not ask again until tomorrow (or next week on battery).
+void updateCheckCancel() {
+    netRadioOff();
+    const uint32_t day = currentEpochDay();
+    if (day) {
+        gUpdateDay = day;
+        saveUpdateState();
+    }
+    finishUpdateCheck();
+}
+
+// Connected: read the catalog (blocking), count the updates, radio off. The
+// result stays on screen for kUpdateResultMs, or until a press.
+void updateCheckRead() {
+    const String url = tgc::HomeWifi::catalogUrl();
+    tgc::CatalogFetch c = tgc::fetchCatalog(url);
+    netRadioOff();
+    gSwallowInput = true;
+    char title[48], detail[96];
+    if (catalogFailure(c, url, title, sizeof title, detail, sizeof detail)) {
+        snprintf(gUpdateErr, sizeof gUpdateErr, "%s", title);
+        gUpdateStep = UpdateStep::Failed;
+        gUpdateDoneAt = millis();
+        const uint32_t day = currentEpochDay();
+        if (day) {
+            gUpdateDay = day;
+            saveUpdateState();
+        }
+        drawScreen();
+        return;
+    }
+    setUpdatesFromCatalog(c.parse.entries);
+    gUpdateFound = gUpdateCount;
+    gUpdateStep = UpdateStep::Done;
+    gUpdateDoneAt = millis();
+    drawScreen();
+}
+
+void openUpdateCheck() {
+    gScreen = Screen::UpdateCheck;
+    gUpdateStep = UpdateStep::Joining;
+    gUpdateStartedAt = millis();
+    gUpdateFound = 0;
+    gUpdateErr[0] = 0;
+    gUpdateDoneAt = 0;
+    gNetActivityAt = millis();
+    setCpuFrequencyMhz(kCpuWifiMhz);
+    if (!gHome.begin()) {
+        snprintf(gUpdateErr, sizeof gUpdateErr, "%s", ui().netNoConnect);
+        netRadioOff();
+        gUpdateStep = UpdateStep::Failed;
+        gUpdateDoneAt = millis();
+        const uint32_t day = currentEpochDay();
+        if (day) {
+            gUpdateDay = day;
+            saveUpdateState();
+        }
+    }
+    drawScreen();
+}
+
+// Called from loop(): the join state machine and the result's timer.
+void updateCheckTick(uint32_t now) {
+    if (gScreen != Screen::UpdateCheck) return;
+    if (gUpdateStep == UpdateStep::Joining) {
+        gNetActivityAt = now;
+        if (now - gUpdateStartedAt >= kUpdateJoinMs) {
+            snprintf(gUpdateErr, sizeof gUpdateErr, "%s", joinFailureText());
+            netRadioOff();
+            gUpdateStep = UpdateStep::Failed;
+            gUpdateDoneAt = now;
+            const uint32_t day = currentEpochDay();
+            if (day) {
+                gUpdateDay = day;
+                saveUpdateState();
+            }
+            drawScreen();
+            return;
+        }
+        const tgc::HomeWifi::State st = gHome.poll();
+        if (st == tgc::HomeWifi::State::Connected) {
+            gUpdateStep = UpdateStep::Catalog;
+            drawScreen();
+            updateCheckRead();
+        } else if (st == tgc::HomeWifi::State::Failed) {
+            snprintf(gUpdateErr, sizeof gUpdateErr, "%s", joinFailureText());
+            netRadioOff();
+            gUpdateStep = UpdateStep::Failed;
+            gUpdateDoneAt = now;
+            const uint32_t day = currentEpochDay();
+            if (day) {
+                gUpdateDay = day;
+                saveUpdateState();
+            }
+            drawScreen();
+        }
+        return;
+    }
+    if (gUpdateStep == UpdateStep::Done || gUpdateStep == UpdateStep::Failed) {
+        if (now - gUpdateDoneAt >= kUpdateResultMs) finishUpdateCheck();
+    }
+}
+
+void updateCheckInput(int a, int b) {
+    if (!a && !b) return;
+    if (gUpdateStep == UpdateStep::Joining || gUpdateStep == UpdateStep::Catalog)
+        updateCheckCancel();
+    else
+        finishUpdateCheck();
+}
+
+// The boot check's screen: the join in progress, then the result (or why it
+// failed). A tap skips the join or continues from the result.
+void drawUpdateCheck() {
+    using namespace tgc::theme;
+    auto& d = *gCanvas;
+    d.fillScreen(kBlack);
+    menuHeader(d, ui().updateTitle, nullptr, gHome.active());
+    const int mid = kHeaderH + (H - kHeaderH - kHintH) / 2;
+    if (gUpdateStep == UpdateStep::Joining || gUpdateStep == UpdateStep::Catalog) {
+        const char* line =
+            gUpdateStep == UpdateStep::Joining ? ui().updateChecking : ui().netCatalog;
+        gRender.drawCentred(d, line, 4, mid - 34, W - 8, 40, 2, kText, kBg,
+                            tgc::Renderer::kTextUi);
+        drawCaptionLines(d, gHome.ssid(), 4, mid + 10, W - 8, 2, kAccentHi);
+        wg::Hints h;
+        h.tap = ui().updateSkip;
+        drawHints(d, h);
+    } else {
+        char line[64];
+        if (gUpdateStep == UpdateStep::Done) {
+            if (gUpdateFound == 1)
+                snprintf(line, sizeof line, "%s", ui().updateFoundOne);
+            else if (gUpdateFound > 1)
+                snprintf(line, sizeof line, ui().updateFoundFmt, (unsigned)gUpdateFound);
+            else
+                snprintf(line, sizeof line, "%s", ui().updateAllCurrent);
+            gRender.drawCentred(d, line, 4, mid - 20, W - 8, 40, 2,
+                                gUpdateFound ? kAccentHi : kOkHi, kBg,
+                                tgc::Renderer::kTextUi);
+            if (gUpdateFound)
+                drawCaptionLines(d, ui().updateWhere, 4, mid + 22, W - 8, 2, kTextDim);
+        } else {
+            gRender.drawCentred(d, gUpdateErr, 4, mid - 20, W - 8, 40, 2, kWarn, kBg,
+                                tgc::Renderer::kTextUi);
+        }
+        wg::Hints h;
+        h.tap = ui().updateContinue;
+        drawHints(d, h);
+    }
+    present();
 }
 
 // --- Settings > Wi-Fi --------------------------------------------------------
@@ -5312,7 +5643,7 @@ void wakeScreen() {
                    (gTestStep == NetTestStep::Joining || gTestStep == NetTestStep::Checking)) {
             openNetTest();  // the idle timeout cut the test short: run it again
         } else if (gScreen == Screen::GetDecks && gNetStep != NetStep::Error && !gHome.active()) {
-            openGetDecks(gNetFromBoot);  // the idle timeout turned the radio off: join again
+            openGetDecks(gNetFromBoot, gNetUpdatesOnly);  // the idle timeout turned the radio off: join again
         } else {
             drawScreen();
         }
@@ -5537,6 +5868,9 @@ void setup() {
     // The namespace keeps the project's former name on purpose, so settings
     // survive the rename to Tamagotcho (docs/decisions.md, 2026-10-21).
     gPrefs.begin("tangocho", false);
+    gUpdateCount = gPrefs.getUChar(kPrefUpdateCount, 0);
+    gUpdateDay = gPrefs.getUInt(kPrefUpdateDay, 0);
+    gUpdateKnown = gPrefs.getUChar(kPrefUpdateKnown, 0) != 0;
     // Absent (never chosen) is not Auto: it may ask for the language below.
     const bool uiPrefStored = gPrefs.isKey("ui");
     gUiLangPref = gPrefs.getInt("ui", tgc::kUiLangAuto);
@@ -5647,6 +5981,12 @@ void setup() {
         // the home Wi-Fi, if saved, may answer it with the network time.
         dateSyncBegin();
         openDate(Screen::Quiz);
+        return;
+    }
+    // Once a day (or a week on battery): check the catalog for newer builds of
+    // the installed decks before the first question (docs/deck-updates.md).
+    if (updateCheckDue()) {
+        openUpdateCheck();
         return;
     }
     if (!newQuestion()) {
@@ -5859,11 +6199,14 @@ void handleInput(int a, int b, uint32_t pressedAt, uint32_t t, bool down) {
         menuLoop(a, b);
     } else if (gScreen == Screen::Decks) {
         if (a == 1) {
-            gDeckList.setCount(static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
+            gDeckList.setCount(static_cast<int>(gPacks.size()) + 2);  // + "Updates" and "Get decks"
             moveListFocus(gDeckList);
             drawScreen();
         } else if (a == 2) {
-            if (gDeckList.focus() == static_cast<int>(gPacks.size()))
+            const int packs = static_cast<int>(gPacks.size());
+            if (gDeckList.focus() == packs)
+                openGetDecks(false, true);  // the "Updates" row
+            else if (gDeckList.focus() == packs + 1)
                 openGetDecks(false);  // the "+ Get decks" row
             else
                 selectPack();
@@ -5981,6 +6324,8 @@ void handleInput(int a, int b, uint32_t pressedAt, uint32_t t, bool down) {
         // download; the boot-time upload screen moves on to the quiz as soon as
         // a pack arrived in setup mode (see wifiLoop()).
         wifiLoop(a, b);
+    } else if (gScreen == Screen::UpdateCheck) {
+        updateCheckInput(a, b);
     } else if (gScreen == Screen::GetDecks) {
         getDecksLoop(a, b);
     } else if (gScreen == Screen::WifiMenu) {
@@ -6024,7 +6369,7 @@ bool listFocusUp() {
             break;
         }
         case Screen::Decks:
-            gDeckList.setCount(static_cast<int>(gPacks.size()) + 1);  // + "Get decks"
+            gDeckList.setCount(static_cast<int>(gPacks.size()) + 2);  // + "Updates" and "Get decks"
             moveListFocus(gDeckList, -1);
             break;
         case Screen::Choice:
@@ -6262,6 +6607,7 @@ void loop() {
     // Save and sleep before a nearly flat cell browns out and takes the RTC
     // timer (the SRS day clock) with it.
     if (batteryCritical(t)) sleepNow(true);
+    updateCheckTick(t);
     powerTick(t);
     delay(10);
 }

@@ -119,4 +119,18 @@ void orderCatalogForLang(std::vector<CatalogEntry>& entries, const char* uiLang)
 enum class DeckState : uint8_t { New, OnDevice, Update };
 DeckState catalogDeckState(bool present, uint32_t localBytes, uint32_t catalogBytes);
 
+// Whether the boot-time deck update check is due (docs/deck-updates.md): once a
+// day on external power, or once a week on battery from 50 %. `today` and
+// `lastDay` are epoch days (0 = no real clock / never checked); a negative
+// battery reading (no gauge) only allows the external-power rule.
+constexpr uint8_t kDeckUpdateBatteryMin = 50;
+constexpr uint32_t kDeckUpdateBatteryDays = 7;
+constexpr bool deckUpdateCheckDue(uint32_t lastDay, uint32_t today, bool external,
+                                  int batteryPercent) {
+    if (today == 0 || lastDay == today) return false;
+    if (external) return true;
+    if (lastDay != 0 && today < lastDay + kDeckUpdateBatteryDays) return false;
+    return batteryPercent >= kDeckUpdateBatteryMin;
+}
+
 }  // namespace tgc

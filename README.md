@@ -73,6 +73,9 @@ cards Japanese students carry around, which the M5Stack StickS3 resembles.
   that kanji, and its stroke order animated from KanjiVG.
 - **12 ready-made decks**: JLPT N5 to N1 and all 2,136 Jōyō kanji, in English
   and Spanish, downloaded over Wi-Fi from the device itself or from your phone.
+- **Deck updates on their own**: with a home Wi-Fi saved, the device checks the
+  catalog at boot (daily on USB power, weekly on battery) and shows "N
+  updates"; a hold replaces a deck and keeps its progress.
 - **Useful first**: readings ordered by the Jōyō table and everyday words,
   meanings by the words you will meet; on'yomi in katakana or hiragana.
 - **Wi-Fi only when you want it**: a web portal on your home network (decks,

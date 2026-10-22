@@ -2972,3 +2972,29 @@ marked *to confirm* needs the device.
 - **Decks.** Published in `decks-v2` on 2026-10-22 (`decks.yml` run
   39746603559). The published N3/N2 packs were checked and their catalog
   SHA-256 verified.
+
+## 2026-10-22 – Deck update checks
+
+- **Why.** Get decks already marked a deck "update" when its size differed
+  from the catalog, but only if the user opened it and compared by hand. The
+  device now notices at boot and says so: the Decks group shows "N updates",
+  a new Updates row opens the filtered list, and a hold replaces the pack.
+- **When.** At boot, before the first question, once a day on external power
+  or once a week on battery from 50 %. A power-cut boot skips it (the date
+  screen already uses the radio); the next normal boot checks. A small screen
+  shows the join, any press skips it, a 30 s cap gives up, and the result
+  stays two seconds. The policy keeps the radio-off rule: one join, radio off
+  before the quiz.
+- **Size only.** `catalogDeckState()` compares the installed file's size with
+  the catalog's exact `bytes`; hashing the local file against the catalog's
+  SHA-256 is the follow-up (a same-size rebuild is missed). Downloads still
+  check the catalog's size and SHA-256 before the atomic rename, and replacing
+  a pack keeps SRS progress (per kanji, docs/srs.md section 2).
+- **State.** NVS `tangocho`: `updday` (epoch day of the last completed check),
+  `updcount` (a badge) and `updok` (a catalog read has succeeded, so "up to
+  date" is a real answer). The updates list always reads the catalog again; a
+  failed or skipped check records the day but leaves the count and `updok`.
+- **No automatic download.** The check only tells; the user holds to update.
+- **Not yet checked on hardware.** The code builds for `sticks3` and
+  `m5stack`; the boot check, badge, list, download and progress survival need
+  a StickS3 / Cardputer ADV run (docs/deck-updates.md, "Verification").

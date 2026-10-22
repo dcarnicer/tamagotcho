@@ -9,9 +9,12 @@
  CSV/Anki* ─┘             font (Noto Sans JP) ─► glyphs ─┘      └─ config         Quiz engine ─► UI
                                                                                   Board HAL (StickS3 / T-Display-S3 / Cardputer ADV)
         phone/laptop ──(setup mode: open AP 192.168.4.1 | home mode: home Wi-Fi, http://<ip>/)──► Wi-Fi portal (HTTP) ──► /packs
-        decks-v<format> release: catalog-v2.txt + packs ──(home Wi-Fi, HTTPS, on demand)──► Get decks / portal page ──► /packs
+        decks-v<format> release: catalog-v2.txt + packs ──(home Wi-Fi, HTTPS: Get decks, portal, boot check)──► Get decks / portal page ──► /packs
  * later phases
 ```
+
+The boot-time check is the only automatic catalog read (docs/deck-updates.md):
+it runs once a day on external power, or once a week on battery from 50 %.
 
 ## Principles
 

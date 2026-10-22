@@ -423,6 +423,24 @@ void test_deck_state() {
                       static_cast<int>(catalogDeckState(true, 0, 703123)));
 }
 
+void test_update_check_due() {
+    // No real clock: never.
+    TEST_ASSERT_FALSE(deckUpdateCheckDue(0, 0, true, 100));
+    // Already checked today.
+    TEST_ASSERT_FALSE(deckUpdateCheckDue(20000, 20000, true, 100));
+    // External power: once a day, whatever the battery.
+    TEST_ASSERT_TRUE(deckUpdateCheckDue(19999, 20000, true, 0));
+    TEST_ASSERT_TRUE(deckUpdateCheckDue(0, 20000, true, -1));
+    // Battery: never checked -> from 50 %, then once a week.
+    TEST_ASSERT_TRUE(deckUpdateCheckDue(0, 20000, false, 50));
+    TEST_ASSERT_FALSE(deckUpdateCheckDue(0, 20000, false, 49));
+    TEST_ASSERT_FALSE(deckUpdateCheckDue(19994, 20000, false, 100));  // 6 days
+    TEST_ASSERT_TRUE(deckUpdateCheckDue(19993, 20000, false, 50));    // 7 days
+    TEST_ASSERT_FALSE(deckUpdateCheckDue(19993, 20000, false, 49));
+    // A clock that went backwards does not trigger it.
+    TEST_ASSERT_FALSE(deckUpdateCheckDue(20005, 20000, false, 100));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_builder_output_bare_urls);
@@ -443,5 +461,6 @@ int main() {
     RUN_TEST(test_lang_matches);
     RUN_TEST(test_order_for_lang);
     RUN_TEST(test_deck_state);
+    RUN_TEST(test_update_check_due);
     return UNITY_END();
 }
