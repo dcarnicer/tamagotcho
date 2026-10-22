@@ -2969,5 +2969,6 @@ marked *to confirm* needs the device.
   `worth_asking()`; `classify()` still says "not in the table", so the reports
   keep showing the table's truth. The other readings stay in the card as valid
   answers. JLPT N3 now asks 等 など and 経 た.つ, N2 asks 被 かぶ.る.
-- **Decks.** The next `decks.yml` run publishes the three changes (the local
-  N2/N3 builds validate and pass both distractor checks).
+- **Decks.** Published in `decks-v2` on 2026-10-22 (`decks.yml` run
+  39746603559). The published N3/N2 packs were checked and their catalog
+  SHA-256 verified.

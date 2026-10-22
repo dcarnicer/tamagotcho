@@ -113,11 +113,12 @@ Scope for now: **kanji only** (no vocabulary decks).
         `EXTRA_COMMON` table in `readings.py` treats them as approved for the
         reading order, while `classify()` still reports what the table says;
         N3 asks 等 など and 経 た.つ, N2 asks 被 かぶ.る
-        (docs/common-readings.md, "Extra common readings"). The published decks
-        need the next `decks.yml` run to carry them.
-      - [ ] Rebuild the published decks after the extra common readings
-        (2026-10-22): dispatch `decks.yml` (the local builds validate and pass
-        the distractor checks).
+        (docs/common-readings.md, "Extra common readings"). Published on
+        2026-10-22 (`decks.yml` run 39746603559).
+      - [x] Rebuild the published decks after the extra common readings
+        (2026-10-22): done, `decks.yml` run 39746603559 rebuilt the 12 packs;
+        the published N3/N2 packs were checked and their catalog SHA-256
+        verified.
       - [x] **Meanings in a useful order** (2026-10-20). KANJIDIC2's Spanish
         meanings are often ordered worse than its English ones, and the device
         shows the first ones: 持 "duración; propiedad" (en "hold; have"), 界

@@ -4,7 +4,7 @@ Status (2026-10-22): researched, decided by the maintainer (below) and
 implemented as `tamagotcho-pack build --common-readings`; the published decks
 have used it since 2026-10-20. Without the flag the builder's output is
 byte-identical to before. `EXTRA_COMMON` adds the three common readings below
-(2026-10-22); the next `decks.yml` run publishes them.
+(2026-10-22), published in `decks-v2` the same day.
 
 ## Problem
 
@@ -359,8 +359,6 @@ are unchanged (N5 105 KB, Jōyō 3.0 MB); each build takes ~10 s longer.
 
 ## Follow-ups
 
-- Run `decks.yml` to publish the extra common readings (the local N2/N3 builds
-  are checked; docs/roadmap.md keeps this as an open action).
 - The About row for `kReadings` (`main.cpp`).
 - Known limits: one JMdict entry with two readings (行く いく/ゆく) is split
   evenly; place names inside compounds add noise (三重 みえ to 重 え); wordfreq
