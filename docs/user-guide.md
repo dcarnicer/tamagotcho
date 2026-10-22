@@ -275,13 +275,15 @@ Honest status — **not verified on hardware**:
   `partitions/sticks3_8MB.csv`. An app-only binary carries no partition table,
   so the launcher decides the app offset/size and the data partition's
   label/size (its wiki says empty data partitions start at a 448 KB minimum
-  unless enlarged). Our app slot is 2 MB and the build is ~1.2 MB, so it should
-  fit a launcher-created app partition, but we have not confirmed it.
+  unless enlarged). The Cardputer ADV's launcher table, seen on 2026-10-22,
+  has a 1,344 KB app0 and a 2,496 KB `firmw1` OTA app slot: the 1.48 MB image
+  does not fit app0, so it would have to be installed in `firmw1` (not tried).
 - Our LittleFS partition as built by `uploadfs` (the partition labelled
   `spiffs`, 5.94 MB at `0x210000` on the StickS3) is **not necessarily the same
-  partition** a launcher-managed app sees, and 448 KB is far too small for a
-  multi-MB pack. Whether the launcher's partition carries a label our firmware
-  mounts and is large enough to hold packs is an **open question** to settle on
+  partition** a launcher-managed app sees. The Cardputer's launcher data
+  partition was 448 KB, far too small for a multi-MB pack: the N5 deck might
+  fit, the larger decks will not. Whether the launcher's partition carries a
+  label our firmware mounts is still an **open question** to settle on
   hardware.
 - Because of that, the reliable way to populate `/packs` under a
   launcher-installed app is the **Wi-Fi portal above**, once the firmware is

@@ -224,9 +224,13 @@ Scope for now: **kanji only** (no vocabulary decks).
         `pio run -e sticks3` produces can be installed as a launcher app, and
         the Wi-Fi upload is the intended way to populate `/packs` once it runs
         (the launcher's SPIFFS starts empty and our `uploadfs` layout is not the
-        one in use). Documented in README.md; **not verified on hardware**, and
-        whether the launcher-created filesystem partition is large enough for
-        packs is an open question.
+        one in use). Documented in README.md. The Cardputer ADV's launcher
+        table, seen on 2026-10-22, has app0 1,344 KB (test), firmw1 2,496 KB
+        (the OTA app slot) and a 448 KB SPIFFS; the 1.48 MB app-only image does
+        not fit app0, so a launcher install would have to use firmw1 (not
+        tried), and 448 KB cannot hold a normal deck set. The Wi-Fi portal
+        remains the deck path; the hardware test used a merged image with the
+        project's table.
 - [x] **Phase 5 – Release.** Done so far: the app-only image and a **merged
       single-file image** per board plus an **ESP Web Tools `manifest.json`**,
       published by `.github/workflows/release.yml` on tags `v*` (and manual
