@@ -325,6 +325,40 @@ def test_worth_asking_and_drop_rules():
     assert kept[0].all_kunyomi is None and not st2.dropped_kun
 
 
+def test_extra_common_readings_are_asked():
+    from tamagotcho_pack.readings import ReadingScores, is_extra_common
+
+    joyo = {"等": [JoyoReading("トウ", False), JoyoReading("ひと.しい", False)],
+            "経": [JoyoReading("ケイ", False), JoyoReading("へ.る", False)],
+            "被": [JoyoReading("ヒ", False), JoyoReading("こうむ.る", False)]}
+    # The table approves none of these; EXTRA_COMMON makes them worth asking
+    # and lets the JLPT level put them first (docs/common-readings.md).
+    assert is_extra_common(ord("等"), "など")
+    assert is_extra_common(ord("経"), "たつ")          # same reading, no dot
+    assert not is_extra_common(ord("等"), "ら")
+    assert worth_asking(ord("等"), ["など"], {}, joyo)
+    assert worth_asking(ord("経"), ["た.つ"], {}, joyo)
+    assert worth_asking(ord("被"), ["かぶ.る"], {}, joyo)
+    raw = [RawKanji(ord("等"), {"en": ["etc."]}, ["トウ"], ["ひと.しい", "など", "ら"],
+                    4, 3, 12, 0),
+           RawKanji(ord("経"), {"en": ["pass"]}, ["ケイ", "キョウ"], ["へ.る", "た.つ"],
+                    3, 5, 11, 0),
+           RawKanji(ord("被"), {"en": ["suffer"]}, ["ヒ"], ["こうむ.る", "かぶ.る"],
+                    3, 5, 10, 0)]
+    scores = ReadingScores(
+        score={ord("等"): {"など": 0.9, "ひと.しい": 0.1},
+               ord("経"): {"た.つ": 0.7, "へ.る": 0.3},
+               ord("被"): {"かぶ.る": 0.9, "こうむ.る": 0.1}},
+        level={ord("等"): {"など": 3, "ひと.しい": 3},
+               ord("経"): {"た.つ": 3, "へ.る": 1},
+               ord("被"): {"かぶ.る": 3}})
+    out, _ = reorder_raw(raw, scores, joyo, drop=True)
+    got = {chr(k.codepoint): k for k in out}
+    assert got["等"].kunyomi[:2] == ["など", "ひと.しい"]
+    assert got["経"].kunyomi[:2] == ["た.つ", "へ.る"]
+    assert got["被"].kunyomi[:2] == ["かぶ.る", "こうむ.る"]
+
+
 def test_reading_distractors_avoid_a_dropped_kind():
     from tamagotcho_pack.distractors import reading_distractors
     from tamagotcho_pack.kanjidic import Card

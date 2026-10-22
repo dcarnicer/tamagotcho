@@ -94,11 +94,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       card's own accuracy), and it now plays the kanji's **stroke order from
       KanjiVG** when the pack was built with `--strokes` (a v1-compatible
       optional pack section; packs without it behave exactly as before).
-      Pending: preferring *common* readings — KANJIDIC2's reading order is not by
-      frequency (e.g. 九's first kun reading is the rare ここの), so this needs a
-      reading-frequency source or an on'yomi preference for some kanji.
-      Done (2026-10-20, docs/common-readings.md): `build --common-readings`
-      puts the Jōyō table's approved readings first, then those of the easiest
+      *Common* readings (done 2026-10-20, docs/common-readings.md): KANJIDIC2's
+      reading order is not by frequency (e.g. 九's first kun reading is the rare
+      ここの), so `build --common-readings` puts the Jōyō table's approved
+      readings first, then those of the easiest
       JLPT vocabulary, then the most frequent (JMdict, JmdictFurigana,
       wordfreq, Tatoeba), and leaves a kind with nothing worth asking empty,
       so 気 and 百 are asked their on'yomi; the firmware keeps the on/kun turn
@@ -108,9 +107,17 @@ Scope for now: **kanji only** (no vocabulary decks).
       - [x] Rebuild the published decks with it: `decks.yml` replaced
         `decks-v2` in place on 2026-10-20, and again on 2026-10-21 (hiragana
         glyphs, the new repository name in the catalog's URLs).
-      - [ ] Follow-up: let a few common readings the Jōyō table does not
+      - [x] Follow-up: let a few common readings the Jōyō table does not
         approve be asked (等 など, 経 た.つ, 被 かぶ.る), e.g. for learners outside
-        the school curriculum.
+        the school curriculum. Done (2026-10-22): the project-authored
+        `EXTRA_COMMON` table in `readings.py` treats them as approved for the
+        reading order, while `classify()` still reports what the table says;
+        N3 asks 等 など and 経 た.つ, N2 asks 被 かぶ.る
+        (docs/common-readings.md, "Extra common readings"). The published decks
+        need the next `decks.yml` run to carry them.
+      - [ ] Rebuild the published decks after the extra common readings
+        (2026-10-22): dispatch `decks.yml` (the local builds validate and pass
+        the distractor checks).
       - [x] **Meanings in a useful order** (2026-10-20). KANJIDIC2's Spanish
         meanings are often ordered worse than its English ones, and the device
         shows the first ones: 持 "duración; propiedad" (en "hold; have"), 界

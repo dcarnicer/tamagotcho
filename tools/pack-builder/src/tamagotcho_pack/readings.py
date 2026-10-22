@@ -647,10 +647,35 @@ def order_by_score(readings: list[str], scores: dict[str, float],
                                   for i, r in enumerate(readings))]
 
 
+# Common readings the Jōyō table does not approve, but that are the everyday
+# reading of the kanji and worth asking (docs/common-readings.md, "Extra common
+# readings"). Project-authored and hand-checked; keyed by kanji, values in
+# KANJIDIC2 notation. They are ordered as if the table approved them, so they
+# can be the asked reading; `classify()` still reports what the table says, so
+# the reports keep counting them as not approved.
+EXTRA_COMMON = {
+    "等": ("など",),
+    "経": ("た.つ",),
+    "被": ("かぶ.る",),
+}
+
+
+def is_extra_common(cp: int, reading: str) -> bool:
+    """True for a reading in EXTRA_COMMON, matched with or without okurigana
+    (経 た.つ and a hypothetical たつ are the same reading)."""
+    extra = EXTRA_COMMON.get(chr(cp))
+    if not extra:
+        return False
+    from .joyo_table import plain
+
+    p = plain(reading)
+    return any(plain(r) == p for r in extra)
+
+
 def joyo_tiers(cp: int, readings: list[str], joyo: dict | None) -> dict[str, int] | None:
-    """Tier 0 for the readings the Jōyō table approves for this kanji, 1 for
-    the rest (indented or not in the table). None (one tier) for a kanji the
-    table does not list, or without a table."""
+    """Tier 0 for the readings the Jōyō table approves for this kanji (or that
+    EXTRA_COMMON adds), 1 for the rest (indented or not in the table). None
+    (one tier) for a kanji the table does not list, or without a table."""
     if not joyo:
         return None
     from .joyo_table import classify
@@ -658,7 +683,8 @@ def joyo_tiers(cp: int, readings: list[str], joyo: dict | None) -> dict[str, int
     entry = joyo.get(chr(cp))
     if entry is None:
         return None
-    return {r: 0 if classify(r, entry) == "joyo" else 1 for r in readings}
+    return {r: 0 if classify(r, entry) == "joyo" or is_extra_common(cp, r) else 1
+            for r in readings}
 
 
 def share(readings: list[str], scores: dict[str, float]) -> dict[str, float]:
@@ -730,15 +756,15 @@ class ReorderStats:
 def worth_asking(cp: int, readings: list[str], scores: dict[str, float],
                  joyo: dict | None) -> bool:
     """Whether a kind of a kanji has a reading worth asking: for a kanji in the
-    Jōyō table, one the table approves (not indented); for any other kanji,
-    one that some word uses (score > 0)."""
+    Jōyō table, one the table approves (not indented) or EXTRA_COMMON adds; for
+    any other kanji, one that some word uses (score > 0)."""
     if not readings:
         return False
     entry = joyo.get(chr(cp)) if joyo else None
     if entry is not None:
         from .joyo_table import classify
 
-        return any(classify(r, entry) == "joyo" for r in readings)
+        return any(classify(r, entry) == "joyo" or is_extra_common(cp, r) for r in readings)
     return any(scores.get(r, 0.0) > 0 for r in readings)
 
 

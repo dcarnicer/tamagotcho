@@ -297,8 +297,9 @@ jobs:
           JLPT decks introduce new kanji by school grade, then frequency; the Jōyō
           deck goes grade by grade (1-6, then the secondary-school kanji), each by
           newspaper frequency. Reading questions ask a common reading: the ones the
-          Jōyō table approves first, then those of the easiest JLPT vocabulary,
-          then the most frequent; a kanji with no reading of a kind worth asking
+          Jōyō table approves first (plus 等 など, 経 た.つ and 被 かぶ.る, which the
+          table leaves out), then those of the easiest JLPT vocabulary, then the
+          most frequent; a kanji with no reading of a kind worth asking
           (気 いき, 百 もも) is asked the other kind. The meaning shown is the one
           learners meet first: English meanings are ordered by the JLPT vocabulary
           that uses the kanji (私 "I", 機 "machine"), Spanish ones by the English

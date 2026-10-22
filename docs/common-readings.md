@@ -1,11 +1,10 @@
 # Common readings
 
-Status (2026-10-20): researched, decided by the maintainer (below) and
-implemented on the branch `feature/common-readings` as
-`tamagotcho-pack build --common-readings`. `decks.yml` is prepared to use it for
-the published decks but has not been run: the maintainer reviews the N5
-changes first. Without the flag the builder's output is byte-identical to
-before.
+Status (2026-10-22): researched, decided by the maintainer (below) and
+implemented as `tamagotcho-pack build --common-readings`; the published decks
+have used it since 2026-10-20. Without the flag the builder's output is
+byte-identical to before. `EXTRA_COMMON` adds the three common readings below
+(2026-10-22); the next `decks.yml` run publishes them.
 
 ## Problem
 
@@ -133,10 +132,11 @@ https://jiten.moe/guides/deck-licensing, https://www.jiten.moe/guides/api-and-sc
 2. **No pack-format extension** (no "do not ask" flags). Instead a kind with
    nothing worth asking is **left empty** and the device asks the other kind
    through its existing fallback. For a Jōyō kanji, a kind is worth asking when
-   at least one of its readings is approved by the table; for another kanji,
-   when at least one is used by some word. **Never both kinds**: if both fail,
-   the kind with the higher total score stays; a card's only kind always stays.
-   A kind that stays keeps all its readings, the unused ones last.
+   at least one of its readings is approved by the table (or in `EXTRA_COMMON`,
+   below); for another kanji, when at least one is used by some word. **Never
+   both kinds**: if both fail, the kind with the higher total score stays; a
+   card's only kind always stays. A kind that stays keeps all its readings, the
+   unused ones last.
 3. **Learner signal**: yes, the JLPT level of the words using a reading. Source
    and key below.
 4. **Adopt for the published decks**, prepared on the branch (`decks.yml`,
@@ -147,8 +147,31 @@ https://jiten.moe/guides/deck-licensing, https://www.jiten.moe/guides/api-and-sc
    kind may be empty.
 6. **pypdf**: kept as a builder dependency.
 7. **jiten.moe**: not used.
-8. **Common non-approved readings** (等 など, 経 た.つ, 被 かぶ.る): later, a
-   roadmap follow-up.
+8. **Common non-approved readings** (等 など, 経 た.つ, 被 かぶ.る): done
+   2026-10-22 with `EXTRA_COMMON` (below).
+
+## Extra common readings (2026-10-22)
+
+The Jōyō table is the school curriculum, and a few everyday readings are not
+in it. `EXTRA_COMMON` (in `readings.py`) is a small, hand-checked,
+project-authored table that treats them as approved **for the reading order
+and for `worth_asking()`**, so they can be the asked reading and their kind is
+not emptied:
+
+| kanji | extra reading | the table approves | why |
+|---|---|---|---|
+| 等 | など | ひと.しい | 等しい is the school reading; など is the everyday one |
+| 経 | た.つ | へ.る | 経つ ("time passes") is N3 vocabulary; 経る is rarer |
+| 被 | かぶ.る | こうむ.る | 被る is the everyday verb; こうむ.る is formal |
+
+`classify()` still reports them as **not in the table**, so
+`common_readings_report.py` keeps showing what the table says (they count as
+"not in the table" and are marked `†` in its per-reading lines). Everything
+else stays: the other readings
+ride along in the card as valid answers, and reading distractors still avoid
+them. The effect in the built decks: JLPT N3 asks 等 など and 経 た.つ; N2
+asks 被 かぶ.る. Extend the table with one line per reading (KANJIDIC2
+notation, okurigana dot) plus a test case.
 
 ## What `--common-readings` does (`tamagotcho_pack/readings.py`)
 
@@ -217,6 +240,8 @@ key it changes 13 first readings, all toward the textbook one (出 で.る, 黒
 `uv run python scripts/common_readings_report.py` (after `fetch --readings`).
 The set is JLPT N5-N1 ∪ Jōyō: 2,383 kanji. 507,445 per-kanji furigana parts
 matched a KANJIDIC2 reading, 5,794 (1.1 %) did not (irregular readings, names).
+The counts below are from 2026-10-20, before `EXTRA_COMMON`; it changes three
+more first kun'yomi (等 など, 経 た.つ, 被 かぶ.る).
 
 **First reading changes** (each column adds to the previous; the last counts
 only the kinds that stay):
@@ -334,9 +359,8 @@ are unchanged (N5 105 KB, Jōyō 3.0 MB); each build takes ~10 s longer.
 
 ## Follow-ups
 
-- Let a few common readings the table does not approve be asked (等 など, 経
-  た.つ, 被 かぶ.る), e.g. for learners outside the school curriculum
-  (docs/roadmap.md).
+- Run `decks.yml` to publish the extra common readings (the local N2/N3 builds
+  are checked; docs/roadmap.md keeps this as an open action).
 - The About row for `kReadings` (`main.cpp`).
 - Known limits: one JMdict entry with two readings (行く いく/ゆく) is split
   evenly; place names inside compounds add noise (三重 みえ to 重 え); wordfreq
