@@ -3061,6 +3061,12 @@ marked *to confirm* needs the device.
   "up to date". On Get decks the states computed for the list are handed to the
   update count instead of hashing every pack twice; a short serial line reports
   the total hashing time of each pass.
+- **Checked on a StickS3 (2026-10-22).** A custom catalog declared the installed
+  `n5-en` with its exact size (106,124 B) and another SHA-256: the portal and
+  the device's Updates list both showed Update. Holding it downloaded the
+  published deck, removed the row and kept 5 due / 67 new. The published
+  catalog then showed the other decks installed from older builds as updates
+  too (same size, different digest), which is the case this change exists for.
 
 ## 2026-10-22 – Progress backup and restore in the portal
 
@@ -3098,6 +3104,11 @@ marked *to confirm* needs the device.
   the restore replaces all decks' progress, so it is behind a confirm dialog
   and refuses while a deck download or URL fetch is in progress (the existing
   Busy notice). The "no file yet" download is a notice, not an error page.
+- **Checked on a StickS3 (2026-10-22).** A 244-byte backup with 12 records
+  downloaded; after one wrong answer the counters were 16 answers / 3 Again;
+  restoring the backup returned them to 15 / 2 and the downloaded file matched
+  the backup's SHA-256. A random 244-byte upload was rejected and left the
+  state untouched. The session kept 5 due / 67 new across a deck update.
 
 ## 2026-10-22 – Browser install page on GitHub Pages
 
@@ -3122,12 +3133,12 @@ marked *to confirm* needs the device.
   install buttons and in its own Updates section. The page itself has not been
   tried on hardware yet (2026-10-22); it writes the same merged image at `0x0`
   that the esptool and esptool-js runs verified.
-- **Pages setup.** Pages has to be enabled once in **Settings → Pages → Source:
-  GitHub Actions**. The workflow does not use `configure-pages`'s
-  `enablement: true`: that needs repository-admin rights and would flip a
-  maintainer setting silently. At the time of writing the repository's Pages
-  site was not enabled yet, so the first run will stop at `configure-pages`
-  until that setting is changed.
+- **Pages setup.** Pages was enabled on 2026-10-22 in **Settings → Pages →
+  Source: GitHub Actions** and the v0.4.2 page deployed by a manual
+  `workflow_dispatch` (run 39805320148: page, manifest and merged image all
+  HTTP 200). The workflow does not use `configure-pages`'s `enablement: true`:
+  that needs repository-admin rights and would flip a maintainer setting
+  silently. A later Release republishes the page automatically.
 - **Pinned installer.** The page loads ESP Web Tools 10.4.0 from unpkg
   (`install-button.js?module`), not `@latest`: the custom element is the only
   runtime dependency and a fixed version keeps the flash protocol stable. The

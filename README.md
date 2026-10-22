@@ -75,7 +75,11 @@ cards Japanese students carry around, which the M5Stack StickS3 resembles.
   and Spanish, downloaded over Wi-Fi from the device itself or from your phone.
 - **Deck updates on their own**: with a home Wi-Fi saved, the device checks the
   catalog at boot (daily on USB power, weekly on battery) and shows "N
-  updates"; a hold replaces a deck and keeps its progress.
+  updates"; a hold replaces a deck and keeps its progress, comparing SHA-256
+  too, so a rebuild of the same size is not missed.
+- **Progress backup**: download the whole study state from the portal and
+  restore it on the same device or another; the restore validates the file and
+  keeps the previous state as a safety copy.
 - **Useful first**: readings ordered by the Jōyō table and everyday words,
   meanings by the words you will meet; on'yomi in katakana or hiragana.
 - **Wi-Fi only when you want it**: a web portal on your home network (decks,
@@ -110,10 +114,8 @@ StickS3 and the Cardputer ADV alike: the firmware finds the board at boot.
 connect the device over USB and press **Burn**. One entry serves both boards.
 
 **From the browser, first install** (Chrome or Edge on a computer). Open the
-[install page](https://dcarnicer.github.io/tamagotcho/) (published by
-`.github/workflows/pages.yml`; run it once from Actions if the page is not live
-yet), pick the board and press **Connect**, then **Install**. No download or
-esptool is needed. It writes
+[install page](https://dcarnicer.github.io/tamagotcho/), pick the board and
+press **Connect**, then **Install**. No download or esptool is needed. It writes
 the merged image, so it is a **first install only**: the settings (home Wi-Fi,
 preferences) are erased; decks and study progress stay. For an update use the
 app-only image below or the release page. The page is published by

@@ -128,10 +128,18 @@ catalog.
   classification, size-only and size + SHA-256 (`test/test_catalog`);
   `deckUpdateCheckDue()` covers the daily / weekly / 50 % policy. The update
   count and the boot screen are device-only code.
-- Both boards build (`pio run -e sticks3`, `-e m5stack`).
-- **StickS3, 2026-10-22.** The boot check joined the saved home Wi-Fi
-  ("Shimokitazawa"), read the catalog and showed "All decks are up to date";
-  the radio was off before the quiz. A deliberately replaced `n4-en.tgc`
+- Both boards build (`pio run -e sticks3`, `-e cardputer-adv`).
+- **Same-size rebuild, StickS3, 2026-10-22.** A local catalog declared `n5-en`
+  with the installed file's exact size (106,124 B) but another SHA-256. The
+  portal marked it **Update**, and the device's **Decks > Updates** list showed
+  **JLPT N5 · update** after hashing one pack in 73 ms. Holding it downloaded
+  the published deck (106,124 B, SHA-256 checked), removed the row, and kept
+  the deck at 5 due / 67 new. With the published catalog, the other installed
+  decks also showed as updates: their older builds have the same size but a
+  different digest, which is exactly what the new check catches.
+- **StickS3, 2026-10-22 (v0.4.2, size-only).** The boot check joined the saved
+  home Wi-Fi ("Shimokitazawa"), read the catalog and showed "All decks are up
+  to date"; the radio was off before the quiz. A deliberately replaced `n4-en.tgc`
   (189,660 B, built without stroke order) was detected by the **Updates** row
   and the filtered list showed "JLPT N4 · update"; a hold downloaded the
   catalog build (238,688 B, size and SHA-256 checked), removed the row and

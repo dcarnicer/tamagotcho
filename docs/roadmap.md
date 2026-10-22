@@ -288,6 +288,13 @@ Scope for now: **kanji only** (no vocabulary decks).
       weakest-kanji view, and goes with the `decks-v2` rebuild of that day;
       its notes are `docs/releases/v0.4.2.md` and its M5Burner version is ready
       to submit (docs/m5burner.md).
+      **v0.5.0** (2026-10-22) adds SHA-256 to the deck update check, progress
+      backup and restore in the portal, `--kanji-file` in the pack builder, and
+      the browser install page on GitHub Pages. It was checked on a StickS3
+      (same-size update detection and update, backup/restore, a custom pack
+      upload/load/delete, normal build boot); the Cardputer ADV and
+      T-Display-S3 only build. Its notes are `docs/releases/v0.5.0.md`; the
+      M5Burner version is pending.
       The **README** is a landing page since 2026-10-21: a cover and a
       gallery of real screens (`tools/screenshots/readme_images.py`, shots
       from a StickS3 through the serial remote), with the long manual moved
@@ -478,12 +485,13 @@ Scope for now: **kanji only** (no vocabulary decks).
 - [x] Flash a **merged** image on a real StickS3 — in a browser and with
       `esptool write_flash 0x0 …` — to confirm the documented offsets. Done
       2026-10-18 for v0.1.0 (esptool, and esptool-js after Erase Flash).
-- [~] **ESP Web Tools install page** (2026-10-22). The workflow is ready:
-      `.github/workflows/pages.yml` downloads each release's merged images and
-      manifests, renders `tools/install-page/index.html`, and deploys them
-      together to <https://dcarnicer.github.io/tamagotcho/>, because the page
-      and the assets must share an origin (release assets send no CORS
-      headers). It is a **first-install** path only: the merged image erases the
-      settings, while updates stay on the app-only image. Pending: enable
-      GitHub Pages once in **Settings → Pages → Source: GitHub Actions** and
-      run the workflow (it is not deployed yet).
+- [x] **ESP Web Tools install page** (2026-10-22). Published at
+      <https://dcarnicer.github.io/tamagotcho/>: `.github/workflows/pages.yml`
+      downloads each release's merged images and manifests, renders
+      `tools/install-page/index.html`, and deploys them together, because the
+      page and the assets must share an origin (release assets send no CORS
+      headers). GitHub Pages was enabled on 2026-10-22 and the v0.4.2 page
+      deployed (run 39805320148, HTTP 200, manifest and merged image checked);
+      every later Release republishes it. It is a **first-install** path only:
+      the merged image erases the settings, while updates stay on the app-only
+      image.

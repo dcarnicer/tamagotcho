@@ -414,6 +414,13 @@ zone) are NVS, not this file, and deck files are not included.
   nature: the page asks for confirmation, the download is read-only, and a
   restore is refused with the existing Busy notice while a deck download or URL
   fetch is in progress.
+- **Checked on a StickS3 (2026-10-22).** The download gave a 244-byte file
+  with 12 records (magic `TNGS`, v1). After answering one card, the counters
+  went from 15 answers / 2 Again to 16 / 3; restoring the file brought them
+  back to 15 / 2 and the downloaded file matched the backup's SHA-256 byte for
+  byte. A random 244-byte upload was rejected ("not a valid ... progress
+  file") and left the state untouched. The portal also kept 5 due / 67 new and
+  the loaded deck across a deck update.
 
 ### Flush policy
 
