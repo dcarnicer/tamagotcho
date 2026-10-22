@@ -267,6 +267,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       fixes (NTP's second try, values cut short in portrait). **v0.4.1**
       (2026-10-21) fixes the deck that went unreadable after the second
       download of a session (the TLS client's `close(0)`).
+      **v0.4.2** (2026-10-22) adds the deck update checks and the portal's
+      weakest-kanji view, and goes with the `decks-v2` rebuild of that day;
+      its notes are `docs/releases/v0.4.2.md` and its M5Burner version is ready
+      to submit (docs/m5burner.md).
       The **README** is a landing page since 2026-10-21: a cover and a
       gallery of real screens (`tools/screenshots/readme_images.py`, shots
       from a StickS3 through the serial remote), with the long manual moved
