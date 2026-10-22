@@ -134,6 +134,20 @@ catalog.
   catalog build (238,688 B, size and SHA-256 checked), removed the row and
   left the loaded N5 at 5 due / 67 new. The device ran the normal `m5stack`
   build afterwards.
-- Not exercised: the automatic result with N > 0, the skip and failure paths,
-  and the Cardputer ADV keyboard. The detection and count path is the one the
-  manual list used; the boot screen with zero updates was seen.
+- **Cardputer ADV, 2026-10-22.** The keyboard drove the settings, the deck
+  list and Get decks (N4, 238,688 B); the Updates row and the filtered list
+  worked, and Enter downloaded the catalog build after a deliberately
+  replaced N4 (189,660 B, no strokes). The automatic boot check ran with that
+  update (the badge showed 1; its two-second result screen passed before the
+  remote could capture it). The device was restored to its original
+  M5Launcher flash afterwards.
+- **Backup before testing a device that is not ours.** The Cardputer's
+  M5Launcher partition table has a 1,344 MB app0, so our 1.48 MB app-only
+  image does not fit; the test used a merged image with the project's table.
+  The whole 8 MB flash was read first (`esptool read_flash 0x0 0x800000`) and
+  written back afterwards (`write_flash 0x0`, hash verified): bootloader,
+  partition table, NVS, app slots and SPIFFS are all inside that image.
+- Not exercised: capturing the automatic result screen with N > 0 (the check
+  itself ran and the badge counted it), the skip and failure paths, and the
+  battery thresholds. The detection and count path is the one the manual list
+  used; the boot screen with zero updates was seen.

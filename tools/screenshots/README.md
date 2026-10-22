@@ -175,6 +175,34 @@ quiz (moving the highlight) and cancelling are safe; `scenarios/tour.txt` sticks
 to those. Take a full flash backup before flashing a device whose progress
 matters.
 
+## Full flash backup and restore
+
+A device that came from M5Launcher has its partition table (a 1,344 MB app0,
+a small SPIFFS, a `firmw1` slot); the app-only image (~1.48 MB) does not fit
+app0. Back up the **whole flash** first and restore it afterwards. It contains
+the bootloader, partition table, NVS, app slots and SPIFFS.
+
+```sh
+# 8 MB cards (StickS3, Cardputer ADV): check the size with flash_id first.
+esptool.py --port /dev/cu.usbmodem11101 flash_id
+esptool.py --port /dev/cu.usbmodem11101 --baud 115200 \
+    read_flash 0x0 0x800000 cardputer-full.bin
+shasum -a 256 cardputer-full.bin
+
+# Test build: a merged image with the project's partition table (the app-only
+# .bin cannot go into M5Launcher's app0).
+python3 tools/release/merge_image.py --build-dir firmware/.pio/build/cardputer-adv-shots \
+    --partitions firmware/partitions/sticks3_8MB.csv --flash-size 8MB --out test-merged.bin
+esptool.py --port /dev/cu.usbmodem11101 --baud 115200 write_flash 0x0 test-merged.bin
+
+# Restore, and check the "Hash of data verified" line.
+esptool.py --port /dev/cu.usbmodem11101 --baud 115200 write_flash 0x0 cardputer-full.bin
+```
+
+The Cardputer's USB serial failed at 921600 both ways; 115200 read 8 MB in
+about 12 minutes and wrote it back in under a minute (compressed). Keep a
+second copy of the backup somewhere else.
+
 ## The README's pictures
 
 `readme_images.py` turns 1x shots into the README's pictures: each one 3x

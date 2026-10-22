@@ -2995,10 +2995,15 @@ marked *to confirm* needs the device.
   date" is a real answer). The updates list always reads the catalog again; a
   failed or skipped check records the day but leaves the count and `updok`.
 - **No automatic download.** The check only tells; the user holds to update.
-- **Checked on a StickS3 (2026-10-22).** The boot check joined the saved home
-  Wi-Fi, read the catalog and showed "All decks are up to date" with the radio
-  off. A deliberately replaced `n4-en.tgc` (189,660 B, no strokes) was
-  detected by the Updates row, the hold downloaded the catalog build
-  (238,688 B, size and SHA-256 checked), removed the row and left the loaded
-  N5 at 5 due / 67 new. Still pending: the automatic result with N > 0, the
-  skip and failure paths, and the Cardputer ADV keyboard.
+- **Checked on a StickS3 and a Cardputer ADV (2026-10-22).** On the StickS3 the
+  boot check joined the saved home Wi-Fi, read the catalog and showed "All
+  decks are up to date" with the radio off; a deliberately replaced
+  `n4-en.tgc` (189,660 B, no strokes) was detected by the Updates row, the
+  hold downloaded the catalog build (238,688 B, size and SHA-256 checked),
+  removed the row and left the loaded N5 at 5 due / 67 new. On the Cardputer
+  the keyboard drove the same flow, and the automatic boot check counted the
+  replaced N4 (the badge showed 1; its two-second result screen passed before
+  the remote could capture it). Both devices were restored afterwards; the
+  Cardputer's original M5Launcher flash was backed up and written back whole.
+  Still pending: capturing the automatic result screen with N > 0, the skip
+  and failure paths, and the battery thresholds.
