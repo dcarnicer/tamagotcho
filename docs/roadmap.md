@@ -292,9 +292,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       backup and restore in the portal, `--kanji-file` in the pack builder, and
       the browser install page on GitHub Pages. It was checked on a StickS3
       (same-size update detection and update, backup/restore, a custom pack
-      upload/load/delete, normal build boot); the Cardputer ADV and
-      T-Display-S3 only build. Its notes are `docs/releases/v0.5.0.md`; the
-      M5Burner version is pending.
+      upload/load/delete, release image boot) and a T-Display-S3 (release image
+      boot, N4 deck and one record, quiz/settings/setup portal on 170×320);
+      the Cardputer ADV only builds. Its notes are `docs/releases/v0.5.0.md`;
+      the M5Burner version is pending.
       The **README** is a landing page since 2026-10-21: a cover and a
       gallery of real screens (`tools/screenshots/readme_images.py`, shots
       from a StickS3 through the serial remote), with the long manual moved
