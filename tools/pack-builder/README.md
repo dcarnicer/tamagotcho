@@ -13,6 +13,8 @@ uv run tamagotcho-pack build --jlpt 5 --lang es --strokes -o out/n5-es-strokes.t
 uv run tamagotcho-pack fetch --klee-one # optional: Klee One (textbook style) -> cache/fonts/
 uv run tamagotcho-pack build --jlpt 5 --font cache/fonts/KleeOne-SemiBold.ttf -o out/n5-en-klee.tgc
 uv run tamagotcho-pack build --joyo --lang es --strokes -o out/joyo-es.tgc
+printf '日\n月\n火\n' > my-kanji.txt
+uv run tamagotcho-pack build --kanji-file my-kanji.txt --lang es -o out/my-kanji.tgc
 uv run tamagotcho-pack fetch --readings # optional: word data for --common-readings -> cache/readings/
 uv run tamagotcho-pack build --jlpt 5 --lang es --common-readings -o out/n5-es-common.tgc
 uv run python scripts/common_readings_report.py   # what --common-readings changes
@@ -44,7 +46,8 @@ uv run pytest
   `cache/meanings/` (3.7 MB), what `build --meaning-order` reads: FreeDict's
   English-Spanish dictionary (WikDict, from Wiktionary; the `2025.11.23`
   release, checked against SHA256). Licences in docs/data-sources.md.
-- `build --jlpt N [--jlpt M ...] [--grade G ... | --joyo] [--order jlpt|grade]
+- `build (--jlpt N [--jlpt M ...] [--grade G ... | --joyo] | --kanji-file PATH)
+  [--order jlpt|grade|file]
   --lang en|es|fr|pt
   [--font PATH] [--large-px 96] [--small-px 40] [--text-px 18] [--option-px 20]
   [--strokes] [--strokes-px N] [--name NAME] -o FILE`. `--font` takes any
@@ -53,12 +56,28 @@ uv run pytest
   `--jlpt` and `--grade` filters are AND-ed when both are given. `--joyo`
   selects the 2,136 **Jōyō** kanji (KANJIDIC2 grades 1-6, the elementary-school
   kyōiku kanji, and 8, the rest of the list) and names the deck `Joyo kanji`.
+  `--kanji-file` builds a deck from **your own list**: a UTF-8 text file with
+  one kanji per non-blank line. Surrounding whitespace and an optional UTF-8
+  BOM are ignored, and a line whose first non-space character is `#` is a
+  comment. Duplicates keep their first occurrence; a line that is not exactly
+  one Unicode character is an error naming the line, and a character KANJIDIC2
+  does not have is skipped with a warning. The file order is the introduction
+  order (the device's new-card order) unless `--order jlpt` or `--order grade`
+  overrides it. The default deck name is the file stem, made safe for the
+  header and catalog (non-ASCII characters become spaces; an empty stem is
+  `Kanji`); `--name` overrides it. It cannot be combined with `--jlpt`,
+  `--grade`, `--joyo` or `--wanikani-token`/`WANIKANI_TOKEN`.
+  ```
+  printf '日\n月\n火\n' > my-kanji.txt
+  uv run tamagotcho-pack build --kanji-file my-kanji.txt --lang es -o out/my-kanji.tgc
+  ```
   The card order is the pack's `level` hint, i.e. the order the device
-  introduces new cards in (docs/srs.md): `--order jlpt`, the default, is
+  introduces new cards in (docs/srs.md): `--order jlpt` is
   easiest first (N5 before N1, then lower grade, then frequency); `--order
   grade`, the default with `--joyo`, is school order (grade 1..6, then 8; within
   a grade by newspaper frequency, kanji with no frequency rank last, fewer
-  strokes first). Deck names should be ASCII (`Joyo`, not `Jōyō`): the device
+  strokes first); `--order file`, the default with `--kanji-file`, is the file
+  order. Deck names should be ASCII (`Joyo`, not `Jōyō`): the device
   draws the name in its built-in ASCII font, and the builder warns otherwise.
   `--strokes` adds the optional KanjiVG stroke-order section (off by default).
   `--strokes-px` sets the em square for the masks and defaults to `--large-px`.

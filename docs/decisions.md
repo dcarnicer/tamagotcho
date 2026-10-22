@@ -3007,3 +3007,35 @@ marked *to confirm* needs the device.
   Cardputer's original M5Launcher flash was backed up and written back whole.
   Still pending: capturing the automatic result screen with N > 0, the skip
   and failure paths, and the battery thresholds.
+
+## 2026-10-22 – Decks from a kanji list
+
+- **Why.** JLPT levels, school grades, the Jōyō set and WaniKani cover the
+  common cases, but a textbook chapter or a class list is none of them.
+  `build --kanji-file PATH` takes the selection from a plain UTF-8 text file.
+- **Format.** One kanji per non-blank line; surrounding whitespace, an optional
+  UTF-8 BOM and lines whose first non-space character is `#` are ignored.
+  Duplicates keep their first occurrence. A line holding anything other than
+  exactly one Unicode character is an error naming the line number. A
+  character KANJIDIC2 does not have is a warning and is skipped, so one typo
+  does not throw away the rest of the list. The parser is
+  `kanjidic.parse_kanji_file()`, pure and tested without the cache.
+- **Selection and exclusivity.** The file is the whole selection: it cannot be
+  combined with `--jlpt`, `--grade`, `--joyo` or a WaniKani token (flag or
+  `WANIKANI_TOKEN`), and the "give at least one selection" error now names it.
+  The pack format does not change: the cards still come from KANJIDIC2, and the
+  data licence is the same (CC BY-SA).
+- **Order.** The file's line order is the introduction order on the device:
+  a new `"file"` value in `kanjidic.ORDERS` makes `make_cards()` keep the
+  input list and assign `level` 0, 1, 2, ...; it is the default with
+  `--kanji-file`. An explicit `--order jlpt` or `--order grade` still sorts the
+  selected set. `--common-readings` and `--meaning-order` run on the selected
+  raw list (faster, and their output cannot reorder it); the meaning-override
+  check still sees the full KANJIDIC2 so an override for a kanji outside the
+  file is not reported as missing.
+- **Deck name.** The file's stem, made safe for the device's ASCII header and
+  the catalog's rules (non-printable/non-ASCII characters become spaces,
+  whitespace collapsed, 64 bytes at most); an empty stem is `Kanji`.
+  `--name` still overrides it and the existing ASCII/catalog warnings still
+  apply. There is no CSV, Anki or spreadsheet import: the list is one character
+  per line.

@@ -36,6 +36,7 @@ or stroke data.
   newspaper frequency, the legacy 4-level JLPT field
   (fallback only, see below), and the classical KangXi radical numbers
   (`rad_value rad_type="classical"`, 1..214) used to rank meaning distractors.
+  It is also the source of the entries selected by a `--kanji-file` list.
   Radicals are a builder-side selection signal only: they are **not** stored in
   the pack and the pack format is unchanged (see docs/decisions.md).
 

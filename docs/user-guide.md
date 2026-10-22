@@ -295,6 +295,28 @@ Honest status — **not verified on hardware**:
   device. A double click still powers it off, and a click (or plugging in USB)
   should power it back on. Not yet verified on hardware.
 
+## Your own decks
+
+`tools/pack-builder` can also build a deck from a list of kanji you choose, for
+a textbook chapter, a class list or a set you are studying. Write one kanji per
+line to a UTF-8 text file (blank lines and `#` comments are fine), then build:
+
+```sh
+printf '日\n月\n火\n' > my-kanji.txt
+cd tools/pack-builder
+uv run tamagotcho-pack build --kanji-file my-kanji.txt --lang es -o out/my-kanji.tgc
+```
+
+The lines are the order the device introduces new cards in; `--order jlpt` or
+`--order grade` changes that. Duplicates are ignored, a line that is not
+exactly one character stops the build with its line number, and a kanji
+KANJIDIC2 does not have is skipped with a warning. The deck name defaults to
+the file name without its extension (made safe for the device's ASCII header;
+`--name` overrides it). Upload the resulting `.tgc` through the portal
+(Advanced) like any other deck. The
+[pack builder's README](../tools/pack-builder/README.md) documents every option
+and the licence of the data.
+
 ## Prebuilt decks and their licence
 
 Prebuilt decks live in their own GitHub release with a fixed tag,

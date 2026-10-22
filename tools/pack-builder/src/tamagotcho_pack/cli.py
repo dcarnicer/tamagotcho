@@ -18,14 +18,16 @@ def cmd_fetch(a) -> int:
     return 0
 
 
-def _meaning_order(raw: list, lang: str) -> list | None:
+def _meaning_order(raw: list, lang: str, check_raw: list | None = None) -> list | None:
     """`build --meaning-order` (docs/meaning-order.md): English meanings in the
     learner order (JLPT vocabulary + JMdict glosses), Spanish ones in the order
     of the new English ones (FreeDict's dictionary), then the project's
     overrides; None after printing an error. fr/pt have no dictionary: they
     keep KANJIDIC2's order (the flag still reorders the English meanings their
     fallback cards show, and keeps meaning distractors away from the meanings
-    the pack leaves out: cmd_build)."""
+    the pack leaves out: cmd_build). `check_raw` is the full KANJIDIC2 list
+    when `raw` is a selection (`--kanji-file`): overrides name kanji that may
+    not be in the selection but must still exist in KANJIDIC2."""
     from .meanings import (LANGS, EnglishOrder, MeaningOrder, check_overrides, load_freedict,
                            load_learner_vocab, load_overrides, reorder_raw)
     from .readings import load_jlpt_vocab
@@ -40,7 +42,7 @@ def _meaning_order(raw: list, lang: str) -> list | None:
         return None
     try:
         overrides = load_overrides(paths.MEANING_OVERRIDES)
-        errors = check_overrides(overrides, raw)
+        errors = check_overrides(overrides, check_raw if check_raw is not None else raw)
         if errors:
             raise ValueError(f"{paths.MEANING_OVERRIDES.name}: " + "; ".join(errors))
         english = EnglishOrder(load_learner_vocab(load_jlpt_vocab(paths.JLPT_VOCAB),
@@ -80,7 +82,7 @@ def _common_readings(raw: list) -> tuple[list, object] | None:
 
 
 def cmd_build(a) -> int:
-    from .build import build_pack, default_deck_name
+    from .build import build_pack, default_deck_name, default_deck_name_from_file
     from .kanjivg import KanjiVGError
     from .pack import read_pack
 
@@ -88,6 +90,14 @@ def cmd_build(a) -> int:
     # instead of the cached KANJIDIC2 file. The token is never printed, logged
     # or written to cache/.
     token = a.wanikani_token or os.environ.get("WANIKANI_TOKEN")
+    if a.kanji_file and (a.jlpt or a.grade or a.joyo):
+        print("error: --kanji-file selects the kanji itself; it cannot be combined with "
+              "--jlpt, --grade or --joyo", file=sys.stderr)
+        return 2
+    if a.kanji_file and token:
+        print("error: --kanji-file cannot be combined with --wanikani-token or "
+              "WANIKANI_TOKEN", file=sys.stderr)
+        return 2
     if token:
         if a.common_readings:
             print("error: --common-readings orders KANJIDIC2 readings; a WaniKani pack already "
@@ -110,7 +120,8 @@ def cmd_build(a) -> int:
             return 1
         name = a.name or default_wanikani_name(levels)
     else:
-        from .kanjidic import JOYO_GRADES, load_new_jlpt, make_cards, parse_kanjidic
+        from .kanjidic import (JOYO_GRADES, load_new_jlpt, make_cards, parse_kanji_file,
+                               parse_kanjidic)
 
         jlpt, grades = set(a.jlpt or []), set(a.grade or [])
         if a.joyo and grades:
@@ -118,9 +129,9 @@ def cmd_build(a) -> int:
             return 2
         if a.joyo:
             grades = set(JOYO_GRADES)
-        if not jlpt and not grades:
-            print("error: give at least one --jlpt, --grade or --joyo, or a --wanikani-token",
-                  file=sys.stderr)
+        if not jlpt and not grades and not a.kanji_file:
+            print("error: give at least one --jlpt, --grade, --joyo or --kanji-file, or a "
+                  "--wanikani-token", file=sys.stderr)
             return 2
         if not paths.KANJIDIC_GZ.exists():
             print("error: run `tamagotcho-pack fetch` first", file=sys.stderr)
@@ -131,9 +142,31 @@ def cmd_build(a) -> int:
         else:
             print("warning: kanji.json missing, mapping old 4-level JLPT (lossy)", file=sys.stderr)
         # The order becomes the new-card order on the device: school order for
-        # the Jōyō deck, N5-first for everything else unless --order says so.
-        order = a.order or ("grade" if a.joyo else "jlpt")
-        raw = parse_kanjidic(paths.KANJIDIC_GZ)
+        # the Jōyō deck, N5-first for everything else unless --order says so,
+        # and the file's line order for --kanji-file.
+        order = a.order or ("file" if a.kanji_file else "grade" if a.joyo else "jlpt")
+        all_raw = None
+        if a.kanji_file:
+            try:
+                text = Path(a.kanji_file).read_text(encoding="utf-8-sig")
+            except (OSError, UnicodeDecodeError) as e:
+                print(f"error: {a.kanji_file}: {e}", file=sys.stderr)
+                return 2
+            all_raw = parse_kanjidic(paths.KANJIDIC_GZ)
+            by_cp = {k.codepoint: k for k in all_raw}
+            try:
+                cps, warnings = parse_kanji_file(text, set(by_cp))
+            except ValueError as e:
+                print(f"error: {a.kanji_file}: {e}", file=sys.stderr)
+                return 2
+            for w in warnings:
+                print(f"warning: {a.kanji_file}: {w}", file=sys.stderr)
+            raw = [by_cp[cp] for cp in cps]
+            if not raw:
+                print(f"error: no kanji from {a.kanji_file} are in KANJIDIC2", file=sys.stderr)
+                return 1
+        else:
+            raw = parse_kanjidic(paths.KANJIDIC_GZ)
         before = None
         if a.common_readings:
             before = {k.codepoint: k for k in raw}
@@ -145,7 +178,7 @@ def cmd_build(a) -> int:
         reorder_meanings = a.meaning_order and (a.lang == "en" or a.lang in MEANING_LANGS)
         meanings_before = {k.codepoint: k.meanings.get(a.lang, []) for k in raw}
         if a.meaning_order:
-            got = _meaning_order(raw, a.lang)
+            got = _meaning_order(raw, a.lang, check_raw=all_raw)
             if got is None:
                 return 2
             raw = got
@@ -173,7 +206,8 @@ def cmd_build(a) -> int:
             kept = sum(1 for n, o in own if set(n) != set(o[:len(n)]))
             print(f"meaning order ({a.lang}): first meaning changed for {first} of {len(cards)} "
                   f"cards; the pack keeps other meanings for {kept}")
-        name = a.name or default_deck_name(jlpt, grades, joyo=a.joyo)
+        name = a.name or (default_deck_name_from_file(a.kanji_file) if a.kanji_file
+                          else default_deck_name(jlpt, grades, joyo=a.joyo))
     if not name.isascii():
         print(f"warning: deck name {name!r} is not ASCII; the device draws the deck name "
               "in its built-in ASCII font, so it will not show correctly", file=sys.stderr)
@@ -359,7 +393,16 @@ def main(argv: list[str] | None = None) -> int:
                         "from Wiktionary; pinned release)")
     s.set_defaults(fn=cmd_fetch)
 
-    s = sub.add_parser("build", help="build a .tgc pack (KANJIDIC2 or your own WaniKani account)")
+    s = sub.add_parser("build", help="build a .tgc pack (KANJIDIC2, a kanji list or your own "
+                                     "WaniKani account)")
+    s.add_argument("--kanji-file", metavar="PATH",
+                   help="build from a UTF-8 text file with one kanji per non-blank line "
+                        "(surrounding whitespace and # comments allowed); duplicates keep "
+                        "their first occurrence, kanji missing from KANJIDIC2 are skipped "
+                        "with a warning. The line order is the default new-card order; "
+                        "--order jlpt|grade overrides it. The default deck name is the file "
+                        "stem. Cannot be combined with --jlpt, --grade, --joyo or "
+                        "--wanikani-token")
     s.add_argument("--jlpt", type=int, action="append", choices=range(1, 6), metavar="N")
     s.add_argument("--grade", type=int, action="append", choices=range(1, 11), metavar="N")
     s.add_argument("--joyo", action="store_true",
@@ -367,12 +410,14 @@ def main(argv: list[str] | None = None) -> int:
                         "(grade, then frequency); default name 'Joyo kanji'. AND-ed with --jlpt")
     s.add_argument("--order", choices=ORDERS,
                    help="order new cards are introduced in: jlpt (N5 first, then grade and "
-                        "frequency) or grade (school grade, then frequency). Default: grade "
+                        "frequency), grade (school grade, then frequency) or file (the "
+                        "--kanji-file line order). Default: file with --kanji-file, grade "
                         "with --joyo, otherwise jlpt")
     s.add_argument("--wanikani-token", metavar="TOKEN",
                    help="build from the kanji unlocked on your own WaniKani account; the token "
                         "is never logged or cached (the WANIKANI_TOKEN environment variable is "
-                        "also read). Replaces the --jlpt/--grade (KANJIDIC2) selection")
+                        "also read). Replaces the --jlpt/--grade (KANJIDIC2) selection and "
+                        "cannot be combined with --kanji-file")
     s.add_argument("--wanikani-level", type=int, action="append", choices=range(1, 61), metavar="N",
                    help="limit the WaniKani import to this level (repeatable); "
                         "default: every unlocked level")

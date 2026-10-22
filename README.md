@@ -88,7 +88,7 @@ cards Japanese students carry around, which the M5Stack StickS3 resembles.
 - **Portrait, landscape or auto-rotate** (the StickS3's accelerometer);
   screens in English or Spanish.
 - **Your own decks**: a Python pack builder for any JLPT level or school
-  grade, your WaniKani kanji, another font.
+  grade, your own kanji list, your WaniKani kanji, another font.
 
 ## Supported boards
 

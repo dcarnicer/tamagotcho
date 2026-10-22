@@ -25,6 +25,19 @@ def default_deck_name(jlpt: set[int], grades: set[int], joyo: bool = False) -> s
     return " ".join(parts) or "Kanji"
 
 
+def default_deck_name_from_file(path: str | Path) -> str:
+    """The `--kanji-file` deck name: its stem, safe for the header and catalog.
+
+    The device draws the name in its ASCII font and the catalog refuses control
+    characters (and titles over 64 bytes), so other characters become spaces,
+    whitespace is collapsed, the result is capped at 64 bytes and an empty stem
+    falls back to "Kanji"."""
+    stem = Path(path).stem
+    ascii_stem = "".join(ch if 0x20 <= ord(ch) <= 0x7E else " " for ch in stem)
+    name = " ".join(ascii_stem.split())[:64].strip()
+    return name or "Kanji"
+
+
 def build_pack(
     cards: list[Card],
     font_path: str | Path,

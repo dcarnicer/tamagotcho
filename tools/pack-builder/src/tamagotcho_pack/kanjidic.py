@@ -28,7 +28,8 @@ JOYO_GRADES = frozenset({1, 2, 3, 4, 5, 6, 8})
 #   grade: school order, grade 1 .. 6, then 8 (secondary school); within a grade
 #          by newspaper frequency, kanji with no frequency rank last (fewer
 #          strokes first). The Jōyō deck uses it.
-ORDERS = ("jlpt", "grade")
+#   file:  the input order (the --kanji-file lines), unchanged.
+ORDERS = ("jlpt", "grade", "file")
 
 
 @dataclass
@@ -158,6 +159,45 @@ def parse_kanjidic(source: str | Path | bytes) -> list[RawKanji]:
     return out
 
 
+def parse_kanji_file(text: str, known: set[int] | None = None) -> tuple[list[int], list[str]]:
+    """Parse a `--kanji-file` list: one kanji per line, in file order.
+
+    Blank lines and lines whose first non-space character is `#` are ignored,
+    as is an optional UTF-8 BOM and whitespace around a line. Duplicates are
+    removed, keeping the first occurrence. A line that does not hold exactly
+    one Unicode character raises ValueError with its line number.
+
+    When `known` is given, codepoints absent from it are skipped and reported
+    in the returned warnings (the kanji KANJIDIC2 does not have).
+    """
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    cps: list[int] = []
+    first_line: dict[int, int] = {}
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if len(line) != 1:
+            raise ValueError(f"line {lineno}: expected one kanji character, got {line!r} "
+                             f"({len(line)} characters)")
+        cp = ord(line)
+        if cp not in first_line:
+            first_line[cp] = lineno
+            cps.append(cp)
+    warnings: list[str] = []
+    if known is not None:
+        kept = []
+        for cp in cps:
+            if cp in known:
+                kept.append(cp)
+            else:
+                warnings.append(f"line {first_line[cp]}: {chr(cp)!r} (U+{cp:04X}) is not in "
+                                "KANJIDIC2; skipped")
+        cps = kept
+    return cps, warnings
+
+
 def load_new_jlpt(path: str | Path) -> dict[int, int]:
     """Map codepoint -> new JLPT level (5..1) from davidluzgouveia/kanji-data."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -180,6 +220,7 @@ def make_cards(
     """Select and convert kanji to cards, ordered easiest-first (level hint).
 
     `order` is one of ORDERS (see there); it decides each card's `level`.
+    `order="file"` keeps the input order, for `--kanji-file`.
     `keep_all_meanings` (`--meaning-order`) records each card's uncapped list
     in `Card.valid_meanings`.
     """
@@ -226,9 +267,10 @@ def make_cards(
     if order == "grade":
         # school order: lower grade, then frequency, then fewer strokes, then codepoint
         cards.sort(key=lambda c: (c.grade or 99, c.freq or 9999, c.strokes or 99, c.codepoint))
-    else:
+    elif order == "jlpt":
         # easiest first: higher N number, then lower grade, then frequency, then codepoint
         cards.sort(key=lambda c: (-c.jlpt, c.grade or 99, c.freq or 9999, c.codepoint))
+    # order == "file": the input order is the introduction order
     for i, c in enumerate(cards):
         c.level = min(i, 65535)
     return cards

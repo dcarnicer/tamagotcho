@@ -204,6 +204,14 @@ Scope for now: **kanji only** (no vocabulary decks).
         is shipped, nothing is fetched without the flag, and the token is never
         logged or cached; a WaniKani-derived pack is the user's own
         responsibility and is not redistributed (docs/data-sources.md).
+      - [x] **Your own kanji list** (2026-10-22). `build --kanji-file PATH`
+        builds a deck from a UTF-8 text file with one kanji per line, for a
+        textbook chapter or a class list. Comments and blank lines are allowed,
+        duplicates keep their first occurrence, and unknown kanji are skipped
+        with a warning. The file order is the introduction order unless
+        `--order jlpt|grade` says otherwise; the deck name defaults to the file
+        stem. It uses KANJIDIC2 and is `--jlpt`/`--grade`/`--joyo`/WaniKani
+        exclusive. One character per line only: no CSV or Anki import.
       - [x] **Download packs over Wi-Fi** from a URL, so a fresh device gets
         decks without `uploadfs` and without a computer. Plain `http://` only on
         the portal (its own AP has no internet; Get decks above does HTTPS over
