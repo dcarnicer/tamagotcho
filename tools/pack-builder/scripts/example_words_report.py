@@ -39,16 +39,13 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
-import io
 import random
 import re
 import statistics
 import sys
-import unicodedata
 import urllib.request
-import xml.etree.ElementTree as ET
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from tamagotcho_pack import paths
@@ -56,12 +53,13 @@ from tamagotcho_pack.glyphs import SET_TEXT, FontRenderer
 from tamagotcho_pack.joyo_table import load_pdf
 from tamagotcho_pack.kanjidic import JOYO_GRADES, load_new_jlpt, parse_kanjidic
 from tamagotcho_pack.pack import GLYPH_SIZE, READING_SEP, read_pack
-from tamagotcho_pack.readings import (LEVEL_MULT, KanjiReadings, WordPair, compute_scores,
-                                      corpus_weights, is_kanji, load_jlpt_vocab,
-                                      load_tatoeba_counts, load_wordfreq, match_level, pair_weight,
-                                      parse_furigana, parse_jmdict, priority_rank, reorder_raw,
-                                      segments, to_hiragana)
+from tamagotcho_pack.readings import (KanjiReadings, compute_scores, is_kanji, load_jlpt_vocab,
+                                      parse_furigana, reorder_raw, weighted_pairs)
 from tamagotcho_pack.rle import best_glyph
+# The word pick and the glosses moved into the builder (`build --example-words`);
+# this report keeps measuring with them.
+from tamagotcho_pack.words import (Info, Word, clean, is_own_form, load_word_info, pick,
+                                   shown_gloss, words_by_reading)
 
 # The multilingual JMdict (EDRDG): the same entries as JMdict_e, plus glosses
 # in other languages as extra senses (only the Japanese and English parts are
@@ -72,7 +70,6 @@ JMDICT_FULL = paths.READINGS_DIR / "JMdict.gz"
 
 DECKS = ("n5", "n4", "n3", "n2", "n1", "joyo")
 DECK_TITLE = {"n5": "N5", "n4": "N4", "n3": "N3", "n2": "N2", "n1": "N1", "joyo": "Jōyō"}
-XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 # Per card in a words section: a (word, reading[, gloss]) string offset, u32
 # each, per asked kind; plus a header extension (docs/learning-mode.md §3.11).
 INDEX_PER_SLOT = 4
@@ -103,229 +100,15 @@ def jmdict_created(data: bytes) -> str:
 
 # --- glosses ----------------------------------------------------------------------
 
-@dataclass
-class Info:
-    """One (kanji form, reading) pair of the multilingual JMdict."""
-    weight: float     # JMdict priority (readings.pair_weight)
-    tagged: bool      # form and reading both carry a priority tag (news/ichi/spec/gai/nf)
-    uk: bool          # the first sense is "usually written using kana alone" (為る, 沢山)
-    eng: list[str] = field(default_factory=list)   # the first English sense's glosses
-    spa: list[str] = field(default_factory=list)   # every Spanish gloss, in order
-    pos: tuple[str, ...] = ()                      # the first sense's parts of speech (n, v5k...)
-
-
-_ENTITY = re.compile(rb'<!ENTITY\s+([\w-]+)\s+"([^"]*)">')
-
-
 def load_jmdict_info(data: bytes) -> dict[tuple[str, str], Info]:
-    """Every (kanji form, reading) pair of the multilingual JMdict with its
-    priority, its "usually kana" mark and its English and Spanish glosses.
-
-    Spanish glosses sit in senses of their own (no part of speech, no link to
-    an English sense). Senses restricted (stagk/stagr) to other forms are
-    skipped. A pair in several entries takes the entry with the highest JMdict
-    priority, the first on a tie."""
-    end = data.find(b"<JMdict>")
-    names = {v.decode(): k.decode() for k, v in _ENTITY.findall(data[:end])}
-    out: dict[tuple[str, str], Info] = {}
-    for _, el in ET.iterparse(io.BytesIO(data), events=("end",)):
-        if el.tag != "entry":
-            continue
-        kebs = {k.findtext("keb"): [p.text for p in k.findall("ke_pri")] for k in el.findall("k_ele")}
-        senses = [({x.text for x in s.findall("stagk")}, {x.text for x in s.findall("stagr")},
-                   {names.get(m.text or "", m.text) for m in s.findall("misc")},
-                   [(g.get(XML_LANG, "eng"), g.text or "") for g in s.findall("gloss")])
-                  for s in el.findall("sense")]
-        first = el.find("sense")
-        pos = tuple(names.get(p.text or "", p.text) for p in first.findall("pos")) \
-            if first is not None else ()
-        for r in el.findall("r_ele"):
-            reb = r.findtext("reb")
-            restr = {x.text for x in r.findall("re_restr")}
-            re_pri = [p.text for p in r.findall("re_pri")]
-            for keb, ke_pri in kebs.items():
-                if restr and keb not in restr:
-                    continue
-                g = Info(pair_weight(ke_pri, re_pri),
-                         priority_rank(ke_pri) is not None and priority_rank(re_pri) is not None,
-                         bool(senses) and "uk" in senses[0][2], pos=pos)
-                for stagk, stagr, _, glosses in senses:
-                    if (stagk and keb not in stagk) or (stagr and reb not in stagr):
-                        continue
-                    eng = [t for lang, t in glosses if lang == "eng"]
-                    if eng and not g.eng:
-                        g.eng = eng
-                    g.spa += [t for lang, t in glosses if lang == "spa"]
-                old = out.get((keb, reb))
-                if old is None or g.weight > old.weight:
-                    out[(keb, reb)] = g
-        el.clear()
-    return out
+    """Every (kanji form, reading) pair of the multilingual JMdict, with its
+    Spanish glosses in `Info.other` (tamagotcho_pack.words.load_word_info)."""
+    return load_word_info(data, other_lang="spa")
 
 
-# A loanword's source note inside a Spanish gloss: "neurona (eng: neuron)".
-_LANG_NOTE = re.compile(r"\s*\((?:eng|fre|fr|ger|ita|lat|wasei|por|dut|lit|[a-z]{2,5}):[^)]*\)")
-
-
-def clean(g: str) -> str:
-    return " ".join(_LANG_NOTE.sub("", g).split())
-
-
-# Hepburn romanisation, enough to recognise a transliterated gloss ("sake").
-_ROMAJI = dict(zip(
-    "あいうえおかきくけこがぎぐげごさしすせそざじずぜぞたちつてとだぢづでどなにぬねの"
-    "はひふへほばびぶべぼぱぴぷぺぽまみむめもやゆよらりるれろわゐゑをんゔぁぃぅぇぉゎ",
-    "a i u e o ka ki ku ke ko ga gi gu ge go sa shi su se so za ji zu ze zo ta chi tsu te to "
-    "da ji zu de do na ni nu ne no ha hi fu he ho ba bi bu be bo pa pi pu pe po ma mi mu me mo "
-    "ya yu yo ra ri ru re ro wa i e o n vu a i u e o wa".split()))
-_SMALL_Y = {"ゃ": "ya", "ゅ": "yu", "ょ": "yo"}
-
-
-def romaji(reading: str) -> str:
-    out: list[str] = []
-    double = False
-    for ch in to_hiragana(reading):
-        if ch == "っ":
-            double = True
-            continue
-        if ch in _SMALL_Y and out:
-            # きゃ kya, しゃ sha, ちゃ cha, じゃ ja (っちゃ tcha)
-            prev = out.pop()
-            palatal = prev.endswith(("shi", "chi", "ji"))
-            syl = prev[:-1] + (_SMALL_Y[ch][1:] if palatal else _SMALL_Y[ch])
-        elif ch == "ー" and out:
-            syl = out[-1][-1]
-        else:
-            syl = _ROMAJI.get(ch, "")
-        if double and syl:
-            syl = ("t" if syl.startswith("ch") else syl[0]) + syl
-        double = False
-        out.append(syl)
-    return "".join(out)
-
-
-def romaji_variants(reading: str) -> set[str]:
-    """The romanisations a transliterated gloss may use: Hepburn with long
-    vowels written out (toukyou) or not (tokyo), and m before b/m/p."""
-    h = romaji(reading)
-    short = h
-    for a, b in (("ou", "o"), ("oo", "o"), ("uu", "u"), ("ii", "i"), ("aa", "a"), ("ee", "e")):
-        short = short.replace(a, b)
-    out = {h, short}
-    out |= {re.sub(r"n(?=[bmp])", "m", v) for v in out}
-    return {v for v in out if v}
-
-
-def letters(s: str) -> str:
-    s = unicodedata.normalize("NFKD", s.lower())
-    return "".join(c for c in s if "a" <= c <= "z")
-
-
-def is_transliteration(gloss: str, reading: str) -> bool:
-    """A gloss that is just the word in romaji ("sake", "kimono"), or that leads
-    with it in quotes ('"oden": un tipo de cocido'). A capitalised one is a
-    proper name ("Chiba (city, prefecture)"), for which the romaji is the
-    translation, so it does not count."""
-    variants = romaji_variants(reading)
-    bare = re.sub(r"\([^)]*\)", "", gloss).strip()
-    if letters(bare) in variants:
-        return not bare[:1].isupper()
-    m = re.match(r'\s*["“]([^"”]+)["”]', gloss)
-    return bool(m and letters(m.group(1)) in variants)
-
-
-def shown_gloss(glosses: list[str], reading: str) -> str | None:
-    """The gloss an intro would show: the first that is not a transliteration."""
-    for g in glosses:
-        c = clean(g)
-        if c and not is_transliteration(c, reading):
-            return c
-    return None
-
-
-# --- words ------------------------------------------------------------------------
-
-@dataclass
-class Word:
-    text: str
-    reading: str
-    weight: float   # the learner-weighted corpus weight of `--common-readings`
-    level: int      # JLPT list level of (text, reading), 5 = N5; 0 = on no list
-
-
-def learner_pairs(vocab: dict[tuple[str, str], int]) -> list[WordPair]:
+def learner_pairs(vocab: dict[tuple[str, str], int]):
     """JMdict pairs weighted as readings.compute_scores weighs them."""
-    pairs = list(parse_jmdict(paths.JMDICT_GZ))
-    pairs = corpus_weights(pairs, load_wordfreq(paths.WORDFREQ_JA),
-                           load_tatoeba_counts(paths.TATOEBA_JPN))
-    return [WordPair(p.text, p.reading,
-                     p.weight * LEVEL_MULT.get(vocab.get((p.text, p.reading), 0), 1.0), p.pos)
-            for p in pairs]
-
-
-def words_by_reading(pairs: list[WordPair], kanji: dict[int, KanjiReadings], furi,
-                     vocab: dict[tuple[str, str], int]) -> dict[tuple[int, str], dict]:
-    """(codepoint, KANJIDIC2 reading) -> {(text, reading): Word} for the words
-    whose per-kanji furigana matches that reading, by the attribution of
-    readings.score_readings (the best match level; ties go to every reading)."""
-    out: dict[tuple[int, str], dict] = {}
-    for p in pairs:
-        segs = segments(p.text, p.reading, furi)
-        if not segs:
-            continue
-        for start, end, rt in segs:
-            if start != end or start >= len(p.text):
-                continue
-            ch = p.text[start]
-            if ch == "々" and start > 0:
-                ch = p.text[start - 1]
-            if not is_kanji(ch):
-                continue
-            kr = kanji.get(ord(ch))
-            if kr is None:
-                continue
-            rt_h, following = to_hiragana(rt), p.text[end + 1:]
-            best, hits = None, []
-            for r in kr.onyomi + kr.kunyomi:
-                lv = match_level(rt_h, following, r)
-                if lv is None:
-                    continue
-                if best is None or lv < best:
-                    best, hits = lv, [r]
-                elif lv == best and r not in hits:
-                    hits.append(r)
-            for r in hits:
-                d = out.setdefault((ord(ch), r), {})
-                key = (p.text, p.reading)
-                if key not in d or d[key].weight < p.weight:
-                    d[key] = Word(p.text, p.reading, p.weight, vocab.get(key, 0))
-    return out
-
-
-def usable(w: Word, info: dict[tuple[str, str], Info]) -> bool:
-    """A word worth showing: on a JLPT list, or common by JMdict's priority
-    tags (not 天山 あめやま, archaic); and not one JMdict says is usually written
-    in kana (沢山 たくさん), which a learner seldom sees with its kanji."""
-    i = info.get((w.text, w.reading))
-    return i is not None and (bool(w.level) or i.tagged) and not i.uk
-
-
-def pick(cands: dict | None, level: int, info: dict | None = None) -> Word | None:
-    """A JLPT list word at or below `level` (5 = N5) first, then the weight;
-    with `info`, only the usable() words."""
-    if not cands:
-        return None
-    pool = [w for w in cands.values() if info is None or usable(w, info)]
-    if not pool:
-        return None
-    return min(pool, key=lambda w: (not (w.level and w.level >= level), -w.weight,
-                                    w.text, w.reading))
-
-
-def is_own_form(w: Word, ch: str) -> bool:
-    """The word is the kanji alone or with kana only (本, 食べる): it repeats
-    the intro's kanji and reading rather than showing a compound."""
-    return w.text[0] == ch and all(not is_kanji(c) for c in w.text[1:])
+    return weighted_pairs(paths.JMDICT_GZ, paths.WORDFREQ_JA, paths.TATOEBA_JPN, vocab)
 
 
 # --- report -----------------------------------------------------------------------
@@ -339,7 +122,7 @@ class Row:
     gl: Info | None
 
     def es(self) -> str | None:
-        return shown_gloss(self.gl.spa, self.word.reading) if self.gl else None
+        return shown_gloss(self.gl.other, self.word.reading) if self.gl else None
 
     def en(self) -> str | None:
         return shown_gloss(self.gl.eng, self.word.reading) if self.gl else None
@@ -487,7 +270,7 @@ def main() -> int:
             skipped[d] += unfiltered[cp] - sum(1 for *_, w in ps if w)
             rs = rows[cp]
             c["words"] += len(rs)
-            c["es"] += sum(1 for r in rs if r.gl and r.gl.spa)
+            c["es"] += sum(1 for r in rs if r.gl and r.gl.other)
             c["es short"] += sum(1 for r in rs if (g := r.es()) and len(g) <= mx)
             c["en"] += sum(1 for r in rs if r.gl and r.gl.eng)
             c["en short"] += sum(1 for r in rs if (g := r.en()) and len(g) <= mx)
@@ -520,15 +303,15 @@ def main() -> int:
          (5, 4, 3, 2, 1)] + [("Jōyō kanji with no JLPT level", lambda r: not new_jlpt.get(ord(r.ch)))]
     for label, f in groups:
         g = [r for r in every if f(r)]
-        es = sum(1 for r in g if r.gl and r.gl.spa)
+        es = sum(1 for r in g if r.gl and r.gl.other)
         es_s = sum(1 for r in g if (x := r.es()) and len(x) <= mx)
         en_s = sum(1 for r in g if (x := r.en()) and len(x) <= mx)
         print(f"| {label} | {len(g):,} | {pct(es, len(g))} | {pct(es_s, len(g))} | "
               f"{pct(en_s, len(g))} |")
 
-    with_es = [r for r in every if r.gl and r.gl.spa]
-    firsts = [clean(r.gl.spa[0]) for r in with_es]
-    translit = sum(1 for r in with_es if r.es() != clean(r.gl.spa[0]))
+    with_es = [r for r in every if r.gl and r.gl.other]
+    firsts = [clean(r.gl.other[0]) for r in with_es]
+    translit = sum(1 for r in with_es if r.es() != clean(r.gl.other[0]))
     no_shown = sum(1 for r in with_es if r.es() is None)
     longer = sum(1 for r in with_es if (x := r.es()) and len(x) > mx)
     print(f"\nOf the {len(with_es):,} words with a Spanish gloss: the first is a transliteration "
@@ -548,7 +331,7 @@ def main() -> int:
     # Spot check.
     pool = sorted({(r.ch, r.kind, r.word.text, r.word.reading): r
                    for d in ("n5", "n4", "n3") for cp in decks[d] for r in rows[cp]
-                   if r.gl and r.gl.spa}.items())
+                   if r.gl and r.gl.other}.items())
     sample = random.Random(a.seed).sample(pool, min(a.sample, len(pool)))
     print(f"\n## Spot check ({len(sample)} random N5-N3 words with a Spanish gloss, seed {a.seed})\n")
     print("| # | kanji | kind | word | reading | English (first sense) | Spanish (every gloss) "
@@ -559,7 +342,7 @@ def main() -> int:
         if shown and len(shown) > mx:
             shown += f" (over {mx})"
         print(f"| {i} | {r.ch} | {r.kind} {r.asked} | {r.word.text} | {r.word.reading} | "
-              f"{'; '.join(r.gl.eng[:3])} | {'; '.join(clean(x) for x in r.gl.spa[:6])} | "
+              f"{'; '.join(r.gl.eng[:3])} | {'; '.join(clean(x) for x in r.gl.other[:6])} | "
               f"{shown or '—'} |")
 
     # Size estimate.
@@ -635,7 +418,7 @@ def main() -> int:
                     f.write(f"{r.ch}\t{new_jlpt.get(cp, 0)}\t{int(cp in joyo_set)}\t{r.kind}\t"
                             f"{r.asked}\t{r.word.text}\t{r.word.reading}\t{r.word.level}\t"
                             f"{r.word.weight:.3g}\t{r.es() or ''}\t{r.en() or ''}\t"
-                            f"{' | '.join(clean(x) for x in r.gl.spa) if r.gl else ''}\t"
+                            f"{' | '.join(clean(x) for x in r.gl.other) if r.gl else ''}\t"
                             f"{' | '.join(r.gl.eng) if r.gl else ''}\n")
         print(f"\n(wrote {out})", file=sys.stderr)
     return 0

@@ -61,9 +61,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tamagotcho_pack import paths
-from tamagotcho_pack.meanings import TEI, norm_en
 from tamagotcho_pack.pack import MEANING_SEP, read_pack
 from tamagotcho_pack.readings import is_kanji, to_hiragana
+from tamagotcho_pack.words import en_keys, load_freedict_ordered, translate
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from example_words_report import DECK_TITLE, DECKS, Picks, Row, compute_picks, pct  # noqa: E402
@@ -134,87 +134,13 @@ def check_pins() -> list[str]:
     return bad
 
 
-# --- C. FreeDict, in order ---------------------------------------------------------
-
-@dataclass
-class FdEntry:
-    pos: str
-    senses: list[list[str]]   # Spanish quotes per sense, in order
-
-
-def load_freedict_ordered(path: Path) -> dict[str, list[FdEntry]]:
-    """FreeDict eng-spa as headword -> entries (one per part of speech), each
-    with its senses' Spanish quotes in the dictionary's order (the builder's
-    meanings.load_freedict keeps sets, normalised, for matching)."""
-    out: dict[str, list[FdEntry]] = defaultdict(list)
-    with tarfile.open(path, "r:xz") as tar:
-        member = next(m for m in tar.getmembers() if m.name.endswith(".tei") and m.isfile())
-        f = tar.extractfile(member)
-        for _, el in ET.iterparse(f, events=("end",)):
-            if el.tag != TEI + "entry":
-                continue
-            orth = el.findtext(f"{TEI}form/{TEI}orth")
-            pos = el.findtext(f"{TEI}gramGrp/{TEI}pos") or ""
-            senses = []
-            for s in el.findall(f"{TEI}sense"):
-                qs = [q.text.strip() for c in s.findall(f"{TEI}cit") if c.get("type") == "trans"
-                      for q in c.findall(f"{TEI}quote") if q.text and q.text.strip()]
-                if qs:
-                    senses.append(qs)
-            if orth and senses:
-                out[orth.strip()].append(FdEntry(pos, senses))
-            el.clear()
-    return out
-
-
-def fd_pos(jm_pos: tuple[str, ...]) -> str:
-    """FreeDict's part of speech for a JMdict one (v5k -> v, adj-i -> adj)."""
-    for p in jm_pos:
-        if p.startswith("v"):
-            return "v"
-        if p.startswith("adj"):
-            return "adj"
-        if p.startswith("adv"):
-            return "adv"
-        if p == "num":
-            return "numeral"
-        if p.startswith("n") or p == "pn":
-            return "n"
-    return ""
-
-
-def en_keys(gloss: str) -> list[str]:
-    """Headwords to try for an English gloss: as written, without a
-    parenthesis or a leading "to"/"to be"/article, lowercased."""
-    g = re.sub(r"\s*\([^)]*\)", "", gloss).strip()
-    out = [g, g.lower(), norm_en(gloss)]
-    m = re.match(r"^(?:to be|to|a|an|the) (.+)$", g, re.IGNORECASE)
-    if m:
-        out.append(m.group(1))
-    return [k for k in dict.fromkeys(out) if k]
-
+# --- C. FreeDict, in order: tamagotcho_pack.words (`sync-glosses` drafts with it) ---
 
 def split_gloss(gloss: str) -> list[str]:
     """English Wiktionary's "novel, story, fiction" / "to look for; to seek"
     as separate glosses (commas inside parentheses stay)."""
     parts = re.split(r"[;,]\s*(?![^(]*\))", gloss)
     return [p.strip() for p in parts if p.strip()]
-
-
-def translate(glosses: list[str], jm_pos: tuple[str, ...], fd: dict[str, list[FdEntry]]
-              ) -> tuple[str, str] | None:
-    """(Spanish, the English gloss used): the first English gloss FreeDict
-    has, its entry with the word's part of speech (else its first entry), the
-    first translation of that entry's first sense."""
-    want = fd_pos(jm_pos)
-    for g in glosses:
-        for k in en_keys(g):
-            entries = fd.get(k)
-            if not entries:
-                continue
-            e = next((x for x in entries if x.pos == want), entries[0])
-            return e.senses[0][0], g
-    return None
 
 
 # --- A. Open Multilingual Wordnet ----------------------------------------------------
