@@ -624,105 +624,6 @@ void drawTzList() {
     presentList(gTzListView);
 }
 
-// Settings > Device > About: the firmware's name, version and licence, the
-// decks' licence, the UI font and where the source lives; then the loaded deck
-// and the credits of its data (Credits.h, from docs/data-sources.md). Each item is
-// a label-face heading over its value in captions, so it works before any deck
-// is loaded. Two groups -- the firmware, the deck -- laid out by
-// ui/TextLayout.h: everything on one page when it fits, else a group that does
-// not fit the rest of a page starts the next one. A tap turns the page (after
-// the last, back to the first; the header shows "1/2"); the side button goes
-// back.
-int gAboutPage = 0;
-
-// The app's name, たまごっちょ, in the label face (it has these kana).
-void drawAppName(lgfx::LovyanGFX& d, int x, int y, int h, uint16_t fg) {
-    gRender.drawLabel(d, tgc::credits::kAppName, x, y, W - x, h, fg, kBlack);
-}
-
-void drawAbout() {
-    using namespace tgc::theme;
-    auto& d = *gCanvas;
-    constexpr int kLabelH = 20;  // a heading in the label face
-    constexpr int kLineH = 10;   // a caption line (8 px) and 2 px leading
-    constexpr int kGap = 3;      // between the items of one group
-    constexpr int kGroupGap = 8;
-    const int top = kHeaderH + 3;
-    d.fillScreen(kBlack);
-
-    struct Item {
-        const char* label;  // a heading ("Firmware:", its colon dropped); "" for none
-        const char* value;
-        bool title;         // the app's name over the version
-        bool newGroup;
-    };
-    namespace cr = tgc::credits;
-    const bool deckOpen = gPack->isOpen();
-    std::vector<Item> items = {
-        {"", tgc::firmwareVersion(), true, true},
-        {ui().aboutFirmware, cr::kFirmwareLicence, false, false},
-        {ui().aboutDecks, cr::kDecksLicence, false, false},
-        {ui().aboutUiFont, cr::kUiFont, false, false},
-        {"", cr::kRepo, false, false},
-        {ui().aboutDeck, deckOpen ? gPack->deckName() : ui().aboutNoDeck, false, true},
-        {ui().aboutKanji, cr::kKanjidic, false, false},
-    };
-    // KanjiVG data is in a deck only when it was built with stroke order.
-    if (!deckOpen || gPack->hasStrokeOrder())
-        items.push_back({ui().aboutStrokes, cr::kKanjiVg, false, false});
-    items.push_back({ui().aboutJlpt, cr::kJlpt, false, false});
-    items.push_back({ui().aboutReadings, cr::kReadings, false, false});
-    items.push_back({ui().aboutMeanings, cr::kMeanings, false, false});
-    items.push_back({ui().aboutGlyphs, cr::kGlyphs, false, false});
-
-    // Each value wrapped to the width in the caption font (6 px a character).
-    const int maxChars = (W - 8) / 6;
-    std::vector<std::vector<tgc::TextSpan>> lines;
-    std::vector<tgc::PageBlock> blocks;
-    for (const Item& it : items) {
-        lines.push_back(tgc::wrapText(it.value, maxChars));
-        const int head = (it.title || *it.label) ? kLabelH : 0;
-        blocks.push_back({head + static_cast<int>(lines.back().size()) * kLineH, it.newGroup});
-    }
-    const int pageH = H - kHintH - 2 - top;
-    const std::vector<tgc::PageSlot> slots = tgc::layoutPages(blocks, pageH, kGap, kGroupGap);
-    const int pages = tgc::pageCount(slots);
-    if (gAboutPage >= pages) gAboutPage = 0;
-
-    char pageNo[12] = "";
-    if (pages > 1) snprintf(pageNo, sizeof pageNo, "%d/%d", gAboutPage + 1, pages);
-    menuHeader(d, ui().aboutTitle, pageNo[0] ? pageNo : nullptr);
-
-    const int bottom = top + pageH;  // a block taller than a page is cut here
-    for (size_t i = 0; i < items.size(); ++i) {
-        if (slots[i].page != gAboutPage) continue;
-        int y = top + slots[i].y;
-        if (items[i].title) {
-            drawAppName(d, kGutter, y, kLabelH, kText);
-            y += kLabelH;
-        } else if (*items[i].label) {
-            std::string label(items[i].label);
-            if (!label.empty() && label.back() == ':') label.pop_back();
-            gRender.drawLabel(d, label.c_str(), kGutter, y, W - 2 * kGutter, kLabelH, kText, kBg);
-            y += kLabelH;
-        }
-        for (const tgc::TextSpan& l : lines[i]) {
-            if (y + 8 > bottom) break;
-            const std::string s(items[i].value + l.begin, l.len);
-            wg::drawCaption(d, gRender, s.c_str(), kGutter, y, kTextDim, kBg);
-            y += kLineH;
-        }
-    }
-    backHints(d, pages > 1 ? ui().hintMore : nullptr);
-    present();
-}
-
-void openAbout() {
-    gAboutPage = 0;
-    gScreen = Screen::About;
-    drawScreen();
-}
-
 // A QR code of `text`, as large as fits a `box` px square, with a white
 // 2-module quiet zone (the spec asks for 4; phone cameras read 2 fine, and on a
 // 135 px screen every pixel goes to the modules). Top-left at (x, y). Returns
@@ -3482,14 +3383,7 @@ void handleInput(int a, int b, uint32_t pressedAt, uint32_t t, bool down) {
     } else if (gScreen == Screen::Stats) {
         statsLoop(b);
     } else if (gScreen == Screen::About) {
-        if (a == 1) {  // next page (drawAbout() wraps after the last)
-            ++gAboutPage;
-            drawScreen();
-        }
-        if (b) {  // side button returns to the settings home
-            gScreen = Screen::Menu;
-            drawScreen();
-        }
+        aboutLoop(a, b);
     } else if (gScreen == Screen::Detail) {
         detailLoop(a, b, t);
     } else if (gScreen == Screen::Done) {
