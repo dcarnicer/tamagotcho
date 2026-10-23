@@ -11,6 +11,7 @@
 #include "app/DeckUpdates.h"
 #include "app/Decks.h"
 #include "app/Display.h"
+#include "app/Intro.h"
 #include "app/Net.h"
 #include "app/Power.h"
 #include "app/Progress.h"
@@ -32,6 +33,15 @@ uint8_t gBrightness = kBrightnessDefault;  // NVS `tangocho`/`bri`
 uint8_t gAdvancePref = tgc::kAdvanceDefault;  // NVS `tangocho`/`adv` (ui/InputPrefs.h)
 uint8_t gHoldPref = tgc::kHoldDefault;        // NVS `tangocho`/`hold`
 tgc::OnKana gOnKana = tgc::OnKana::Katakana;  // NVS `tangocho`/`onkana` (0 katakana, 1 hiragana)
+bool gIntroOn = true;                         // NVS `tangocho`/`intro`
+
+// Two steps, 3 items apart (docs/learning-mode.md §6, decision 5): the
+// queue's defaults.
+tgc::LearnOptions learnOptions() {
+    tgc::LearnOptions o;
+    o.on = gIntroOn;
+    return o;
+}
 
 // --- Settings tree (docs/ux-refresh.md §3, §6.6) ----------------------------
 // Hold the side button from the quiz. The home has a summary card (the loaded
@@ -218,6 +228,7 @@ void closeMenu() {
         gNavTaps = 0;
         gQuizHints.input(gShownAt);
     }
+    if (gScreen == Screen::Intro) introReshown();
     drawScreen();
 }
 
@@ -260,20 +271,23 @@ const MenuItem& menuItem(st::Item id) {
         {I::NewPerDay, [] { return ui().studyRows[0]; },
          [](char* o, size_t n) { snprintf(o, n, "%u", (unsigned)gSrs.newPerDay()); },
          [] { openChoice(Choice::NewPerDay); }},
-        {I::HardAfter, [] { return ui().studyRows[1]; },
+        {I::Introduce, [] { return ui().studyRows[1]; },
+         [](char* o, size_t n) { snprintf(o, n, "%s", ui().introRows[gIntroOn ? 0 : 1]); },
+         [] { openChoice(Choice::Introduce); }},
+        {I::HardAfter, [] { return ui().studyRows[2]; },
          [](char* o, size_t n) { hardAfterText(gSrs.slowMs(), o, n); },
          [] { openChoice(Choice::SlowMs); }},
-        {I::AutoAdvance, [] { return ui().studyRows[2]; },
+        {I::AutoAdvance, [] { return ui().studyRows[3]; },
          [](char* o, size_t n) {
              snprintf(o, n, "%s", ui().advanceRows[gAdvancePref % tgc::kAdvanceChoices]);
          },
          [] { openChoice(Choice::AutoAdvance); }},
-        {I::OnKana, [] { return ui().studyRows[3]; },
+        {I::OnKana, [] { return ui().studyRows[4]; },
          [](char* o, size_t n) {
              snprintf(o, n, "%s", ui().onKanaRows[static_cast<int>(gOnKana) % 2]);
          },
          [] { openChoice(Choice::OnKana); }},
-        {I::DeleteProgress, [] { return ui().studyRows[4]; },
+        {I::DeleteProgress, [] { return ui().studyRows[5]; },
          [](char* o, size_t n) { snprintf(o, n, "%s", ui().deleteRowValue); },
          [] { openReset(true); }},
         // --- Device

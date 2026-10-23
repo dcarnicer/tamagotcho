@@ -11,12 +11,16 @@
 
 #include "pack/MemorySource.h"
 #include "pack/PackReader.h"
+#include "pack/Utf8.h"
 #include "srs/DeckProgress.h"
+#include "srs/Queue.h"
 #include "srs/SrsStore.h"
 #include "ui/DeckSummary.h"
 #include "ui/ScreenLayout.h"
 #include "ui/SettingsTree.h"
+#include "ui/TextLayout.h"
 #include "ui/Theme.h"
+#include "ui/UiFont.h"
 
 using namespace tgc;
 using settings::Item;
@@ -138,12 +142,13 @@ void test_tree_pages() {
     TEST_ASSERT_TRUE(home.items[3] == Item::Wifi);
     TEST_ASSERT_TRUE(home.items[4] == Item::Device);
     const settings::PageItems study = settings::pageItems(Page::Study);
-    TEST_ASSERT_EQUAL(5, study.count);
+    TEST_ASSERT_EQUAL(6, study.count);
     TEST_ASSERT_TRUE(study.items[0] == Item::NewPerDay);
-    TEST_ASSERT_TRUE(study.items[1] == Item::HardAfter);
-    TEST_ASSERT_TRUE(study.items[2] == Item::AutoAdvance);
-    TEST_ASSERT_TRUE(study.items[3] == Item::OnKana);
-    TEST_ASSERT_TRUE(study.items[4] == Item::DeleteProgress);
+    TEST_ASSERT_TRUE(study.items[1] == Item::Introduce);
+    TEST_ASSERT_TRUE(study.items[2] == Item::HardAfter);
+    TEST_ASSERT_TRUE(study.items[3] == Item::AutoAdvance);
+    TEST_ASSERT_TRUE(study.items[4] == Item::OnKana);
+    TEST_ASSERT_TRUE(study.items[5] == Item::DeleteProgress);
     const settings::PageItems device = settings::pageItems(Page::Device);
     TEST_ASSERT_EQUAL(7, device.count);
     TEST_ASSERT_TRUE(device.items[0] == Item::Orientation);
@@ -209,6 +214,60 @@ void test_tree_groups_and_marks() {
     }
     TEST_ASSERT_EQUAL_PTR(&kIconGear, settings::itemIcon(Item::Device));
     TEST_ASSERT_EQUAL_PTR(&kIconCards, settings::itemIcon(Item::Decks));
+}
+
+// Study > Introduce (docs/learning-mode.md §3.8): a picker row of the Study
+// page, under New per day. Its strings (app/UiStrings.cpp; copies here): the
+// label fits a portrait page row's 107 px in the Label face in both
+// languages, the values fit the 19 Font0 cells of the caption under it, the
+// picker's header fits the 135 px header and its description three caption
+// lines of 21 characters.
+void test_introduce_row() {
+    TEST_ASSERT_TRUE(settings::pageOf(Item::Introduce) == Page::Study);
+    TEST_ASSERT_EQUAL(1, settings::rowOf(Page::Study, Item::Introduce));
+    TEST_ASSERT_TRUE(settings::hasChevron(Item::Introduce));
+    TEST_ASSERT_NULL(settings::itemIcon(Item::Introduce));
+
+    const UiFace& f = uifont::kLabel;
+    constexpr int kPageLabelPx = 107;
+    for (const char* label : {"Introduce", "Presentar"})
+        TEST_ASSERT_TRUE_MESSAGE(uiTextWidth(f, label, 0) <= kPageLabelPx, label);
+    // The Label face has every character, accents included.
+    for (const char* s : {"Introduce", "Presentar", "On", "Off", "S\xC3\xAD", "No"})
+        TEST_ASSERT_TRUE_MESSAGE(uiCanDraw(f, s), s);
+    auto cells = [](const char* s) {
+        int n = 0;
+        for (const char* p = s; utf8Next(&p);) ++n;
+        return n;
+    };
+    for (const char* value : {"On", "Off", "S\xC3\xAD", "No"}) TEST_ASSERT_TRUE(cells(value) <= 19);
+    // Header: the title and the battery in 135 px (Font0, ASCII).
+    for (const char* title : {"INTRODUCE", "PRESENTAR"})
+        TEST_ASSERT_TRUE(cells(title) * 6 <= 135 - 2 * theme::kGutter - 18);
+    for (const char* desc : {"Show each new kanji before its first question.",
+                             "Muestra cada kanji nuevo antes de preguntarlo."}) {
+        const std::vector<TextSpan> lines = wrapText(desc, 21);
+        TEST_ASSERT_TRUE_MESSAGE(lines.size() <= 3, desc);
+    }
+}
+
+// What the app sets the queue to (app/Settings.cpp learnOptions()): learning
+// on or off, with the queue's defaults of two steps three items apart
+// (docs/learning-mode.md §6, decision 5); off is the default of the queue
+// itself, so a queue the app never configured behaves as before.
+void test_learn_options_defaults() {
+    const LearnOptions o;
+    TEST_ASSERT_FALSE(o.on);
+    TEST_ASSERT_EQUAL_UINT8(2, o.steps);
+    TEST_ASSERT_EQUAL_UINT8(3, o.gap);
+    Queue q;
+    TEST_ASSERT_FALSE(q.learning().on);
+    LearnOptions on;
+    on.on = true;
+    q.setLearning(on);
+    TEST_ASSERT_TRUE(q.learning().on);
+    TEST_ASSERT_EQUAL_UINT8(2, q.learning().steps);
+    TEST_ASSERT_EQUAL_UINT8(3, q.learning().gap);
 }
 
 void test_values() {
@@ -548,6 +607,8 @@ int main(int, char**) {
     RUN_TEST(test_tree_fixed_orientation_has_no_orientation_row);
     RUN_TEST(test_tree_every_item_once);
     RUN_TEST(test_tree_groups_and_marks);
+    RUN_TEST(test_introduce_row);
+    RUN_TEST(test_learn_options_defaults);
     RUN_TEST(test_values);
     RUN_TEST(test_live_streak);
     RUN_TEST(test_layout_home);

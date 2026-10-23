@@ -11,7 +11,8 @@ namespace app {
 
 // Screen::Choice is shared by the row pickers (see openChoice()).
 enum class Choice {
-    NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi, AutoAdvance, HoldTime, OnKana
+    NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi, AutoAdvance, HoldTime, OnKana,
+    Introduce
 };
 extern tgc::ListView gChoiceList;
 

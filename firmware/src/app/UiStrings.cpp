@@ -63,7 +63,7 @@ const UiStrings kUiEn = {
     "answer", "next", "details",
     "stroke %u/%u",
     {"Decks", "Study", "Stats", "Wi-Fi", "Device"},
-    {"New per day", "Hard after", "Auto next", "On'yomi", "Delete"},
+    {"New per day", "Introduce", "Hard after", "Auto next", "On'yomi", "Delete"},
     {"Orientation", "Brightness", "Language", "Hold time", "Date", "Sleep", "About"},
     "STUDY", "DEVICE", "AUTO NEXT", "HOLD TIME", "ON'YOMI",
     "%u/day", "off", ".",
@@ -121,6 +121,9 @@ const UiStrings kUiEn = {
     "DECK UPDATES", "Checking deck updates...", "1 update",
     "%u updates", "All decks are up to date",
     "Settings > Decks > Updates", "%s · %u", "skip", "continue",
+    "NEW", "known",
+    "INTRODUCE", {"On", "Off"},
+    "Show each new kanji before its first question.",
 };
 
 const UiStrings kUiEs = {
@@ -178,7 +181,7 @@ const UiStrings kUiEs = {
     "responder", "siguiente", "detalles",
     "trazo %u/%u",
     {"Mazos", "Estudio", "Progreso", "Wi-Fi", "Dispositivo"},
-    {"Nuevas/día", "Difícil tras", "Pasar solo", "Lecturas on", "Borrar"},
+    {"Nuevas/día", "Presentar", "Difícil tras", "Pasar solo", "Lecturas on", "Borrar"},
     {"Orientación", "Brillo", "Idioma", "Pulsación", "Fecha", "Suspender", "Acerca de"},
     "ESTUDIO", "DISPOSITIVO", "PASAR SOLO", "PULSACION", "LECTURAS ON",
     "%u/día", "apagado", ",",
@@ -236,6 +239,9 @@ const UiStrings kUiEs = {
     "ACTUALIZACIONES", "Buscando actualizaciones...", "1 actualización de mazo",
     "%u mazos por actualizar", "Todos los mazos están al día",
     "Ajustes > Mazos > Actualizar", "%s · %u", "saltar", "continuar",
+    "NUEVA", "la sé",
+    "PRESENTAR", {"Sí", "No"},
+    "Muestra cada kanji nuevo antes de preguntarlo.",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise

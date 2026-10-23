@@ -31,14 +31,15 @@ void smallText(lgfx::LovyanGFX& d, const char* s, int x, int y, uint16_t fg, uin
 // 2026-10-21): `tapKey` for the front tap (kKeyMove where it moves a focus,
 // kKeyRight where it steps or turns a page, kKeyEnter where any key goes on),
 // Enter for the hold, esc for the side's back or cancel, the menu key and the
-// word "settings" for the side's settings icon, and on the date stepper (the
-// only bar with a side hold) left for the side tap and esc for the side hold.
+// word "settings" for the side's settings icon, on the date stepper (the
+// only bar with a side hold) left for the side tap and esc for the side hold,
+// and left for the intro card's "known" (its check icon).
 // The buttons' boards get `h` as it is.
 tgc::widgets::Hints boardHints(tgc::widgets::Hints h, const tgc::KeyCap& tapKey) {
     if (!tgc::board::hasKeyboard()) return h;
     h.keys = true;
     h.tapKey = tapKey;
-    if (h.sideHold) {
+    if (h.sideHold || h.side == &tgc::kIconCheck) {
         h.sideKey = tgc::kKeyLeft;
     } else if (h.side == &tgc::kIconMenu) {
         h.sideKey = tgc::kKeyMenu;

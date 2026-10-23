@@ -109,16 +109,12 @@ bool updateCheckDue() {
 namespace {
 
 // Leaves the check (result, failure or skip): the boot flow continues with the
-// first question, or with the done screen when nothing is due.
+// first item (a question or an intro), or with the done screen when nothing
+// is due.
 void finishUpdateCheck() {
     netRadioOff();
     gSwallowInput = true;
-    if (!newQuestion())
-        showDone();
-    else {
-        gScreen = Screen::Quiz;
-        drawScreen();
-    }
+    showNextItem();
 }
 
 // A press during the join gives up without an error; the day is recorded so

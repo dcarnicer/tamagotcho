@@ -67,6 +67,8 @@ void choiceLabel(int i, char* out, size_t n) {
         snprintf(out, n, "%s", ui().holdRows[v % tgc::kHoldChoices]);
     } else if (gChoice == Choice::OnKana) {
         snprintf(out, n, "%s", ui().onKanaRows[v % 2]);
+    } else if (gChoice == Choice::Introduce) {
+        snprintf(out, n, "%s", ui().introRows[v ? 0 : 1]);
     } else {
         snprintf(out, n, "%u", (unsigned)v);
     }
@@ -84,7 +86,8 @@ void choiceValue(int i, char* out, size_t n) {
         st::formatSeconds(tgc::holdMsFor(v), ui().decimalPoint, out, n);
     } else if ((gChoice == Choice::NewPerDay && v == tgc::kSrsDefaultNewPerDay) ||
                (gChoice == Choice::SlowMs && v == tgc::kSrsDefaultSlowMs) ||
-               (gChoice == Choice::Brightness && v == kBrightnessDefault)) {
+               (gChoice == Choice::Brightness && v == kBrightnessDefault) ||
+               (gChoice == Choice::Introduce && v == 1)) {
         snprintf(out, n, "%s", ui().choiceDefault);
     }
 }
@@ -99,6 +102,7 @@ const char* choiceTitle() {
         case Choice::AutoAdvance: return ui().advanceTitle;
         case Choice::HoldTime: return ui().holdTitle;
         case Choice::OnKana: return ui().onKanaTitle;
+        case Choice::Introduce: return ui().introTitle;
         case Choice::UiLang: break;
     }
     return ui().langTitle;
@@ -112,6 +116,7 @@ const char* choiceDescription() {
         case Choice::AutoAdvance: return ui().descAdvance;
         case Choice::HoldTime: return ui().descHold;
         case Choice::OnKana: return ui().descOnKana;
+        case Choice::Introduce: return ui().descIntro;
         case Choice::Orientation: return tgc::board::hasAccel() ? ui().descOrient : nullptr;
         case Choice::Brightness: return ui().descBright;
         case Choice::UiLang: return ui().descLang;
@@ -225,6 +230,14 @@ void openChoice(Choice which) {
         showChoice(static_cast<int>(gOnKana));
         return;
     }
+    if (which == Choice::Introduce) {
+        // On (the default) first.
+        gChoiceCount = 2;
+        gChoiceValues[0] = 1;
+        gChoiceValues[1] = 0;
+        showChoice(gIntroOn ? 0 : 1);
+        return;
+    }
     if (which == Choice::AutoAdvance || which == Choice::HoldTime) {
         // ui/InputPrefs.h: the row is the stored index.
         gChoiceCount = 3;
@@ -319,6 +332,21 @@ void applyChoice() {
         backToMenu();
         return;
     }
+    if (gChoice == Choice::Introduce) {
+        const bool on = gChoiceValues[sel] != 0;
+        if (on != gIntroOn) {
+            gIntroOn = on;
+            gPrefs.putUChar(kPrefIntro, on ? 1 : 0);
+            // The queue already built keeps its items: rebuild it, and let an
+            // intro, an unanswered question or the done screen behind the
+            // settings give way to the new queue's next item.
+            gQueue.setLearning(learnOptions());
+            gQueue.rebuild(*gPack, gSrs, gRng, extraNewToday());
+            refreshAfterRebuild(gBeforeMenu);
+        }
+        backToMenu();
+        return;
+    }
     if (gChoice == Choice::HoldTime) {
         // Read by loop() from the next press on; the hold that chose it has
         // fired already.
@@ -333,6 +361,7 @@ void applyChoice() {
         gSrs.save(gSrsIo);
         gDirty = 0;
         gQueue.rebuild(*gPack, gSrs, gRng);  // the daily new-card cap changed
+        refreshAfterRebuild(gBeforeMenu, true);
     } else {
         gSrs.setSlowMs(v);
         gSrs.save(gSrsIo);

@@ -220,7 +220,8 @@ struct UiStrings {
     // caption line under the label, so its label gets 107 px. Landscape rows
     // are wider: 110 px on the home, 212 on a page.
     const char* groupRows[5];   // decks, study, stats, Wi-Fi, device
-    const char* studyRows[5];   // new per day, hard after, auto-advance, on'yomi, delete (progress)
+    // new per day, introduce, hard after, auto-advance, on'yomi, delete (progress)
+    const char* studyRows[6];
     const char* deviceRows[7];  // orientation, brightness, language, hold time, date, sleep, about
     const char* studyTitle;     // headers (Font0, ASCII)
     const char* deviceTitle;
@@ -336,6 +337,18 @@ struct UiStrings {
     const char* updateListFmt;    // updates list: %s = network, %u = updates
     const char* updateSkip;       // hint bar while checking
     const char* updateContinue;   // hint bar on the result
+    // --- Learning mode (docs/learning-mode.md §3.2, §3.8) --------------------
+    // The intro card's header pill (Font0, uppercase ASCII: "NUEVA" leaves
+    // the worded stroke counter 67 px in the 135 px portrait) and its hint
+    // bar's side word ("✓ known"; "← known" on the keys). Checked in
+    // test_quizui, which copies these.
+    const char* introPill;
+    const char* hintKnown;
+    // Settings > Study > Introduce: the picker's header (Font0, ASCII), its
+    // two rows (on, off; also the Study row's value) and its description.
+    const char* introTitle;
+    const char* introRows[2];
+    const char* descIntro;
 };
 
 extern const UiStrings kUiEn;

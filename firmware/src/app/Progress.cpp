@@ -138,6 +138,7 @@ bool portalRestoreProgress(const char* tmpPath) {
         gSrsLoaded = gSrs.begin(gSrsIo);
         gSrs.beginSession();
         gQueue.rebuild(*gPack, gSrs, gRng, extraNewToday());
+        if (gPack->isOpen()) refreshAfterRebuild(gBeforeMenu, true);
         return false;
     }
     gSrs.beginSession();
@@ -152,7 +153,7 @@ bool portalRestoreProgress(const char* tmpPath) {
         gBeforeMenu = Screen::Decks;
     } else {
         gQueue.rebuild(*gPack, gSrs, gRng, extraNewToday());
-        gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
+        gBeforeMenu = nextItem();
     }
     Serial.printf("srs: restored from the portal: day %u, records %u\n", (unsigned)gSrs.today(),
                   (unsigned)gSrs.count());
@@ -344,7 +345,7 @@ void applyReset() {
                   (unsigned)gSrs.count(), (unsigned)gSrs.answeredTotal());
     gExtraNew = 0;
     gQueue.rebuild(*gPack, gSrs, gRng);
-    if (gPack->isOpen()) gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
+    if (gPack->isOpen()) gBeforeMenu = nextItem();
     gResetCps.clear();
     gResetCps.shrink_to_fit();
     gMenuPage = st::Page::Study;

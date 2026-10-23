@@ -7,7 +7,6 @@
 
 #include "app/App.h"
 #include "app/Display.h"
-#include "app/Done.h"
 #include "app/KanjiCard.h"
 #include "app/Power.h"
 #include "app/Quiz.h"
@@ -156,15 +155,10 @@ void detailLoop(int a, int b, uint32_t t) {
     // ~1.2 s hold on the last one, then loop; it stops while the panel is
     // dim or dark (§2.6). Only the counter and the kanji are redrawn.
     if (strokeAnimTick(t)) drawDetailFrame();
-    // Any input (tap, hold or side tap) starts the next question; a side hold
+    // Any input (tap, hold or side tap) goes on to the next item; a side hold
     // opens the menu, as on the quiz.
     if (a == 1 || a == 2 || b == 1) {
-        if (newQuestion()) {
-            gScreen = Screen::Quiz;
-            drawScreen();
-        } else {
-            showDone();
-        }
+        showNextItem();
     } else if (b == 2) {
         openMenu();
     }
