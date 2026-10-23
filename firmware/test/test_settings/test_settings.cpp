@@ -438,6 +438,49 @@ void test_deck_summary() {
     TEST_ASSERT_EQUAL(-1, settings::accuracyPercent(srs.stats().answers, srs.stats().again));
 }
 
+// A learning record (an intro whose steps a rebuild dropped, see
+// docs/learning-mode.md section 3.5) is seen and due, not new, also when it
+// was introduced on SRS day 0 (due day 0); the cap of today counts it. Once
+// answered it is an ordinary record; forgotten, the kanji is new again.
+void test_deck_summary_learning() {
+    const std::vector<uint8_t> buf = makeDeck({0x4E00, 0x4E8C, 0x4E09}, "JLPT N5");
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(static_cast<int>(PackError::Ok), static_cast<int>(pack.open(src)));
+
+    SrsStore srs;
+    srs.setToday(0);
+    TEST_ASSERT_TRUE(srs.introduce(0x4E00, 0));
+    DeckSummary s = deckSummary(pack, srs);
+    TEST_ASSERT_EQUAL_UINT32(2, s.fresh);
+    TEST_ASSERT_EQUAL_UINT32(1, s.seen());
+    TEST_ASSERT_EQUAL_UINT32(1, s.due);
+    TEST_ASSERT_EQUAL_UINT32(1, s.dueTomorrow);
+    TEST_ASSERT_EQUAL_UINT32(1, s.introducedToday);
+
+    // Still learning on a later day: due, no longer introduced today.
+    srs.setToday(2);
+    s = deckSummary(pack, srs);
+    TEST_ASSERT_EQUAL_UINT32(2, s.fresh);
+    TEST_ASSERT_EQUAL_UINT32(1, s.due);
+    TEST_ASSERT_EQUAL_UINT32(0, s.introducedToday);
+
+    // Answered (a step, or its review): due in the future like any card.
+    srs.grade(0x4E00, Grade::Good, 2, 0, 0.5f);
+    s = deckSummary(pack, srs);
+    TEST_ASSERT_EQUAL_UINT32(1, s.seen());
+    TEST_ASSERT_EQUAL_UINT32(0, s.due);
+
+    // Delete progress on an intro: the kanji is new again.
+    TEST_ASSERT_TRUE(srs.introduce(0x4E8C, 2));
+    const uint32_t gone[] = {0x4E00, 0x4E8C};
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(srs.forget(gone, 2)));
+    s = deckSummary(pack, srs);
+    TEST_ASSERT_EQUAL_UINT32(3, s.fresh);
+    TEST_ASSERT_EQUAL_UINT32(0, s.due);
+    TEST_ASSERT_EQUAL_UINT32(0, s.introducedToday);
+}
+
 void test_study_more_extra() {
     // Cap 10, 10 introduced, no extra: 10 more.
     TEST_ASSERT_EQUAL_UINT16(10, studyMoreExtra(10, 10, 0));
@@ -512,6 +555,7 @@ int main(int, char**) {
     RUN_TEST(test_layout_date);
     RUN_TEST(test_layout_done);
     RUN_TEST(test_deck_summary);
+    RUN_TEST(test_deck_summary_learning);
     RUN_TEST(test_study_more_extra);
     RUN_TEST(test_peek_pack_info);
     RUN_TEST(test_peek_long_utf8_name);
