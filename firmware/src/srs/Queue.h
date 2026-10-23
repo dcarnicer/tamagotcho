@@ -119,7 +119,7 @@ private:
     std::vector<uint8_t> seen_;      // per card index: already scheduled
     std::vector<uint8_t> relearned_;  // per card index: relearn pushes so far
     int prevMode_ = -1;               // mode of the last served question
-    Item cur_;                        // the last item next() served, mode as served
+    Item cur_;                        // the last item next() served (a fixed mode as served)
     bool open_ = false;               // cur_ waits for answered(), introduced() or known()
 };
 
