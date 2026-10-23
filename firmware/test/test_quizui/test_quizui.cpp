@@ -1,9 +1,11 @@
 // Native tests for the quiz screens' pure logic (ui/QuizUi.h): session
 // progress, option navigation, the hint bar policy, hold progress, auto-advance
 // and the pixel budgets of the header pills and hint bars in English and
-// Spanish (the strings are copies of main.cpp's UiStrings; keep them in step),
-// the hint bar's layout (ui/HintBar.h), the date stepper's included, and the
-// detail card's reading rows.
+// Spanish (the strings are copies of app/UiStrings.cpp; keep them in step),
+// the hint bar's layout (ui/HintBar.h), the date stepper's included, the
+// detail card's reading rows, and the learning mode's intro card: its
+// header, hint bar, meanings, reading rows, example words and layout on
+// every panel, with the widest strings of the N5 decks.
 #include <unity.h>
 
 #include <cstring>
@@ -12,6 +14,7 @@
 #include "ui/Icons.h"
 #include "ui/InputPrefs.h"
 #include "ui/QuizUi.h"
+#include "ui/UiFont.h"
 
 using namespace tgc;
 
@@ -501,6 +504,9 @@ void test_keyboard_bars_fit_one_row() {
         {nullptr, nullptr, "borrar", esc, "cancelar", nullptr},
         {"other", move, "OK", nullptr, nullptr, nullptr},
         {"otro", move, "OK", nullptr, nullptr, nullptr},
+        // the intro card: Enter goes on, left says known
+        {"next", enter, nullptr, &kKeyLeft, "known", nullptr},
+        {"siguiente", enter, nullptr, &kKeyLeft, "la s\xC3\xA9", nullptr},
     };
     for (const KeyBar& b : bars) checkKeyBar(b);
 }
@@ -516,6 +522,355 @@ void test_side_hold_mark_of_its_own() {
     s.sideHoldMarkW = keyCapW(kKeyEsc);
     const HintPlan key = planHints(240, s);
     TEST_ASSERT_EQUAL(button.sideHoldX - (keyCapW(kKeyEsc) - kIconHold.w), key.sideHoldX);
+}
+
+// ---------------------------------------------------------------- intro card
+// The widths the intro is laid out with (app/Intro.cpp adv()): the UI font's
+// Label face for Latin, 18 px for kana and kanji, which come from the pack's
+// text set at text_px 18 (full width in Noto Sans JP).
+static int uiAdv(uint32_t cp) {
+    const UiGlyph* g = uiGlyph(uifont::kLabel, cp);
+    return g ? g->advance : 18;
+}
+static int uiW(const char* s) { return textWidthBy(s, uiAdv); }
+static int lh() { return uifont::kLabel.pitch; }
+constexpr int kLargePx = 96;  // the builder's --large-px and --small-px
+constexpr int kSmallPx = 40;
+struct IntroPanel {
+    int w, h;
+};
+// StickS3 portrait and landscape (the Cardputer ADV's panel too), T-Display-S3
+// portrait and landscape.
+constexpr IntroPanel kIntroPanels[] = {{135, 240}, {240, 135}, {170, 320}, {320, 170}};
+static IntroLayout introAt(const IntroPanel& p) {
+    return introLayout(p.w, p.h, kLargePx, kSmallPx, lh());
+}
+static int readingTag() { return std::max(pillWidthFor("ON", 0), pillWidthFor("KUN", 0)); }
+
+static Card introCardOf(const char* meanings, const char* on, const char* kun) {
+    Card c{};
+    c.meanings = meanings;
+    c.onyomi = on;
+    c.kunyomi = kun;
+    return c;
+}
+
+// The widest strings of the N5 decks (English and Spanish, 2026-10-23, with
+// --example-words): forms, readings and glosses, paired worst with worst.
+static const IntroWordText kWideWords[] = {
+    {"\xE5\xA4\x96\xE5\x9B\xBD\xE4\xBA\xBA", "\xE3\x81\x8C\xE3\x81\x84\xE3\x81\x93\xE3\x81\x8F"
+                                            "\xE3\x81\x98\xE3\x82\x93",
+     "yen (currency of Japan)"},  // 外国人 がいこくじん
+    {"\xE5\xA4\xA7\xE4\xB8\x88\xE5\xA4\xAB", "\xE3\x81\xA0\xE3\x81\x84\xE3\x81\x98\xE3\x82\x87"
+                                            "\xE3\x81\x86\xE3\x81\xB6",
+     "Chiba (city, prefecture)"},  // 大丈夫 だいじょうぶ
+    {"\xE5\x8C\x97\xE6\xB5\xB7\xE9\x81\x93", "\xE3\x81\xBB\xE3\x81\xA3\xE3\x81\x8B\xE3\x81\x84"
+                                            "\xE3\x81\xA9\xE3\x81\x86",
+     "long (distance, length)"},  // 北海道 ほっかいどう
+    {"\xE7\x94\x9F\xE3\x81\xBE\xE3\x82\x8C\xE3\x82\x8B",
+     "\xE3\x81\x86\xE3\x81\xBE\xE3\x82\x8C\xE3\x82\x8B", "presidente de empresa"},  // 生まれる
+    {"\xE5\x8F\x8E\xE5\x85\xA5", "\xE3\x81\x97\xE3\x82\x85\xE3\x81\x86\xE3\x81\xAB\xE3\x82\x85"
+                                "\xE3\x81\x86",
+     "este (punto cardinal)"},  // 収入 しゅうにゅう
+};
+// 休's words in the mockups: 休日 きゅうじつ "holiday", 休む やすむ "to rest".
+static const IntroWordText kRestWords[] = {
+    {"\xE4\xBC\x91\xE6\x97\xA5", "\xE3\x81\x8D\xE3\x82\x85\xE3\x81\x86\xE3\x81\x98\xE3\x81\xA4",
+     "holiday"},
+    {"\xE4\xBC\x91\xE3\x82\x80", "\xE3\x82\x84\xE3\x81\x99\xE3\x82\x80", "to rest"},
+};
+// 休 (rest): キュウ; やす.む、やす.まる、やす.める.
+static Card restCard() {
+    return introCardOf("rest; day off; retire", "\xE3\x82\xAD\xE3\x83\xA5\xE3\x82\xA6",
+                       "\xE3\x82\x84\xE3\x81\x99.\xE3\x82\x80\xE3\x80\x81\xE3\x82\x84\xE3\x81\x99."
+                       "\xE3\x81\xBE\xE3\x82\x8B\xE3\x80\x81\xE3\x82\x84\xE3\x81\x99.\xE3\x82\x81"
+                       "\xE3\x82\x8B");
+}
+
+void test_intro_meanings_split() {
+    IntroMeanings m = introMeanings("rest; day off; retire");
+    TEST_ASSERT_EQUAL_STRING("rest", m.first.c_str());
+    TEST_ASSERT_EQUAL_STRING("day off; retire", m.rest.c_str());
+    m = introMeanings("water");
+    TEST_ASSERT_EQUAL_STRING("water", m.first.c_str());
+    TEST_ASSERT_EQUAL_STRING("", m.rest.c_str());
+    m = introMeanings("");
+    TEST_ASSERT_EQUAL_STRING("", m.first.c_str());
+    m = introMeanings(nullptr);
+    TEST_ASSERT_EQUAL_STRING("", m.first.c_str());
+    TEST_ASSERT_EQUAL_STRING("", m.rest.c_str());
+}
+
+void test_intro_reading_rows() {
+    const Card c = restCard();
+    IntroReading r[2];
+    // The 135 px portrait: 98 px after the pill. やすむ、やすまる、やすめる is
+    // 234 px, so the others are a "+2" (the mockup's row).
+    const int w = 135 - 2 * theme::kGutter - readingTag() - 5;
+    TEST_ASSERT_EQUAL(98, w);
+    TEST_ASSERT_EQUAL(2, introReadings(c, false, w, uiAdv, r));
+    TEST_ASSERT_EQUAL(ReadingKind::On, r[0].kind);
+    TEST_ASSERT_EQUAL_STRING("\xE3\x82\xAD\xE3\x83\xA5\xE3\x82\xA6", r[0].first.c_str());  // キュウ
+    TEST_ASSERT_EQUAL_STRING("", r[0].rest.c_str());
+    TEST_ASSERT_EQUAL(0, r[0].more);
+    TEST_ASSERT_EQUAL(ReadingKind::Kun, r[1].kind);
+    TEST_ASSERT_EQUAL_STRING("\xE3\x82\x84\xE3\x81\x99\xE3\x82\x80", r[1].first.c_str());  // やすむ
+    TEST_ASSERT_EQUAL_STRING("", r[1].rest.c_str());
+    TEST_ASSERT_EQUAL(2, r[1].more);
+    // Room for all of them: the others, dim, after "、".
+    introReadings(c, false, 400, uiAdv, r);
+    TEST_ASSERT_EQUAL_STRING("\xE3\x80\x81\xE3\x82\x84\xE3\x81\x99\xE3\x81\xBE\xE3\x82\x8B\xE3\x80"
+                             "\x81\xE3\x82\x84\xE3\x81\x99\xE3\x82\x81\xE3\x82\x8B",
+                             r[1].rest.c_str());  // 、やすまる、やすめる
+    TEST_ASSERT_EQUAL(0, r[1].more);
+    // On'yomi in hiragana (Settings > Study > On'yomi); kun'yomi as they are.
+    introReadings(c, true, w, uiAdv, r);
+    TEST_ASSERT_EQUAL_STRING("\xE3\x81\x8D\xE3\x82\x85\xE3\x81\x86", r[0].first.c_str());  // きゅう
+    TEST_ASSERT_EQUAL_STRING("\xE3\x82\x84\xE3\x81\x99\xE3\x82\x80", r[1].first.c_str());
+    // When even "+2" does not fit after やすむ (54 + 4 + 12 px), the reading
+    // alone.
+    introReadings(c, false, 69, uiAdv, r);
+    TEST_ASSERT_EQUAL(0, r[1].more);
+    introReadings(c, false, 70, uiAdv, r);
+    TEST_ASSERT_EQUAL(2, r[1].more);
+    // One kind: one row, the others after "、" when they fit; none: no row.
+    TEST_ASSERT_EQUAL(1, introReadings(introCardOf("m", "\xE3\x82\xAD\xE3\x80\x81\xE3\x82\xB1", ""),
+                                       false, w, uiAdv, r));  // キ、ケ
+    TEST_ASSERT_EQUAL(ReadingKind::On, r[0].kind);
+    TEST_ASSERT_EQUAL_STRING("\xE3\x82\xAD", r[0].first.c_str());
+    TEST_ASSERT_EQUAL_STRING("\xE3\x80\x81\xE3\x82\xB1", r[0].rest.c_str());
+    TEST_ASSERT_EQUAL(0, introReadings(introCardOf("m", "", ""), false, w, uiAdv, r));
+}
+
+// The widest first readings of the N5 decks with their counts (おおきい +2,
+// うまれる +16, ジョウ +2), and 休's row, show their "+N" on every panel.
+void test_intro_reading_rows_fit_every_panel() {
+    const char* kWideKun = "\xE3\x81\x86\xE3\x81\xBE.\xE3\x82\x8C\xE3\x82\x8B";  // うま.れる
+    std::string many = kWideKun;
+    for (int i = 0; i < 16; ++i) many += "\xE3\x80\x81\xE3\x81\x84.\xE3\x81\x8D\xE3\x82\x8B";
+    const Card wide = introCardOf("m", "\xE3\x82\xB8\xE3\x83\xA7\xE3\x82\xA6\xE3\x80\x81\xE3\x82"
+                                       "\xB7\xE3\x83\xA7\xE3\x82\xA6\xE3\x80\x81\xE3\x82\xB7\xE3"
+                                       "\x83\xA3\xE3\x83\xB3",  // ジョウ、ショウ、シャン
+                                  many.c_str());
+    for (const IntroPanel& p : kIntroPanels) {
+        const IntroLayout l = introAt(p);
+        const int w = l.colW - readingTag() - 5;
+        IntroReading r[2];
+        TEST_ASSERT_EQUAL(2, introReadings(wide, false, w, uiAdv, r));
+        TEST_ASSERT_TRUE(r[0].more == 2 || !r[0].rest.empty());
+        TEST_ASSERT_EQUAL(16, r[1].more);
+        TEST_ASSERT_TRUE(uiW(r[1].first.c_str()) + kIntroMoreGap + 3 * kCaptionCharW <= w);
+        introReadings(restCard(), false, w, uiAdv, r);
+        TEST_ASSERT_EQUAL(2, r[1].more);
+    }
+}
+
+// The header: the NEW / NUEVA pill and the worded stroke counter up to 29
+// strokes in both languages on every panel (79 and 67 px in the 135 px
+// portrait, docs/learning-mode.md §3.2); the counter without stroke data and
+// page 2's "2/2" too.
+void test_intro_header_fits() {
+    TEST_ASSERT_EQUAL(79, introCounterRoom(135, "NEW", true));
+    TEST_ASSERT_EQUAL(67, introCounterRoom(135, "NUEVA", true));
+    for (int w : {135, 170, 240, 320}) {
+        const int en = introCounterRoom(w, "NEW", true);
+        const int es = introCounterRoom(w, "NUEVA", true);
+        TEST_ASSERT_TRUE(strokeCounterWorded("stroke %u/%u", 29, en));
+        TEST_ASSERT_TRUE(strokeCounterWorded("trazo %u/%u", 29, es));
+        TEST_ASSERT_TRUE(captionChars("strokes 29") * kCaptionCharW <= en);
+        TEST_ASSERT_TRUE(captionChars("trazos 29") * kCaptionCharW <= es);
+        TEST_ASSERT_TRUE(captionChars("2/2") * kCaptionCharW <= es);
+    }
+    // Any two-digit count keeps the word (Jōyō's most is 29); three digits
+    // would go bare in the 135 px portrait.
+    TEST_ASSERT_TRUE(strokeCounterWorded("trazo %u/%u", 99, introCounterRoom(135, "NUEVA", true)));
+    TEST_ASSERT_FALSE(strokeCounterWorded("trazo %u/%u", 100, introCounterRoom(135, "NUEVA", true)));
+}
+
+// The hint bar, always shown: "• next ✓ known" and "• siguiente ✓ la sé" on
+// one row with the side word on every panel; in the 135 px portrait the
+// Spanish front items end at x 66 and the side group starts at 89.
+void test_intro_hints_fit() {
+    const char* pairs[][2] = {{"next", "known"}, {"siguiente", "la s\xC3\xA9"}};
+    for (int w : {135, 170, 240, 320})
+        for (const auto& pr : pairs) {
+            HintSpec s;
+            s.tap = pr[0];
+            s.tapMarkW = kIconTap.w;
+            s.sideIconW = kIconCheck.w;
+            s.sideWord = pr[1];
+            const HintPlan p = planHints(w, s);
+            TEST_ASSERT_FALSE(p.twoRows);
+            TEST_ASSERT_TRUE_MESSAGE(p.sideWord, pr[1]);
+        }
+    HintSpec es;
+    es.tap = "siguiente";
+    es.tapMarkW = kIconTap.w;
+    es.sideIconW = kIconCheck.w;
+    es.sideWord = "la s\xC3\xA9";
+    TEST_ASSERT_EQUAL(66, hintFrontEnd(es.tap, nullptr, kIconTap.w, 0));
+    TEST_ASSERT_EQUAL(89, planHints(135, es).sideX);
+}
+
+// Where the parts go on each panel: the fullest page 1 (two meaning lines,
+// two reading rows) above the hint bar, page 2's head, rule and words inside
+// the panel with room for two words -- in portrait each of two lines and a
+// gloss of two, in landscape each of one line (side by side) and a gloss of
+// one -- and the words inline only on the T-Display-S3's portrait.
+void test_intro_layout_panels() {
+    for (const IntroPanel& p : kIntroPanels) {
+        const IntroLayout l = introAt(p);
+        TEST_ASSERT_TRUE(l.colTop + 4 * (lh() + 2) <= l.bottom + 2);
+        TEST_ASSERT_TRUE(l.colX >= theme::kGutter && l.colX + l.colW <= p.w - theme::kGutter);
+        TEST_ASSERT_TRUE(l.bottom < p.h - theme::kHintH && l.pageBottom <= p.h - theme::kHintH);
+        TEST_ASSERT_TRUE(l.headY >= theme::kHeaderH);
+        TEST_ASSERT_TRUE(l.ruleY >= l.headY + l.headH);
+        TEST_ASSERT_TRUE(l.wordsY > l.ruleY);
+        TEST_ASSERT_EQUAL(p.w - 2 * theme::kGutter, l.wordsW);
+        const int perWord = l.wordsSideBySide ? 2 * lh() : 4 * lh();
+        TEST_ASSERT_TRUE(l.pageBottom - l.wordsY >= 2 * perWord + kIntroWordsGap);
+        TEST_ASSERT_EQUAL(p.w < p.h, l.headKanji);
+        TEST_ASSERT_EQUAL(p.w > p.h, l.wordsSideBySide);
+        if (l.headKanji) TEST_ASSERT_TRUE(theme::kGutter + kSmallPx + 4 + 60 <= p.w);
+    }
+    TEST_ASSERT_FALSE(introAt({135, 240}).wordsInline);
+    TEST_ASSERT_FALSE(introAt({240, 135}).wordsInline);
+    TEST_ASSERT_TRUE(introAt({170, 320}).wordsInline);
+    TEST_ASSERT_FALSE(introAt({320, 170}).wordsInline);
+    // The design's figures: the 135 px portrait's column from y 120 to 206.
+    const IntroLayout s = introAt({135, 240});
+    TEST_ASSERT_EQUAL(120, s.colTop);
+    TEST_ASSERT_EQUAL(206, s.colTop + 4 * (lh() + 2) - 2);
+}
+
+// The widest words and glosses of the N5 decks fit page 2 on every panel,
+// any two of them, none shortened: in portrait the form and the reading each
+// whole on its line and the gloss in at most two; in landscape the form and
+// the reading side by side and the gloss on one line.
+void test_intro_words_fit_page_two() {
+    for (const IntroPanel& p : kIntroPanels) {
+        const IntroLayout l = introAt(p);
+        const int h = l.pageBottom - l.wordsY;
+        for (const IntroWordText& a : kWideWords) {
+            TEST_ASSERT_TRUE(uiW(a.word) <= l.wordsW);
+            TEST_ASSERT_TRUE(uiW(a.reading) <= l.wordsW);
+            TEST_ASSERT_TRUE(wrapLines(a.gloss, l.wordsW, 8, uiAdv) <=
+                             (l.wordsSideBySide ? 1 : kIntroGlossLines));
+            for (const IntroWordText& b : kWideWords) {
+                const IntroWordText pair[2] = {a, b};
+                IntroWordLines lines[2];
+                TEST_ASSERT_EQUAL(2, planIntroWords(pair, 2, l.wordsW, h, lh(), l.wordsSideBySide,
+                                                    uiAdv, lines));
+                for (int i = 0; i < 2; ++i) {
+                    TEST_ASSERT_EQUAL(l.wordsSideBySide, lines[i].oneLine);
+                    TEST_ASSERT_EQUAL(wrapLines(pair[i].gloss, l.wordsW, 2, uiAdv),
+                                      lines[i].glossLines);
+                }
+            }
+        }
+    }
+    // The 24-character limit the builder keeps English glosses to: two lines
+    // in the 135 px portrait, one in the landscape (240 px).
+    TEST_ASSERT_EQUAL(24, static_cast<int>(std::strlen("Chiba (city, prefecture)")));
+    TEST_ASSERT_EQUAL(2, wrapLines("Chiba (city, prefecture)", 127, 8, uiAdv));
+    TEST_ASSERT_EQUAL(1, wrapLines("Chiba (city, prefecture)", 232, 8, uiAdv));
+}
+
+// The planner's fallbacks: a gloss loses its second line, the last word's
+// first, then the last word goes; a word without a gloss is form and reading
+// only; side by side only when both fit.
+void test_intro_words_plan_fallbacks() {
+    const IntroWordText two[2] = {kWideWords[0], kWideWords[1]};  // both glosses 2 lines at 127
+    IntroWordLines lines[2];
+    TEST_ASSERT_EQUAL(2, planIntroWords(two, 2, 127, 162, 20, false, uiAdv, lines));
+    TEST_ASSERT_EQUAL(2, lines[0].glossLines);
+    TEST_ASSERT_EQUAL(2, lines[1].glossLines);
+    TEST_ASSERT_EQUAL(80, lines[0].height);
+    TEST_ASSERT_EQUAL(2, planIntroWords(two, 2, 127, 161, 20, false, uiAdv, lines));
+    TEST_ASSERT_EQUAL(2, lines[0].glossLines);
+    TEST_ASSERT_EQUAL(1, lines[1].glossLines);
+    TEST_ASSERT_EQUAL(2, planIntroWords(two, 2, 127, 122, 20, false, uiAdv, lines));
+    TEST_ASSERT_EQUAL(1, lines[0].glossLines);
+    TEST_ASSERT_EQUAL(1, lines[1].glossLines);
+    TEST_ASSERT_EQUAL(1, planIntroWords(two, 2, 127, 121, 20, false, uiAdv, lines));
+    TEST_ASSERT_EQUAL(0, planIntroWords(two, 2, 127, 59, 20, false, uiAdv, lines));
+    const IntroWordText bare = {kRestWords[0].word, kRestWords[0].reading, ""};
+    TEST_ASSERT_EQUAL(1, planIntroWords(&bare, 1, 127, 200, 20, false, uiAdv, lines));
+    TEST_ASSERT_EQUAL(0, lines[0].glossLines);
+    TEST_ASSERT_EQUAL(40, lines[0].height);
+    // 休日 きゅうじつ (132 px) side by side in 162 px, not in 127.
+    TEST_ASSERT_EQUAL(1, planIntroWords(kRestWords, 1, 162, 200, 20, true, uiAdv, lines));
+    TEST_ASSERT_TRUE(lines[0].oneLine);
+    TEST_ASSERT_EQUAL(1, planIntroWords(kRestWords, 1, 127, 200, 20, true, uiAdv, lines));
+    TEST_ASSERT_FALSE(lines[0].oneLine);
+}
+
+// Page 1 on every panel: 休 (two meanings, both kinds) keeps every row above
+// the hint bar; its words go under the readings on the T-Display-S3's
+// portrait (as the mockup) and on page 2 elsewhere; the widest words would
+// lose one under the readings there, so they get page 2 too; a v2 pack (no
+// words) never has a page 2.
+void test_intro_card_plan() {
+    const Card c = restCard();
+    for (const IntroPanel& p : kIntroPanels) {
+        const IntroLayout l = introAt(p);
+        IntroCardPlan plan = planIntroCard(l, c, kRestWords, 2, false, readingTag(), lh(), uiAdv);
+        TEST_ASSERT_EQUAL(1, plan.firstLines);
+        TEST_ASSERT_TRUE(plan.restLine);
+        TEST_ASSERT_EQUAL(2, plan.rows);
+        TEST_ASSERT_TRUE(plan.wordsY <= l.bottom + 4);
+        TEST_ASSERT_EQUAL(!l.wordsInline, plan.wordsPage);
+        TEST_ASSERT_EQUAL(l.wordsInline ? 2 : 0, plan.words);
+        if (plan.words) {
+            TEST_ASSERT_TRUE(plan.wordLines[0].oneLine);
+            TEST_ASSERT_TRUE(plan.wordsY + plan.wordLines[0].height + kIntroWordsGap +
+                                 plan.wordLines[1].height <=
+                             l.pageBottom);
+        }
+        const IntroWordText wide[2] = {kWideWords[0], kWideWords[1]};
+        plan = planIntroCard(l, c, wide, 2, false, readingTag(), lh(), uiAdv);
+        TEST_ASSERT_TRUE(plan.wordsPage);
+        TEST_ASSERT_EQUAL(0, plan.words);
+        plan = planIntroCard(l, c, nullptr, 0, false, readingTag(), lh(), uiAdv);
+        TEST_ASSERT_FALSE(plan.wordsPage);
+        TEST_ASSERT_EQUAL(0, plan.words);
+        // One meaning: it may take two lines ("water (esp. cool or cold)").
+        plan = planIntroCard(l, introCardOf("water (esp. cool or cold) and more", "", ""), nullptr,
+                             0, false, readingTag(), lh(), uiAdv);
+        TEST_ASSERT_TRUE(plan.firstLines >= 1 && plan.firstLines <= 2);
+        TEST_ASSERT_FALSE(plan.restLine);
+        TEST_ASSERT_EQUAL(0, plan.rows);
+    }
+}
+
+// wrapLines() breaks as Renderer::wrap() does: at a space, after any CJK
+// character, else where the line is full; capped at maxLines.
+void test_wrap_lines_like_the_renderer() {
+    TEST_ASSERT_EQUAL(0, wrapLines("", 100, 2, uiAdv));
+    TEST_ASSERT_EQUAL(0, wrapLines(nullptr, 100, 2, uiAdv));
+    TEST_ASSERT_EQUAL(1, wrapLines("holiday", 127, 2, uiAdv));
+    TEST_ASSERT_EQUAL(2, wrapLines("yen (currency of Japan)", 127, 8, uiAdv));
+    TEST_ASSERT_EQUAL(1, wrapLines("yen (currency of Japan)", 127, 1, uiAdv));  // capped
+    TEST_ASSERT_EQUAL(1, wrapLines("yen (currency of Japan)", 400, 8, uiAdv));
+    // Kana at 18 px in 40 px: two a line (きゅうじつ: 3 lines).
+    TEST_ASSERT_EQUAL(3, wrapLines("\xE3\x81\x8D\xE3\x82\x85\xE3\x81\x86\xE3\x81\x98\xE3\x81\xA4",
+                                   40, 8, uiAdv));
+    // A word longer than the line breaks where it is full.
+    TEST_ASSERT_TRUE(uiW("electricidad") > 60);
+    TEST_ASSERT_EQUAL(2, wrapLines("electricidad", 60, 8, uiAdv));
+    // A line always takes at least one character, even when it is too wide.
+    TEST_ASSERT_EQUAL(2, wrapLines("ab", 1, 8, uiAdv));
+}
+
+void test_reading_span() {
+    const char* r = "\xE3\x81\xBE\xE3\x81\x84\xE3\x81\xAB\xE3\x81\xA1";  // まいにち
+    TEST_ASSERT_TRUE(readingSpanValid(r, 6, 6));   // にち (毎日 for 日)
+    TEST_ASSERT_TRUE(readingSpanValid(r, 0, 12));  // all of it
+    TEST_ASSERT_FALSE(readingSpanValid(r, 0, 0));  // unknown
+    TEST_ASSERT_FALSE(readingSpanValid(r, 6, 9));  // past the end
+    TEST_ASSERT_FALSE(readingSpanValid(r, 4, 6));  // starts inside a character
+    TEST_ASSERT_FALSE(readingSpanValid(r, 6, 4));  // ends inside one
+    TEST_ASSERT_FALSE(readingSpanValid(nullptr, 0, 3));
 }
 
 int main(int, char**) {
@@ -544,5 +899,16 @@ int main(int, char**) {
     RUN_TEST(test_keycap_widths);
     RUN_TEST(test_keyboard_bars_fit_one_row);
     RUN_TEST(test_side_hold_mark_of_its_own);
+    RUN_TEST(test_intro_meanings_split);
+    RUN_TEST(test_intro_reading_rows);
+    RUN_TEST(test_intro_reading_rows_fit_every_panel);
+    RUN_TEST(test_intro_header_fits);
+    RUN_TEST(test_intro_hints_fit);
+    RUN_TEST(test_intro_layout_panels);
+    RUN_TEST(test_intro_words_fit_page_two);
+    RUN_TEST(test_intro_words_plan_fallbacks);
+    RUN_TEST(test_intro_card_plan);
+    RUN_TEST(test_wrap_lines_like_the_renderer);
+    RUN_TEST(test_reading_span);
     return UNITY_END();
 }
