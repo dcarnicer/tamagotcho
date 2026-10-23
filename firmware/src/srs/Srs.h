@@ -43,6 +43,13 @@ constexpr float kFuzzMax = 1.05f;
 // D = clamp(w[4] - expf(w[5] * (G - 1)) + 1, 1, 10).
 Memory initMemory(Grade g);
 
+// What an intro card records (docs/learning-mode.md section 3.5): an exposure,
+// not an answer. FSRS-5 has no "seen but not rated" event, so it takes Again's
+// stability (w[0], 0.40 d: shown, not yet recalled) and Good's difficulty
+// (D0(3) = 5.28: no evidence against the card); the learning steps' answers
+// then move both as same-day reviews.
+Memory introMemory();
+
 // Probability of recalling a card of stability `stabilityDays` after
 // `elapsedDays`: (1 + F * t / S)^-0.5. t == 0 gives 1.
 float retrievability(float stabilityDays, float elapsedDays);

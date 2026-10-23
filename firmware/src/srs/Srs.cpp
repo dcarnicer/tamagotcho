@@ -27,6 +27,13 @@ Memory initMemory(Grade g) {
     return m;
 }
 
+Memory introMemory() {
+    Memory m;
+    m.s = initMemory(Grade::Again).s;
+    m.d = initMemory(Grade::Good).d;
+    return m;
+}
+
 float retrievability(float stabilityDays, float elapsedDays) {
     if (elapsedDays <= 0.0f) return 1.0f;
     if (stabilityDays <= 0.0f) return 0.0f;

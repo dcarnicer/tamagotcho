@@ -104,6 +104,14 @@ inline uint16_t clampU16(uint32_t v, uint16_t lo, uint16_t hi) {
     return static_cast<uint16_t>(v);
 }
 
+// S in centidays and D x 10, as the record holds them.
+inline void storeMemory(Record* r, const Memory& m) {
+    const uint32_t cds = static_cast<uint32_t>(std::lround(m.s * 100.0f));
+    r->stabilityCds = clampU16(cds, 1, 65535);
+    const uint32_t d10 = static_cast<uint32_t>(std::lround(m.d * 10.0f));
+    r->difficulty10 = static_cast<uint8_t>(clampU16(d10, 10, 100));
+}
+
 }  // namespace
 
 void SrsStore::reset() {
@@ -460,7 +468,10 @@ void SrsStore::grade(uint32_t codepoint, Grade g, uint16_t day, uint8_t mode, fl
         r = &getOrCreate(codepoint);
     }
 
-    const bool first = r->reps == 0;
+    // A learning record (an intro, never answered) is not a first review: its
+    // intro set S and D, and the steps go on from them (docs/learning-mode.md
+    // section 3.5).
+    const bool first = r->reps == 0 && !isLearning(*r);
     Memory mem;
     if (first) {
         mem = initMemory(g);
@@ -473,11 +484,7 @@ void SrsStore::grade(uint32_t codepoint, Grade g, uint16_t day, uint8_t mode, fl
         const float elapsed = day > r->lastDay ? static_cast<float>(day - r->lastDay) : 0.0f;
         mem = nextMemory(mem, g, elapsed);
     }
-
-    const uint32_t cds = static_cast<uint32_t>(std::lround(mem.s * 100.0f));
-    r->stabilityCds = clampU16(cds, 1, 65535);
-    const uint32_t d10 = static_cast<uint32_t>(std::lround(mem.d * 10.0f));
-    r->difficulty10 = static_cast<uint8_t>(clampU16(d10, 10, 100));
+    storeMemory(r, mem);
 
     const uint32_t due = static_cast<uint32_t>(day) + static_cast<uint32_t>(intervalDays(mem.s, uniform01));
     r->dueDay = due > 0xFFFFu ? 0xFFFF : static_cast<uint16_t>(due);
@@ -485,6 +492,7 @@ void SrsStore::grade(uint32_t codepoint, Grade g, uint16_t day, uint8_t mode, fl
         r->flags = static_cast<uint8_t>(r->flags | kRecordFlagIntroducedOnLastDay);
     else if (r->lastDay != day)
         r->flags = static_cast<uint8_t>(r->flags & ~kRecordFlagIntroducedOnLastDay);
+    r->flags = static_cast<uint8_t>(r->flags & ~kRecordFlagLearning);
     r->lastDay = day;
 
     if (r->reps < 255) ++r->reps;
@@ -501,6 +509,28 @@ void SrsStore::grade(uint32_t codepoint, Grade g, uint16_t day, uint8_t mode, fl
         if (g == Grade::Again) ++againTotal_;
     }
     if (first) noteNewIntroduced(day);
+}
+
+bool SrsStore::introduce(uint32_t codepoint, uint16_t day) {
+    Record* r = find(codepoint);
+    if (r && (r->reps != 0 || isLearning(*r))) return false;  // already answered or introduced
+    if (!r) {
+        if (records_.size() >= kMaxRecords) return false;  // capped: ignore the card
+        r = &getOrCreate(codepoint);
+    }
+    // An exposure, not an answer (docs/learning-mode.md section 3.5): S and D
+    // for the steps to go on from, due now, nothing counted but the legacy
+    // new-card counter. The streak and the answer counters wait for the steps.
+    storeMemory(r, introMemory());
+    r->dueDay = day;
+    r->lastDay = day;
+    r->reps = 0;
+    r->lapses = 0;
+    r->modeSeen = 0;
+    r->lastGrade = 0xFF;
+    r->flags = static_cast<uint8_t>(kRecordFlagIntroducedOnLastDay | kRecordFlagLearning);
+    noteNewIntroduced(day);
+    return true;
 }
 
 bool SrsStore::serialize(std::vector<uint8_t>& out) const {

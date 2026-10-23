@@ -1,8 +1,8 @@
 #pragma once
 // The loaded deck's counts, as the settings summary card, the deck list, the
 // statistics and the done screen show them: cards in the deck, never reviewed
-// ("new"), due by today and by tomorrow, and from those the coverage (seen /
-// total). Progress is global (SRS records are keyed by code point), so a deck
+// nor introduced ("new"), due by today and by tomorrow, and from those the
+// coverage (seen / total). Progress is global (SRS records are keyed by code point), so a deck
 // counts the records of its own cards only. One pass over its code points with
 // a binary search per card. Pure C++, no Arduino (native-tested in
 // test_settings).
@@ -15,8 +15,8 @@ namespace tgc {
 
 struct DeckSummary {
     uint32_t total = 0;        // cards in the deck
-    uint32_t fresh = 0;        // no record, or a record never scheduled (due day 0)
-    uint32_t due = 0;          // reviewed and due today or earlier
+    uint32_t fresh = 0;        // never seen: no record, or a record never scheduled (isFresh())
+    uint32_t due = 0;          // reviewed and due today or earlier, or learning (always due)
     uint32_t dueTomorrow = 0;  // reviewed and due by tomorrow (`due` included)
     uint32_t introducedToday = 0;  // first reviewed today: what the new-card cap counts
     uint32_t seen() const { return total - fresh; }
@@ -32,12 +32,15 @@ inline DeckSummary deckSummary(const PackReader& pack, const SrsStore& srs) {
         ++s.total;
         const Record* r = srs.find(pack.codepointAt(i));
         if (r && introducedOn(*r, static_cast<uint16_t>(today))) ++s.introducedToday;
-        if (!r || r->dueDay == 0) {
+        if (isFresh(r)) {
             ++s.fresh;
             continue;
         }
-        if (r->dueDay <= today) ++s.due;
-        if (r->dueDay <= today + 1) ++s.dueTomorrow;
+        // A learning record (an intro whose steps a rebuild dropped) is seen
+        // and due, also when introduced on day 0 (docs/learning-mode.md 3.5).
+        const bool due = isLearning(*r) || r->dueDay <= today;
+        if (due) ++s.due;
+        if (due || r->dueDay <= today + 1) ++s.dueTomorrow;
     }
     return s;
 }

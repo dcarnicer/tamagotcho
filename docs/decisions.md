@@ -1766,7 +1766,6 @@ Found by a read-only review of the merged phase 2/4 branches (`integrate/2026-10
   → 54,164 bytes (both built with `TGC_VERSION=dev`). **Not verified on
   hardware.**
 
-
 ## 2026-10-18 – No back hint in the headers; first-boot hints follow the highlight
 
 - **Why.** Hardware test of the v0.1.0 candidate: in Spanish the right-aligned
@@ -3222,3 +3221,66 @@ marked *to confirm* needs the device.
   LTO), so each is now a function of its own with its call, its literals and
   its unwind entry (about 3 KB of code and 2.4 KB of `.eh_frame` and exception
   tables).
+
+## 2026-10-23 – Learning mode: proposal first, mockups in today's style
+
+- The learning mode starts as a **proposal** (`docs/learning-mode.md`), like
+  the UX refresh: today's flow of a new card, options, a recommended design,
+  a phased plan and ten numbered decisions for the maintainer. Nothing in it
+  is decided here; the answers will get their own entry.
+- **Mockups from a sibling script.** `tools/ux-mockups/learning.py` reuses
+  `render.py`'s canvas, glyph and KanjiVG helpers but draws the style the
+  firmware has now (flat tiles, 2 px gaps, the Noto Sans JP UI font on its
+  20 px pitch, `quizGeom()` and `render/Widgets.cpp` geometry). `render.py`'s
+  "after" images are the proposal of 2026-10-18 (rounded corners, Klee One),
+  which §6 of docs/ux-refresh.md changed, so they are left as the record of
+  that proposal rather than restyled. The "before" images were checked
+  against the device screenshots in `docs/images/`. Output is deterministic;
+  the PNGs (native, 3x and a contact sheet, ~0.2 MB) are committed under
+  `docs/learning-mode/`.
+
+## 2026-10-23 – Learning mode decisions
+
+- The maintainer accepted every recommendation of docs/learning-mode.md §6:
+  an intro card for a never-seen kanji inside the daily session (no separate
+  lessons mode), then two learning steps (kanji → meaning, then a reading)
+  three items apart; the side tap on the intro means "known" (asked at once,
+  as before); the intro is recorded as an exposure (S 0.40 d, D 5.28, a new
+  `learning` flag bit) and is not an answer; Study › Introduce (On/Off, On by
+  default) for all decks; intro time capped at 30 s counts as study time;
+  new cards stay after the reviews.
+- **Example words are not in this round.** They need pack format v3 and JMdict
+  word data in the packs, and JMdict's Spanish glosses have not been measured;
+  that measurement comes first, then (b) words with glosses or (c) words
+  without them is decided as phase 4.
+- **Order of work.** Phase 1 (SRS and queue, pure, native-tested) is built
+  before the `main.cpp` split lands, with learning off unless enabled, so the
+  device behaves as before; phase 2 (the intro screen) builds on the split.
+
+## 2026-10-23 – Learning mode phase 1: choices the design left open
+
+- **A missed step is relearned in its own mode.** Today's relearn picks the
+  least used mode when it is served; after a missed step 1 and a step 2 that
+  would be meaning → kanji, which the design keeps for the next day (O3). So
+  the relearn of a step asks kanji → meaning (or the reading) again; any other
+  relearn is unchanged. Step 2 is inserted before the relearn push, so both
+  keep their gaps (3 and 5 items) and step 2 comes first.
+- **The session cap counts an intro with its steps** (1 + 2 of the 200), so a
+  session's screens stay within it; with 195 reviews due, one intro fits
+  instead of five cold questions. With learning off nothing changes.
+- **An intro is a done item, also on "known".** `answeredCount()` counts
+  `introduced()` and `known()`, so done + left holds through intros; "known"
+  then shortens the session by the two steps it skips.
+- **Strict reports.** `introduced()` and `known()` act only on the intro on
+  screen and `introduce()` only on a never-seen kanji (false otherwise), so a
+  double report cannot add steps or reset a record. An intro never moves the
+  mode rotation (no question was asked).
+- **Intro time is a separate call**, `addIntroMs()` (capped at 30 s), so the
+  app can count the intro's time on "known" too, where `introduce()` is not
+  called.
+- **Options are clamped:** 1 or 2 steps, a gap of at least 1 item.
+- **Schedules checked** with the firmware's own store: both path (C) rows of
+  docs/learning-mode.md §3.5 come out exactly (1, 4, 13, 41, 116 and 1, 2, 6,
+  17, 42; 5 and 6 reviews in the first year). The first-Good row (today's and
+  "known") has its fourth review on S = 98.50, a rounding boundary: the host
+  gives 99 and then 263 days where the table says 98 and 261.

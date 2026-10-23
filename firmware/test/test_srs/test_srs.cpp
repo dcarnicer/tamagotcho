@@ -16,6 +16,7 @@
 #include "srs/Srs.h"
 #include "srs/SrsStore.h"
 #include "srs/WallClock.h"
+#include "ui/DeckSummary.h"
 
 using namespace tgc;
 
@@ -2018,6 +2019,907 @@ void test_serialize_pre_anchor_file_unchanged() {
     TEST_ASSERT_TRUE(again == old);
 }
 
+// ------------------------------- learning mode (docs/learning-mode.md 3.5)
+
+namespace {
+
+constexpr uint32_t kYasumu = 0x4F11;  // 休, the sample card of the design
+constexpr uint8_t kMeaning = static_cast<uint8_t>(QuizMode::Meaning);
+constexpr uint8_t kReading = static_cast<uint8_t>(QuizMode::Reading);
+
+}  // namespace
+
+// The intro's memory: Again's stability (w[0]) and Good's difficulty (D0(3)).
+void test_intro_memory() {
+    const Memory m = introMemory();
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, kWeights[0], m.s);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, initMemory(Grade::Good).d, m.d);
+    TEST_ASSERT_FLOAT_WITHIN(0.005f, 5.28f, m.d);
+}
+
+// introduce() records an exposure, not an answer: S 0.40 d, D 5.28, due
+// today, bits 0 and 1; the answers, the Again answers, the streak and the
+// card's lapses stay as they were.
+void test_introduce_records_exposure() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(7);
+    s.grade(kHi, Grade::Good, 7, kMeaning, 0.5f);
+    s.grade(kTsuki, Grade::Again, 7, kMeaning, 0.5f);
+    s.addReviewMs(1000);
+    const uint32_t answers = s.answeredTotal();
+    const uint32_t again = s.againTotal();
+    const uint16_t streak = s.streakCurrent();
+    const uint16_t lastStudy = s.lastStudyDay();
+    const uint16_t newCount = s.newIntroducedCount();
+    const Record hi = *s.find(kHi);
+
+    TEST_ASSERT_TRUE(s.introduce(kYasumu, 7));
+    const Record* r = s.find(kYasumu);
+    TEST_ASSERT_NOT_NULL(r);
+    TEST_ASSERT_EQUAL_UINT16(40, r->stabilityCds);  // 0.40 d
+    TEST_ASSERT_EQUAL_UINT8(53, r->difficulty10);   // 5.28, stored as 5.3
+    TEST_ASSERT_EQUAL_UINT16(7, r->dueDay);         // due now
+    TEST_ASSERT_EQUAL_UINT16(7, r->lastDay);
+    TEST_ASSERT_EQUAL_UINT8(0, r->reps);
+    TEST_ASSERT_EQUAL_UINT8(0, r->lapses);
+    TEST_ASSERT_EQUAL_UINT8(0, r->modeSeen);
+    TEST_ASSERT_EQUAL_UINT8(0xFF, r->lastGrade);
+    TEST_ASSERT_EQUAL_HEX8(kRecordFlagIntroducedOnLastDay | kRecordFlagLearning, r->flags);
+    TEST_ASSERT_TRUE(isLearning(*r));
+    TEST_ASSERT_TRUE(introducedOn(*r, 7));
+    TEST_ASSERT_FALSE(isFresh(r));
+
+    TEST_ASSERT_EQUAL_UINT32(answers, s.answeredTotal());
+    TEST_ASSERT_EQUAL_UINT32(again, s.againTotal());
+    TEST_ASSERT_EQUAL_UINT16(streak, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(lastStudy, s.lastStudyDay());
+    TEST_ASSERT_EQUAL_UINT32(1000, s.reviewMs());
+    // The legacy header counter counts it, as a first grade would.
+    TEST_ASSERT_EQUAL_UINT16(newCount + 1, s.newIntroducedCount());
+    // Seen, not answered, not learned.
+    const Stats st = s.stats();
+    TEST_ASSERT_EQUAL_UINT32(3, st.seen);
+    TEST_ASSERT_EQUAL_UINT32(2, st.reps);
+    TEST_ASSERT_EQUAL_UINT32(1, st.lapses);
+    TEST_ASSERT_EQUAL_UINT32(0, st.learned);
+
+    // Twice, or a card already answered: refused, nothing changes.
+    TEST_ASSERT_FALSE(s.introduce(kYasumu, 7));
+    TEST_ASSERT_FALSE(s.introduce(kHi, 7));
+    TEST_ASSERT_EQUAL_MEMORY(&hi, s.find(kHi), sizeof(Record));
+    TEST_ASSERT_EQUAL_UINT16(newCount + 1, s.newIntroducedCount());
+
+    // A store that never studied stays so: an intro on day 0 starts no streak.
+    SrsStore fresh;
+    MemoryIo none;
+    fresh.begin(none);
+    TEST_ASSERT_TRUE(fresh.introduce(kYasumu, 0));
+    TEST_ASSERT_FALSE(fresh.hasStudied());
+    TEST_ASSERT_EQUAL_UINT16(0, fresh.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(0, fresh.find(kYasumu)->dueDay);  // day 0: still learning, see the queue
+
+    // A full table takes no new intro.
+    SrsStore full;
+    MemoryIo io3;
+    full.begin(io3);
+    for (uint32_t cp = 1; cp <= SrsStore::kMaxRecords; ++cp) full.getOrCreate(cp).reps = 1;
+    TEST_ASSERT_FALSE(full.introduce(999999, 0));
+    TEST_ASSERT_NULL(full.find(999999));
+    TEST_ASSERT_EQUAL_UINT32(8192, static_cast<uint32_t>(full.count()));
+}
+
+// The intro's time on screen counts as study time, capped at 30 s.
+void test_intro_time_capped() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.addIntroMs(12000);
+    TEST_ASSERT_EQUAL_UINT32(12000, s.reviewMs());
+    s.addIntroMs(600000);  // left on screen for ten minutes
+    TEST_ASSERT_EQUAL_UINT32(12000 + kIntroMsCap, s.reviewMs());
+    TEST_ASSERT_EQUAL_UINT32(0, s.answeredTotal());
+}
+
+// The steps on the intro day are same-day reviews (w[17], w[18]): a Good is
+// x1.41 (0.40 -> 0.56 d), an Again x0.50 and D + ~1.5. The first grade
+// clears bit1 and keeps bit0 (introduced today); it is an answer.
+void test_learning_grade_same_day() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(4);
+    TEST_ASSERT_TRUE(s.introduce(kYasumu, 4));
+    s.grade(kYasumu, Grade::Good, 4, kMeaning, 0.5f);
+    const Record* r = s.find(kYasumu);
+    TEST_ASSERT_EQUAL_UINT16(56, r->stabilityCds);
+    TEST_ASSERT_EQUAL_UINT8(53, r->difficulty10);
+    TEST_ASSERT_EQUAL_HEX8(kRecordFlagIntroducedOnLastDay, r->flags);
+    TEST_ASSERT_FALSE(isLearning(*r));
+    TEST_ASSERT_TRUE(introducedOn(*r, 4));
+    TEST_ASSERT_EQUAL_UINT16(5, r->dueDay);  // round(0.56) -> 1 day
+    TEST_ASSERT_EQUAL_UINT16(4, r->lastDay);
+    TEST_ASSERT_EQUAL_UINT8(1, r->reps);
+    TEST_ASSERT_EQUAL_UINT8(0, r->lapses);
+    TEST_ASSERT_EQUAL_UINT8(0x1, r->modeSeen);
+    TEST_ASSERT_EQUAL_UINT8(2, r->lastGrade);
+    TEST_ASSERT_EQUAL_UINT32(1, s.answeredTotal());
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(1, s.newIntroducedCount());  // the intro counted it once
+    // Step 2, right: 0.79 d, still due tomorrow.
+    s.grade(kYasumu, Grade::Good, 4, kReading, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(79, r->stabilityCds);
+    TEST_ASSERT_EQUAL_UINT16(5, r->dueDay);
+    TEST_ASSERT_EQUAL_UINT8(0x3, r->modeSeen);
+
+    // A missed step: S halves, D rises to 6.8, a lapse and an Again answer.
+    TEST_ASSERT_TRUE(s.introduce(kTsuki, 4));
+    s.grade(kTsuki, Grade::Again, 4, kMeaning, 0.5f);
+    const Record* m = s.find(kTsuki);
+    TEST_ASSERT_EQUAL_UINT16(20, m->stabilityCds);
+    TEST_ASSERT_EQUAL_UINT8(68, m->difficulty10);
+    TEST_ASSERT_EQUAL_UINT8(1, m->lapses);
+    TEST_ASSERT_EQUAL_UINT32(1, s.againTotal());
+    TEST_ASSERT_EQUAL_HEX8(kRecordFlagIntroducedOnLastDay, m->flags);
+    TEST_ASSERT_EQUAL_UINT16(5, m->dueDay);
+}
+
+// A learning record graded on a later day (its steps were dropped by a
+// rebuild) uses the regular formula from the intro's S and D, not a first
+// review's, and clears both bits.
+void test_learning_grade_later_day() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(5);
+    TEST_ASSERT_TRUE(s.introduce(kYasumu, 5));
+    s.setToday(7);
+    s.grade(kYasumu, Grade::Good, 7, kMeaning, 0.5f);
+
+    Memory from;
+    from.s = 0.40f;
+    from.d = 5.3f;
+    const Memory want = nextMemory(from, Grade::Good, 2.0f);
+    const Record* r = s.find(kYasumu);
+    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(std::lround(want.s * 100.0f)), r->stabilityCds);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(std::lround(want.d * 10.0f)), r->difficulty10);
+    TEST_ASSERT_TRUE(r->stabilityCds != 317);  // not initMemory(Good)
+    TEST_ASSERT_EQUAL_HEX8(0, r->flags);
+    TEST_ASSERT_FALSE(introducedOn(*r, 7));
+    TEST_ASSERT_EQUAL_UINT8(1, r->reps);
+    TEST_ASSERT_EQUAL_UINT16(7, r->lastDay);
+    TEST_ASSERT_EQUAL_UINT32(1, s.answeredTotal());
+}
+
+// The flag survives a save and a load: same layout, same size, bit1 in the
+// record's flags byte (offset 15).
+void test_learning_flag_roundtrip() {
+    SrsStore a;
+    MemoryIo none;
+    a.begin(none);
+    a.setToday(0);
+    TEST_ASSERT_TRUE(a.introduce(kYasumu, 0));
+    MemoryIo io;
+    TEST_ASSERT_TRUE(a.save(io));
+    TEST_ASSERT_EQUAL_UINT32(48 + 16 + 4, static_cast<uint32_t>(io.bytes.size()));
+    TEST_ASSERT_EQUAL_HEX8(0x03, io.bytes[48 + 15]);
+    TEST_ASSERT_TRUE(SrsStore::validateBytes(io.bytes.data(), io.bytes.size()));
+
+    SrsStore b;
+    TEST_ASSERT_TRUE(b.begin(io));
+    TEST_ASSERT_EQUAL_MEMORY(a.find(kYasumu), b.find(kYasumu), sizeof(Record));
+    TEST_ASSERT_TRUE(isLearning(*b.find(kYasumu)));
+    TEST_ASSERT_EQUAL_UINT32(0, b.answeredTotal());
+    TEST_ASSERT_EQUAL_UINT16(1, b.newIntroducedCount());
+}
+
+// Forgetting a learning record (Delete progress, a deleted deck) makes the
+// kanji new again: no record, and it can be introduced anew.
+void test_learning_forget() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(3);
+    TEST_ASSERT_TRUE(s.introduce(kYasumu, 3));
+    const uint32_t cps[] = {kYasumu};
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(s.forget(cps, 1)));
+    TEST_ASSERT_NULL(s.find(kYasumu));
+    TEST_ASSERT_TRUE(isFresh(s.find(kYasumu)));
+    TEST_ASSERT_TRUE(s.introduce(kYasumu, 3));
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(s.resetProgress()));
+    TEST_ASSERT_NULL(s.find(kYasumu));
+}
+
+namespace {
+
+// Answers every review Good on its due day from the record's current state,
+// with the fuzz at its centre, and returns the intervals; `inYear` gets the
+// reviews after day 0 within 365 days (docs/learning-mode.md section 3.5).
+std::vector<int> goodIntervals(SrsStore& s, uint32_t cp, int n, int* inYear) {
+    std::vector<int> out;
+    *inYear = 0;
+    for (;;) {
+        const Record* r = s.find(cp);
+        if (static_cast<int>(out.size()) < n) out.push_back(r->dueDay - r->lastDay);
+        if (r->dueDay > 365) break;
+        ++*inYear;
+        s.grade(cp, Grade::Good, r->dueDay, kMeaning, 0.5f);
+    }
+    return out;
+}
+
+}  // namespace
+
+// The schedules of the design's table (section 3.5): path (C), the intro and
+// both steps right; (C) with step 1 missed, its relearn and step 2 right; and
+// "known", a first answer right and fast.
+void test_learning_schedules() {
+    int year = 0;
+    {
+        SrsStore s;
+        MemoryIo io;
+        s.begin(io);
+        TEST_ASSERT_TRUE(s.introduce(kYasumu, 0));
+        s.grade(kYasumu, Grade::Good, 0, kMeaning, 0.5f);
+        s.grade(kYasumu, Grade::Good, 0, kReading, 0.5f);
+        TEST_ASSERT_EQUAL_UINT16(79, s.find(kYasumu)->stabilityCds);
+        TEST_ASSERT_EQUAL_UINT8(53, s.find(kYasumu)->difficulty10);
+        const std::vector<int> iv = goodIntervals(s, kYasumu, 5, &year);
+        const int want[] = {1, 4, 13, 41, 116};
+        TEST_ASSERT_EQUAL_INT_ARRAY(want, iv.data(), 5);
+        TEST_ASSERT_EQUAL_INT(5, year);
+    }
+    {
+        SrsStore s;
+        MemoryIo io;
+        s.begin(io);
+        TEST_ASSERT_TRUE(s.introduce(kYasumu, 0));
+        s.grade(kYasumu, Grade::Again, 0, kMeaning, 0.5f);  // step 1
+        s.grade(kYasumu, Grade::Good, 0, kReading, 0.5f);   // step 2
+        s.grade(kYasumu, Grade::Good, 0, kMeaning, 0.5f);   // the relearn
+        TEST_ASSERT_EQUAL_UINT16(39, s.find(kYasumu)->stabilityCds);
+        TEST_ASSERT_EQUAL_UINT8(68, s.find(kYasumu)->difficulty10);
+        const std::vector<int> iv = goodIntervals(s, kYasumu, 5, &year);
+        const int want[] = {1, 2, 6, 17, 42};
+        TEST_ASSERT_EQUAL_INT_ARRAY(want, iv.data(), 5);
+        TEST_ASSERT_EQUAL_INT(6, year);
+    }
+    {
+        SrsStore s;
+        MemoryIo io;
+        s.begin(io);
+        s.grade(kYasumu, Grade::Good, 0, kMeaning, 0.5f);  // "known", right and fast
+        TEST_ASSERT_EQUAL_UINT16(317, s.find(kYasumu)->stabilityCds);
+        // The table's 3, 11, 34, 98, 261: the fourth review lands on S = 98.50,
+        // a rounding boundary that floats settle either way (99, then 263, on
+        // the host), so only the first three are pinned.
+        const std::vector<int> iv = goodIntervals(s, kYasumu, 3, &year);
+        const int want[] = {3, 11, 34};
+        TEST_ASSERT_EQUAL_INT_ARRAY(want, iv.data(), 3);
+        TEST_ASSERT_EQUAL_INT(4, year);
+    }
+}
+
+// ------------------------- learning mode: the queue (learning-mode.md 3.4)
+
+namespace {
+
+// One served item, as the app sees it.
+struct Shown {
+    ItemKind kind;
+    uint32_t card;
+    QuizMode mode;
+    uint8_t step;
+};
+
+// "I3" an intro; a step by the mode it asks, "M3" (meaning) or "R3"
+// (reading); any other question in lower case by its mode, "m3", "r3", "k3".
+std::string render(const std::vector<Shown>& v) {
+    static const char kStep[] = {'M', 'R', 'K'};
+    static const char kAsk[] = {'m', 'r', 'k'};
+    std::string s;
+    for (const Shown& x : v) {
+        if (!s.empty()) s += ' ';
+        const int m = static_cast<int>(x.mode);
+        s += x.kind == ItemKind::Intro ? 'I' : (x.kind == ItemKind::Step ? kStep[m] : kAsk[m]);
+        s += std::to_string(x.card);
+    }
+    return s;
+}
+
+// Drives a session the way the app will: an intro is gone on from
+// (SrsStore::introduce() + Queue::introduced()), a question graded
+// (SrsStore::grade() + Queue::answered()) with the grade `gradeFor` gives it.
+template <typename GradeFn>
+std::vector<Shown> drive(Queue& q, SrsStore& srs, const PackReader& pack, GradeFn gradeFor) {
+    std::vector<Shown> out;
+    QueueItem it;
+    while (q.next(&it)) {
+        TEST_ASSERT_TRUE(out.size() < 1000);
+        Card c;
+        TEST_ASSERT_TRUE(pack.card(it.cardIndex, &c));
+        out.push_back({it.kind, it.cardIndex, it.mode, it.step});
+        // Every card here has a meaning and a reading: step 1 asks the
+        // meaning, step 2 a reading, nothing else has a step number.
+        if (it.kind == ItemKind::Step)
+            TEST_ASSERT_TRUE((it.step == 1 && it.mode == QuizMode::Meaning) ||
+                             (it.step == 2 && it.mode == QuizMode::Reading));
+        else
+            TEST_ASSERT_EQUAL_UINT8(0, it.step);
+        if (it.kind == ItemKind::Intro) {
+            TEST_ASSERT_TRUE(srs.introduce(c.codepoint, srs.today()));
+            TEST_ASSERT_TRUE(q.introduced(it.cardIndex));
+            continue;
+        }
+        const Grade g = gradeFor(out.back());
+        srs.grade(c.codepoint, g, srs.today(), static_cast<uint8_t>(it.mode), 0.5f);
+        q.answered(it.cardIndex, g);
+    }
+    return out;
+}
+
+Grade allGood(const Shown&) { return Grade::Good; }
+
+LearnOptions learnOn() {
+    LearnOptions o;
+    o.on = true;
+    return o;
+}
+
+// The session of test_queue_learning_off_is_today: reviews, new cards under
+// the cap, relearns, then "+10 new". `variant` 0 leaves the queue's learning
+// options alone, 1 sets them off explicitly, 2 turns them on and off again.
+struct Served {
+    uint32_t card;
+    int mode;
+    uint32_t left;  // remaining() with the item on screen
+    uint32_t done;  // answeredCount() after its answer
+};
+
+std::vector<Served> mixedSession(int variant) {
+    std::vector<CardSpec> cs = modeCards(12);
+    cs[9].kun = "";  // on'yomi only
+    cs[10].on = "";  // kun'yomi only
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(10);
+    srs.setNewPerDay(3);
+    setDue(srs, cs[0].cp, 9, 300);
+    setDue(srs, cs[1].cp, 10, 100);
+    setDue(srs, cs[2].cp, 3, 900);
+    setDue(srs, cs[3].cp, 20, 100);  // not due yet
+    setDue(srs, cs[4].cp, 8, 200);
+    srs.getOrCreate(cs[4].cp).modeSeen = 0x1;
+    setDue(srs, cs[5].cp, 10, 100);
+    srs.getOrCreate(cs[5].cp).modeSeen = 0x3;
+
+    XorShiftRng rng(7);
+    Queue q;
+    if (variant == 1) q.setLearning(LearnOptions{});
+    if (variant == 2) {
+        q.setLearning(learnOn());
+        LearnOptions off = learnOn();
+        off.on = false;
+        q.setLearning(off);
+    }
+    std::vector<Served> out;
+    int missed2 = 0;
+    for (int round = 0; round < 2; ++round) {
+        q.rebuild(pack, srs, rng, round == 0 ? 0 : 10);
+        QueueItem it;
+        while (q.next(&it)) {
+            TEST_ASSERT_EQUAL(ItemKind::Ask, it.kind);
+            TEST_ASSERT_EQUAL_UINT8(0, it.step);
+            Served s{it.cardIndex, static_cast<int>(it.mode), static_cast<uint32_t>(q.remaining()), 0};
+            Grade g = Grade::Good;
+            if (it.cardIndex == 2 && missed2 < 2) {
+                g = Grade::Again;
+                ++missed2;
+            } else if (it.cardIndex == 7 && round == 0 && out.size() < 12) {
+                g = Grade::Again;
+            } else if (it.cardIndex == 0) {
+                g = Grade::Hard;
+            } else if (it.cardIndex == 10) {
+                g = Grade::Again;
+            }
+            srs.grade(cs[it.cardIndex].cp, g, 10, static_cast<uint8_t>(it.mode), 0.5f);
+            q.answered(it.cardIndex, g);
+            s.done = static_cast<uint32_t>(q.answeredCount());
+            out.push_back(s);
+            TEST_ASSERT_TRUE(out.size() < 100);
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+// Learning off (the default) is the queue as it was before learning mode,
+// item for item: the expected list was recorded from the previous Queue on
+// the same session (card, mode, items left, items done).
+void test_queue_learning_off_is_today() {
+    const Served want[] = {
+        {2, 0, 7, 1},  {4, 1, 7, 2},  {0, 2, 6, 3},  {1, 0, 5, 4},  {5, 2, 4, 5},
+        {6, 0, 3, 6},  {2, 1, 2, 7},  {7, 2, 2, 8},  {8, 0, 2, 9},  {2, 2, 1, 10},
+        {7, 0, 0, 11}, {7, 1, 0, 12}, {7, 2, 0, 13},
+        // "+10 new"
+        {9, 0, 2, 1},  {10, 1, 1, 2}, {11, 2, 1, 3}, {10, 0, 0, 4}, {10, 2, 0, 5},
+        {10, 0, 0, 6},
+    };
+    const size_t n = sizeof want / sizeof want[0];
+    for (int variant = 0; variant < 3; ++variant) {
+        const std::vector<Served> got = mixedSession(variant);
+        TEST_ASSERT_EQUAL_UINT32(n, static_cast<uint32_t>(got.size()));
+        for (size_t i = 0; i < n; ++i) {
+            TEST_ASSERT_EQUAL_UINT32(want[i].card, got[i].card);
+            TEST_ASSERT_EQUAL_INT(want[i].mode, got[i].mode);
+            TEST_ASSERT_EQUAL_UINT32(want[i].left, got[i].left);
+            TEST_ASSERT_EQUAL_UINT32(want[i].done, got[i].done);
+        }
+    }
+    Queue q;
+    TEST_ASSERT_FALSE(q.learning().on);
+}
+
+// With learning on, only never-seen kanji get an intro: due reviews, and a
+// learning record whose steps a rebuild dropped, are asked as before.
+void test_queue_intros_only_for_never_seen() {
+    std::vector<CardSpec> cs = modeCards(6);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(10);
+    setDue(srs, cs[0].cp, 8, 100);  // a review
+    TEST_ASSERT_TRUE(srs.introduce(cs[1].cp, 10));  // learning, its steps dropped
+    setDue(srs, cs[2].cp, 12, 100);  // reviewed, not due
+    // 3, 4, 5 never seen; a record never scheduled is never seen too.
+    srs.getOrCreate(cs[4].cp);
+
+    XorShiftRng rng(1);
+    Queue q;
+    q.setLearning(learnOn());
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(2 + 3 * 3, static_cast<uint32_t>(q.remaining()));
+    const std::vector<Shown> got = drive(q, srs, pack, allGood);
+    TEST_ASSERT_EQUAL_STRING("m0 r1 I3 I4 I5 M3 M4 M5 R3 R4 R5", render(got).c_str());
+}
+
+// The steps land `gap` items after the intro and after step 1; the options
+// change both (one step, gap 2: batches of three).
+void test_queue_learning_steps() {
+    std::vector<CardSpec> cs = modeCards(5);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(1);
+    srs.setNewPerDay(10);
+    XorShiftRng rng(1);
+    Queue q;
+    q.setLearning(learnOn());
+    TEST_ASSERT_EQUAL_UINT8(2, q.learning().steps);
+    TEST_ASSERT_EQUAL_UINT8(3, q.learning().gap);
+    q.rebuild(pack, srs, rng);
+    std::vector<Shown> got = drive(q, srs, pack, allGood);
+    // Each card's intro, step 1 and step 2 with three items between them,
+    // until fewer than three are left (then a step goes to the end).
+    TEST_ASSERT_EQUAL_STRING("I0 I1 I2 I3 M0 M1 M2 M3 R0 R1 R2 R3 I4 M4 R4", render(got).c_str());
+    for (uint32_t card = 0; card < 4; ++card) {
+        int at[3] = {-1, -1, -1};
+        for (size_t i = 0; i < got.size(); ++i) {
+            if (got[i].card != card) continue;
+            at[got[i].kind == ItemKind::Intro ? 0 : got[i].step] = static_cast<int>(i);
+        }
+        TEST_ASSERT_EQUAL_INT(4, at[1] - at[0]);  // three items between
+        TEST_ASSERT_EQUAL_INT(4, at[2] - at[1]);
+    }
+
+    // One step, gap 2.
+    SrsStore s2;
+    MemoryIo io2;
+    s2.begin(io2);
+    s2.setToday(1);
+    LearnOptions o = learnOn();
+    o.steps = 1;
+    o.gap = 2;
+    q.setLearning(o);
+    q.rebuild(pack, s2, rng);
+    TEST_ASSERT_EQUAL_UINT32(10, static_cast<uint32_t>(q.remaining()));
+    got = drive(q, s2, pack, allGood);
+    TEST_ASSERT_EQUAL_STRING("I0 I1 I2 M0 M1 M2 I3 I4 M3 M4", render(got).c_str());
+
+    // Out-of-range options are clamped: at least one step, at most two, a
+    // gap of at least one.
+    o.steps = 0;
+    o.gap = 0;
+    q.setLearning(o);
+    TEST_ASSERT_EQUAL_UINT8(1, q.learning().steps);
+    TEST_ASSERT_EQUAL_UINT8(1, q.learning().gap);
+    o.steps = 9;
+    q.setLearning(o);
+    TEST_ASSERT_EQUAL_UINT8(Queue::kMaxSteps, q.learning().steps);
+}
+
+// Ten new cards come in batches of four, as docs/learning-mode.md section 3.4
+// draws them.
+void test_queue_learning_batches() {
+    std::vector<CardSpec> cs = modeCards(10);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(3);
+    XorShiftRng rng(1);
+    Queue q;
+    q.setLearning(learnOn());
+    q.rebuild(pack, srs, rng);
+    const std::vector<Shown> got = drive(q, srs, pack, allGood);
+    TEST_ASSERT_EQUAL_STRING(
+        "I0 I1 I2 I3 M0 M1 M2 M3 R0 R1 R2 R3 "
+        "I4 I5 I6 I7 M4 M5 M6 M7 R4 R5 R6 R7 "
+        "I8 I9 M8 M9 R8 R9",
+        render(got).c_str());
+    TEST_ASSERT_EQUAL_UINT32(30, static_cast<uint32_t>(q.answeredCount()));
+    // Every card answered twice, right: 0.79 d, due tomorrow, no longer learning.
+    for (const CardSpec& c : cs) {
+        const Record* r = srs.find(c.cp);
+        TEST_ASSERT_EQUAL_UINT16(79, r->stabilityCds);
+        TEST_ASSERT_EQUAL_UINT16(4, r->dueDay);
+        TEST_ASSERT_EQUAL_HEX8(kRecordFlagIntroducedOnLastDay, r->flags);
+    }
+    TEST_ASSERT_EQUAL_UINT32(20, srs.answeredTotal());
+}
+
+// A missed step gets the detail card's usual relearn, in the mode it missed
+// (meaning -> kanji waits for the next day), and step 2 still comes.
+void test_queue_learning_step_again() {
+    std::vector<CardSpec> cs = modeCards(6);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+    XorShiftRng rng(1);
+
+    {
+        PackReader two;
+        auto b2 = makePack(modeCards(2), glyphsFor(modeCards(2)));
+        MemorySource s2(b2);
+        TEST_ASSERT_EQUAL(PackError::Ok, two.open(s2));
+        SrsStore srs;
+        MemoryIo io;
+        srs.begin(io);
+        srs.setToday(1);
+        Queue q;
+        q.setLearning(learnOn());
+        q.rebuild(two, srs, rng);
+        const std::vector<Shown> got = drive(q, srs, two, [](const Shown& x) {
+            return x.kind == ItemKind::Step && x.step == 1 && x.card == 0 ? Grade::Again : Grade::Good;
+        });
+        TEST_ASSERT_EQUAL_STRING("I0 I1 M0 M1 R0 m0 R1", render(got).c_str());
+        const Record* r = srs.find(modeCards(2)[0].cp);
+        TEST_ASSERT_EQUAL_UINT8(1, r->lapses);
+        TEST_ASSERT_EQUAL_UINT8(3, r->reps);
+    }
+
+    // With more cards: step 2 three items on, the relearn five (later steps
+    // inserted three items on can still land before it, as for any relearn).
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(1);
+    Queue q;
+    q.setLearning(learnOn());
+    q.rebuild(pack, srs, rng);
+    std::vector<Shown> got = drive(q, srs, pack, [](const Shown& x) {
+        return x.kind == ItemKind::Step && x.step == 1 && x.card == 0 ? Grade::Again : Grade::Good;
+    });
+    TEST_ASSERT_EQUAL_STRING("I0 I1 I2 I3 M0 M1 M2 M3 R0 R1 R2 R3 I4 m0 I5 M4 M5 R4 R5",
+                             render(got).c_str());
+
+    // A missed step 2 is relearned as a reading, with no step after it.
+    SrsStore s3;
+    MemoryIo io3;
+    s3.begin(io3);
+    s3.setToday(1);
+    s3.setNewPerDay(1);
+    q.rebuild(pack, s3, rng);
+    got = drive(q, s3, pack, [](const Shown& x) {
+        return x.kind == ItemKind::Step && x.step == 2 ? Grade::Again : Grade::Good;
+    });
+    TEST_ASSERT_EQUAL_STRING("I0 M0 R0 r0", render(got).c_str());
+}
+
+// "Known" asks the card at once as an ordinary item: a first answer
+// (initMemory), no steps. introduced() and known() only act on the intro on
+// screen.
+void test_queue_learning_known() {
+    std::vector<CardSpec> cs = modeCards(3);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(1);
+    XorShiftRng rng(1);
+    Queue q;
+    q.setLearning(learnOn());
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(9, static_cast<uint32_t>(q.remaining()));
+    TEST_ASSERT_FALSE(q.known(0));  // nothing on screen yet
+
+    QueueItem it;
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL(ItemKind::Intro, it.kind);
+    TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);
+    TEST_ASSERT_FALSE(q.known(1));  // not the intro on screen
+    TEST_ASSERT_TRUE(q.known(0));
+    TEST_ASSERT_FALSE(q.known(0));  // already gone on from
+    TEST_ASSERT_FALSE(q.introduced(0));
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(q.answeredCount()));
+    TEST_ASSERT_EQUAL_UINT32(1 + 3 + 3, static_cast<uint32_t>(q.remaining()));
+
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL(ItemKind::Ask, it.kind);
+    TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);
+    TEST_ASSERT_EQUAL(QuizMode::Meaning, it.mode);  // chosen as for any new card
+    TEST_ASSERT_FALSE(q.introduced(0));             // a question, not an intro
+    srs.grade(cs[0].cp, Grade::Good, 1, static_cast<uint8_t>(it.mode), 0.5f);
+    q.answered(0, Grade::Good);
+    const Record* r = srs.find(cs[0].cp);
+    TEST_ASSERT_EQUAL_UINT16(317, r->stabilityCds);  // a first review: initMemory(Good)
+    TEST_ASSERT_EQUAL_UINT16(4, r->dueDay);
+    TEST_ASSERT_FALSE(isLearning(*r));
+
+    const std::vector<Shown> rest = drive(q, srs, pack, allGood);
+    TEST_ASSERT_EQUAL_STRING("I1 I2 M1 M2 R1 R2", render(rest).c_str());  // no step for 0
+    TEST_ASSERT_EQUAL_UINT32(8, static_cast<uint32_t>(q.answeredCount()));
+}
+
+// The header's count of cards left does not jump up after an intro: it
+// counts the steps the intros still to come will add, and an intro is a done
+// item, so done + left stays the same and left drops by one per item.
+void test_queue_learning_remaining_steady() {
+    std::vector<CardSpec> cs = modeCards(12);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(5);
+    setDue(srs, cs[10].cp, 4, 100);  // two reviews first
+    setDue(srs, cs[11].cp, 5, 100);
+    XorShiftRng rng(1);
+    Queue q;
+    q.setLearning(learnOn());
+    q.rebuild(pack, srs, rng);
+    const uint32_t total = 2 + 10 * 3;
+    TEST_ASSERT_EQUAL_UINT32(total, static_cast<uint32_t>(q.remaining()));
+
+    QueueItem it;
+    uint32_t shown = 0;
+    while (q.next(&it)) {
+        // On screen: the item itself is still left (QuizUi sessionProgress()).
+        const uint32_t left = static_cast<uint32_t>(q.remaining()) + 1;
+        TEST_ASSERT_EQUAL_UINT32(total - shown, left);
+        TEST_ASSERT_EQUAL_UINT32(total, static_cast<uint32_t>(q.answeredCount()) + left);
+        Card c;
+        TEST_ASSERT_TRUE(pack.card(it.cardIndex, &c));
+        if (it.kind == ItemKind::Intro) {
+            srs.introduce(c.codepoint, 5);
+            TEST_ASSERT_TRUE(q.introduced(it.cardIndex));
+        } else {
+            srs.grade(c.codepoint, Grade::Good, 5, static_cast<uint8_t>(it.mode), 0.5f);
+            q.answered(it.cardIndex, Grade::Good);
+        }
+        ++shown;
+        TEST_ASSERT_EQUAL_UINT32(total, static_cast<uint32_t>(q.answeredCount() + q.remaining()));
+    }
+    TEST_ASSERT_EQUAL_UINT32(total, shown);
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(q.remaining()));
+}
+
+// The new-card cap counts an introduced card from its intro on; a rebuild
+// drops its pending steps and asks the learning record once, as a review. A
+// learning record is due on SRS day 0 (where its due day is 0) and on later
+// days, with learning on or off.
+void test_queue_learning_cap_and_rebuild() {
+    std::vector<CardSpec> cs = modeCards(5);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(0);
+    srs.setNewPerDay(3);
+    XorShiftRng rng(1);
+    Queue q;
+    q.setLearning(learnOn());
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(9, static_cast<uint32_t>(q.remaining()));
+
+    QueueItem it;
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL(ItemKind::Intro, it.kind);
+    TEST_ASSERT_TRUE(srs.introduce(cs[0].cp, 0));
+    TEST_ASSERT_TRUE(q.introduced(0));
+    TEST_ASSERT_EQUAL_UINT16(0, srs.find(cs[0].cp)->dueDay);
+
+    // A rebuild (a settings change, a deck change and back): card 0 is due,
+    // asked as a question, and uses one of today's three new cards.
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(1 + 2 * 3, static_cast<uint32_t>(q.remaining()));
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL(ItemKind::Ask, it.kind);
+    TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);
+    // An intro that was shown but not gone on from (a sleep, a deck change)
+    // was never recorded: card 1 stays new and is introduced again.
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL(ItemKind::Intro, it.kind);
+    TEST_ASSERT_EQUAL_UINT32(1, it.cardIndex);
+    q.rebuild(pack, srs, rng);
+    std::vector<Shown> got = drive(q, srs, pack, allGood);
+    TEST_ASSERT_EQUAL_STRING("m0 I1 I2 M1 M2 R1 R2", render(got).c_str());
+    // Card 0's one answer was a same-day review of its intro: 0.56 d.
+    TEST_ASSERT_EQUAL_UINT16(56, srs.find(cs[0].cp)->stabilityCds);
+
+    // Cap spent: nothing new today.
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(q.remaining()));
+
+    // A learning record left from day 0 is due on day 1 too, and with learning
+    // off it is asked as a review while the new cards are questions again.
+    srs.setToday(1);
+    TEST_ASSERT_TRUE(srs.introduce(cs[3].cp, 0));
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL(ItemKind::Ask, it.kind);
+    TEST_ASSERT_EQUAL_UINT32(3, it.cardIndex);
+    LearnOptions off;
+    q.setLearning(off);
+    q.rebuild(pack, srs, rng);
+    got = drive(q, srs, pack, allGood);
+    // Card 3 (due day 0) first, then the others by stability; each in its
+    // least used mode; card 4 a plain new question.
+    TEST_ASSERT_EQUAL_STRING("m3 r0 k1 k2 m4", render(got).c_str());
+}
+
+// Forgetting a learning record makes the kanji new again: an intro again,
+// and today's cap no longer counts it.
+void test_queue_learning_forget() {
+    std::vector<CardSpec> cs = modeCards(3);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(2);
+    srs.setNewPerDay(1);
+    XorShiftRng rng(1);
+    Queue q;
+    q.setLearning(learnOn());
+    q.rebuild(pack, srs, rng);
+    QueueItem it;
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_TRUE(srs.introduce(cs[0].cp, 2));
+    TEST_ASSERT_TRUE(q.introduced(0));
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(q.remaining()));  // card 0 as a review
+
+    const uint32_t gone[] = {cs[0].cp};
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(srs.forget(gone, 1)));
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(q.remaining()));
+    TEST_ASSERT_TRUE(q.next(&it));
+    TEST_ASSERT_EQUAL(ItemKind::Intro, it.kind);
+    TEST_ASSERT_EQUAL_UINT32(0, it.cardIndex);
+}
+
+// "+10 new" on the done screen brings intros, not cold questions.
+void test_queue_learning_study_more() {
+    std::vector<CardSpec> cs = modeCards(6);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(3);
+    srs.setNewPerDay(2);
+    XorShiftRng rng(1);
+    Queue q;
+    q.setLearning(learnOn());
+    q.rebuild(pack, srs, rng);
+    std::vector<Shown> got = drive(q, srs, pack, allGood);
+    TEST_ASSERT_EQUAL_STRING("I0 I1 M0 M1 R0 R1", render(got).c_str());
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(q.remaining()));
+
+    const DeckSummary sum = deckSummary(pack, srs);
+    TEST_ASSERT_EQUAL_UINT32(4, sum.fresh);  // "+10 new" shows
+    TEST_ASSERT_EQUAL_UINT32(2, sum.introducedToday);
+    const uint16_t extra = studyMoreExtra(srs.newPerDay(), sum.introducedToday, 0);
+    q.rebuild(pack, srs, rng, extra);
+    TEST_ASSERT_EQUAL_UINT32(4 * 3, static_cast<uint32_t>(q.remaining()));
+    got = drive(q, srs, pack, allGood);
+    TEST_ASSERT_EQUAL_STRING("I2 I3 I4 I5 M2 M3 M4 M5 R2 R3 R4 R5", render(got).c_str());
+}
+
+// The session cap counts what the session will show: with learning on, an
+// intro takes itself and its two steps, so 195 reviews leave room for one.
+void test_queue_learning_session_cap() {
+    std::vector<CardSpec> cs = modeCards(205);
+    auto buf = makePack(cs, glyphsFor(cs));
+    MemorySource src(buf);
+    PackReader pack;
+    TEST_ASSERT_EQUAL(PackError::Ok, pack.open(src));
+
+    SrsStore srs;
+    MemoryIo io;
+    srs.begin(io);
+    srs.setToday(10);
+    for (int i = 0; i < 195; ++i) setDue(srs, cs[i].cp, 9, static_cast<uint16_t>(100 + i));
+    XorShiftRng rng(1);
+    Queue q;
+
+    q.rebuild(pack, srs, rng);  // learning off: 195 reviews and 5 new questions
+    TEST_ASSERT_EQUAL_UINT32(Queue::kSessionCap, static_cast<uint32_t>(q.remaining()));
+
+    q.setLearning(learnOn());
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(195 + 3, static_cast<uint32_t>(q.remaining()));
+    QueueItem it;
+    int asks = 0, intros = 0;
+    while (q.next(&it)) {
+        if (it.kind == ItemKind::Intro) {
+            ++intros;
+            TEST_ASSERT_EQUAL_UINT32(195, it.cardIndex);
+        } else {
+            ++asks;
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(195, asks);
+    TEST_ASSERT_EQUAL_INT(1, intros);
+
+    // Fewer reviews: the new-card cap (10) binds, not the session cap.
+    for (int i = 0; i < 195; ++i) srs.getOrCreate(cs[i].cp).dueDay = 30;
+    q.rebuild(pack, srs, rng);
+    TEST_ASSERT_EQUAL_UINT32(10 * 3, static_cast<uint32_t>(q.remaining()));
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -2074,5 +2976,24 @@ int main() {
     RUN_TEST(test_date_manual_floor);
     RUN_TEST(test_serialize_anchor_roundtrip);
     RUN_TEST(test_serialize_pre_anchor_file_unchanged);
+    RUN_TEST(test_intro_memory);
+    RUN_TEST(test_introduce_records_exposure);
+    RUN_TEST(test_intro_time_capped);
+    RUN_TEST(test_learning_grade_same_day);
+    RUN_TEST(test_learning_grade_later_day);
+    RUN_TEST(test_learning_flag_roundtrip);
+    RUN_TEST(test_learning_forget);
+    RUN_TEST(test_learning_schedules);
+    RUN_TEST(test_queue_learning_off_is_today);
+    RUN_TEST(test_queue_intros_only_for_never_seen);
+    RUN_TEST(test_queue_learning_steps);
+    RUN_TEST(test_queue_learning_batches);
+    RUN_TEST(test_queue_learning_step_again);
+    RUN_TEST(test_queue_learning_known);
+    RUN_TEST(test_queue_learning_remaining_steady);
+    RUN_TEST(test_queue_learning_cap_and_rebuild);
+    RUN_TEST(test_queue_learning_forget);
+    RUN_TEST(test_queue_learning_study_more);
+    RUN_TEST(test_queue_learning_session_cap);
     return UNITY_END();
 }
