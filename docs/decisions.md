@@ -3147,3 +3147,20 @@ marked *to confirm* needs the device.
 - **Renderer.** `tools/install-page/render.py` is stdlib only, replaces
   `{{TAG}}`/`{{VERSION}}`, and has a `--check` mode that fails on an unreplaced
   token or a manifest/fallback file missing from the Pages directory.
+
+## 2026-10-23 – Battery discharge test
+
+- **Why a test build.** The idle timeout deep-sleeps after 2 min on battery, so
+  the cell cannot reach 3 % with the app running. `sticks3-batt`
+  (`TGC_BATT_TEST`) pushes the dim and idle sleep out of the way, forces full
+  brightness, shows the percentage in the quiz header and appends a line a
+  minute to `/batt.log`, printed over USB at boot and once a minute. Test only.
+- **What the run showed.** StickS3, 2026-10-23: 100 % → 0 % in about 2 h at
+  full brightness. The guard slept after three 0 % readings; the gauge jumped
+  from 6 % to 0 %, so the exact 3 % was not observed (the rule is native-
+  tested). With USB in and the front button pressed, the device woke at 14 %
+  and resumed (`boot after critical (usb)`). The 6 % no-USB resume was not
+  tried.
+- **The normal UI keeps the icon only.** The percentage in the header is part
+  of the test build; the release screens still show the battery icon, as
+  before.

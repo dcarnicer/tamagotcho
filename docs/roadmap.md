@@ -34,8 +34,13 @@ Scope for now: **kanji only** (no vocabulary decks).
           button wakes it, `power: woke after 45 s`); a click powers on a
           device that is off; a long press enters download mode and a double
           click leaves it; the sleep notice reads well.
-        - [ ] Battery thresholds on a real discharge (3 % sleep, resume at 6 %
-          or on USB).
+        - [x] Battery thresholds on a real discharge (3 % sleep, resume at 6 %
+          or on USB). StickS3, 2026-10-23, with `sticks3-batt` (awake, full
+          brightness, no dim/sleep): 100 % → 0 % in about 2 h; the guard slept
+          after three 0 % readings, but the gauge jumped 6 % → 0 %, so the
+          exact 3 % was not seen (the rule is native-tested). USB + the front
+          button resumed at 14 % (`boot after critical (usb)`). The 6 %
+          no-USB resume was not tried.
         - [ ] Maybe: wake from deep sleep with the power button through the
           PM1 IRQ output (PM1 G1 is wired to ESP32 G13). Held back because the
           datasheet says the PM1 LED then blinks while the click reset is off.
