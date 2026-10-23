@@ -138,7 +138,8 @@ uv run pytest
   JLPT list or with JMdict priority tags, not usually written in kana;
   docs/example-words.md), each with its reading, the part of the reading the
   kanji reads, and a gloss in the deck's language: English from JMdict_e (its
-  first non-romaji gloss, when 24 characters or fewer), Spanish only from the
+  first non-romaji gloss, when 24 characters or fewer, if need be without its
+  parenthesised notes), Spanish only from the
   `ok` rows of `data/example_glosses_es.tsv` (never JMdict's own Spanish
   glosses), none in French or Portuguese. A word without a gloss is shown with
   its reading only. The table's `skip` rows apply in every language: the next

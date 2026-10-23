@@ -22,7 +22,8 @@ module):
    (in every language: the words are the same in every deck).
 4. **Glosses.** English: the first gloss of the word's first JMdict_e sense
    that is not a transliteration of its reading, if it has at most MAX_GLOSS
-   characters. Spanish: only reviewed (`ok`) rows of the project's table
+   characters, after dropping its parenthesised notes when it is longer (not
+   in the measurement: it saves 水 "water (esp. cool or cold)"). Spanish: only reviewed (`ok`) rows of the project's table
    `data/example_glosses_es.tsv`, never JMdict's own Spanish glosses (their
    licence: docs/example-words.md). Other languages, and a word with no
    gloss: an empty gloss (the device shows the word and its reading).
@@ -201,10 +202,18 @@ def shown_gloss(glosses: list[str], reading: str) -> str | None:
     return None
 
 
+_NOTE = re.compile(r"\s*\([^()]*\)")
+
+
 def english_gloss(info: Info | None, reading: str, max_len: int = MAX_GLOSS) -> str:
     """An English pack's gloss for a word: the shown gloss of its first
-    JMdict_e sense when it is short, else "" (none)."""
+    JMdict_e sense when it is short, else "" (none). A longer one loses its
+    parenthesised notes first ("water (esp. cool or cold)" -> "water", "to come
+    (spatially or temporally)" -> "to come"); a short one keeps them ("yen
+    (currency of Japan)")."""
     g = shown_gloss(info.eng, reading) if info else None
+    if g and len(g) > max_len:
+        g = " ".join(_NOTE.sub("", g).split())
     return g if g and len(g) <= max_len else ""
 
 

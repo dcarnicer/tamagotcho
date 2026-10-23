@@ -63,7 +63,11 @@ def test_transliterations_and_shown_gloss():
 
 def test_english_gloss_short_rule():
     info = Info(1.0, True, False, eng=["to come (spatially or temporally)", "to approach"])
-    assert english_gloss(info, "くる") == ""                    # the first is too long
+    assert english_gloss(info, "くる") == "to come"             # too long: notes dropped
+    assert english_gloss(Info(1.0, True, False, eng=["yen (currency of Japan)"]), "えん") \
+        == "yen (currency of Japan)"                            # short: notes kept
+    info = Info(1.0, True, False, eng=["a very long gloss without any notes at all"])
+    assert english_gloss(info, "x") == ""                       # still too long: none
     assert english_gloss(Info(1.0, True, False, eng=["sake", "rice wine"]), "さけ") == "rice wine"
     assert english_gloss(Info(1.0, True, False, eng=["x" * 24]), "x") == "x" * 24
     assert english_gloss(None, "x") == ""
