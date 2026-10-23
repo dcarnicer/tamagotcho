@@ -170,7 +170,12 @@ N5	友	友人	ゆうじん	friend	amigo	ok
 N5	友	友達	ともだち	friend; companion	amigo	ok	
 N5	父	祖父	そふ	grandfather	abuelo	ok	
 N5	父	父親	ちちおや	father	padre	ok	
-N5	本	旗本	はたもと	headquarters (on the battlefield)	cuartel general	draft	CHECK: FreeDict suggestion (sync-glosses), not reviewed
-N5	中	途中	とちゅう	on the way; en route	en camino	draft	CHECK: FreeDict suggestion (sync-glosses), not reviewed
-N5	川	川柳	せんりゅう	senryū; comic haiku; humorous seventeen-mora poem		draft	CHECK: no FreeDict suggestion (sync-glosses)
-N5	何	幾何学	きかがく	geometry	geometría	draft	CHECK: FreeDict suggestion (sync-glosses), not reviewed
+N5	本	旗本	はたもと	headquarters (on the battlefield)		skip	replacement for 本木: a samurai retainer, not an N5 word; dropped in the maintainer's review
+N5	中	途中	とちゅう	on the way; en route	a medio camino	ok	FreeDict said "en camino"; reviewed
+N5	川	川柳	せんりゅう	senryū; comic haiku; humorous seventeen-mora poem		skip	replacement for 河川: a poem form, not an N5 word; dropped in the maintainer's review
+N5	何	幾何学	きかがく	geometry		skip	replacement for 幾何: as rare for N5 as 幾何; dropped in the maintainer's review
+N5	本	大本	おおもと	root; origin; source		skip	another candidate for 本 もと: the maintainer keeps this kanji to one example word
+N5	川	河川敷	かせんじき	flood plain; river terrace; riverside area		skip	another candidate for 川 セン: the maintainer keeps this kanji to one example word
+N5	本	本	もと	origin; source; beginning		skip	another candidate for 本 もと: the maintainer keeps this kanji to one example word
+N5	川	山川	さんせん	mountains and rivers		skip	another candidate for 川 セン: the maintainer keeps this kanji to one example word
+N5	川	四川	しせん	Sichuan (China); Szechuan; Szechwan		skip	another candidate for 川 セン: the maintainer keeps this kanji to one example word
