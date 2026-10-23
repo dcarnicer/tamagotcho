@@ -47,11 +47,58 @@ it runs once a day on external power, or once a week on battery from 50 %.
 | `imu/`        | `OrientationFilter`: accelerometer samples to a stable display rotation for the Auto orientation (hysteresis, settle time, flat and motion rejection). Pure C++, unit tested natively |
 | `power/`      | Critical-battery guard (`BatteryGuard.h`, header-only). Pure C++, unit tested natively |
 | `platform/`   | LittleFS-backed pack source and SRS state file; the on-device **Wi-Fi portal** (`WifiPortal`: an HTTP server in *setup mode* on its own open access point, or in *home mode* on the home network the app joined) with one task-oriented page: the deck catalog and its downloads (home mode, through the app), the decks on the device (deleting one deletes its progress too, through the app: `Hooks::onDeleteDeck`), and under Advanced uploading, URL downloads, the catalog URL, the home Wi-Fi and the statistics (the page also posts the phone's clock and time zone as a POSIX rule, `POST /time`, which anchors the SRS date); `HomeWifi` (home network in NVS, station mode on demand, link/IP/RSSI, SNTP time for the SRS date); `NetFetch` (atomic HTTP(S) pack download with size/SHA-256 checks and the catalog read, shared by the portal, Get decks and the network test) with the embedded root CAs in `RootCerts.h`. Arduino only |
-| `ui/`         | Screens and input state machine. Header-only pure helpers, unit tested natively: `UiLang.h` (the UI language, and when the first boot asks for it), `TextLayout.h` (line wrapping and paging for the built-in font, used by Settings › Device › About and the captions), `Theme.h` (the UX refresh's RGB565 colour tokens, spacing and per-panel layout grid), `Icons.h` (1bpp icons, art strings packed at compile time), `ListView.h` (a scrolling list's focus, window, markers and scroll thumb), `HintBar.h` (the hint bar's layout: caption widths, the front and side groups, and the second row a screen with a side tap and a side hold needs when they do not fit one; on a keyboard board the marks are keycaps), `KeyInput.h` (keyboard input: the Cardputer ADV's TCA8418 key numbers on its key grid, the keys the app tells apart, their five actions and the arrows' auto-repeat), `QuizUi.h` (the quiz screens' logic: session progress, option navigation, the hint bar policy, hold-progress and auto-advance timing, the result pill within its pixel budget, the detail card's reading rows), `UiFace.h` + the generated `UiFont.h` (the firmware's UI font: Noto Sans JP glyph tables in the pack 4bpp format, from `tools/ui-font/gen_ui_font.py`), `SettingsTree.h` (the settings home's five groups and the Study / Device pages as item tables, chevrons, icons and row values; a landscape-only board's Device page has no Orientation row), `ScreenLayout.h` (where the summary card, the stats ring and tiles, the calendar tile and the done screen go on each panel), `DeckSummary.h` (the loaded deck's total / new / due today and tomorrow), `InputPrefs.h` (auto-advance and hold-time choices) |
+| `ui/`         | The screens' pure logic (the screens themselves are in `app/`, below). Header-only pure helpers, unit tested natively: `UiLang.h` (the UI language, and when the first boot asks for it), `TextLayout.h` (line wrapping and paging for the built-in font, used by Settings › Device › About and the captions), `Theme.h` (the UX refresh's RGB565 colour tokens, spacing and per-panel layout grid), `Icons.h` (1bpp icons, art strings packed at compile time), `ListView.h` (a scrolling list's focus, window, markers and scroll thumb), `HintBar.h` (the hint bar's layout: caption widths, the front and side groups, and the second row a screen with a side tap and a side hold needs when they do not fit one; on a keyboard board the marks are keycaps), `KeyInput.h` (keyboard input: the Cardputer ADV's TCA8418 key numbers on its key grid, the keys the app tells apart, their five actions and the arrows' auto-repeat), `QuizUi.h` (the quiz screens' logic: session progress, option navigation, the hint bar policy, hold-progress and auto-advance timing, the result pill within its pixel budget, the detail card's reading rows), `UiFace.h` + the generated `UiFont.h` (the firmware's UI font: Noto Sans JP glyph tables in the pack 4bpp format, from `tools/ui-font/gen_ui_font.py`), `SettingsTree.h` (the settings home's five groups and the Study / Device pages as item tables, chevrons, icons and row values; a landscape-only board's Device page has no Orientation row), `ScreenLayout.h` (where the summary card, the stats ring and tiles, the calendar tile and the done screen go on each panel), `DeckSummary.h` (the loaded deck's total / new / due today and tomorrow), `InputPrefs.h` (auto-advance and hold-time choices) |
+| `app/`        | The app: every screen, the quiz loop, the settings, Get decks and the deck updates, the Wi-Fi screen and the portal's hooks, the clock, the boot and the power handling, one file pair per screen or area ("The app layer" below). Arduino only |
+| `main.cpp`    | The Arduino entry points: `setup()` (runs `app::boot()`), `loop()` (the buttons' tap and hold events) and the two screen dispatchers, `drawScreen()` and `handleInput()` |
 | `Version.*`, `Credits.h` | `tgc::firmwareVersion()`: the release tag, `git describe` or `"dev"`, defined for `Version.cpp` only by `scripts/version.py`; the attribution strings Settings › Device › About and the portal footer share (docs/data-sources.md), and the app's name (`kAppName` たまごっちょ on screen, `kAppNameLatin` Tamagotcho for the serial log, SSID and mDNS host) |
 
 Pure-logic modules (`pack`, `quiz`, `srs`, `imu`, `power`, `catalog`, `portal`, and the
 helpers in `ui`) must build in the `native` PlatformIO env with no Arduino headers.
+
+### The app layer (`firmware/src/app/`)
+
+Until 2026-10-23 all of this was `main.cpp` (6,832 lines, docs/decisions.md).
+Each file pair below is one screen or one area, in namespace `tgc::app`. What
+other files use is declared in the module's header; the rest of a `.cpp` is in
+an anonymous namespace.
+
+| file          | owns |
+|---------------|------|
+| `App`         | The shared context: the open deck (`gPack`, its file `gSource`, `gRender`), `gRng`, the SRS store, its file and the queue (`gSrs`, `gSrsIo`, `gQueue`, `gDirty`, `gSrsLoaded`), the `Screen` enum with `gScreen` and `gBeforeMenu`, the NVS namespace (`gPrefs`), `QLOG`, and the declarations of `drawScreen()` / `handleInput()` (defined in `main.cpp`) |
+| `UiStrings`   | `UiStrings` (every on-device string), the English and Spanish tables, `ui()`, `keysOr()`, the UI-language preference |
+| `Display`     | The back buffer (`gCanvas`, `W`, `H`), `present()` / `presentRegion()`, a list's focus move and partial push, the rotation and the Auto orientation |
+| `ScreenKit`   | What the screens are drawn from: the header, the hint bar in the board's terms (`boardHints()`), caption lines, a list's geometry and note line, the error and notice screens |
+| `Quiz`        | The question (`newQuestion()`), the quiz screen and its geometry and tiles, the answer and its grade, `quizLoop()`, the "study more" override |
+| `Detail`      | The detail card after a wrong answer, with the stroke animation |
+| `Done`        | "All caught up" and "+10 new" |
+| `Settings`    | The settings tree: the home with the summary card, the Study and Device pages, the `MenuItem` table (one entry per `ui/SettingsTree.h` item: label, value, action), the settings' values |
+| `Choice`      | The pickers (`Screen::Choice`) and applying a choice |
+| `Stats`, `About` | Statistics; Settings › Device › About |
+| `Decks`       | `/packs` and the loaded deck (`loadPack()`, `portalPacksChanged()`), its counts (`deckCounts()`), the deck list |
+| `GetDecks`    | Get decks and the updates list |
+| `DeckUpdates` | The update count, the automatic check's policy and its boot screen |
+| `Net`         | What the Wi-Fi sessions share: the station (`gHome`), the radio off, why a join failed, a catalog deck's state on disk, why a catalog read failed, the checked deck download and its progress |
+| `Wifi`        | The Wi-Fi screen, the portal's two modes, the boot-time upload screen's portal, the portal's hooks (`kPortalHooks`) |
+| `WifiMenu`    | Settings › Wi-Fi and the home network test |
+| `Progress`    | A deck deleted from the portal with its progress, a restore from the portal, Settings › Study › Delete progress |
+| `Clock`       | The SRS day as a date, the time zone, a real time from the phone or NTP, the boot-time network date |
+| `DateScreens` | The date stepper, Settings › Device › Date and the zone list |
+| `Power`       | The dim, the idle and explicit sleep, the wake, the critical-battery guard, the time slept, the CPU clocks, the battery test log |
+| `Input`       | The hold progress and the keyboard (`keyAction()`, `keyTurn()`) |
+| `Remote`      | The serial remote of the `-shots` envs (`TGC_REMOTE`) |
+| `Boot`        | `boot()` (what `setup()` runs), the filesystem mount and format, the first-boot language picker, the boot-time upload screen |
+
+**Where new code goes.** A new screen is a `Screen` value in `App.h`, its own
+`app/X.h` / `app/X.cpp` with its state, its draw function and its loop function
+(`void xLoop(int a, int b)`: the front and side buttons' events, 1 tap, 2
+hold), and one line in each of `drawScreen()` and `handleInput()` in
+`main.cpp`. A list screen, or one in the settings tree, also gets its cases in
+`app/Input.cpp` (`listFocusUp()`, `keyRepeatsHere()`, `menuKeyGoesHome()`).
+Its strings go in `UiStrings` (the struct and both tables); a settings row is a
+`ui/SettingsTree.h` item plus its `MenuItem` entry in `app/Settings.cpp`. Logic
+that needs no Arduino and can be tested natively goes in a pure module instead
+(`ui/`, `srs/`, ...). Code shared by two screens goes in the module that owns
+the concept (`Net`, `Clock`, `Decks`), not in `main.cpp`.
 
 The menu and secondary screens follow the UX refresh's design system
 (docs/ux-refresh.md §2, §6): a 16 px header, rows of the layout's height that
@@ -59,8 +106,8 @@ scroll through a `ListView` instead of shrinking, and a 12 px hint bar (• tap,
 ▬ hold, the side button's icon; a second row for the side button where its tap
 and hold both need a word and the panel is too narrow, as on the date stepper). The settings are a tree (§3): a home with a
 summary card and five groups, two of which (Study, Device) are pages of rows;
-`main.cpp` maps each `SettingsTree.h` item to its label, value and action in
-one table. The quiz and the detail card follow it too (phase 2: header pills,
+`app/Settings.cpp` maps each `SettingsTree.h` item to its label, value and
+action in one table. The quiz and the detail card follow it too (phase 2: header pills,
 flat answer tiles, hold progress, auto-advance).
 
 ## Target hardware
@@ -91,7 +138,7 @@ the StickS3 and the T-Display-S3 also the side button (`Button::Next`).
 (`handleInput()`). A board with a keyboard (`board::hasKeyboard()`) also
 delivers key events (`board::nextKeyEvent()`); `ui/KeyInput.h` maps each key
 to one of five actions (next, previous, confirm, back, menu) and `keyAction()`
-in `main.cpp` is the one place that turns an action into the screen's own:
+in `app/Input.cpp` is the one place that turns an action into the screen's own:
 next is the front tap, confirm (Enter) the front hold at once, previous the
 side tap where that means previous or a list's focus up, back the screen's
 back or cancel, menu the settings home. The hint bar then names keys

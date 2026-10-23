@@ -3,7 +3,8 @@
 Spaced-repetition scheduling and persisted review state for the on-device quiz.
 This document is the design; the implementation lives in `firmware/src/srs/`
 (pure C++, no Arduino, unit-tested natively) plus a small LittleFS layer in
-`firmware/src/platform/` and the wiring in `firmware/src/main.cpp`.
+`firmware/src/platform/` and the wiring in the app layer, `firmware/src/app/`
+(`main.cpp` until 2026-10-23; §7 keeps that file's name).
 
 ## 1. Goals and non-goals
 
@@ -173,7 +174,7 @@ see §9.
 `slow_ms` default 3000, stored in the state header so it can be tuned (or set
 to 0xFFFF to disable Hard) without a firmware rebuild. Response time is
 question-drawn → the **press-down edge of the confirming hold**, minus a fixed
-**400 ms per navigation tap** (`kNavAllowanceMs` in `main.cpp`). This excludes
+**400 ms per navigation tap** (`kNavAllowanceMs` in `app/Quiz.cpp`). This excludes
 the mandatory 600 ms hold and the mechanical cost of tapping through to the right
 option, but keeps the thinking time before and between taps (the earlier rule
 reset the clock on each tap, so a long think followed by quick taps graded Good).
