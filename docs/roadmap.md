@@ -235,8 +235,17 @@ Scope for now: **kanji only** (no vocabulary decks).
         skippable screen; it never downloads by itself. Checked on a StickS3 and
         a Cardputer ADV (2026-10-22): boot check, Updates row, detection,
         download and progress preservation, with the keyboard on the Cardputer.
-        Pending: capturing the automatic result screen with N > 0, the
-        skip/failure paths, and tuning the battery policy.
+        - [x] Automatic result screen with N > 0, the tap-to-skip path and the
+          catalog-failure path, captured on a StickS3 (2026-10-23, 6 updates;
+          docs/deck-updates.md). Two UI issues found: the Spanish result line
+          is cut ("6 actualizacion..."), and the home Decks row hides the
+          update badge in portrait (it showed "6 act." in landscape).
+        - [x] Fix the Spanish result line and the portrait home badge
+          (2026-10-23). The result now reads "6 mazos por / actualizar" and the
+          home row shows "Mazos 6 act" in portrait ("Decks 6 upd" in English);
+          `test_ui` checks both widths.
+        - [ ] Tune the battery policy (the daily / weekly / 50 % rule is
+          native-tested; a real battery run is still pending).
       - [~] **M5Launcher compatibility.** The app-only `.bin` that
         `pio run -e sticks3` produces can be installed as a launcher app, and
         the Wi-Fi upload is the intended way to populate `/packs` once it runs

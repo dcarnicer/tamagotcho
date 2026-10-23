@@ -158,7 +158,21 @@ catalog.
   The whole 8 MB flash was read first (`esptool read_flash 0x0 0x800000`) and
   written back afterwards (`write_flash 0x0`, hash verified): bootloader,
   partition table, NVS, app slots and SPIFFS are all inside that image.
-- Not exercised: capturing the automatic result screen with N > 0 (the check
-  itself ran and the badge counted it), the skip and failure paths, and the
-  battery thresholds. The detection and count path is the one the manual list
-  used; the boot screen with zero updates was seen.
+- **StickS3, 2026-10-23 (v0.5.0 + 3 commits, `sticks3-shots`).** With 8 packs
+  installed and 6 updates, the boot check joined "Shimokitazawa" in 6.4 s, read
+  the catalog and hashed the 8 packs in 4.3 s; the result stayed on screen for
+  about two seconds and the quiz followed. A tap during the join skipped the
+  check (radio off, quiz, the day recorded). With the catalog URL pointed at
+  `https://example.invalid/...`, the same boot showed "Servidor inaccesible"
+  and continued to the quiz. The manual Updates list showed the 6 installed
+  updates and hashed 8 packs in 1.6 s. Two UI findings, fixed and checked on
+  the StickS3 the same day: the Spanish result line wrapped to "6" +
+  "actualizaciones de mazos" and was cut to "actualizacion..." (it now reads
+  "6 mazos por / actualizar"), and the settings home's Decks row dropped its
+  value in portrait because "6 act." did not fit (it now shows "Mazos 6 act",
+  and "Decks 6 upd" in English; `test_ui` checks the widths). The device was
+  restored from its 8 MB flash backup afterwards (hash verified).
+- Not exercised: the battery thresholds (the daily / weekly / 50 % policy is
+  native-tested; a real discharge needs the device unplugged and kept awake).
+  The English result screen with N > 0 was not captured, but its strings are in
+  the `test_ui` width check.
