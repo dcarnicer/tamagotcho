@@ -884,8 +884,16 @@ constexpr const char* kPrefUpdateKnown = "updok";
 // in) the state is saved and, on battery, the chip deep-sleeps until the front
 // button wakes it. On USB power only the panel goes dark, so the serial port
 // stays usable for flashing and logs; unplugging then lets it sleep.
+#if defined(TGC_BATT_TEST)
+// Battery discharge test (env sticks3-batt, never a release): the device must
+// stay awake on battery for hours, so the idle dim and sleep are pushed out of
+// the way. The critical guard still sleeps at 3 %.
+constexpr uint32_t kDimAfterMs = 24u * 60 * 60 * 1000;
+constexpr uint32_t kSleepAfterMs = 24u * 60 * 60 * 1000;
+#else
 constexpr uint32_t kDimAfterMs = 30000;
 constexpr uint32_t kSleepAfterMs = 120000;
+#endif
 constexpr uint32_t kWifiIdleMs = 300000;
 constexpr uint32_t kPowerCheckMs = 5000;  // VBUS poll while the panel is off
 // 80 MHz is plenty for the quiz; Wi-Fi gets full speed while the portal runs.
@@ -912,6 +920,29 @@ uint32_t gBatteryCheckAt = 0;
 constexpr uint32_t kBatteryGuardMs = 10000;
 tgc::BatteryGuard gBatteryGuard;
 uint32_t gBatteryGuardAt = 0;
+#if defined(TGC_BATT_TEST)
+// Test-only log in LittleFS: one line per event, so the unplugged run leaves
+// evidence. It is printed over USB at boot and once a minute while awake.
+uint32_t gBattLogAt = 0;
+int gBattWakePct = -2;  // the best reading of a critical wake, logged after mount
+bool gBattWakeUsb = false;
+void battLog(const char* what, int pct = -2) {
+    if (pct == -2) pct = tgc::board::batteryPercent();
+    File f = LittleFS.open("/batt.log", FILE_APPEND);
+    if (!f) return;
+    f.printf("%lu ms %d%%%s %s\n", (unsigned long)millis(), pct,
+             tgc::board::externalPower() ? " usb" : "", what);
+    f.close();
+}
+void battLogPrint() {
+    File f = LittleFS.open("/batt.log", FILE_READ);
+    if (!f) return;
+    Serial.println("--- /batt.log ---");
+    while (f.available()) Serial.write(static_cast<uint8_t>(f.read()));
+    Serial.println("--- end ---");
+    f.close();
+}
+#endif
 // How long the notice before an explicit sleep stays up.
 constexpr uint32_t kSleepNoticeMs = 1500;
 constexpr uint32_t kBatteryNoticeMs = 2500;
@@ -1303,7 +1334,15 @@ void drawQuizHeader(lgfx::LovyanGFX& d) {
     const int bat = tgc::board::batteryPercent();
     gShownBattery = bat;
     wg::Header h;
+#if defined(TGC_BATT_TEST)
+    // The discharge test needs the figure, not just the icon: show it where
+    // the quiz otherwise says how many cards are left.
+    char batText[8];
+    snprintf(batText, sizeof batText, "%d%%", bat);
+    h.right = batText;
+#else
     h.right = left;
+#endif
     h.battery = bat;
     h.progressNum = static_cast<int>(p.done);
     h.progressDen = static_cast<int>(p.total);
@@ -1340,7 +1379,7 @@ void drawQuizHeader(lgfx::LovyanGFX& d) {
             h.pillBg = kOkBg;
         }
         tgc::resultPillText(pill, sizeof pill, word, days, ui().pillDaysUnit, icon->w,
-                            tgc::headerPillRoom(W, tgc::captionChars(left), bat >= 0));
+                            tgc::headerPillRoom(W, tgc::captionChars(h.right), bat >= 0));
         h.pill = pill;
         h.pillIcon = icon;
     }
@@ -5784,6 +5823,9 @@ void sleepNow(bool critical) {
     delay(critical ? kBatteryNoticeMs : kSleepNoticeMs);
     gSleptCritical = critical;
     gSleepUiEs = gUi == &kUiEs;
+#if defined(TGC_BATT_TEST)
+    if (critical) battLog("critical sleep");
+#endif
     tgc::board::deepSleep();
 }
 
@@ -5976,6 +6018,9 @@ void setup() {
     const bool uiPrefStored = gPrefs.isKey("ui");
     gUiLangPref = gPrefs.getInt("ui", tgc::kUiLangAuto);
     gBrightness = gPrefs.getUChar("bri", gBrightness);
+#if defined(TGC_BATT_TEST)
+    gBrightness = 255;  // full backlight: drain the cell in a reasonable time
+#endif
     gAdvancePref = gPrefs.getUChar(tgc::kPrefAdvance, tgc::kAdvanceDefault);
     gHoldPref = gPrefs.getUChar(tgc::kPrefHold, tgc::kHoldDefault);
     gOnKana = gPrefs.getUChar("onkana", 0) == 1 ? tgc::OnKana::Hiragana : tgc::OnKana::Katakana;
@@ -6000,6 +6045,11 @@ void setup() {
         }
         const bool external = tgc::board::externalPower() || tgc::board::isCharging();
         Serial.printf("power: critical wake, battery %d%%%s\n", pct, external ? " (usb)" : "");
+#if defined(TGC_BATT_TEST)
+        // The filesystem is not mounted yet: keep it for the log after mount.
+        gBattWakePct = pct;
+        gBattWakeUsb = external;
+#endif
         if (!tgc::BatteryGuard::canResume(pct, external)) {
             gUi = gSleepUiEs ? &kUiEs : &kUiEn;
             showNotice(ui().batteryTitle, keysOr(ui().batteryHint, ui().batteryHintKeys),
@@ -6017,6 +6067,14 @@ void setup() {
     for (const char* tmp : {tgc::kFetchTmp, tgc::WifiPortal::kUploadTmp,
                             tgc::WifiPortal::kProgressTmp})
         if (tgc::fsRemoveIfExists(tmp)) Serial.printf("fs: removed stale %s\n", tmp);
+#if defined(TGC_BATT_TEST)
+    if (gBattWakePct != -2)
+        battLog(gBattWakeUsb ? "boot after critical (usb)" : "boot after critical",
+                gBattWakePct);
+    else
+        battLog("boot");
+    battLogPrint();
+#endif
     listPacks(gPacks);
     // The time zone first: the slept time (applySleepTime() below) is counted
     // in its study days, 23 or 25 h long across a daylight-saving change.
@@ -6706,6 +6764,13 @@ void loop() {
         if (tgc::board::batteryPercent() != gShownBattery) drawScreen();
     }
     orientTick(t, downA || downB);
+#if defined(TGC_BATT_TEST)
+    if (t - gBattLogAt >= 60000) {
+        gBattLogAt = t;
+        battLog("tick");
+        if (Serial) battLogPrint();
+    }
+#endif
     // Save and sleep before a nearly flat cell browns out and takes the RTC
     // timer (the SRS day clock) with it.
     if (batteryCritical(t)) sleepNow(true);

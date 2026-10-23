@@ -39,7 +39,11 @@ StickS3 build with the serial remote (`TGC_REMOTE`): over the USB cable,
 `tools/screenshots/remote.py` presses its buttons, saves its screen as PNG and
 runs test hooks (the power-cut date question, a home Wi-Fi join that fails);
 see [tools/screenshots/README.md](../tools/screenshots/README.md). Never flash
-it as a release: anything on the cable can press the buttons.
+it as a release: anything on the cable can press the buttons. `-e sticks3-batt`
+is the battery discharge test (`TGC_BATT_TEST`): it stays awake on battery (no
+dim, no idle sleep), shows the percentage in the quiz header and appends a line
+a minute to `/batt.log`, printed over USB at boot and once a minute. The
+critical guard still sleeps at 3 %. Never for a release.
 
 `-e cardputer-adv` is the Cardputer ADV (`-e cardputer-adv-shots` with the
 serial remote, which also types its keys); it uses the StickS3's 8 MB

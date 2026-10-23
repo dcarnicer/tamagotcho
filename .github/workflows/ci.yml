@@ -68,6 +68,10 @@ jobs:
       - name: Build StickS3 and Cardputer ADV with the serial remote
         run: pio run -e sticks3-shots -e cardputer-adv-shots
 
+      # The battery discharge test (TGC_BATT_TEST) is a test-only build too.
+      - name: Build the battery test image
+        run: pio run -e sticks3-batt
+
   pack-builder:
     name: Pack builder (uv run pytest)
     runs-on: ubuntu-latest
