@@ -3,7 +3,9 @@
 Status (2026-10-23): measured for decision 9 of docs/learning-mode.md
 (§3.11: example words on the new-kanji intro card). Nothing is implemented:
 no pack, pack format, firmware or published deck changed. The numbers come
-from `tools/pack-builder/scripts/example_words_report.py` (below).
+from `tools/pack-builder/scripts/example_words_report.py` and, for the
+licence-compatible alternatives to JMdict's Spanish glosses ("Alternatives",
+which revises the recommendation), `scripts/example_words_alternatives.py`.
 
 ## Question
 
@@ -241,6 +243,8 @@ kanji from outside the deck (N2: 222 of them).
 
 ## Recommendation for decision 9
 
+*Superseded by the revised recommendation at the end of "Alternatives".*
+
 **(c) for the Spanish decks now, in a pack format that already has a gloss
 slot, and (b) for the English decks.** Pack v3's words section carries a
 gloss offset per word (0 = none, 4 B per asked kind). English packs fill it
@@ -277,6 +281,278 @@ then phase 4 of docs/learning-mode.md (spec first: the words section in
 docs/pack-format.md, v3, set 2's kanji). If the answer allows Spanish glosses,
 add them with a reviewed override table for N5-N3 and the short-gloss cut.
 
+## Alternatives
+
+JMdict's Spanish glosses cannot be redistributed (above). This section checks
+the licence-compatible sources for the same picked words (3,063 distinct
+words, 3,327 word slots, N5-N1 ∪ Jōyō), and where JMdict's Spanish glosses
+come from (G).
+
+### How each candidate gives a gloss
+
+- **A. Wordnets** (Open Multilingual Wordnet 1.4 release). The Japanese
+  WordNet lists the word's synsets. The one whose English (Princeton WordNet)
+  lemmas contain the word's earliest JMdict_e gloss is kept, the most
+  frequent English sense first. The gloss is that synset's first Spanish
+  lemma, from the Multilingual Central Repository 3.0 (MCR). Of the 3,063
+  words, 1,859 resolve. Of the rest, 400 have no synset, 308 have synsets but
+  none matches the English, and 496 match a synset with no Spanish lemma.
+- **B1. Spanish Wiktionary**: the first Spanish definition of the word's
+  Japanese entry (kaikki.org's wiktextract data). The Spanish Wiktionary has
+  only 880 Japanese entries written with kanji.
+- **B2. English Wiktionary, then its translation tables**: the first English
+  gloss of the word's Japanese entry, split at commas ("novel, story,
+  fiction"), translated as in C. FreeDict's eng-spa dictionary, which
+  `--meaning-order` already pins, *is* English Wiktionary's translation tables
+  (WikDict, via DBnary). So this is the "Wiktionary glosses plus translation
+  tables" route without the 2 GB English dump.
+- **C. JMdict_e through FreeDict**: the first English gloss of the word's
+  first sense that FreeDict has (without "to" or an article). The gloss is
+  the first Spanish translation of the first sense of FreeDict's entry with
+  the same part of speech.
+- **D. Wikidata lexemes**: a Japanese lexeme whose lemma is the word (and
+  whose hiragana lemma is the reading, when it has one). Only 12 Japanese
+  lexemes have a Spanish gloss of their own, so the gloss is the Spanish label
+  of the item that the lexeme's first item-linked sense points to (P5137).
+- **E. Composition**: no gloss. The intro shows the first Spanish meaning of
+  each of the word's kanji, as the published Spanish packs store it:
+  休日 = descanso + día.
+- **F. A project-authored table**: Spanish glosses drafted from JMdict_e's
+  English (with C as the starting suggestion), reviewed by the maintainer,
+  and committed like `data/meaning_overrides.tsv`.
+
+### Comparison
+
+Coverage is the share of word slots with a Spanish gloss of at most 24
+characters. The spot check is the same 30 random N5-N3 words for every source
+(`--seed 9`), each covered word judged right, doubtful or wrong as the meaning
+to show a learner (table below). For E it is whether the parts read as the
+word's meaning.
+
+| source | licence in CC BY-SA 4.0 packs | short Spanish gloss: N5 / N4 / N3 / N2 (N1, Jōyō) | spot check: right / doubtful / wrong (of covered) | upkeep |
+|---|---|---|---|---|
+| JMdict Spanish (reference) | **no** (unclear; above) | 96 / 96 / 95 / 91 % (81, 88) | 26 / 3 / 0 (of 29) | — |
+| A. Wordnets | **yes**: MCR CC BY 3.0, Japanese WordNet notice | 67 / 73 / 72 / 64 % (55, 62) | 14 / 5 / 1 (of 20) | low: OMW 1.4 frozen since 2021, 49 MB |
+| B1. Spanish Wiktionary | **yes**: CC BY-SA 4.0 | 22 / 18 / 6 / 6 % (2, 6) | 6 / 0 / 0 (of 6) | medium: 103 MB, regenerated weekly; useless at this coverage |
+| B2. English Wiktionary → FreeDict | **yes**: CC BY-SA 4.0 + FreeDict CC BY-SA 3.0 | 78 / 82 / 86 / 77 % (72, 78) | 14 / 2 / 4 (of 20) | medium: 49 MB, regenerated weekly; C's sense errors too |
+| C. JMdict_e → FreeDict | **yes**: both already credited | 96 / 93 / 94 / 88 % (87, 90) | 21 / 1 / 5 (of 27) | low: no new data, ~60 lines |
+| D. Wikidata lexemes | **yes**: CC0 | 64 / 50 / 31 / 34 % (23, 31) | 11 / 2 / 1 (of 14) | medium: a query snapshot that changes daily |
+| E. Composition | **yes**: KANJIDIC2, already in the packs | 95 / 95 / 98 / 96 % as text (94, 95) | 21 / 4 / 5 (of 30); compounds only: 8 / 3 / 4 (of 15) | low: firmware work + 0.6-7 KB per deck |
+| F. Reviewed table, seeded by C | **yes**: project-authored, CC BY-SA 4.0 | what is reviewed, up to 100 % | C's draft right as-is for 22 of 30 N5 words; 6 edits, 1 word to replace | a one-off review: 142 / 410 / 988 / 1,538 words (N5 .. N2, cumulative); a check for new picks |
+
+C agrees with A or D (the same Spanish word) for 53 % of the N5 slots, 46 %
+of N4, 43 % of N3 and N2, and 30 % of N1. In the spot check, the 13 words
+where C agrees with A or D were 12 right and 1 doubtful, so agreement could
+fast-track part of a review. B2 cannot serve that way, because it shares
+FreeDict with C.
+
+### Spot check
+
+✓ right, ~ doubtful, ✗ wrong, — no gloss. JMdict's Spanish is shown for
+reference only.
+
+| # | word | JMdict_e | JMdict es | A | B1 | B2 | C | D | E |
+|---:|---|---|---|---|---|---|---|---|---|
+| 1 | 一 いち | one | uno ✓ | — | Uno ✓ | uno ✓ | uno ✓ | Uno ✓ | uno ✓ |
+| 2 | 二 に | two | dos ✓ | — | Dos ✓ | dos ✓ | dos ✓ | dos ✓ | dos ✓ |
+| 3 | 体 からだ | body | cuerpo ✓ | cuerpo ✓ | — | — | carrocería ✗ | cuerpo ✓ | cuerpo ✓ |
+| 4 | 冬 ふゆ | winter | invierno ✓ | invierno ✓ | Invierno ✓ | invierno ✓ | invierno ✓ | invierno ✓ | invierno ✓ |
+| 5 | 制限 せいげん | restriction | restricción ✓ | limitación ✓ | — | límite ✓ | restricción ✓ | — | sistema + limitar ~ |
+| 6 | 動物 どうぶつ | animal | animal ✓ | animal ✓ | Animal ✓ | animal ✓ | animal ✓ | — | mover + cosa ~ |
+| 7 | 午後 ごご | afternoon | la tarde ✓ | tarde ✓ | — | tarde ✓ | tarde ✓ | tarde ✓ | mediodía + después ✓ |
+| 8 | 売買 ばいばい | trade | comercio ✓ | trade ✗ | — | — | comercio ✓ | — | vender + comprar ✓ |
+| 9 | 小説 しょうせつ | novel | novela ✓ | novela ✓ | Novela ✓ | novela ✓ | novela ✓ | Xiaoshuo ✗ | pequeño + explicar ✗ |
+| 10 | 居候 いそうろう | lodger who pays nothing … | — | aprovechador ~ | — | — | gorrón ✓ | — | existir + clima ✗ |
+| 11 | 式 しき | way | estilo ✓ | — | — | tipo ~ | camino ✗ | ecuación ~ | forma ✓ |
+| 12 | 強盗 ごうとう | robber | ladrón ✓ | atracador ✓ | — | robo ✓ | ladrón ✓ | robo ✓ | fuerte + robo ✓ |
+| 13 | 慣れる なれる | to get used to | acostumbrarse ✓ | — | — | — | — | — | acostumbrarse ✓ |
+| 14 | 探す さがす | to search for | buscar (…) ✓ long | buscar ✓ | — | buscar ✓ | buscar ✓ | — | buscar ✓ |
+| 15 | 教室 きょうしつ | classroom | aula ✓ | clase ~ | — | aula ✓ | aula ✓ | aula ✓ | enseñar + habitación ✓ |
+| 16 | 暮れる くれる | to get dark | tornarse oscuro ~ | — | — | caer ✗ | — | — | anochecer ✓ |
+| 17 | 死亡 しぼう | death | muerte ✓ | desaparición ~ | — | el arcano de la muerte ✗ | el arcano de la muerte ✗ | muerte ✓ | morir + difunto ✓ |
+| 18 | 牛 うし | cattle (Bos taurus) | ganado ✓ | Bos Taurus ~ | — | bovino ~ | ganado bovino ✓ | Bos primigenius taurus ~ | vaca ✓ |
+| 19 | 犯罪 はんざい | crime | crimen ✓ | crimen ✓ | — | crimen ✓ | crimen ✓ | crimen ✓ | ofensa + delito ✓ |
+| 20 | 王 おう | king | rey ✓ | monarca ✓ | — | rey ✓ | rey ✓ | monarca ✓ | rey ✓ |
+| 21 | 社 やしろ | (Shinto) shrine | altar o templo shinto ✓ | santuario ✓ | — | — | santuario ✓ | — | compañía ✗ |
+| 22 | 突然 とつぜん | abrupt | abrupto ~ | abrupto ~ | — | repentino ✓ | abrupto ~ | — | súbito + de esa forma ~ |
+| 23 | 笑う わらう | to laugh | reír ✓ | reír ✓ | — | — | reír ✓ | — | risa ✓ |
+| 24 | 結構 けっこう | splendid | que está bien así como está ~ | — | — | — | espléndido ✓ | — | atar + construir ✗ |
+| 25 | 絶える たえる | to die out | extinguirse ✓ | — | — | — | extinguirse ✓ | — | suprimir ~ |
+| 26 | 進む すすむ | to advance (spatially) | progresar ✓ | — | — | ascender ✗ | ascender ✗ | — | avanzar ✓ |
+| 27 | 銀行 ぎんこう | bank | banco ✓ | banco ✓ | — | orilla ✗ | orilla ✗ | banco ✓ | plata + ir ✗ |
+| 28 | 顔面 がんめん | face (of person) | cara (de una persona) ✓ | — | — | — | cara ✓ | — | cara + cara ✓ |
+| 29 | 食べる たべる | to eat | comer ✓ | comer ✓ | Comer ✓ | comer ✓ | comer ✓ | — | comer ✓ |
+| 30 | 飲食 いんしょく | food and drink | comida y bebida ✓ | — | — | — | — | — | beber + comer ✓ |
+
+What the errors look like:
+
+- **C and B2** pick the dictionary's first sense of an ambiguous English
+  word: bank → "orilla" (river bank), death → "el arcano de la muerte" (the
+  tarot card), body → "carrocería", to advance → "ascender" (a promotion),
+  way → "camino". The same happens outside the sample: money → "pasta"
+  (slang), English (language) → "texto", below → "bajo cero".
+- **A** is right when it resolves, but often has nothing. Its Spanish lemmas
+  can be English or Latin left untranslated ("trade", "Bos Taurus"), or a
+  rare synonym ("desaparición" for death).
+- **D** is item labels, not word senses: 小説 points to the Chinese genre
+  ("Xiaoshuo") and 牛 to the taxon. Coverage collapses after N4.
+- **E** reads well for half of the compounds (売買 = vender + comprar, 教室 =
+  enseñar + habitación). It misleads for a quarter: 銀行 = plata + ir, 小説 =
+  pequeño + explicar, 結構 = atar + construir. It also fails where the word's
+  meaning is not the card's (社 やしろ "shrine" shows the card's
+  "compañía"). E needs no pack strings for words whose kanji are all in the
+  deck (71 % of N5's word slots, 64 % of N4, 68 % of N3, 51 % of N2, 49 % of
+  N1, 100 % of Jōyō). The other kanji need a meaning string each: 40 kanji
+  (0.6 KB) for N5, 79 (1.2 KB) for N4, 164 (2.5 KB) for N3, 222 (3.4 KB) for
+  N2, 456 (6.9 KB) for N1, 11 for Jōyō. That is a small extra table of code
+  point and offset, plus firmware to look the meanings up.
+
+### Licences
+
+- **A.** MCR 3.0 (`omw-es/LICENSE` in the release): "All other data in this
+  package are distributed under Attribution 3.0 Unported (CC BY 3.0)
+  license" (the English WordNet part is under the WordNet licence). The
+  Japanese WordNet (`omw-ja/LICENSE`): "Permission to use, copy, modify and
+  distribute this software and database and its documentation for any
+  purpose and without fee or royalty is hereby granted, provided that you
+  agree to comply with the following copyright notice and statements,
+  including the disclaimer, and that the same appear on ALL copies …"
+  (Copyright 2009 NICT). Princeton WordNet has the same terms. Packs would
+  carry only MCR's Spanish lemmas: CC BY 3.0 material may go into a CC BY-SA
+  4.0 pack with attribution, and the NICT and Princeton notices would join the
+  credits because their data chose the synset. Release:
+  https://github.com/omwn/omw-data/releases/tag/v1.4; Japanese WordNet
+  https://bond-lab.github.io/wnja/; MCR https://adimen.si.ehu.es/web/MCR.
+- **B.** Spanish Wiktionary: "El texto está disponible bajo la Licencia
+  Creative Commons Atribución-CompartirIgual 4.0" (page footer,
+  https://es.wiktionary.org). English Wiktionary: "Permission is granted to
+  copy, distribute and/or modify the text of all Wiktionary entries under the
+  terms of the Creative Commons Attribution-ShareAlike 4.0 International
+  License" (https://en.wiktionary.org/wiki/Wiktionary:Copyrights; also
+  GFDL, not needed). Packs would credit "Wiktionary contributors" with a link
+  to the entries, which the page says satisfies attribution. kaikki.org adds
+  no licence of its own and asks for a link and a citation (Ylonen 2022,
+  LREC) as a courtesy.
+- **C.** Nothing new. JMdict_e is CC BY-SA 4.0 and FreeDict eng-spa CC BY-SA
+  3.0, both already in the packs' credits (docs/data-sources.md).
+- **D.** "All structured data (i.e. the main, Property, Lexeme, and
+  EntitySchema namespaces) is released into the public domain", under CC0
+  (https://www.wikidata.org/wiki/Wikidata:Licensing). Item labels are main
+  namespace, so CC0 too. No attribution is required.
+- **E.** KANJIDIC2, already in the packs.
+- **F.** Written by the project from JMdict_e's English (CC BY-SA 4.0) and,
+  where C's suggestion is kept, FreeDict (CC BY-SA 3.0): distributed under CC
+  BY-SA 4.0 with both credits, like the meaning overrides.
+
+### G. Who compiled JMdict's Spanish glosses
+
+- **How they get into JMdict.** The EDRDG's project page says the full JMdict
+  includes "Spanish (39,000)" entries. "The Japanese headwords are matched
+  against the dictionary files for the other languages, and glosses are
+  included where there is a match", with "no consistency between the
+  dictionaries as to the sense splitting"
+  (https://www.edrdg.org/wiki/JMdict-EDICT_Dictionary_Project.html). That
+  matching by headword explains 五 "cuándo".
+- **The Spanish file.** WWWJDIC's documentation
+  (https://www.edrdg.org/wwwjdic/wwwjdicinf.html) names it JSPANISH, "a
+  combination of two dictionaries":
+  - "the 26,000 entry "HISPADIC" Japanese-Spanish dictionary from that
+    wonderful collaborative project" (http://hispadic.byethost3.com/, which
+    no longer resolves; Jim Breen added it on 2009-10-29, edict-jmdict list);
+  - "the 20,000 entry "RUI" Japanese-Spanish dictionary compiled by Francisco
+    Barberan and included with his permission".
+- **Licences found.**
+  - **HISPADIC**: a Spanish translation of EDICT. Its blog
+    (http://hispadic.blogspot.com, last post 2011-10-07) speaks of "la
+    licencia creative commons de Hispadic" without naming the licence or its
+    version. A derived dictionary says CC BY-SA 3.0 (secondary source,
+    unverified).
+  - **RUI**: no public licence, only the permission given to the EDRDG. Its
+    old page (nichiza.com) is now a consultancy's site.
+  - **The EDRDG licence** leaves both to "the compilers of that material".
+- **Verdict: unclear.** The RUI half has no licence anyone else can rely on.
+  The way to settle it would be a question to the EDRDG (its site and the
+  edict-jmdict mailing list); HISPADIC has no contact left. Nothing was sent.
+
+### F. What a review would look like
+
+Words to review per deck, counting each word once (the same word can serve
+two kanji): N5 142, N4 268 more (410 in all), N3 578 more (988), N2 550 more
+(1,538), N1 1,352 more (2,890), and the Jōyō deck's other kanji 173 more
+(3,063). With C's suggestion as the draft, most rows are a confirmation. At
+15-30 s a word that is roughly 4-8 hours for N5-N3, and 2-5 more for N2.
+Picks change when the word data changes (JMdict_e is fetched daily), so the
+builder would need a check, like `check_overrides`, that lists the picked
+words without a reviewed gloss and the rows no longer picked.
+
+**DRAFT, not reviewed**: 30 random N5 words (`--seed 9`) with C's suggestion
+and a gloss written for this document from the JMdict_e English. The last
+column is for the maintainer.
+
+| # | word | JMdict_e (first sense) | C suggestion | draft gloss (DRAFT) | review |
+|---:|---|---|---|---|---|
+| 1 | お金 おかね | money | pasta ~ (slang) | dinero | |
+| 2 | 万 まん | 10,000; ten thousand | diez mil ✓ | diez mil | |
+| 3 | 三つ みっつ | three | tres ✓ | tres (cosas) | |
+| 4 | 下 した | below; down; under | bajo cero ✗ | debajo; abajo | |
+| 5 | 九つ ここのつ | nine | nueve ✓ | nueve (cosas) | |
+| 6 | 二つ ふたつ | two | dos ✓ | dos (cosas) | |
+| 7 | 今 いま | now; the present time | ahora ✓ | ahora | |
+| 8 | 今月 こんげつ | this month | — | este mes | |
+| 9 | 入る はいる | to enter; to come in | entrar ✓ | entrar | |
+| 10 | 円 えん | yen (currency of Japan) | yen ✓ | yen | |
+| 11 | 十 とお | ten; 10 | diez ✓ | diez (cosas) | |
+| 12 | 午後 ごご | afternoon; p.m. | tarde ✓ | tarde; p. m. | |
+| 13 | 友達 ともだち | friend; companion | amigo ✓ | amigo, amiga | |
+| 14 | 土曜日 どようび | Saturday | sábado ✓ | sábado | |
+| 15 | 外国人 がいこくじん | foreigner | extranjero ✓ | extranjero | |
+| 16 | 学ぶ まなぶ | to learn; to study | aprender ✓ | aprender | |
+| 17 | 後 あと | behind; rear | detrás ~ | después; detrás | |
+| 18 | 意見 いけん | opinion; view | opinión ✓ | opinión | |
+| 19 | 日 ひ | day; days | día ✓ | día | |
+| 20 | 最高 さいこう | best; supreme; wonderful | mejor ~ | lo mejor; genial | |
+| 21 | 木曜日 もくようび | Thursday | jueves ✓ | jueves | |
+| 22 | 本木 もとき | original stock | — | (rare word: pick another) | |
+| 23 | 来年 らいねん | next year | el año próximo ✓ | el año que viene | |
+| 24 | 生まれる うまれる | to be born | nacido ~ | nacer | |
+| 25 | 白い しろい | white | blanco ✓ | blanco | |
+| 26 | 祖母 そぼ | grandmother | abuela ✓ | abuela | |
+| 27 | 英語 えいご | English (language) | texto ✗ | inglés (idioma) | |
+| 28 | 読む よむ | to read | leer ✓ | leer | |
+| 29 | 金曜日 きんようび | Friday | viernes ✓ | viernes | |
+| 30 | 高い たかい | high; tall | alto ✓ | alto; caro | |
+
+### Revised recommendation for decision 9
+
+**(b) in both languages: English glosses from JMdict_e, Spanish glosses from
+a reviewed, project-authored table (F) seeded by C, rolled out level by
+level.** Until a level is reviewed, its Spanish words show word and reading
+only, which is (c). The pack format is unchanged from the first
+recommendation (a gloss slot per word, 0 = none).
+
+Reasons:
+
+- **No automatic source is good enough to ship unreviewed.**
+  - **C** has the coverage (93-96 % for N5-N3), but 6 of its 27 sampled
+    glosses are wrong or doubtful (bank → "orilla"), so a learner would meet
+    an error about once every five words. That is worse than JMdict's own
+    Spanish, which would have needed a review too.
+  - **A and D** are more often right when they answer, but answer for only
+    31-73 % of the words.
+  - **B1** barely exists, and **B2** inherits C's sense errors.
+  - **E** misleads on a quarter of the compounds.
+- **F's licence is clean.** It is derived from licensed English (JMdict_e,
+  CC BY-SA 4.0) with FreeDict suggestions (CC BY-SA 3.0, already credited).
+  Its quality is the reviewer's, and it can be fixed line by line, like the
+  meaning overrides.
+- **The review is bounded and mostly confirmation.** 142 N5 words, 988 for
+  N5-N3 and 1,538 for N5-N2. C's draft is right as-is for about three words
+  in four, and agreement with A or D can flag the safe half.
+- **The other options are fallbacks.** If the maintainer does not want to
+  review, the first recommendation stands: (c) for Spanish. Waiting for an
+  answer about JMdict's Spanish glosses (G) is unlikely to pay off, because
+  half of them (RUI) were given to the EDRDG by permission only.
+
 ## Reproducing
 
 ```sh
@@ -292,3 +568,18 @@ uv run python scripts/example_words_report.py --packs out/decks-v2 --tsv out/exa
 slightly; the report prints the file's date and SHA256. Keep the `--tsv`
 output (every picked word with its glosses) out of the repository: it holds
 the Spanish glosses. A run takes about two minutes.
+
+The alternatives (also needs `fetch --meanings` for FreeDict):
+
+```sh
+uv run python scripts/example_words_alternatives.py --fetch --packs out/decks-v2 --tsv out/alternatives.tsv
+```
+
+`--fetch` downloads, into `cache/research/` (~200 MB, git-ignored), the OMW
+1.4 release, kaikki.org's English Wiktionary Japanese extract and Spanish
+Wiktionary raw extract, and a Wikidata query result. Each is checked against
+the SHA256 pinned in the script as fetched on 2026-10-23. The kaikki.org files
+(extracted 2026-10-21 from the enwiktionary dump of 2026-10-01) and the
+Wikidata result are regenerated upstream, so a later `--fetch` stops at the
+check until the pins are reviewed and updated. A run takes about two minutes
+after the picks.
