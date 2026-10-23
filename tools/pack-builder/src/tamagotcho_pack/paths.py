@@ -33,6 +33,8 @@ JOYO_PDF = READINGS_DIR / "joyokanjihyo_20101130.pdf"
 MEANINGS_DIR = CACHE / "meanings"
 FREEDICT_ENG_SPA = MEANINGS_DIR / "freedict-eng-spa-2025.11.23.src.tar.xz"
 # Project-authored data, committed (not downloaded): the hand-checked meaning
-# overrides of `build --meaning-order`.
+# overrides of `build --meaning-order`, and the reviewed Spanish glosses of
+# `build --example-words` (filled by `sync-glosses`).
 DATA = ROOT / "data"
 MEANING_OVERRIDES = DATA / "meaning_overrides.tsv"
+EXAMPLE_GLOSSES_ES = DATA / "example_glosses_es.tsv"

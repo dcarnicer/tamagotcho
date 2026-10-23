@@ -1,0 +1,10 @@
+# A miniature of data/example_glosses_es.tsv for the example-word tests and
+# fixtures/mini_words.tgc: an ok row, a draft row (ignored), a skip row (the
+# next word is taken) and no row at all (月 つき).
+level	kanji	word	reading	en	es	status	note
+N5	日	毎日	まいにち	every day; daily	todos los días	ok
+N5	日	日	ひ	day; days	día	ok
+N5	月	今月	こんげつ	this month	este mes	draft
+N5	火	火曜日	かようび	Tuesday	martes	skip	a test of skip rows
+N5	火	火山	かざん	volcano	volcán	ok
+N5	火	火	ひ	fire; flame	fuego	ok

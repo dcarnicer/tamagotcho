@@ -117,7 +117,7 @@ def test_cli_kanji_file_warns_and_skips_unknown(fake_build, tmp_path, capsys):
 def test_cli_file_selection_is_what_the_reorders_see(fake_build, tmp_path, monkeypatch):
     seen = {}
 
-    def fake_common(raw):
+    def fake_common(raw, word_data=None):
         seen["common"] = [k.codepoint for k in raw]
         return raw, None
 

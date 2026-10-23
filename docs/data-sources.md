@@ -1,8 +1,9 @@
 # Data sources and licences
 
 Code in this repository is MIT. **Generated packs (`*.tgc`) contain data
-derived from KANJIDIC2** and, when built with `--strokes`, from **KanjiVG**,
-and are licensed **CC BY-SA** (KANJIDIC2 is CC BY-SA 4.0, KanjiVG is CC BY-SA
+derived from KANJIDIC2**, when built with `--strokes` from **KanjiVG**, and
+when built with `--example-words` words from **JMdict**,
+and are licensed **CC BY-SA** (KANJIDIC2 and JMdict are CC BY-SA 4.0, KanjiVG is CC BY-SA
 3.0 and ShareAlike permits redistribution of the combined work as a later
 version). Anything downloaded by `tamagotcho-pack fetch` lands in
 `tools/pack-builder/cache/` (git-ignored) and is never committed. The only
@@ -224,11 +225,14 @@ which does not map one-to-one onto N5-N1. We use `jlpt_new` from:
 reading the device asks is a useful one, and leaves a kind with nothing worth
 asking empty (docs/common-readings.md). The six inputs below are downloaded
 only by `tamagotcho-pack fetch --readings`, into `cache/readings/`, and read only
-with that flag (and by the scripts in `tools/pack-builder/scripts/`). A pack
-built with it contains no word data from them, only KANJIDIC2's own readings in
-a different order (some kinds left out), but it is derived from them, so it
-carries their attribution (below). `decks.yml` is prepared to build the
-published decks with it; the decks published so far use none of them.
+with that flag and `--example-words` (and by the scripts in
+`tools/pack-builder/scripts/`). A pack built with `--common-readings` alone
+contains no word data from them, only KANJIDIC2's own readings in a different
+order (some kinds left out), but it is derived from them, so it carries their
+attribution (below); a pack built with `--example-words` also stores JMdict
+words, readings and English glosses ([Example words](#example-words-optional-fetch---readings-build---example-words)).
+`decks.yml` builds the published decks with `--common-readings`, not with
+`--example-words`.
 
 ### JMdict
 
@@ -239,8 +243,10 @@ published decks with it; the decks published so far use none of them.
 - Used for: the list of words (kanji form + reading) and their priority tags
   (`nfXX`, `news1`, `ichi1`…), as a prior for how common each word is; and,
   with `--meaning-order`, the English glosses of the JLPT vocabulary words
-  (docs/meaning-order.md). Only the English file is read (its Japanese and
-  English parts are what the EDRDG licence covers).
+  (docs/meaning-order.md); with `--example-words`, the example words
+  themselves, their readings and English glosses, stored in the pack. Only the
+  English file is read (its Japanese and English parts are what the EDRDG
+  licence covers).
 
 ### JmdictFurigana
 
@@ -369,6 +375,9 @@ it; the decks published so far use none of it.
   translational equivalents in other languages, e.g. German, French, Dutch,
   etc. are covered by separate copyright held by the compilers of that
   material)" (https://www.edrdg.org/edrdg/licence.html).
+  `scripts/example_words_report.py --fetch` downloads `JMdict.gz` into the
+  cache only to measure how many example words have a Spanish gloss
+  (docs/example-words.md); no pack contains them.
 
 ### Meaning overrides (project-authored)
 
@@ -387,6 +396,99 @@ miniatures in the TEI, JMdict and Anki-deck formats (a dozen English words
 with Spanish translations, four JMdict entries, a handful of vocabulary words)
 and KANJIDIC2-shaped entries with invented glosses; they are not copied from
 the sources or KANJIDIC2.
+
+## Example words (optional: `fetch --readings`, `build --example-words`)
+
+`build --example-words` puts **JMdict word data in the pack** (pack format
+v3, docs/pack-format.md "Example-words section"): per card, up to two common
+words that use its asked readings (docs/example-words.md), each with its
+reading, and a gloss in the deck's language. It reads the inputs of
+`--common-readings` above (JMdict, JmdictFurigana, wordfreq, Tatoeba, the JLPT
+vocabulary lists) and the table below; `sync-glosses` also reads FreeDict
+(`fetch --meanings`). Packs built without the flag contain no word data, as
+before. With it:
+
+- **The words and their readings** are JMdict's (`JMdict_e`, its Japanese
+  part): CC BY-SA 4.0 under the EDRDG licence, with the same attribution as
+  KANJIDIC2 ("This package uses the JMdict and KANJIDIC2 files…"), which the
+  device already shows for both files (`credits::kKanjidic`). The part of a
+  reading each kanji reads comes from JmdictFurigana (CC BY-SA). The choice
+  of the word is derived from wordfreq (CC BY-SA 4.0), Tatoeba (CC BY 2.0 FR)
+  and the JLPT lists (CC BY), already credited for the reading order; no data
+  of theirs is stored.
+- **English glosses** are JMdict_e's own (its English part, CC BY-SA 4.0,
+  EDRDG): the first gloss of the word's first sense that is not a
+  transliteration, when it has at most 24 characters (if need be without its
+  parenthesised notes).
+- **Spanish glosses** come only from the project's table below, rows marked
+  `ok`. Never from the multilingual JMdict, whose Spanish glosses are outside
+  the EDRDG's grant (above).
+- **French and Portuguese packs** get the words and readings with no gloss.
+- The words' kanji are rendered from the pack's font into glyph set 2, like
+  every other glyph (Noto Sans JP by default).
+
+Packs stay CC BY-SA 4.0. The table's `skip` rows choose which words are
+shown, in every language.
+
+### Spanish example glosses (project-authored)
+
+- File: `tools/pack-builder/data/example_glosses_es.tsv`, committed in this
+  repository: one row per example word (word, reading) with its Spanish
+  gloss and a review status (`draft`, `ok`, `skip`). `build --example-words
+  --lang es` uses only `ok` rows and leaves every other word without a gloss;
+  `skip` rows are never an example (in any language). `sync-glosses` appends
+  the words a deck picks and the table lacks as `draft` rows, pre-filled with
+  FreeDict's translation of the JMdict_e gloss, for review. Reviewed so far:
+  N5 (2026-10-23).
+- Authored by the Tamagotcho project, distributed with the packs under CC BY-SA
+  4.0. Derived from JMdict_e's English glosses (EDRDG, CC BY-SA 4.0) and, where
+  a draft kept its suggestion, FreeDict eng-spa (CC BY-SA 3.0, above). No text
+  from JMdict's Spanish glosses (docs/example-words.md, "Alternatives").
+
+Test fixtures: `tools/pack-builder/tests/data/mini_jmdict.xml`,
+`mini_furigana.txt` and `mini_glosses_es.tsv` are hand-written miniatures in
+the JMdict, JmdictFurigana and table formats (nine words with 日, 月 and 火,
+glosses written for the tests), not copied from the sources; the v3 fixture
+pack `fixtures/mini_words.tgc` is built from them and the mini KANJIDIC2
+excerpt.
+
+### Sources evaluated (no pack uses them)
+
+`tools/pack-builder/scripts/example_words_alternatives.py --fetch` downloads
+these into `cache/research/` (git-ignored, SHA256-pinned in the script as
+fetched on 2026-10-23) to compare Spanish glosses for the example words of
+decision 9 (docs/example-words.md, "Alternatives"). FreeDict eng-spa (above)
+and JMdict (all languages, above) were compared too.
+
+- **Open Multilingual Wordnet 1.4** data release,
+  https://github.com/omwn/omw-data/releases/download/v1.4/omw-1.4.tar.xz
+  (49 MB). Read: the Japanese WordNet (NICT; licence: "Permission to use,
+  copy, modify and distribute this software and database … provided that …
+  the same appear on ALL copies", `omw-ja/LICENSE`), the Princeton WordNet 3.0
+  (the same terms, `omw-en/LICENSE`) and the Spanish wordnet of the
+  Multilingual Central Repository 3.0 ("distributed under Attribution 3.0
+  Unported (CC BY 3.0)", `omw-es/LICENSE`, https://adimen.si.ehu.es/web/MCR).
+  Compatible with CC BY-SA 4.0 packs with attribution and the notices.
+- **Wiktionary via kaikki.org** (wiktextract, Tatu Ylonen):
+  https://kaikki.org/dictionary/Japanese/kaikki.org-dictionary-Japanese.jsonl.gz
+  (English Wiktionary's Japanese entries, 49 MB) and
+  https://kaikki.org/eswiktionary/raw-wiktextract-data.jsonl.gz (Spanish
+  Wiktionary, 103 MB). Unversioned, regenerated weekly. Wiktionary text is CC
+  BY-SA 4.0 (and GFDL): "Permission is granted to copy, distribute and/or
+  modify the text of all Wiktionary entries under the terms of the Creative
+  Commons Attribution-ShareAlike 4.0 International License"
+  (https://en.wiktionary.org/wiki/Wiktionary:Copyrights); attribution:
+  Wiktionary contributors, with a link. kaikki.org asks for a link and a
+  citation, not a licence.
+- **Wikidata lexemes**: a SPARQL query (in the script) for Japanese lexemes,
+  their item-linked senses (P5137) and the items' Spanish labels, from
+  https://query.wikidata.org/sparql. CC0: "All structured data (i.e. the
+  main, Property, Lexeme, and EntitySchema namespaces) is released into the
+  public domain" (https://www.wikidata.org/wiki/Wikidata:Licensing).
+- **JMdict's Spanish glosses**, for the record: WWWJDIC's JSPANISH file, which
+  combines HISPADIC (a collaborative Spanish translation of EDICT, "licencia
+  creative commons" of unstated version) and RUI (Francisco Barberan,
+  "included with his permission"); https://www.edrdg.org/wwwjdic/wwwjdicinf.html.
 
 ## Root CA certificates (firmware)
 
@@ -427,7 +529,20 @@ A pack built with `--meaning-order` adds (the FreeDict part for Spanish):
 > English-Spanish dictionary (WikDict, from Wiktionary via DBnary), CC BY-SA
 > 3.0; and the Tamagotcho project's meaning overrides.
 
-The decks release notes in `decks.yml` carry this text.
+A pack built with `--example-words` (pack format v3) adds (the second
+sentence for Spanish):
+
+> Example words, their readings and English glosses from JMdict (EDRDG, CC
+> BY-SA 4.0, https://www.edrdg.org/edrdg/licence.html), with JmdictFurigana
+> (CC BY-SA); chosen with wordfreq, the Tatoeba indices and the JLPT
+> vocabulary lists above. Spanish glosses by the Tamagotcho project, CC BY-SA
+> 4.0, translated from JMdict's English glosses with suggestions from
+> FreeDict's English-Spanish dictionary (WikDict, from Wiktionary via DBnary,
+> CC BY-SA 3.0).
+
+The decks release notes in `decks.yml` carry this text (the example-words
+paragraph from the first `decks-v3` release on, docs/pack-format.md
+"Rollout of v3").
 
 The firmware shows a short form of this attribution on the device
 (**Settings › Device › About**: the loaded deck's name, then KANJIDIC2 and JMdict, KanjiVG
@@ -441,6 +556,15 @@ same sources. Both read the strings in
 list of their sources, so the device shows these credits for any deck,
 including one built with another font or from WaniKani (docs/decisions.md,
 2026-10-18 "About screen and firmware version").
+
+Example words need **no new device credit**: their data are JMdict (already
+in `credits::kKanjidic`, "KANJIDIC2, JMdict (c) EDRDG"), JmdictFurigana,
+wordfreq, Tatoeba and the JLPT lists (`kReadings`, `kJlpt`), and FreeDict plus
+the project's own glosses (`kMeanings`, whose source the Spanish table's
+suggestions share; the project's work is covered by "Decks: CC BY-SA"). The
+comments in `Credits.h` say so. If the intro screen labels the words, the
+About page could name them ("Words: JMdict"), which is a UI string, not a new
+source.
 
 A pack built with `--wanikani-token` is different: it contains WaniKani-derived
 content (© Tofugu LLC) and must not be redistributed; the CC BY-SA licence above

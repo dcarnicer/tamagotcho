@@ -1,11 +1,12 @@
 #pragma once
-// Reader for Tamagotcho packs (*.tgc), format v1 and v2. See docs/pack-format.md.
+// Reader for Tamagotcho packs (*.tgc), format v1 to v3. See docs/pack-format.md.
 // Pure C++, no Arduino. By default caches the card table, the glyph table and
 // the string pool in memory (obtained through a pluggable allocator, PSRAM on
 // the StickS3); a board without PSRAM reads them on demand instead, through
 // small caches (PackMemory::Streamed, docs/architecture.md "Memory"). Bitmaps
 // and distractor lists are always read on demand through a PackSource, and
-// v2's compressed bitmaps are decoded on the way (pack/Rle.h).
+// v2's compressed bitmaps are decoded on the way (pack/Rle.h); so are v3's
+// example words, whose strings are in the string pool.
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -48,8 +49,12 @@ enum class PackMemory : uint8_t {
 };
 
 constexpr uint16_t kPackVersionMin = 1;  // oldest readable pack version
-constexpr uint16_t kPackVersionMax = 2;  // newest readable pack version
-constexpr uint32_t kPackHeaderSize = 64;
+constexpr uint16_t kPackVersionMax = 3;  // newest readable pack version
+constexpr uint32_t kPackHeaderSize = 64;     // v1, v2
+constexpr uint32_t kPackHeaderSizeV3 = 80;   // v3: plus words_off and three reserved u32
+constexpr uint32_t kWordEntrySize = 16;      // v3 word entry (a pack may store longer ones)
+constexpr uint8_t kWordKindOn = 0;           // a word for the card's asked on'yomi
+constexpr uint8_t kWordKindKun = 1;          // ... for its asked kun'yomi
 constexpr uint32_t kCardSize = 32;
 constexpr uint32_t kGlyphEntrySize = 16;
 constexpr uint8_t kGlyphSetLarge = 0;
@@ -70,6 +75,7 @@ struct PackHeader {
     uint8_t optionPx, optionLineHeight, optionAscent;  // set 3; 0 = absent
     uint32_t buildTime;
     uint32_t strokeOff;  // absolute offset of the stroke section; 0 = absent
+    uint32_t wordsOff;   // v3: absolute offset of the example-words section; 0 = absent
 };
 
 struct Card {
@@ -99,6 +105,21 @@ struct Stroke {
     uint8_t encoding;  // kMaskEnc*; always raw in a v1 pack
     uint16_t size;     // stored bytes at dataOff
     uint32_t dataOff;
+};
+
+// An example word of a card (v3; docs/pack-format.md "Example-words
+// section"): a common word that uses the card's asked on'yomi or kun'yomi,
+// for the learning mode's intro. Its characters are drawn from glyph set 2
+// (kGlyphSetText) like any other text: the pack carries a set-2 glyph for
+// each, kanji included. The strings live as long as a Card's (see PackReader).
+struct ExampleWord {
+    const char* word;     // as written, kanji and okurigana: "毎日", "食べる"
+    const char* reading;  // in kana: "まいにち"
+    const char* gloss;    // in the pack's language; "" when the pack has none
+    uint8_t kind;         // kWordKindOn / kWordKindKun
+    // The bytes of `reading` the card's kanji reads ("にち": 6, 6); both 0
+    // when unknown (or when they would not fit `reading`).
+    uint8_t readingStart, readingLen;
 };
 
 class PackReader {
@@ -180,6 +201,18 @@ public:
     // encodings 1 and 2 on the way, like readGlyphBitmap.
     bool readStrokeBitmap(const Stroke& s, uint8_t* buf, size_t cap) const;
 
+    // --- example words (v3, optional section; none in a v1 or v2 pack) ------
+    // True when the pack has an example-words section (words_off != 0).
+    bool hasExampleWords() const { return hdr_.wordsOff != 0; }
+    // Number of example words of a card: 0, 1 or 2 from this builder (at most
+    // one per kind, the on'yomi word first). 0 when absent or out of range.
+    uint32_t exampleWordCount(uint32_t cardIdx) const;
+    // Copies up to `cap` of a card's example words into `out`, in pack order,
+    // and returns how many it copied (0 when the card has none, or on a read
+    // error). Each word holds three strings, so with streamed tables the
+    // strings of at most kStringSlots / 3 words (five) stay valid together.
+    uint32_t exampleWords(uint32_t cardIdx, ExampleWord* out, uint32_t cap) const;
+
 private:
     // Card's stroke block: offset of its first entry, count, px and (v2) the
     // offset of its first mask. False when the card has none.
@@ -200,6 +233,10 @@ private:
     PackError checkGlyphEntry(const Glyph& g, const Glyph* prev) const;
     PackError checkCardEntry(const uint8_t* c) const;
     PackError checkStrokes() const;
+    // The example-words section at open(): header, card index and entries.
+    PackError checkWords();
+    // Card `cardIdx`'s word range [first, end) from the index.
+    bool wordRange(uint32_t cardIdx, uint32_t* first, uint32_t* end) const;
 
     // Streamed helpers (stream_ set).
     struct Stream;
@@ -214,6 +251,9 @@ private:
     Glyph* glyphs_ = nullptr;
     char* strings_ = nullptr;
     Stream* stream_ = nullptr;  // streamed: the caches
+    // v3 example words, set by checkWords(): the word table and its stride.
+    uint32_t wordsTable_ = 0;
+    uint32_t wordEntrySize_ = 0;
 };
 
 // What a deck list shows of a pack without opening it: the deck name, the

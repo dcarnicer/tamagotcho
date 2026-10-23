@@ -3284,3 +3284,69 @@ marked *to confirm* needs the device.
   17, 42; 5 and 6 reviews in the first year). The first-Good row (today's and
   "known") has its fourth review on S = 98.50, a rounding boundary: the host
   gives 99 and then 263 days where the table says 98 and 261.
+
+## 2026-10-23 – Example words: glosses in both languages, Spanish reviewed by hand
+
+- **Why not JMdict's Spanish glosses.** Only JMdict's Japanese and English parts
+  are CC BY-SA 4.0; the Spanish glosses come from HISPADIC and RUI, which have
+  no licence the packs can carry (docs/example-words.md). They stay unused, as
+  in docs/meaning-order.md.
+- **Decision 9 is (b) in both languages.** English glosses come from
+  `JMdict_e`. Spanish glosses come from a project-authored table,
+  `tools/pack-builder/data/example_glosses_es.tsv`, pre-filled from the
+  `JMdict_e` gloss through the pinned FreeDict dictionary (the best automatic
+  source, but wrong or doubtful for about one word in five: bank → "orilla")
+  and reviewed by the maintainer level by level, N5 first. A word without a
+  reviewed Spanish gloss is shown with its reading only, so a level can ship
+  before its review is done.
+- **One format.** Pack format v3 has one gloss slot per example word, empty
+  when there is none; the choice of source never changes the format.
+
+## 2026-10-23 – Example words in packs: format v3
+
+- **A version bump, on purpose.** The words need a header field and the
+  64-byte header is full, so v3 grows it to 80 bytes (`header_size`):
+  `words_off`, then three reserved u32 for later optional sections (0 =
+  absent, no bump). Released firmware only requires `header_size >= 64`, so
+  the section could have been a compatible v2 extension. It is v3 anyway:
+  decks with words are 12–18 % larger and show nothing new on firmware that
+  cannot draw them, and rebuilding `decks-v2` with them would make every
+  v0.5.1 device see every deck as an update (the update check compares
+  SHA-256). With v3 they go to their own `decks-v3` release and `decks-v2`
+  stays byte for byte what v0.5.1 downloads (docs/pack-format.md, "Rollout
+  of v3"). Reverting to the compatible form would be the version constants
+  in the builder and the reader plus that section of the spec.
+- **v3 only when asked.** The builder writes v3 only with `--example-words`;
+  without it the output is byte-identical to the previous builder's (checked
+  for N5, N1 and Jōyō in both languages, build time aside), so `decks.yml`
+  keeps producing `decks-v2` until the rollout.
+- **Layout.** A section header (`entry_size`, `word_count`), a card index of
+  `card_count + 1` u32 (card *i*'s words are entries `first[i]` ..
+  `first[i+1] - 1`) and 16-byte entries: word, reading and gloss as string
+  offsets, the kind (on/kun) and the byte span of the reading the kanji
+  reads (`にち` in `まいにち`, from JmdictFurigana; 2 bytes a word so the
+  intro can highlight it). The strings join the main string pool:
+  deduplicated with the cards' own, and the same lifetime rule and memory
+  modes as a card's strings, so the reader caches nothing new; the section
+  is read on demand like the stroke section and validated at open.
+  `entry_size` lets a field be appended without a bump.
+- **The words' kanji go into set 2**, as text glyphs at `text_px` (18 px),
+  not into sets 0/1: the renderer's text routines, and the UI font's
+  fallback to set 2, then draw a word with no change.
+- **`skip` rows apply in every language.** The table is the Spanish glosses',
+  but a skip judges the word (本木: rare), and English and Spanish decks show
+  the same words; the next candidate is taken, and `sync-glosses` drafts it
+  for review.
+- **English glosses: one change to the measured rule.** A gloss over 24
+  characters first loses its parenthesised notes and is dropped only if it is
+  still too long; the research's rule left 水 "water (esp. cool or cold)", 来る
+  "to come (spatially or temporally)" and 北海道 without a gloss in N5.
+- **One pick, in the builder.** The research's selection moved into
+  `tamagotcho_pack/words.py`; the two scripts import it and print exactly
+  what they printed before. A word whose characters the pack's font lacks is
+  left out with a warning (never with Noto Sans JP), not replaced.
+- **`sync-glosses` only appends.** Existing rows are never rewritten, so a
+  review in progress is safe; its drafts carry a `CHECK:` note and FreeDict's
+  suggestion. After the N5 review it appended the replacements for the five
+  skipped words: 旗本 (本 もと), 途中 (中 チュウ), 川柳 (川 セン), 幾何学
+  (何 カ); 円 まる.い has no other word.

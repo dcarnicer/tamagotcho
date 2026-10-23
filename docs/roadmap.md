@@ -467,8 +467,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       `docs/learning-mode/`, a phased plan) with ten open decisions, all
       answered with the recommendations on 2026-10-23 (docs/decisions.md). In
       progress: phase 1 (SRS and queue), then the intro screen on top of the
-      `main.cpp` split; example words wait for a measurement of JMdict's
-      Spanish glosses.
+      `main.cpp` split; example words (pack format v3) with English glosses
+      from JMdict_e and Spanish ones from a reviewed project table
+      (docs/example-words.md): format, builder (`build --example-words`,
+      `sync-glosses`) and firmware reader done on `feature/example-words`;
+      the intro's word page and the `decks-v3` rollout to come.
 - [ ] **OTA firmware updates** (idea, 2026-10-21). Update the firmware over
       the home Wi-Fi, from the device, instead of over USB: for example a
       Settings › Device › Update row that reads the latest GitHub release

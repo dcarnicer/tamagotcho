@@ -1,4 +1,4 @@
-# Tamagotcho pack format (v2)
+# Tamagotcho pack format (v3)
 
 A **pack** is a single binary file (`*.tgc`) that holds one deck of kanji cards
 plus every pre-rendered glyph the device needs to show them. The device never
@@ -9,11 +9,18 @@ This document is the contract between `tools/pack-builder` (writer) and
 `firmware` (reader). Change it here first, bump `version` on any
 incompatible change.
 
-**Version 2** (current) adds compressed glyph bitmaps (encoding 1) and a new
-stroke block layout with compressed stroke masks. Everything else is
-unchanged from version 1, and readers keep accepting version 1 packs: the
-differences are marked *v1* / *v2* below and summarised under
-[Versioning](#versioning). The builder writes version 2 only.
+**Version 2** added compressed glyph bitmaps (encoding 1) and a new stroke
+block layout with compressed stroke masks. **Version 3** adds a header
+extension (`header_size` 80) and, in it, the offset of an optional **example
+words** section: per card, a common word for its asked on'yomi and one for its
+asked kun'yomi, each with its reading and a gloss (docs/learning-mode.md
+§3.11), plus the words' kanji in glyph set 2. Everything else is unchanged,
+and readers keep accepting version 1 and 2 packs: the differences are marked
+*v1* / *v2* / *v3* below and summarised under [Versioning](#versioning).
+
+The builder writes **version 2** by default, byte for byte as before, and
+**version 3 only with `build --example-words`** (the one v3 feature), so the
+decks released firmware reads stay v2 ([Rollout](#rollout-of-v3)).
 
 All integers are **little-endian**. All offsets are **absolute byte offsets
 from the start of the file**. Strings are UTF-8, NUL-terminated, stored in the
@@ -23,7 +30,7 @@ string section.
 
 ```
 +---------------------+  0
-| Header (64 bytes)   |
+| Header (64 bytes)   |  v3: 80 bytes (header_size), the last 16 the extension
 +---------------------+  cards_off
 | Card table          |  card_count * 32 bytes
 +---------------------+  glyphs_off
@@ -36,6 +43,8 @@ string section.
 | Glyph bitmaps       |
 +---------------------+  stroke_off (0 = no stroke data)
 | Stroke section      |  optional, see below
++---------------------+  words_off (v3; 0 = no example words)
+| Example words       |  optional, v3 only, see below
 +---------------------+
 ```
 
@@ -49,13 +58,16 @@ A reader that does not know about strokes ignores `stroke_off` and treats the
 pack exactly as before, so it was added to v1 as a compatible extension (no
 version bump). Version 2 changed the stroke block layout (see below).
 
-## Header (64 bytes)
+The **example-words section** is optional too, and only a v3 pack has one:
+`words_off`, in the v3 header extension, is 0 when the pack has none.
+
+## Header (64 bytes; v3: 80)
 
 | off | type     | field            | notes                                          |
 |-----|----------|------------------|------------------------------------------------|
 | 0   | char[4]  | magic            | `"TNGC"`                                       |
-| 4   | u16      | version          | `2` (`1` for older packs, still readable)       |
-| 6   | u16      | header_size      | `64`                                           |
+| 4   | u16      | version          | `3` with example words, else `2` (`1` for older packs, still readable) |
+| 6   | u16      | header_size      | `64` in v1 and v2; `80` in v3 (readers accept more and skip it) |
 | 8   | u32      | card_count       |                                                |
 | 12  | u32      | glyph_count      |                                                |
 | 16  | u32      | cards_off        |                                                |
@@ -76,6 +88,18 @@ version bump). Version 2 changed the stroke block layout (see below).
 | 55  | u8       | option_ascent    | baseline offset from line top for set 3, px    |
 | 56  | u32      | build_time       | unix seconds                                   |
 | 60  | u32      | stroke_off       | absolute offset of the stroke section, 0 = none. Was `reserved` in earlier packs |
+
+**Header extension (v3).** A v3 header is 80 bytes: the 64 above, then:
+
+| off | type     | field            | notes                                          |
+|-----|----------|------------------|------------------------------------------------|
+| 64  | u32      | words_off        | absolute offset of the example-words section, 0 = none |
+| 68  | u32[3]   | reserved         | 0; for later optional sections (0 = absent, no version bump) |
+
+`header_size` says how long the header is: a v3 reader requires at least 80,
+reads the fields it knows and skips the rest (a later extension may grow it;
+`cards_off` and every other offset stay absolute, so nothing moves). A v1 or
+v2 header is 64 bytes, and a reader never looks for `words_off` in it.
 
 The magic `TNGC` and the `.tgc` extension come from the project's former name,
 Tangochō, and stay as they are after the rename to Tamagotcho, as does the
@@ -140,8 +164,8 @@ Sorted ascending by `(set, codepoint)` so the device can binary-search.
 | off | type | field     | notes                                                  |
 |-----|------|-----------|--------------------------------------------------------|
 | 0   | u32  | codepoint |                                                        |
-| 4   | u8   | set       | 0 = large kanji (quiz prompt), 1 = small kanji (answer options / lists), 2 = text (kana, Latin, punctuation for meanings and readings), 3 = large option text (kana for reading answers) |
-| 5   | u8   | encoding  | 0 = raw 4bpp, 1 = RLE 4bpp (v2 only). Others: invalid  |
+| 4   | u8   | set       | 0 = large kanji (quiz prompt), 1 = small kanji (answer options / lists), 2 = text (kana, Latin, punctuation for meanings and readings; in v3, also the example words' kanji), 3 = large option text (kana for reading answers) |
+| 5   | u8   | encoding  | 0 = raw 4bpp, 1 = RLE 4bpp (v2 and v3). Others: invalid |
 | 6   | u8   | width     | bitmap width, px (may be 0 for space)                  |
 | 7   | u8   | height    | bitmap height, px                                      |
 | 8   | i8   | x_off     | left bearing: pen x → bitmap left                      |
@@ -168,7 +192,18 @@ Sets 2 and 3 also hold the **hiragana form of every on'yomi character**: the
 katakana ァ..ヶ and ヽヾ shifted down by 0x60 (U+3041..U+3096, ゝゞ); other
 characters, such as ー, have no other form. The device can show on'yomi answers
 in hiragana (Settings › Study › On'yomi) while the strings stay katakana. A
-v2 pack **must** carry these glyphs; v1 packs predate the setting.
+v2 or v3 pack **must** carry these glyphs; v1 packs predate the setting.
+
+**Set 2 and the example words (v3).** A pack with an example-words section
+**must** have a set-2 glyph for every character of every word, reading and gloss
+in it (ASCII may still fall back to the built-in font, as everywhere). Without
+words, set 2 holds no kanji; with them it holds every kanji the words are
+written with: the card's own kanji and the words' other ones (毎日 adds 毎 to
+日's deck), rendered at `text_px` as normal text like the kana (pen and
+baseline relative, `text_ascent`), not centred in an em square like sets 0
+and 1. So a word, its reading and its gloss are drawn with set 2 like any
+meaning, and a reader's text routine needs nothing new. Set 3 gets nothing
+for the words.
 
 ## Bitmap encoding 0: raw 4bpp
 
@@ -342,6 +377,91 @@ is drawn at `(emX + x_off, emY + y_off)`. The em square (not the font glyph's
 cropped ink box) is the reference frame, so stroke masks line up for any card of
 the pack regardless of the font used.
 
+## Example-words section (v3, optional)
+
+Enabled by the builder's `--example-words` flag, which is what makes a pack v3;
+`words_off` is 0 otherwise. It gives each card up to two common words that
+show its readings in use (docs/learning-mode.md §3.11; how the words are
+picked: docs/example-words.md): one that uses the card's **asked on'yomi**
+(the first of `onyomi`) and one for its **asked kun'yomi** (the first of
+`kunyomi`), each with its reading and a short gloss in the pack's language.
+All offsets are absolute file offsets, as everywhere else, and the section is
+4-byte aligned.
+
+```
++----------------------------------+  words_off
+| Section header (8 bytes)         |
++----------------------------------+  words_off + 8
+| Card word index                  |  (card_count + 1) x u32
++----------------------------------+  words_off + 8 + 4 * (card_count + 1)
+| Word table                       |  word_count x entry_size bytes
++----------------------------------+
+```
+
+**Section header** (8 bytes):
+
+| off | type | field      | notes                                                   |
+|-----|------|------------|---------------------------------------------------------|
+| 0   | u16  | entry_size | bytes per word entry: `16`. A reader requires at least 16, reads the first 16 and skips the rest, so a field can be appended later without a version bump |
+| 2   | u16  | reserved   | 0                                                       |
+| 4   | u32  | word_count | entries in the word table                               |
+
+**Card word index**: `card_count + 1` u32 word-table indices, `first[0..card_count]`,
+in card-table order. The words of card `i` are the entries `first[i]` ..
+`first[i+1] - 1` (none when the two are equal). `first[0]` is 0, the list
+never decreases, and `first[card_count]` is `word_count`. The word table
+starts right after the index (so it is 4-byte aligned too).
+
+**Word entry** (`entry_size` bytes; 16 in v3):
+
+| off | type | field         | notes                                                  |
+|-----|------|---------------|--------------------------------------------------------|
+| 0   | u32  | word          | string offset: the word as written, kanji with any okurigana (`毎日`, `食べる`). Never empty |
+| 4   | u32  | reading       | string offset: its reading in kana, as JMdict writes it (`まいにち`; hiragana, katakana in loanword parts). Never empty |
+| 8   | u32  | gloss         | string offset: a short meaning in the pack's `lang`; `""` when the pack has none for this word (see below) |
+| 12  | u8   | kind          | 0 = a word for the card's asked on'yomi, 1 = for its asked kun'yomi. Others: invalid |
+| 13  | u8   | reserved      | 0                                                      |
+| 14  | u8   | reading_start | byte offset, inside `reading`, of the part the card's kanji reads (`にち` in `まいにち`: 6) |
+| 15  | u8   | reading_len   | that part's length in bytes (6); 0 = unknown, and then `reading_start` is 0 |
+
+Rules:
+
+- A card has **at most one word of each kind, the on'yomi word first**. A kind
+  that is empty on the card has no word, and an asked reading may have none
+  when no common word uses it (天 あめ). A card may have no words at all.
+- `word` contains the card's kanji. The span `reading_start`/`reading_len`
+  lies inside `reading` on character boundaries (sequential voicing and
+  gemination included: `がっ` in `がっこう` for 学 ガク); a reader treats a
+  span that does not fit as unknown.
+- The strings live in the **string pool** with every other string,
+  deduplicated (`外国` serves 外 and 国); an empty gloss is the offset of an
+  empty string, **never 0**, as for an empty reading kind. Every offset must
+  lie inside the pool.
+- **Glosses.** English packs take the first gloss of the word's first JMdict_e
+  sense that is not a transliteration of its reading, when it has at most 24
+  characters; a longer one loses its parenthesised notes first (`water (esp.
+  cool or cold)` → `water`), and if it is still longer there is none. Spanish
+  packs take
+  only reviewed glosses from the project's table
+  (`tools/pack-builder/data/example_glosses_es.tsv`, rows marked `ok`); a word
+  without one has an empty gloss, as in packs of other languages, and the
+  device shows its word and reading only. A gloss is **never in another
+  language** than `lang`. The format sets no length limit; this builder keeps
+  glosses within 24 characters (Unicode code points) except where a reviewed
+  Spanish gloss is longer.
+- Every character of the section's strings has a set-2 glyph (see the glyph
+  table above).
+
+A reader reads the section **on demand**, in either memory mode, as it reads
+stroke data: a card's words cost one read of 8 index bytes and one of its
+entries, and their strings come from the pool like the card's own (from
+memory, or through the streamed string cache). It validates the header, the
+index and every entry at open, like the other tables.
+
+**Example** (the N5 card 日, asked on'yomi ニチ, kun'yomi ひ, English): two
+entries, `毎日` / `まいにち` / `every day` / kind 0 / span 6, 6, and `日` / `ひ` /
+`day` / kind 1 / span 0, 3.
+
 ## Limits and expectations
 
 - `card_count` ≤ 65535 (distractor indices are u16).
@@ -361,6 +481,17 @@ the pack regardless of the font used.
   entries (8 bytes per stroke), ~240 bytes of masks (about 34 % of their raw
   size). A mask's pixel count scales with the em square's *area*, so the raw
   cost grows quadratically with `large_px`.
+- The optional example-words section (v3) adds **12–18 %**, measured on
+  2026-10-23 with the published decks' flags (`--strokes --common-readings
+  --meaning-order`): N5 104 → 122 KB (+18 KB, 149 words), N1 1.80 → 2.04 /
+  2.05 MB (es / en; +238 / +251 KB, 1,456 words), Jōyō 2.96 → 3.33 / 3.35 MB
+  (+367 / +392 KB, 3,241 words), all under the 5 MB cap. About three quarters
+  is the words' kanji in set 2 (~125 B each at 18 px: 121 for N5, 1,501 for
+  N1, 2,108 for Jōyō); the section itself is 4 B a card plus 16 B a word
+  (2.6 / 27.6 / 59.0 KB), and the strings 3–74 KB (English glosses more than
+  Spanish ones while few are reviewed). A reader holding the tables in memory
+  needs more for the larger glyph table and pool (Jōyō: about +110 KB on a
+  64-bit host); a streamed one about +0.5 KB.
 - The device reads packs through the filesystem with random access; the
   builder must not rely on the device loading the whole file in RAM, although
   the device may cache the header, card table and glyph table in PSRAM. Both v2
@@ -390,3 +521,48 @@ the pack regardless of the font used.
 - A reader for version 2 must also accept version 1 (devices keep their old
   packs): in a v1 pack every glyph must be encoding 0 and the stroke blocks use
   the v1 layout.
+- **Version 3** (example words) is a bump although the section itself is
+  optional: the 64-byte header had no free field left, so v3 grows it to 80
+  bytes (`header_size`), and a v3 pack is meant for firmware that can show its
+  words. Everything else is identical to v2:
+  - the header extension (`words_off` and three reserved u32) and the optional
+    example-words section;
+  - set 2 may hold kanji (the words' ones) when the section is present.
+- A reader for version 3 must also accept versions 1 and 2, exactly as before:
+  it reads no extension from a v1 or v2 header and reports no example words for
+  such a pack.
+- Released firmware (v0.5.1 and older) refuses a v3 pack cleanly by its
+  version ("unsupported pack version"). Its header check alone would have
+  accepted an 80-byte header (it only requires `header_size >= 64`), so the
+  extension could have been a compatible v2 change; the bump is deliberate
+  (docs/decisions.md, 2026-10-23 "Example words in packs: format v3").
+
+## Rollout of v3
+
+Published decks must stay readable by released firmware: v0.5.1 reads v2 packs
+from the `decks-v2` release (its default catalog,
+`.../releases/download/decks-v2/catalog-v2.txt`) and refuses v3 packs. So the
+steps are, in this order:
+
+1. **Default builds stay v2.** Without `--example-words` the builder writes v2,
+   byte for byte as before, and `decks.yml` keeps building `decks-v2`
+   unchanged. Merging the builder and the reader changes no published deck.
+2. **A `decks-v3` release**, built by `decks.yml` with `--example-words` added
+   to its build lines (Spanish glosses as far as the table is reviewed). The
+   workflow names the release after the packs' version (`decks-v<N>`), so
+   these go to `decks-v3`, next to `decks-v2`, which stays as it is. Nothing
+   released reads `decks-v3` yet, so publishing it early is harmless, and it
+   must exist before step 3. Its catalog is still catalog format v2
+   (`decks-v3/catalog-v2.txt`): the two version numbers are independent.
+3. **A firmware release that reads v3** (this reader) and shows the words (the
+   intro screen, learning-mode phase 2), whose default catalog URL
+   (`HomeWifi::kDefaultCatalogUrl`) points at `decks-v3`. It still opens v2
+   packs exactly as before, so decks already on a device keep working; Get
+   decks and the update check offer the v3 ones (their SHA-256 differs). A
+   device that saved its own catalog URL (an override in NVS) keeps it.
+4. **`decks-v2` is frozen**, kept for v0.5.1 and older, and rebuilt only if
+   they need a fix; under the project's no-backward-compatibility rule
+   (docs/decisions.md) it can also just be left as it is.
+
+The builder and reader change does none of this by itself: no deck release
+and no firmware default changes with it.
