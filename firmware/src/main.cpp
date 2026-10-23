@@ -525,7 +525,7 @@ const UiStrings kUiEn = {
     "Charge me, then press a key.",
     "Press Enter when it shows today.",
     "Hold the G0 button to erase it. Decks and progress are lost.",
-    "Updates", "check", "up to date", "1 update", "%u updates",
+    "Updates", "check", "up to date", "1 upd", "%u upd",
     "DECK UPDATES", "Checking deck updates...", "1 deck update available",
     "%u deck updates available", "All decks are up to date",
     "Settings > Decks > Updates", "%s · %u updates", "skip", "continue",
@@ -640,9 +640,9 @@ const UiStrings kUiEs = {
     "Cárgame y pulsa una tecla.",
     "Pulsa Enter cuando sea hoy.",
     "Mantén el botón G0 para borrarla. Se pierden mazos y progreso.",
-    "Actualizar", "comprobar", "al día", "1 act.", "%u act.",
+    "Actualizar", "comprobar", "al día", "1 act", "%u act",
     "ACTUALIZACIONES", "Buscando actualizaciones...", "1 actualización de mazo",
-    "%u actualizaciones de mazos", "Todos los mazos están al día",
+    "%u mazos por actualizar", "Todos los mazos están al día",
     "Ajustes > Mazos > Actualizar", "%s · %u act.", "saltar", "continuar",
 };
 

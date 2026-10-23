@@ -3,6 +3,7 @@
 // the generated UI font tables (UiFace / UiFont).
 #include <unity.h>
 
+#include <cstring>
 #include <initializer_list>
 
 #include "Credits.h"
@@ -372,6 +373,61 @@ void test_delete_progress_labels() {
     }
 }
 
+// The deck-update texts (main.cpp's UiStrings; copies). The boot result's
+// Spanish line used to wrap as "6" + "actualizaciones" (130 px in a 127 px box)
+// and lose "de mazos"; it now wraps into two lines that fit. The settings
+// home's Decks row used to drop its badge in portrait: "Mazos" + "6 act." did
+// not fit the 93 px left of the icon and chevron. Both are checked here so a
+// new wording cannot silently reintroduce the cut.
+void test_update_text_fits() {
+    const UiFace& f = uifont::kLabel;
+    constexpr int kResultW = 127;  // W - 8 on the narrowest screen
+    const int kSpace = uiTextWidth(f, " ", 0);
+    for (const char* text : {"6 mazos por actualizar", "1 actualización de mazo",
+                             "6 deck updates available", "1 deck update available"}) {
+        int lineW = 0, lines = 1;
+        const char* p = text;
+        while (*p) {
+            const char* word = p;
+            while (*p && *p != ' ') ++p;
+            char buf[64];
+            const size_t n = static_cast<size_t>(p - word);
+            if (n >= sizeof buf) break;
+            std::memcpy(buf, word, n);
+            buf[n] = 0;
+            const int ww = uiTextWidth(f, buf, 0);
+            if (lineW && lineW + kSpace + ww > kResultW) {
+                ++lines;
+                lineW = ww;
+            } else {
+                lineW = lineW ? lineW + kSpace + ww : ww;
+            }
+            TEST_ASSERT_TRUE_MESSAGE(lineW <= kResultW, text);
+            if (*p == ' ') ++p;
+        }
+        TEST_ASSERT_TRUE_MESSAGE(lines <= 2, text);
+    }
+    // The old Spanish line did not fit: its longest word alone was 130 px.
+    TEST_ASSERT_TRUE(uiTextWidth(f, "actualizaciones", 0) > kResultW);
+
+    // The home row: 135 - 2 * gutter - 2 * row pad - icon - chevron.
+    constexpr int kHomeLabelPx = 135 - 2 * theme::kGutter - 2 * theme::kRowPadX -
+                                 (kIconCards.w + 5) - (kIconChevron.w + 4);
+    struct RowText {
+        const char* label;
+        const char* value;
+    };
+    for (const RowText& r : {RowText{"Decks", "6 upd"}, RowText{"Mazos", "6 act"},
+                             RowText{"Decks", "1 upd"}, RowText{"Mazos", "1 act"}})
+        TEST_ASSERT_TRUE_MESSAGE(
+            uiTextWidth(f, r.label, 0) + 5 + static_cast<int>(std::strlen(r.value)) * 6 <=
+                kHomeLabelPx,
+            r.label);
+    // The values the fix replaced were too wide (Spanish by one pixel).
+    TEST_ASSERT_TRUE(uiTextWidth(f, "Mazos", 0) + 5 + 6 * 6 > kHomeLabelPx);
+    TEST_ASSERT_TRUE(uiTextWidth(f, "Decks", 0) + 5 + 9 * 6 > kHomeLabelPx);
+}
+
 // ---------------------------------------------------------------- InputPrefs
 
 static void test_input_prefs() {
@@ -402,6 +458,7 @@ int main() {
     RUN_TEST(test_ui_font_numeral);
     RUN_TEST(test_ui_font_app_name);
     RUN_TEST(test_delete_progress_labels);
+    RUN_TEST(test_update_text_fits);
     RUN_TEST(test_input_prefs);
     return UNITY_END();
 }
