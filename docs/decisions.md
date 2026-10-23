@@ -3184,3 +3184,41 @@ marked *to confirm* needs the device.
   hash the packs twice.
 - **English result.** The old "N deck updates available" was cut in the 127 px
   box ("6 deck / updates avail..."); the result now says "N updates".
+
+## 2026-10-23 – main.cpp split into the app layer
+
+- **Why.** `firmware/src/main.cpp` had grown to 6,832 lines: every screen, the
+  quiz loop, the settings, Get decks and the deck updates, the Wi-Fi and portal
+  glue, the boot and date flow and the power handling. Every feature branch
+  appended to it, so branches developed in parallel (a Learning mode is next)
+  conflicted there.
+- **The cut.** `firmware/src/app/`, namespace `tgc::app`: one file pair per
+  screen or area (the quiz, the detail card, the done screen, the settings
+  tree, the pickers, statistics, About, the decks, Get decks, the deck updates,
+  the Wi-Fi screen and the portal's hooks, Settings › Wi-Fi, progress, the
+  clock, the date screens, power, input, the serial remote, the boot), plus
+  the shared parts: `App` (the open deck, the SRS store and queue, the screen
+  on top, NVS), `UiStrings`, `Display` (back buffer, pushes, rotation),
+  `ScreenKit` (header, hint bar, lists, error and notice screens) and `Net`
+  (what the Wi-Fi sessions share). `main.cpp` keeps `setup()` (which runs
+  `boot()`), `loop()` and the two dispatchers, `drawScreen()` and
+  `handleInput()`; the screens' branches of `handleInput()` became each
+  screen's own loop function. docs/architecture.md, "The app layer", lists
+  which file owns what.
+- **Moved, not rewritten.** The code was moved verbatim, line for line; what
+  other files use is declared in the module's header (default arguments moved
+  there), the rest is in an anonymous namespace. `ui()`, `keysOr()`, `listX()`,
+  `listW()` and `wideRows()` became inline functions in their headers, so they
+  still cost no call. No string, timing, NVS key or file format changed.
+- **Where new code goes.** A new screen is a `Screen` value, its own `app/`
+  file pair (state, draw function, loop function) and one line in each
+  dispatcher; a list screen also gets its cases in `app/Input.cpp` (the
+  keyboard). Shared code goes in the module that owns the concept, never back
+  into `main.cpp`; pure, testable logic still goes in a pure module.
+- **Cost.** About 5.4 KB of flash (StickS3 1,486,073 → 1,491,537 B of the 2 MB
+  app slot; Cardputer ADV +5.3 KB, M5 image +5.5 KB) and up to 48 B of RAM.
+  In one file GCC inlined each screen into its only caller (`drawScreen()`,
+  `handleInput()`, `setup()`); across files it cannot (the Arduino build has no
+  LTO), so each is now a function of its own with its call, its literals and
+  its unwind entry (about 3 KB of code and 2.4 KB of `.eh_frame` and exception
+  tables).

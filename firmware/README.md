@@ -302,4 +302,5 @@ SRS file, the on-device Wi-Fi portal (`WifiPortal`: setup mode = open AP, home
 mode = the home network; one HTTP page for the catalog, upload/delete/download,
 stats, home Wi-Fi and the phone clock), the home network (`HomeWifi`) and the
 shared HTTP(S) pack and catalog download (`NetFetch`, roots in `RootCerts.h`),
-`src/main.cpp` the app.
+`src/app` the app, one file pair per screen or area (docs/architecture.md, "The
+app layer"), and `src/main.cpp` its entry points and screen dispatch.

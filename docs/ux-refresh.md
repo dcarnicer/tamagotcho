@@ -519,7 +519,7 @@ Settings                     header: "SETTINGS" · date · battery
   (count), Study › (`10/day`: New per day, Hard after, Auto-advance), Stats ›
   (accuracy), Wi-Fi › (`off`: the existing submenu) and Device › (Orientation,
   Brightness, Language, Hold time, Date ›, Sleep, About ›); "Continue" is gone.
-  `ui/SettingsTree.h` holds the item tables, `main.cpp` one `MenuItem` (label,
+  `ui/SettingsTree.h` holds the item tables, `app/Settings.cpp` one `MenuItem` (label,
   value, action) per item and a one-level page stack. The header shows the
   date. Labels that did not fit their pixel budget changed: the English row is
   **"Auto next"** ("Auto-advance" is 116 px, a portrait page row leaves 107),

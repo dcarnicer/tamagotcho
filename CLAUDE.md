@@ -11,6 +11,10 @@ Kanji multiple-choice review app for the M5Stack StickS3. Read
   with `pio test -e native`. Pure logic (`pack/`, `quiz/`, `srs/`, `imu/`,
   `power/`, `catalog/`, `portal/`, `ui/`) must not include Arduino headers; the
   `native` env builds and tests it.
+- The app (screens, quiz loop, settings, Wi-Fi glue, boot, power) is in
+  `firmware/src/app/`, one file pair per screen or area; `main.cpp` keeps only
+  `setup()`, `loop()` and the screen dispatch. A new screen gets its own file
+  pair, not code in `main.cpp` (docs/architecture.md, "The app layer").
 - Pack builder: Python managed with `uv` (`cd tools/pack-builder && uv run tamagotcho-pack --help`).
 - Downloaded data goes to `tools/pack-builder/cache/` (git-ignored), never committed.
 - Data licences: KANJIDIC2 and KanjiVG are CC BY-SA; generated packs inherit
