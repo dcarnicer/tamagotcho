@@ -439,7 +439,9 @@ Rules:
   lie inside the pool.
 - **Glosses.** English packs take the first gloss of the word's first JMdict_e
   sense that is not a transliteration of its reading, when it has at most 24
-  characters (else none). Spanish packs take
+  characters; a longer one loses its parenthesised notes first (`water (esp.
+  cool or cold)` → `water`), and if it is still longer there is none. Spanish
+  packs take
   only reviewed glosses from the project's table
   (`tools/pack-builder/data/example_glosses_es.tsv`, rows marked `ok`); a word
   without one has an empty gloss, as in packs of other languages, and the
@@ -479,6 +481,17 @@ entries, `毎日` / `まいにち` / `every day` / kind 0 / span 6, 6, and `日`
   entries (8 bytes per stroke), ~240 bytes of masks (about 34 % of their raw
   size). A mask's pixel count scales with the em square's *area*, so the raw
   cost grows quadratically with `large_px`.
+- The optional example-words section (v3) adds **12–18 %**, measured on
+  2026-10-23 with the published decks' flags (`--strokes --common-readings
+  --meaning-order`): N5 104 → 122 KB (+18 KB, 149 words), N1 1.80 → 2.04 /
+  2.05 MB (es / en; +238 / +251 KB, 1,456 words), Jōyō 2.96 → 3.33 / 3.35 MB
+  (+367 / +392 KB, 3,241 words), all under the 5 MB cap. About three quarters
+  is the words' kanji in set 2 (~125 B each at 18 px: 121 for N5, 1,501 for
+  N1, 2,108 for Jōyō); the section itself is 4 B a card plus 16 B a word
+  (2.6 / 27.6 / 59.0 KB), and the strings 3–74 KB (English glosses more than
+  Spanish ones while few are reviewed). A reader holding the tables in memory
+  needs more for the larger glyph table and pool (Jōyō: about +110 KB on a
+  64-bit host); a streamed one about +0.5 KB.
 - The device reads packs through the filesystem with random access; the
   builder must not rely on the device loading the whole file in RAM, although
   the device may cache the header, card table and glyph table in PSRAM. Both v2
