@@ -102,10 +102,6 @@ namespace app {
 uint16_t kGrey, kHighlight, kGreen, kRed, kYellow;
 
 lgfx::LGFX_Sprite* gCanvas = nullptr;  // full-screen back buffer (PSRAM when there is some)
-std::unique_ptr<tgc::PackReader> gPack = std::make_unique<tgc::PackReader>();
-std::unique_ptr<tgc::FsPackSource> gSource;
-tgc::Renderer gRender;
-tgc::XorShiftRng gRng;
 
 tgc::Question gQ;
 int gSel = 0;
@@ -132,23 +128,17 @@ uint32_t gAnimNext = 0;
 constexpr uint32_t kStrokeMs = 550;       // one stroke step
 constexpr uint32_t kStrokePauseMs = 1200; // hold on the last stroke before looping
 
-tgc::SrsStore gSrs;
-tgc::FsSrsFile gSrsIo;
-tgc::Queue gQueue;
 uint32_t gShownAt = 0;     // millis() when the question was drawn
 int gNavTaps = 0;          // navigation taps on the current question
 // Response time credited back per navigation tap: with one button, reaching
 // the 4th option costs three taps that are UI cost, not recall time.
 constexpr uint32_t kNavAllowanceMs = 400;
 uint32_t gLastAnswerAt = 0;
-int gDirty = 0;            // answers not yet persisted
 // "Study more" override for the daily new-card cap (the done screen's tap), and
 // the SRS day it was granted on: it only applies on that day (extraNewToday()).
 uint16_t gExtraNew = 0;
 uint16_t gExtraNewDay = 0;
 
-Screen gScreen = Screen::Quiz;
-Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
 // Days from the current day's date to the proposed "today" (negative =
 // earlier), within gSrs.manualStepsMin()..manualStepsMax().
@@ -171,7 +161,6 @@ Choice gChoice = Choice::NewPerDay;
 int gChoiceCount = 0;
 uint16_t gChoiceValues[4] = {0, 0, 0, 0};
 String gCurrentPack;
-Preferences gPrefs;
 
 uint8_t gOrientPref = kOrientAuto;
 tgc::OrientationFilter gOrient;
@@ -257,7 +246,6 @@ bool gDimmed = false;
 bool gScreenOff = false;        // idle on USB power: panel off, still running
 bool gSwallowInput = false;     // drop button events until all buttons are up
 tgc::KeyRepeat gKeyRepeat;      // the held arrow of a keyboard (keyTurn())
-bool gSrsLoaded = false;        // the state file loaded at boot
 int gShownBattery = -2;
 uint32_t gBatteryCheckAt = 0;
 // Critical battery (power/BatteryGuard.h): one reading every kBatteryGuardMs on
