@@ -391,7 +391,21 @@ with Spanish translations, four JMdict entries, a handful of vocabulary words)
 and KANJIDIC2-shaped entries with invented glosses; they are not copied from
 the sources or KANJIDIC2.
 
-## Example-word glosses (evaluated only; no pack uses them)
+## Example-word glosses (decision 9)
+
+### Spanish example glosses (project-authored)
+
+- File: `tools/pack-builder/data/example_glosses_es.tsv`, committed in this
+  repository: one row per example word (word, reading) with its Spanish
+  gloss and a review status (`draft`, `ok`, `skip`). Only `ok` rows are meant
+  for packs; as of 2026-10-23 it holds the N5 drafts, not yet reviewed, and
+  no builder code reads it yet.
+- Authored by the Tamagotcho project, distributed with the packs under CC BY-SA
+  4.0. Derived from JMdict_e's English glosses (EDRDG, CC BY-SA 4.0) and, where
+  a draft kept its suggestion, FreeDict eng-spa (CC BY-SA 3.0, above). No text
+  from JMdict's Spanish glosses (docs/example-words.md, "Alternatives").
+
+### Sources evaluated (no pack uses them)
 
 `tools/pack-builder/scripts/example_words_alternatives.py --fetch` downloads
 these into `cache/research/` (git-ignored, SHA256-pinned in the script as
