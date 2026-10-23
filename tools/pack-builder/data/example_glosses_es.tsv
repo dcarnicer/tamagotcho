@@ -91,7 +91,7 @@ N5	百	百	ひゃく	hundred; 100	cien	draft
 N5	先	先	さき	point; tip; end	punta, adelante	draft	CHECK: ambiguous (tip / ahead / earlier); FreeDict said "punto"
 N5	名	有名	ゆうめい	famous; well-known	famoso	draft	
 N5	名	名前	なまえ	name	nombre	draft	CHECK: FreeDict said "ñame"
-N5	川	河川	かせん	rivers	ríos	draft	
+N5	川	河川	かせん	rivers	ríos	draft	CHECK: formal word (N1 vocabulary); FreeDict had nothing. Keep or skip?
 N5	川	川	かわ	river; stream	río	draft	
 N5	千	千	せん	thousand; 1,000	mil	draft	
 N5	千	千葉	ちば	Chiba (city, prefecture)	Chiba	draft	
