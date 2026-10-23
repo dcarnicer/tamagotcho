@@ -45,15 +45,32 @@
 #include "ui/UiLang.h"
 #include "Credits.h"
 #include "Version.h"
+#include "app/About.h"
+#include "app/App.h"
+#include "app/Boot.h"
+#include "app/Choice.h"
+#include "app/Clock.h"
+#include "app/DateScreens.h"
+#include "app/DeckUpdates.h"
+#include "app/Decks.h"
+#include "app/Detail.h"
+#include "app/Display.h"
+#include "app/Done.h"
+#include "app/GetDecks.h"
+#include "app/Input.h"
+#include "app/Net.h"
+#include "app/Power.h"
+#include "app/Progress.h"
+#include "app/Quiz.h"
+#include "app/Remote.h"
+#include "app/ScreenKit.h"
+#include "app/Settings.h"
+#include "app/Stats.h"
+#include "app/UiStrings.h"
+#include "app/Wifi.h"
+#include "app/WifiMenu.h"
 
 using tgc::board::Button;
-
-// Set -DTGC_QUIZ_LOG to trace every question and answer over serial.
-#if defined(TGC_QUIZ_LOG)
-#define QLOG(...) Serial.printf(__VA_ARGS__)
-#else
-#define QLOG(...) do {} while (0)
-#endif
 
 // The StickS3 has no RTC and the ESP32's RTC domain does not survive a power-off
 // (verified: RTC memory is cleared when the device is switched off). RTC_NOINIT
@@ -82,341 +99,7 @@ RTC_DATA_ATTR bool gDatePending = false;
 namespace tgc {
 namespace app {
 
-constexpr uint16_t kBlack = 0x0000;
-constexpr uint16_t kWhite = 0xFFFF;
 uint16_t kGrey, kHighlight, kGreen, kRed, kYellow;
-
-// Every user-facing on-device string. The table is chosen from the loaded
-// pack's language (gPack->header().lang) when the pack changes; English is the
-// default and the fallback for any unknown code, so the error screen (which
-// runs before a pack is open) still has text.
-struct UiStrings {
-    const char* appName;  // header of the error screen (and the done screen with no deck)
-    const char* settingsTitle;
-    const char* decksTitle;
-    const char* newPerDayTitle;
-    const char* hardAfterTitle;  // Study > Hard after (it was "Speed")
-    const char* hardAfterOff;    // its value that disables Hard
-    const char* quizMeaning;
-    const char* quizReading;
-    const char* quizKanji;
-    const char* dateTitle;
-    // Date screen: the last-used day and a proposed "today" the user steps.
-    // The hint bar (docs/ux-refresh.md §2.4, two side actions): "• +1 day
-    // ▬ OK" and "◂ -1 day ▬ cancel" (hintCancel), one row from 189 px (English)
-    // and 201 px (Spanish), else the side items on a second row; checked in
-    // test_quizui, which copies these.
-    const char* dateLastUsed;  // caption before the last-used date: "last used Sat 17 Oct"
-    const char* dateToday;     // the pill while the proposed day is the current one
-    const char* dateOneDay;    // "+1 day": the pill, and the hint bar's tap word
-    const char* dateDaysFmt;   // "+%u days" (2 and up)
-    const char* dateBackOneDay;  // "-1 day": the pill, and the hint bar's side tap word
-    const char* dateBackDaysFmt; // "-%u days" (2 and up)
-    const char* weekdays[7];   // short names, Sunday first
-    // The boot-time question tries the network time first (docs/srs.md 5.1):
-    // a label-face title and the network in a caption; the hint bar's tap
-    // (hintByHand) gives up and sets the date by hand.
-    const char* dateNetTitle;
-    const char* dateNetViaFmt;  // %s = home Wi-Fi name
-    // Stepper status line when that failed (caption, wrapped).
-    const char* dateNoNetwork;   // could not join
-    const char* dateNoTime;      // joined, but no (plausible) time came back
-    // Settings > Device > Date: the submenu (row labels; the date and the
-    // zone's city are their values) and the time zone list (a city and its
-    // offsets, see drawTzList()).
-    const char* dateMenuRows[2];  // the date (the stepper), the zone (the list)
-    const char* tzNone;           // the zone row's value when no zone is known
-    const char* tzTitle;          // header (ASCII)
-    const char* tzFromPhone;      // first row: the zone the portal page last sent
-    const char* tzSummerFmt;      // a row's offsets: "UTC+1, summer UTC+2"
-    const char* tzPhoneNone;      // "From phone" when the page never sent a zone
-    const char* tzSaved;          // Date submenu note after a choice
-    // The loaded deck's caption in the deck list (Font0 under the row, from
-    // its left padding: at most 19 characters in the 135 px portrait).
-    const char* deckCountsFmt;  // cards, due
-    const char* statsTitle;
-    // Error screens (showError()): what happened as a label-face title (two
-    // lines at most), then one action in a wrapped caption. End-user words.
-    const char* errNoFilesystem;      // LittleFS present but will not mount
-    const char* errNoFilesystemHint;  // hold the front button to erase it
-    // First boot on an erased (or foreign) data partition: formatting it takes
-    // a few seconds. Label-face title + caption hint (showNotice()).
-    const char* fsPreparing;
-    const char* fsPreparingHint;
-    const char* errNoPack;      // no deck, and the access point would not start
-    const char* errNoPackHint;
-    const char* errOpenPack;    // no deck on the device opens
-    const char* orientTitle;
-    const char* orientRows[3];  // indexed by OrientPref: portrait, landscape, auto
-    // Detail card (shown after a wrong answer). `detailOn`/`detailKun` label the
-    // on'yomi/kun'yomi lines; the meanings label reuses quizMeaning.
-    const char* detailTitle;
-    const char* detailOn;
-    const char* detailKun;
-    const char* detailStrokesFmt;
-    const char* detailAccuracyFmt;
-    // Statistics: total time on questions (its tile shows the first unit
-    // alone when both do not fit).
-    const char* statsTimeHM;     // "%uh %um"
-    const char* statsTimeMS;     // "%um %us"
-    const char* statsTimeS;      // "%us"
-    // UI-language picker: the title and the three rows (endonyms, same in every
-    // table so a user can find their language whatever the current one is).
-    const char* langTitle;
-    const char* langRows[3];
-    // First-boot language picker (drawFirstLang()): the hint bar's words, which
-    // the picker takes from the table of the highlighted row's language.
-    const char* firstLangTap;
-    const char* firstLangHold;
-    // Wi-Fi portal screen (the hints and status lines are 1x, see drawWifi()).
-    const char* wifiTitle;
-    const char* brightTitle;
-    // Full-screen notices before a deep sleep: a short title (2x font, wrapped
-    // at spaces, so no word longer than 10 characters) and a hint (1x font).
-    const char* sleepTitle;
-    const char* sleepHint;
-    const char* batteryTitle;
-    const char* batteryHint;
-    // "Get decks" (last row of the deck list, a UI-font label): download decks
-    // from the release catalog over the home Wi-Fi. Status lines are label-face
-    // titles; notes and details are captions (21 characters a line in the
-    // 135 px portrait; error details wrap).
-    const char* getDecksRow;
-    const char* getDecksTitle;
-    const char* netConnecting;
-    const char* netCatalog;
-    // The hint bar's hold word for the focused deck: download, update, study;
-    // and retry on the error screen. "update" is also the deck's caption.
-    const char* netHoldDownload;
-    const char* netHoldUpdate;
-    const char* netHoldStudy;
-    const char* netHoldRetry;
-    const char* netSavedFmt;  // %s = deck name
-    const char* netCardsFmt;  // a deck's caption: %s = language (upper case), %u = cards
-    const char* netEmpty;
-    const char* netNoWifi;
-    const char* netNoWifiHint;
-    const char* netNotFound;
-    const char* netAuthFailed;
-    const char* netNoConnect;
-    const char* netNoServer;
-    const char* netTls;
-    const char* netHttpFmt;  // %d = HTTP status
-    const char* netNotPublished;
-    const char* netBadCatalog;
-    const char* netNewerCatalog;
-    const char* netOldCatalog;  // a catalog format older than kCatalogVersion (v1 catalog.txt)
-    const char* netCorrupt;
-    const char* netNoSpace;
-    const char* netNoSpaceUpdate;  // detail: an update needs room for the old and the new copy
-    const char* netInvalid;
-    const char* netFailed;
-    const char* netCancelled;
-    const char* wifiGetDecksHint;  // hint bar: the boot-time screen's hold (with a home Wi-Fi)
-    // Settings > Wi-Fi: the submenu (UI-font row labels, so accents are fine;
-    // the titles are header text and stay ASCII).
-    const char* wifiMenuRows[4];  // web portal, home network (its name is the value), setup mode, forget
-    const char* wifiHomeNone;     // the home-network row's value when none is saved
-    const char* wifiNoNetwork;    // note: no home network saved
-    const char* wifiForgotten;    // note: the network was forgotten
-    const char* forgetTitle;      // the confirmation picker's header
-    const char* forgetRows[2];    // cancel, forget
-    // The portal screen. Captions, 21 characters in the 135 px portrait (the
-    // QR captions too); the hint bar's words are marked.
-    const char* wifiScanJoin;      // over the join QR (setup mode)
-    const char* wifiScanOpen;      // over the page QR
-    const char* wifiTapOtherQr;    // hint bar, setup mode: a tap swaps the two QR codes
-    const char* wifiViaFmt;        // home mode, %s = the home network
-    const char* wifiConnectingTo;  // joining the home network for the portal (label face)
-    const char* wifiHoldSetup;     // hint bar, joining / failed: a hold opens setup mode
-    const char* wifiTapRetry;      // hint bar, failed: a tap tries again
-    const char* wifiLinkLost;      // home mode: the link dropped, the driver reconnects
-    const char* wifiStudyHint;     // hint bar, the side button on the boot-time screen with a deck
-    const char* wifiDownloadFmt;   // %s = deck, %u = percent (a download from the page)
-    const char* wifiFreeFmt;       // free space: %s free, %s total
-    const char* wifiFallbackFmt;   // boot: home join failed, setup mode instead; network, reason
-    // Settings > Wi-Fi > Home network: the connection test.
-    const char* testTitle;
-    const char* testChecking;
-    const char* testIpFmt;       // %s = station IP
-    const char* testSignalFmt;   // %d = dBm, %s = testQuality word
-    const char* testQuality[4];  // weak, fair, good, excellent (rssiQuality())
-    const char* testCatalogFmt;  // %u = decks in the catalog
-    const char* testTimeOk;
-    const char* testTimeFail;
-    const char* testHoldAgain;  // hint bar: the hold
-    const char* testNoNetworkHint;
-    // Settings > Device > About (drawAbout()): the header title (ASCII), each
-    // item's heading (label face, the colon dropped; at most 127 px) and the
-    // deck item's value when none is loaded. The names and licences themselves
-    // are in Credits.h.
-    const char* aboutTitle;
-    const char* aboutFirmware;  // + MIT
-    const char* aboutDecks;     // + CC BY-SA, the licence of the published decks
-    const char* aboutDeck;      // + the loaded deck's name
-    const char* aboutNoDeck;
-    const char* aboutKanji;     // + KANJIDIC2 ...
-    const char* aboutStrokes;   // + KanjiVG ...
-    const char* aboutJlpt;      // + Jonathan Waller ...
-    const char* aboutGlyphs;    // + Noto Sans JP ...
-    // The menus' hint bar (widgets::drawHintBar(), Font0, 6 px a character):
-    // the front tap, the front hold (open a row / choose a value) and the side
-    // button. The side word needs 6 px clear of the front items, else only its
-    // icon shows: "• move ▬ open ◂ back" keeps it in the 135 px portrait,
-    // "• mover ▬ abrir ◂" does not (2 px short).
-    const char* hintMove;
-    const char* hintOpen;
-    const char* hintChoose;
-    const char* hintBack;
-    const char* getDecksCaption;  // the Get decks row's second line
-    const char* aboutUiFont;      // Settings > About: + the firmware's UI font
-    // The quiz and the detail card (docs/ux-refresh.md §6.4). Header pills are
-    // Font0 captions in uppercase ASCII (Font0 has no capital I with an
-    // accent). The result pill is "<word> · <days><unit>" or the longest
-    // shorter form that fits next to the cards left (ui/QuizUi.h
-    // resultPillText()); the mode pills reuse quizMeaning, detailOn/detailKun
-    // and quizKanji. Budgets are tested in test_quizui, which copies these.
-    const char* pillGood;
-    const char* pillHard;
-    const char* pillAgain;
-    const char* pillDaysUnit;    // after the interval: "4d"
-    const char* quizK2mCaption;  // over a meaning -> kanji prompt (Font0, two lines in landscape)
-    // The quiz's hint bar (the front tap of a question is hintMove): the
-    // hold that answers, then the tap after a correct answer (and on the
-    // detail card) and after a wrong one. "• mover ▬ responder" leaves 8 px
-    // to the settings icon in the 135 px portrait; "siguiente" would not.
-    const char* hintAnswer;
-    const char* hintNext;
-    const char* hintDetails;
-    // The detail card's header counter while the strokes animate (stroke,
-    // count); the bare "4/13" when the worded one does not fit.
-    const char* detailStrokeFmt;
-    // --- Settings tree (docs/ux-refresh.md §3, §6.6; ui/SettingsTree.h) ------
-    // Row labels are the UI font's Label face (18 px). Budgets in the 135 px
-    // portrait: a home row has 93 px for its label, a 5 px gap and its value
-    // (the icon and the chevron take the rest) and shows the value only when
-    // both fit (Spanish "Estudio" and "Progreso" go without; "Estadísticas",
-    // 99 px, did not fit at all); a Study / Device row puts its value on a
-    // caption line under the label, so its label gets 107 px. Landscape rows
-    // are wider: 110 px on the home, 212 on a page.
-    const char* groupRows[5];   // decks, study, stats, Wi-Fi, device
-    const char* studyRows[5];   // new per day, hard after, auto-advance, on'yomi, delete (progress)
-    const char* deviceRows[7];  // orientation, brightness, language, hold time, date, sleep, about
-    const char* studyTitle;     // headers (Font0, ASCII)
-    const char* deviceTitle;
-    const char* advanceTitle;
-    const char* holdTitle;
-    const char* onKanaTitle;
-    const char* studyValueFmt;  // the Study row's value, %u = new per day
-    const char* wifiOff;        // the Wi-Fi row's value while the radio is off
-    const char* decimalPoint;   // "1.5 s" / "1,5 s"
-    const char* advanceRows[3];  // ui/InputPrefs.h order: off, short, normal
-    const char* holdRows[3];     // short, normal, long
-    const char* onKanaRows[2];   // tgc::OnKana order: katakana, hiragana
-    const char* months[12];      // short names: the header's "18 Oct", the date tile's "OCT 2026"
-    const char* choiceDefault;   // a picker row's value on the default choice
-    // Pickers: a description under the header (Font0, wrapped to the width: at
-    // most three lines of 21 characters in the 135 px portrait; in landscape
-    // only when every row still fits, i.e. on the three-row pickers).
-    const char* descNewPerDay;
-    const char* descHardAfter;
-    const char* descAdvance;
-    const char* descHold;
-    const char* descOnKana;
-    const char* descOrient;  // only with an accelerometer (it explains Auto)
-    const char* descBright;
-    const char* descLang;
-    // The summary card: due (accent) and new on one caption line under the deck
-    // name; landscape adds "seen 45/79" over the coverage bar (12 characters
-    // in its 84 px column, else only the numbers).
-    const char* summaryDueFmt;
-    const char* summaryNewFmt;
-    const char* summarySeenFmt;
-    const char* summaryNoDeck;      // label face, no deck loaded
-    const char* summaryNoDeckHint;  // caption under it
-    const char* hintCancel;         // hint bar: the side button cancels
-    const char* hintMore;           // hint bar: About's next page
-    // --- Secondary screens (docs/ux-refresh.md §2.4, §4 phase 3) -------------
-    // The date stepper's calendar tile: the weekday in the label face under
-    // the day (at most 96 px: "Wednesday"; the tile is 100 px wide).
-    const char* weekdaysLong[7];  // Sunday first
-    const char* dateWasOff;       // the notice over "last used" at boot (caption, warn)
-    // Under the pill (caption, wrapped to 21 characters, under the network
-    // status when there is one): what to step to. The hint bar has the buttons.
-    const char* dateExplain;
-    const char* hintByHand;  // hint bar on "Getting the date": a tap sets it by hand
-    // Statistics: the ring's caption, the six tiles' captions (Font0 in a
-    // 62 px tile with 5 px padding: at most 9 characters) and the seen line.
-    const char* statsAccuracy;
-    const char* statsTiles[6];  // streak, best, due, new, learned, time
-    const char* statsSeen;
-    // Done screen: the title (label face), tomorrow's due count and the streak
-    // (captions: 21 characters in the 135 px portrait), the button (label face)
-    // and the hint bar's hold word.
-    const char* doneTitle;
-    const char* doneTomorrowFmt;  // %u = cards due by tomorrow
-    const char* doneStreakFmt;    // %u days, 2 and up
-    const char* doneStreakOne;
-    const char* doneMore;
-    const char* hintStudyMore;
-    // Errors: the action after "Cannot open the deck" at boot, and on the quiz
-    // screen when its deck went away (the side hold opens the settings).
-    const char* errOpenPackHint;
-    const char* errOpenPackMenu;
-    const char* hintErase;     // hint bar: the damaged-storage screen's hold
-    const char* hintSettings;  // hint bar: the side hold opens the settings
-    // Get decks: the line under the header (caption: the network and the
-    // catalog's size) and an installed deck's caption ("EN · on device", 19
-    // characters with the language in the 135 px portrait).
-    const char* netListFmt;  // %s = home network, %u = decks
-    const char* netOnDevice;
-    const char* hintStop;    // hint bar: the side button stops the portal
-    const char* deckCardsFmt;  // the deck list's caption of a deck not loaded: %u cards
-    const char* aboutReadings;  // About: + JmdictFurigana, wordfreq ... (the reading order)
-    const char* aboutMeanings;  // About: + FreeDict/WikDict (the Spanish meaning order)
-    // Settings > Study > Delete progress (docs/srs.md section 2.1). The Study
-    // row is studyRows[4] ("Delete") over deleteRowValue ("progress"):
-    // "Delete progress" (130 px) and "Borrar progreso" (133 px) do not fit a
-    // portrait page row's 107 px. Its screen: the header (Font0, ASCII), two
-    // rows (label face) with a caption (19 characters in the 135 px
-    // portrait), the confirmation's text (captions, wrapped), the one row its
-    // hold confirms on and the notes (captions, 21 characters).
-    const char* deleteRowValue;
-    const char* resetTitle;
-    const char* resetRows[2];        // this deck, everything
-    const char* resetAllCaption;     // under "Everything"
-    const char* resetNoDeck;         // under "This deck" while no deck is loaded
-    const char* resetNothing;        // note: there is no progress to delete
-    const char* resetDeckFmt;        // %u = the deck's kanji with progress
-    const char* resetSharedOneFmt;   // %s = the other deck, %u = kanji it shares
-    const char* resetSharedManyFmt;  // %u = kanji other decks share
-    const char* resetAllFmt;         // %u = every kanji with progress
-    const char* resetConfirmRow;
-    const char* hintDelete;          // hint bar: the confirmation's hold
-    const char* resetDoneFmt;        // Study page note after a deck: %u kanji
-    const char* resetAllDone;        // Study page note after Everything
-    // A board with a keyboard (the Cardputer ADV; keysOr()): the texts that
-    // name the front button elsewhere name keys, or its G0 button, there.
-    const char* sleepHintKeys;
-    const char* batteryHintKeys;
-    const char* dateExplainKeys;           // caption, wrapped (21 characters a line)
-    const char* errNoFilesystemHintKeys;
-    // --- Deck update checks (docs/deck-updates.md) ---------------------------
-    const char* updatesRow;       // the deck list's row
-    const char* updatesCheck;     // its value: never checked
-    const char* updatesUpToDate;  // its value: checked, nothing to update
-    const char* updatesCountOne;  // the home Decks row's value: one update
-    const char* updatesCountFmt;  // the home Decks row's value: %u = updates
-    const char* updateTitle;      // boot check and updates list header (ASCII)
-    const char* updateChecking;   // label face while joining
-    const char* updateFoundOne;   // one installed deck with an update
-    const char* updateFoundFmt;   // %u = installed decks with an update
-    const char* updateAllCurrent; // checked, nothing to update
-    const char* updateWhere;      // result: where the updates list is (caption)
-    const char* updateListFmt;    // updates list: %s = network, %u = updates
-    const char* updateSkip;       // hint bar while checking
-    const char* updateContinue;   // hint bar on the result
-};
 
 const UiStrings kUiEn = {
     tgc::credits::kAppName,  // たまごっちょ, the header's Kana face
@@ -648,11 +331,6 @@ const UiStrings kUiEs = {
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
-const UiStrings& ui() { return *gUi; }
-// `keys` on a board with a keyboard, else `buttons` (the UiStrings *Keys texts).
-const char* keysOr(const char* buttons, const char* keys) {
-    return tgc::board::hasKeyboard() ? keys : buttons;
-}
 
 // NVS `tangocho`/`ui`: the UI-language preference (Auto/English/Spanish). Auto,
 // the default, follows the pack language exactly as before.
@@ -714,14 +392,6 @@ int gDirty = 0;            // answers not yet persisted
 uint16_t gExtraNew = 0;
 uint16_t gExtraNewDay = 0;
 
-enum class Screen {
-    Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks, UpdateCheck, WifiMenu,
-    NetTest, About, FirstLang, DateMenu, TzList, Reset, ResetConfirm
-};
-// Screen::Choice is shared by the row pickers (see openChoice()).
-enum class Choice {
-    NewPerDay, SlowMs, Orientation, UiLang, Brightness, ForgetWifi, AutoAdvance, HoldTime, OnKana
-};
 Screen gScreen = Screen::Quiz;
 Screen gBeforeMenu = Screen::Quiz;
 Screen gAfterDate = Screen::Quiz;  // where the date screen returns to
@@ -732,19 +402,6 @@ uint16_t gBootDay = 0;  // persisted day index at boot: "last used" on the date 
 // A real wall-clock time was applied since boot (applyWallClock), so the
 // power-cut date question is not needed.
 bool gWallClockSynced = false;
-// The time zone (docs/srs.md section 5.1), in NVS `tangocho`:
-// - `tzr` (string): the POSIX TZ rule the portal page last sent, `tzn` its IANA
-//   name ("" when the page sent none);
-// - `tz` (int16): the UTC offset in minutes east the page last sent; the only
-//   zone a page from before the rule left, read as a fixed rule then;
-// - `tzm` (string): the IANA name of a zone chosen by hand from kTzZones
-//   (Settings > Device > Date > Zone). It wins while set; the next page visit
-//   that sends a zone removes it.
-// NTP yields UTC only, so without a zone the network time is not used.
-constexpr const char* kPrefTz = "tz";
-constexpr const char* kPrefTzRule = "tzr";
-constexpr const char* kPrefTzName = "tzn";
-constexpr const char* kPrefTzManual = "tzm";
 tgc::TzRule gTz;                // the zone in use (valid while gTzKnown)
 bool gTzKnown = false;
 bool gTzManual = false;         // gTz came from Settings > Device > Date > Zone
@@ -753,31 +410,14 @@ char gTzRuleText[tgc::kTzRuleMaxLen + 1] = "";
 tgc::TzRule gPhoneTz;           // the zone the page last sent (the "From phone" row)
 bool gPhoneTzKnown = false;
 char gPhoneTzName[48] = "";
-// NTP over the home Wi-Fi gets this long once the network is up, twice at most
-// (HomeWifi::fetchUtcMs asks again when nothing answered).
-constexpr uint32_t kNtpTimeoutMs = 3000;
-// Network time for the boot-time date question (docs/srs.md section 5.1): with a
-// home Wi-Fi and a time zone known, the date screen first joins and asks NTP,
-// on a screen of its own ("Getting the date via ...", a tap gives up); the
-// stepper follows only when that fails or is skipped. Tried once per boot. The
-// radio (gHome, shared with Get decks, which cannot be opened from this screen)
-// is on only while Joining; the other states are the stepper's status line.
-enum class DateSync : uint8_t { None, Joining, NoNetwork, NoTime };
 DateSync gDateSync = DateSync::None;
 std::vector<String> gPacks;  // paths of the *.tgc files in /packs
-// The list screens' focus and scroll position are tgc::ListViews next to
-// their draw functions (gMenuLists, gDeckList, gChoiceList, ...).
 Choice gChoice = Choice::NewPerDay;
 int gChoiceCount = 0;
 uint16_t gChoiceValues[4] = {0, 0, 0, 0};
 String gCurrentPack;
 Preferences gPrefs;
 
-// Orientation setting, NVS `tangocho`/`orient` (it replaced the bool `land`,
-// see loadOrientPref()). Auto is offered only on boards with an accelerometer:
-// the IMU then picks rotation 0, 1 or 3 (imu/OrientationFilter) and the picked
-// rotation is never persisted. Values double as orientRows indexes.
-enum OrientPref : uint8_t { kOrientPortrait = 0, kOrientLandscape = 1, kOrientAuto = 2 };
 uint8_t gOrientPref = kOrientAuto;
 tgc::OrientationFilter gOrient;
 constexpr uint32_t kImuPollMs = 100;  // accelerometer poll while Auto is on
@@ -793,13 +433,6 @@ float gAccel[3] = {0, 0, 0};          // last sample, for the rotation log
 // leave for the settings home.
 tgc::WifiPortal gPortal;
 bool gWifiBootUpload = false;
-// The portal's two modes (WifiPortal.h): home = the page over the saved home
-// network, which the screen joins first (gHome); setup = the device's own open
-// access point. Home is the default once a network is saved.
-enum class PortalMode : uint8_t { Setup, Home };
-// The Wi-Fi screen: joining the home network, serving the page, or a failed
-// join (or access point) with its reason and the way to setup mode.
-enum class WifiStep : uint8_t { Joining, Serving, Failed };
 PortalMode gPortalMode = PortalMode::Setup;
 WifiStep gWifiStep = WifiStep::Serving;
 int gQrPage = 0;                      // setup mode: 0 = join the AP, 1 = open the page
@@ -814,9 +447,6 @@ tgc::ListView gWifiMenuList;
 String gWifiMenuSsid;          // the saved home network, read when the menu opens
 char gWifiMenuNote[48] = "";   // footer note (cleared when the selection moves)
 uint16_t gWifiMenuNoteColor = 0;
-// Settings > Wi-Fi > Home network: join, show the IP and the signal, read the
-// catalog (and the network time), radio off again.
-enum class NetTestStep : uint8_t { NoNetwork, Joining, Checking, Done, Failed };
 NetTestStep gTestStep = NetTestStep::NoNetwork;
 String gTestIp;
 int gTestRssi = 0;
@@ -825,14 +455,6 @@ char gTestCatalog[64] = "";
 uint16_t gTestCatalogColor = 0;
 char gTestFail[48] = "";
 
-// "Get decks" (roadmap phase 4): the last row of the deck list. Joins the saved
-// home Wi-Fi on demand (HomeWifi), reads the release catalog over HTTPS and
-// downloads the chosen deck into /packs (NetFetch). The radio is on only while
-// this screen is, at kCpuWifiMhz. Connecting is polled from loop() so the side
-// button can cancel; the catalog read and the download block, the latter with a
-// progress callback that redraws, keeps the idle timers away and lets the side
-// button cancel.
-enum class NetStep { Connecting, Catalog, List, Error };
 tgc::HomeWifi gHome;
 NetStep gNetStep = NetStep::Connecting;
 bool gNetFromBoot = false;   // opened from the boot-time upload screen
@@ -859,12 +481,6 @@ NetSleep gNetSleep = NetSleep::None;
 constexpr uint32_t kNetIdleMs = 15000;
 constexpr uint32_t kNetDownloadMs = 10u * 60u * 1000u;
 
-// Deck update checks (docs/deck-updates.md): the boot-time catalog read and
-// the count the Decks rows show. `gUpdateDay` is the epoch day of the last
-// completed check (success or attempt; 0 = never); `gUpdateKnown` says whether
-// a catalog read has ever succeeded; the count is only a badge, because the
-// updates list reads the catalog again. The automatic check runs once a day on
-// external power, or once a week on battery from 50 %.
 enum class UpdateStep : uint8_t { Joining, Catalog, Done, Failed };
 UpdateStep gUpdateStep = UpdateStep::Joining;
 uint32_t gUpdateStartedAt = 0;  // millis() when the join began
@@ -876,31 +492,6 @@ uint32_t gUpdateDay = 0;        // epoch day of the last check (NVS `updday`)
 bool gUpdateKnown = false;      // a catalog read succeeded (NVS `updok`)
 constexpr uint32_t kUpdateJoinMs = 30000;  // a tap skips sooner
 constexpr uint32_t kUpdateResultMs = 2000; // the result before the quiz
-constexpr const char* kPrefUpdateDay = "updday";
-constexpr const char* kPrefUpdateCount = "updcount";
-constexpr const char* kPrefUpdateKnown = "updok";
-
-// Power management. After kDimAfterMs without input the backlight dims; after
-// kSleepAfterMs (kWifiIdleMs while the portal is up and no HTTP request came
-// in) the state is saved and, on battery, the chip deep-sleeps until the front
-// button wakes it. On USB power only the panel goes dark, so the serial port
-// stays usable for flashing and logs; unplugging then lets it sleep.
-#if defined(TGC_BATT_TEST)
-// Battery discharge test (env sticks3-batt, never a release): the device must
-// stay awake on battery for hours, so the idle dim and sleep are pushed out of
-// the way. The critical guard still sleeps at 3 %.
-constexpr uint32_t kDimAfterMs = 24u * 60 * 60 * 1000;
-constexpr uint32_t kSleepAfterMs = 24u * 60 * 60 * 1000;
-#else
-constexpr uint32_t kDimAfterMs = 30000;
-constexpr uint32_t kSleepAfterMs = 120000;
-#endif
-constexpr uint32_t kWifiIdleMs = 300000;
-constexpr uint32_t kPowerCheckMs = 5000;  // VBUS poll while the panel is off
-// 80 MHz is plenty for the quiz; Wi-Fi gets full speed while the portal runs.
-constexpr uint32_t kCpuMhz = 80;
-constexpr uint32_t kCpuWifiMhz = 240;
-constexpr uint8_t kBrightnessDefault = 128;
 uint8_t gBrightness = kBrightnessDefault;  // NVS `tangocho`/`bri`
 uint8_t gAdvancePref = tgc::kAdvanceDefault;  // NVS `tangocho`/`adv` (ui/InputPrefs.h)
 uint8_t gHoldPref = tgc::kHoldDefault;        // NVS `tangocho`/`hold`
@@ -912,8 +503,6 @@ bool gScreenOff = false;        // idle on USB power: panel off, still running
 bool gSwallowInput = false;     // drop button events until all buttons are up
 tgc::KeyRepeat gKeyRepeat;      // the held arrow of a keyboard (keyTurn())
 bool gSrsLoaded = false;        // the state file loaded at boot
-// The quiz header's battery figure, re-read every kBatteryCheckMs.
-constexpr uint32_t kBatteryCheckMs = 30000;
 int gShownBattery = -2;
 uint32_t gBatteryCheckAt = 0;
 // Critical battery (power/BatteryGuard.h): one reading every kBatteryGuardMs on
@@ -927,7 +516,7 @@ uint32_t gBatteryGuardAt = 0;
 uint32_t gBattLogAt = 0;
 int gBattWakePct = -2;  // the best reading of a critical wake, logged after mount
 bool gBattWakeUsb = false;
-void battLog(const char* what, int pct = -2) {
+void battLog(const char* what, int pct) {
     if (pct == -2) pct = tgc::board::batteryPercent();
     File f = LittleFS.open("/batt.log", FILE_APPEND);
     if (!f) return;
@@ -944,9 +533,6 @@ void battLogPrint() {
     f.close();
 }
 #endif
-// How long the notice before an explicit sleep stays up.
-constexpr uint32_t kSleepNoticeMs = 1500;
-constexpr uint32_t kBatteryNoticeMs = 2500;
 
 int W, H;
 
@@ -958,8 +544,6 @@ void smallText(lgfx::LovyanGFX& d, const char* s, int x, int y, uint16_t fg, uin
     d.setTextDatum(datum);
     d.drawString(s, x, y);
 }
-
-void dropPartialPush();
 
 // Microseconds and rows of the last push, for the TGC_QUIZ_LOG frame trace
 // in drawScreen().
@@ -983,7 +567,6 @@ void noteFrame(bool partial) {
     ++gFrames;
     gLastPushPartial = partial;
 }
-void presentRegion(int x, int y, int w, int h);
 
 void present() {
     dropPartialPush();
@@ -1025,10 +608,6 @@ void createCanvas() {
         gCanvas->createSprite(W, H);
     }
 }
-
-// Error screen (defined with the menu helpers): what happened, the one thing
-// to do, and the hint bar when a button does something here.
-void showError(const char* title, const char* action, const tgc::widgets::Hints* hints = nullptr);
 
 // Fill `out` with the *.tgc files in /packs (sorted for a stable menu order).
 void listPacks(std::vector<String>& out) {
@@ -1105,32 +684,7 @@ bool newQuestion() {
     }
 }
 
-void drawScreen();  // dispatches to the active screen
-void applyRotation(uint8_t r);
-void drawGetDecks();
-void drawUpdateCheck();
-void drawWifiMenu();
-void drawNetTest();
-void drawReset();
-void drawResetConfirm();
-void openNetTest();
-void formatDate(uint16_t days, char* out, size_t n);
-[[noreturn]] void sleepNow(bool critical);
-void netRadioOff();
-void netSyncClock();
-void openDecks();
-void openGetDecks(bool fromBoot, bool updatesOnly = false);
-void setUpdatesFromCatalog(const std::vector<tgc::CatalogEntry>& entries,
-                           const std::vector<tgc::DeckState>* states = nullptr);
-void saveUpdateState();
-bool updateCheckDue();
 void updateCheckRead();
-void updateCheckTick(uint32_t now);
-void updateCheckInput(int a, int b);
-void openPortal(PortalMode mode);
-void openDateMenu(bool fresh);
-tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e);
-
 // The card of the question on screen. False when there is none to draw or
 // grade: no pack open, no question built yet, or an index the open pack does
 // not have. (A question left over from a pack the portal or Get decks replaced
@@ -1147,7 +701,7 @@ bool questionCard(tgc::Card* out) {
 // word "settings" for the side's settings icon, and on the date stepper (the
 // only bar with a side hold) left for the side tap and esc for the side hold.
 // The buttons' boards get `h` as it is.
-tgc::widgets::Hints boardHints(tgc::widgets::Hints h, const tgc::KeyCap& tapKey = tgc::kKeyMove) {
+tgc::widgets::Hints boardHints(tgc::widgets::Hints h, const tgc::KeyCap& tapKey) {
     if (!tgc::board::hasKeyboard()) return h;
     h.keys = true;
     h.tapKey = tapKey;
@@ -1163,7 +717,7 @@ tgc::widgets::Hints boardHints(tgc::widgets::Hints h, const tgc::KeyCap& tapKey 
 }
 
 void drawHints(lgfx::LovyanGFX& d, const tgc::widgets::Hints& h,
-               const tgc::KeyCap& tapKey = tgc::kKeyMove) {
+               const tgc::KeyCap& tapKey) {
     tgc::widgets::drawHintBar(d, gRender, W, H, boardHints(h, tapKey));
 }
 
@@ -1201,24 +755,6 @@ void drawPromptKanji(lgfx::LovyanGFX& d, uint32_t cp, int x, int y, int w, int h
 // a caption and the meaning. Options: flat tiles (render/Widgets). The hint bar
 // follows ui/QuizUi.h's policy (QuizHints); without it the tiles take its space.
 
-namespace wg = tgc::widgets;
-using tgc::theme::kGutter;
-using tgc::theme::kHeaderH;
-using tgc::theme::kHintH;
-
-// Where the quiz puts its parts (drawQuiz(), the focus moves and hold frames,
-// the detail card's kanji box). Meanings are rows in the UI font. Readings are
-// a 2x2 grid when every option fits a cell -- in the option kana (set 3), else
-// the small kana (set 2) -- otherwise rows, in set 3 when every option fits a
-// row. Kanji options are a 2x2 grid of set-1 glyphs.
-struct QuizGeom {
-    int px = 0, py = 0, pw = 0, ph = 0;  // prompt box
-    int tx[tgc::kMaxOptions] = {}, ty[tgc::kMaxOptions] = {};
-    int tw = 0, th = 0;  // every tile's size
-    uint8_t set = tgc::Renderer::kTextUi;
-    bool grid = false;
-    bool hints = false;  // the hint bar is shown
-};
 QuizGeom gQuizG;  // as the quiz or the detail card was last drawn
 
 QuizGeom quizGeom(bool hints) {
@@ -1510,23 +1046,11 @@ bool quizGridKey(tgc::Key k, uint32_t now) {
     return true;
 }
 
-// --- Menu screens (docs/ux-refresh.md §2.4) ---------------------------------
-// The list screens are built from render/Widgets: a header (title, battery,
-// hairline), rows of the layout's height that scroll instead of shrinking
-// (ui/ListView, a 2 px scroll bar and small markers when rows are hidden), and
-// the hint bar. Labels use the UI font, so they need no pack.
-
-namespace wg = tgc::widgets;
-using tgc::theme::kGutter;
-using tgc::theme::kHeaderH;
-using tgc::theme::kHintH;
-
 tgc::theme::Layout layout() { return tgc::theme::layoutFor(W, H); }
-
 // The menus' header: the title, an optional value (the date, a page number)
 // and the battery; the radio icon while the Wi-Fi is on.
-void menuHeader(lgfx::LovyanGFX& d, const char* title, const char* right = nullptr,
-                bool wifi = false) {
+void menuHeader(lgfx::LovyanGFX& d, const char* title, const char* right,
+                bool wifi) {
     wg::Header h;
     h.title = title;
     h.right = right;
@@ -1547,7 +1071,7 @@ void menuHints(lgfx::LovyanGFX& d, const char* holdWord) {
 
 // The hint bar of a screen whose side button only goes back. Its tap (About's
 // next page) is the right arrow on a keyboard.
-void backHints(lgfx::LovyanGFX& d, const char* tap = nullptr, const char* hold = nullptr) {
+void backHints(lgfx::LovyanGFX& d, const char* tap, const char* hold) {
     wg::Hints h;
     h.tap = tap;
     h.hold = hold;
@@ -1559,7 +1083,7 @@ void backHints(lgfx::LovyanGFX& d, const char* tap = nullptr, const char* hold =
 // Lines of `text` wrapped in the caption font to `w` px, drawn from y one
 // every 10 px, centred or from x; at most `maxLines`. Returns the lines drawn.
 int drawCaptionLines(lgfx::LovyanGFX& d, const char* text, int x, int y, int w, int maxLines,
-                     uint16_t color, tgc::Align align = tgc::Align::Centre) {
+                     uint16_t color, tgc::Align align) {
     if (!text || !*text) return 0;
     const std::vector<tgc::TextSpan> lines = tgc::wrapText(text, w / 6);
     int n = 0;
@@ -1596,16 +1120,6 @@ void layoutList(tgc::ListView& list, int top, int bottom, int rowH) {
     using tgc::theme::kMarkerBand;
     list.setGeometry(top + kMarkerBand, bottom - top - 2 * kMarkerBand, rowH, tgc::theme::kGap);
 }
-int listX() { return kGutter; }
-int listW() { return W - 2 * kGutter; }  // the scroll bar goes in the right gutter
-
-// Lists whose rows carry a second text (deck counts, zone offsets) put it on
-// a caption line under the label on narrow panels, and right of the label as
-// the row's value where a row is wide enough for both (landscape).
-bool wideRows() { return W >= 200; }
-
-// The menus' one-line note above the hint bar (what the last action did).
-constexpr int kNoteH = 12;
 void menuNote(lgfx::LovyanGFX& d, const char* text, uint16_t color) {
     if (text && *text)
         gRender.drawLabel(d, text, kGutter, H - kHintH - kNoteH + 1, W - 2 * kGutter, 7, color,
@@ -1626,7 +1140,7 @@ PartialPush gPartial;
 void dropPartialPush() { gPartial.armed = false; }
 
 // `dir` 1 is the next row (the front tap), -1 the previous one (a key's up).
-void moveListFocus(tgc::ListView& list, int dir = 1) {
+void moveListFocus(tgc::ListView& list, int dir) {
     const int oldFocus = list.focus();
     const int oldFirst = list.first();
     if (dir < 0)
@@ -1661,7 +1175,6 @@ void presentList(const tgc::ListView& list) {
 // focus, a hold opens or changes the row, the side button goes back: from a
 // page to the home, from the home to where the settings were opened. Every
 // screen opened from a page returns to it (gMenuPage stays put meanwhile).
-namespace st = tgc::settings;
 st::Page gMenuPage = st::Page::Home;
 tgc::ListView gMenuLists[st::kPageCount];  // each page keeps its focus
 char gMenuNote[32] = "";  // a page's note (after Delete progress), until the next press
@@ -3326,7 +2839,7 @@ void loadTimeZone() {
 // up to date: a pending power-cut date question is answered, and a new day
 // rebuilds the queue. False when the time was rejected as implausible; nothing
 // changes then.
-bool applyWallClock(int64_t utcMs, const tgc::TzRule& zone, bool leaveDateNow = true) {
+bool applyWallClock(int64_t utcMs, const tgc::TzRule& zone, bool leaveDateNow) {
     const uint16_t before = gSrs.today();
     const int offsetMin = tgc::tzOffsetMinAt(zone, utcMs);
     const tgc::ClockSyncResult r = gSrs.syncWallClock(utcMs, zone);
@@ -4081,9 +3594,6 @@ void startQuizFromPortal() {
     drawScreen();
 }
 
-void openWifiMenu(bool fresh);
-void wifiMenuNote(const char* text, uint16_t color);
-
 // Leaves the Wi-Fi screen (radio off): for the Wi-Fi submenu, or -- on the
 // boot-time screen once the home-mode page brought a deck -- into the quiz. On
 // the boot-time screen without a deck there is nothing to return to, so the
@@ -4755,18 +4265,12 @@ void netNote(const char* text, uint16_t color) {
 
 String catalogPath(const tgc::CatalogEntry& e) { return String("/packs/") + e.name.c_str() + ".tgc"; }
 
-// Hashing cost of one comparison pass, logged once per pass rather than per deck.
-struct HashStats {
-    uint32_t ms = 0;
-    uint16_t files = 0;
-};
-
 // The state of catalog deck `e` against /packs: existence and exact size first,
 // then -- only when the size matches -- the installed file's SHA-256 against
 // the catalog's (docs/deck-updates.md). A file whose size differs is never
 // hashed. A hash failure falls back to the size-only answer, so a read error
 // never invents an update.
-tgc::DeckState deckStateOnDisk(const tgc::CatalogEntry& e, HashStats* stats = nullptr) {
+tgc::DeckState deckStateOnDisk(const tgc::CatalogEntry& e, HashStats* stats) {
     const String path = catalogPath(e);
     const long size = tgc::fsFileSize(path);
     if (size < 0) return tgc::DeckState::New;
@@ -5604,7 +5108,6 @@ struct RemoteKey {
     bool holding = false;  // a hold that has not fired yet
 };
 RemoteKey gRemote[2];
-void wakeScreen();
 
 // The remote's key: down (`sent` once delivered), up at `upAt`.
 constexpr uint32_t kRemoteKeyTapMs = 80;

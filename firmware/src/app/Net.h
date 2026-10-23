@@ -1,0 +1,45 @@
+#pragma once
+// What Get decks, the portal's home mode, the network test, the boot-time date
+// and the deck update check share over the home Wi-Fi: the station (gHome)
+// and the radio off, why a join failed, a catalog deck's state against /packs,
+// why a catalog read failed, and the checked deck download with its progress.
+#include <Arduino.h>
+
+#include <cstddef>
+#include <cstdint>
+
+#include "catalog/Catalog.h"
+#include "platform/HomeWifi.h"
+#include "platform/NetFetch.h"
+#include "platform/WifiPortal.h"
+
+namespace tgc {
+namespace app {
+
+extern tgc::HomeWifi gHome;
+// A deck download in progress (Get decks and the Wi-Fi screen show it).
+extern bool gNetBusy;
+extern int gNetPct;
+extern char gNetDeck[72];
+extern uint32_t gNetActivityAt;  // millis() of the last network progress (idle timers)
+// A failure's title and detail: the Get decks error, the Wi-Fi screen's failed state.
+extern char gNetErrTitle[48];
+extern char gNetErrDetail[96];
+
+void netRadioOff();
+const char* joinFailureText();
+void formatMb(size_t bytes, bool unit, char* out, size_t n);
+String catalogPath(const tgc::CatalogEntry& e);
+// Hashing cost of one comparison pass, logged once per pass rather than per deck.
+struct HashStats {
+    uint32_t ms = 0;
+    uint16_t files = 0;
+};
+
+tgc::DeckState deckStateOnDisk(const tgc::CatalogEntry& e, HashStats* stats = nullptr);
+bool catalogFailure(const tgc::CatalogFetch& c, const String& url, char* title, size_t tn,
+                    char* detail, size_t dn);
+tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e);
+
+}  // namespace app
+}  // namespace tgc
