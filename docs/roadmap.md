@@ -254,6 +254,12 @@ Scope for now: **kanji only** (no vocabulary decks).
         - [x] Shorten the updates and Get decks headers to "%s · %u"
           (2026-10-23): with "Shimokitazawa" the old lines were 150/138 px in
           127 and were cut; the headers now show the network and the count.
+        - [x] Refresh the update count from any home-Wi-Fi session
+          (2026-10-23): Get decks already did; the portal page, the network
+          test and the boot-time date sync now do too. The date sync only reads
+          the catalog when the policy says due; the standalone boot check stays
+          as the fallback. The English result line was cut too and is now
+          "6 updates".
         - [ ] Tune the battery policy (the daily / weekly / 50 % rule is
           native-tested; a real battery run is still pending).
       - [~] **M5Launcher compatibility.** The app-only `.bin` that

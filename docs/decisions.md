@@ -3165,3 +3165,22 @@ marked *to confirm* needs the device.
 - **The normal UI keeps the icon only.** The percentage in the header is part
   of the test build; the release screens still show the battery icon, as
   before.
+
+## 2026-10-23 – Update count from any Wi-Fi session
+
+- **Why.** Joining the home network is the expensive part (up to 40 s of radio);
+  a catalog read once connected is a few seconds, and the portal already
+  compares every entry with `/packs` for its rows. The device now refreshes the
+  update count from Get decks, the portal, the network test and the boot-time
+  date sync, not only from the standalone boot check.
+- **Policy.** `updday` records any catalog read, so the standalone check does
+  not repeat a check another session just did. The date sync is automatic and
+  only adds the catalog read when `deckUpdateCheckDue()` says due; the
+  user-initiated sessions refresh whatever the battery. The standalone boot
+  check remains for days with no other Wi-Fi session.
+- **UX.** Only the boot-time check shows the "DECK UPDATES" result screen; the
+  portal, Get decks and the network test update the badge silently. The portal
+  passes the states it already computed for its rows, so the refresh does not
+  hash the packs twice.
+- **English result.** The old "N deck updates available" was cut in the 127 px
+  box ("6 deck / updates avail..."); the result now says "N updates".

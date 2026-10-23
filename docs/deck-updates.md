@@ -44,8 +44,9 @@ shows as "update"). Consequences:
 
 ## When it checks
 
-Automatically, at boot, after the pack, the SRS state and the queue are
-loaded, and before the first question:
+The **standalone** automatic check runs at boot, after the pack, the SRS state
+and the queue are loaded, and before the first question. It is the fallback for
+boots where no other Wi-Fi session happens:
 
 | condition | rule |
 |---|---|
@@ -54,23 +55,37 @@ loaded, and before the first question:
 | external power | once per calendar day |
 | battery | once per 7 days, and only at 50 % or more |
 | never checked | due on the first boot that meets the other conditions |
-| power-cut boot | skipped: the date screen already uses the radio; the next normal boot checks |
 | no packs | skipped (the boot upload screen has its own Get decks path) |
+
+**Any catalog read refreshes the same count and day**, so a session that already
+has the home Wi-Fi up does not need a second join:
+
+| session | what happens |
+|---|---|
+| Get decks / Updates list | reads the catalog and calls `setUpdatesFromCatalog()` (already did) |
+| Portal home page | the page already compares every entry with `/packs`; `Hooks::onCatalog` hands those states to the app, which refreshes the count without hashing twice |
+| Wi-Fi > Home network (test) | reads the catalog; refreshes the count from it |
+| Boot-time date sync | after NTP, if `updateCheckDue()` says the day is due, reads the catalog on the same connection and shows the result before the quiz; otherwise it goes straight to the quiz |
+| Manual **Decks > Updates** | always available, on battery too; reads the catalog on demand |
+
+The date sync only adds the catalog read when the policy says due (it is an
+automatic session); the user-initiated sessions refresh whenever they run,
+whatever the battery. The standalone check remains for days with no other
+session; `updday` records any catalog read, so it does not repeat a check the
+portal, Get decks, the network test or the date sync just did.
 
 The automatic check runs on a small screen of its own ("Checking deck
 updates..." and the network name) so the user knows why the boot is waiting.
 Any press skips it; a failed join gives up after 30 s (the date screen allows
 40 s). The result (updates found / all up to date / the failure) stays on
 screen for about two seconds, or until a press. The radio is off again before
-the quiz appears.
-
-A manual check is always available: **Decks > Updates** opens the same
-catalog read on demand, on battery too, and lists only the installed decks
-with a newer build.
+the quiz appears. Only the boot-time check shows this screen; the portal, Get
+decks and the network test update the badge silently.
 
 Why not every boot on battery: joining the home network costs up to 40 s of
-radio at 240 MHz. Once a week at 50 % keeps the feature useful without
-turning it into a battery tax; the manual row covers the rest. This is the
+radio at 240 MHz. Once a week at 50 % keeps the standalone check useful without
+turning it into a battery tax; the sessions that already have the radio up
+refresh the count for free, and the manual row covers the rest. This is the
 first policy; the roadmap keeps the battery thresholds open to tuning.
 
 ## UI
@@ -88,11 +103,12 @@ first policy; the roadmap keeps the battery thresholds open to tuning.
   date". The screen keeps the usual side-button back, retry on error and cancel
   on a download.
 - **Boot check screen**: header "DECK UPDATES"; while joining, "Checking deck
-  updates..." and the network name; then "N deck updates available" or "All
-  decks are up to date", or the reason it failed. The hint bar offers skip /
-  continue.
+  updates..." and the network name; then "N updates" (Spanish: "N mazos por
+  actualizar") or "All decks are up to date", or the reason it failed. The hint
+  bar offers skip / continue. The English line used to say "N deck updates
+  available", which the 127 px box cut to "updates avail..."; "N updates" fits.
 - The app does not pop a dialog over a review: the automatic check only runs
-  at boot.
+  at boot. The other sessions refresh the badge in place.
 
 ## State
 
@@ -100,17 +116,17 @@ NVS namespace `tangocho`:
 
 | key | type | meaning |
 |---|---|---|
-| `updday` | u32 | epoch day of the last completed check, success or attempt (0 = never) |
+| `updday` | u32 | epoch day of the last catalog read (automatic check, date sync, portal, Get decks or network test), success or attempt (0 = never) |
 | `updcount` | u8 | installed decks with an update (the last read, minus the ones updated since) |
 | `updok` | u8 | 1 once a catalog read has succeeded; the Updates row says "up to date" only then |
 
 The count is a badge, not a cache of the catalog: the updates list always
-reads the catalog again, so a stale count corrects itself there. A failed or
-skipped automatic check still records the day (the device tried; the next
-automatic try is tomorrow or next week), but leaves the count and `updok` as
-they were: the row says "check" only while no read has ever succeeded.
-Opening Get decks, normal or update mode, refreshes all three when it reads a
-catalog.
+reads the catalog again, so a stale count corrects itself there. Any successful
+catalog read (Get decks, the portal, the network test, the date sync) refreshes
+all three. A failed or skipped automatic check still records the day (the device
+tried; the next automatic try is tomorrow or next week), but leaves the count
+and `updok` as they were: the row says "check" only while no read has ever
+succeeded.
 
 ## Out of scope (follow-ups)
 
@@ -178,7 +194,16 @@ catalog.
   the updates list showed "Shimokitazawa · 6" and Get decks
   "Shimokitazawa · 12" with no ellipsis. `test_ui` checks the 102 px line and
   the old widths. The device ran the normal `sticks3` build afterwards.
+- **Any Wi-Fi session, StickS3, 2026-10-23 (`sticks3-shots`).** With `updday`
+  cleared by the `due` test hook, the boot-time date sync joined, got NTP and
+  read the catalog on the same connection: "6 updates" stayed for about two
+  seconds and the quiz followed. A second date sync with the day already
+  recorded went straight to the quiz, with no catalog read. The portal page
+  load logged `[update] 6 update(s) from a catalog read` through the new
+  `onCatalog` hook, and the Wi-Fi network test logged
+  `[update] hashed 8 pack(s) in 1820 ms`. A normal reboot after those reads did
+  not repeat the standalone check (`updday` was today). The English result line
+  was also cut ("6 deck / updates avail...") and is now "6 updates"; `test_ui`
+  covers both result strings.
 - Not exercised: the battery thresholds (the daily / weekly / 50 % policy is
   native-tested; a real discharge needs the device unplugged and kept awake).
-  The English result screen with N > 0 was not captured, but its strings are in
-  the `test_ui` width check.
