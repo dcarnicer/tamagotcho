@@ -134,6 +134,11 @@ estimate until the device logs them):
   bytes a record (34 KB for all of Jōyō), grown 64 records at a time; a save
   serializes it into a second buffer of the same size for a moment.
   Distractor lists are read on demand; the deck summary needs nothing.
+  A v3 deck with example words (docs/pack-format.md) costs streamed about
+  0.5 KB more (the glyph index of the words' set-2 kanji); in memory its
+  glyph table and string pool are larger (Jōyō: about +34 KB of glyph entries
+  and +74 KB of strings, plus the renderer's pointer per glyph). The words
+  themselves are read on demand, nothing is kept.
 - **Wi-Fi and TLS.** Measured on the StickS3 (2026-10-19): 248 KB of internal
   heap free with the home Wi-Fi up, a TLS session about 45 KB (164 KB largest
   block during it). Without PSRAM, Wi-Fi's static buffers (8 RX and 8 TX of
