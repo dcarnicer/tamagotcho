@@ -24,147 +24,149 @@
 # Review rule: the maintainer reviews a level as a whole, looks hard at the
 # CHECK rows, fixes `es` where needed and sets each row to ok or skip. Only ok
 # rows reach a pack; a level with unreviewed rows shows those words without a
-# gloss.
+# gloss. Notes on ok rows keep the reason a row was checked.
+#
+# Reviewed: N5 (2026-10-23).
 level	kanji	word	reading	en	es	status	note
-N5	日,毎	毎日	まいにち	every day; daily	todos los días	draft	CHECK: FreeDict said "diario" (also "newspaper")
-N5	日	日	ひ	day; days	día	draft	
-N5	一	一	いち	one; 1	uno	draft	
-N5	一	一つ	ひとつ	one	uno	draft	
-N5	人	外国人	がいこくじん	foreigner; foreign citizen; foreign national	extranjero	draft	
-N5	人	人	ひと	person; someone; somebody	persona	draft	CHECK: FreeDict said "chero"
-N5	年	去年	きょねん	last year	el año pasado	draft	CHECK: FreeDict said "antaño"
-N5	年	年	とし	year	año	draft	
-N5	大	大丈夫	だいじょうぶ	safe; secure; sound	bien, sin problemas	draft	CHECK: FreeDict said "sano" (en "safe; problem-free")
-N5	大	大きい	おおきい	big; large; great	grande	draft	
-N5	十	十	じゅう	ten; 10	diez	draft	
-N5	十	十	とお	ten; 10	diez	draft	
-N5	二	二	に	two; 2	dos	draft	
-N5	二	二つ	ふたつ	two	dos	draft	
-N5	本	本	ほん	book; volume; script	libro	draft	
+N5	日,毎	毎日	まいにち	every day; daily	todos los días	ok	FreeDict said "diario" (also "newspaper")
+N5	日	日	ひ	day; days	día	ok	
+N5	一	一	いち	one; 1	uno	ok	
+N5	一	一つ	ひとつ	one	uno	ok	
+N5	人	外国人	がいこくじん	foreigner; foreign citizen; foreign national	extranjero	ok	
+N5	人	人	ひと	person; someone; somebody	persona	ok	FreeDict said "chero"
+N5	年	去年	きょねん	last year	el año pasado	ok	FreeDict said "antaño"
+N5	年	年	とし	year	año	ok	
+N5	大	大丈夫	だいじょうぶ	safe; secure; sound	bien, sin problemas	ok	FreeDict said "sano" (en "safe; problem-free")
+N5	大	大きい	おおきい	big; large; great	grande	ok	
+N5	十	十	じゅう	ten; 10	diez	ok	
+N5	十	十	とお	ten; 10	diez	ok	
+N5	二	二	に	two; 2	dos	ok	
+N5	二	二つ	ふたつ	two	dos	ok	
+N5	本	本	ほん	book; volume; script	libro	ok	
 N5	本	本木	もとき	original stock		skip	rare word (original stock); 本 もと has no common word of its own
 N5	中	中	ちゅう	medium (size); average (grade, level, etc.); middle		skip	standalone ちゅう is mostly the suffix 〜中; a compound (中国, 中学校) shows the reading better
-N5	中	中	なか	inside; interior	interior	draft	
-N5	出	出身	しゅっしん	one's origin (e.g. city, country, parentage, school)	lugar de origen	draft	
-N5	出	出る	でる	to leave; to exit; to go out	salir	draft	CHECK: FreeDict said "dejar" (en "to leave")
-N5	三	三	さん	three; 3	tres	draft	
-N5	三	三つ	みっつ	three	tres	draft	
-N5	見	意見	いけん	opinion; view; comment	opinión	draft	
-N5	見	見る	みる	to see; to look; to watch	ver	draft	
-N5	月	今月	こんげつ	this month	este mes	draft	
-N5	月	毎月	まいつき	every month; each month; monthly	mensualmente	draft	
-N5	生,先	先生	せんせい	teacher; instructor; master	profesor	draft	
-N5	生	生まれる	うまれる	to be born	nacer	draft	CHECK: FreeDict said "nacido"
-N5	五	五	ご	five; 5	cinco	draft	
-N5	五	五つ	いつつ	five	cinco	draft	
-N5	上	以上	いじょう	not less than ...; ... and over; ... and above	o más, a partir de	draft	CHECK: hard to gloss (en "... and over; not less than"); FreeDict had none
-N5	上	上	うえ	above; over; up	arriba	draft	
-N5	四	四	し	four; 4	cuatro	draft	
-N5	四	四	よん	four; 4	cuatro	draft	
-N5	金	金曜日	きんようび	Friday	viernes	draft	
-N5	金	お金	おかね	money	dinero	draft	CHECK: FreeDict said "pasta" (slang)
-N5	九	九	きゅう	nine; 9	nueve	draft	
-N5	九	九つ	ここのつ	nine	nueve	draft	
-N5	入	収入	しゅうにゅう	income; earnings; revenue	ingresos	draft	CHECK: FreeDict said "ingreso" (singular also reads as "entry")
-N5	入	入る	はいる	to enter; to come in; to go in	entrar	draft	
-N5	学,校	学校	がっこう	school	escuela	draft	
-N5	学	学ぶ	まなぶ	to learn; to study; to take lessons in	aprender	draft	
-N5	円	円	えん	yen (currency of Japan)	yen	draft	
-N5	円	円い	まるい	round; circular; spherical	redondo	draft	CHECK: usually written 丸い; 円い is the rarer spelling (keep or skip?)
-N5	子	お菓子	おかし	confections; sweets; candy	dulces	draft	CHECK: FreeDict said "caramelos"
-N5	子	子供	こども	child; children	niño	draft	
-N5	八	八	はち	eight; 8	ocho	draft	
-N5	八	八つ	やっつ	eight	ocho	draft	
-N5	六	六	ろく	six; 6	seis	draft	
-N5	六	六つ	むっつ	six	seis	draft	
-N5	下	地下鉄	ちかてつ	subway; metro; underground (railway)	metro	draft	
-N5	下	下	した	below; down; under	debajo	draft	CHECK: FreeDict said "bajo cero"
-N5	気	元気	げんき	lively; full of spirit; energetic	animado	draft	
-N5	小	小説	しょうせつ	novel; story; (work of) fiction	novela	draft	
-N5	小	小さい	ちいさい	small; little; tiny	pequeño	draft	CHECK: FreeDict said "esmol"
-N5	七	七	しち	seven	siete	draft	
-N5	七	七つ	ななつ	seven	siete	draft	
-N5	山	登山	とざん	mountain climbing; mountaineering; ascent of a mountain	montañismo	draft	
-N5	山	山	やま	mountain; hill	montaña	draft	
-N5	女	女性	じょせい	woman; female	mujer	draft	
-N5	女	女	おんな	woman; female	mujer	draft	
-N5	百	百	ひゃく	hundred; 100	cien	draft	
-N5	先	先	さき	point; tip; end	punta, adelante	draft	CHECK: ambiguous (tip / ahead / earlier); FreeDict said "punto"
-N5	名	有名	ゆうめい	famous; well-known	famoso	draft	
-N5	名	名前	なまえ	name	nombre	draft	CHECK: FreeDict said "ñame"
-N5	川	河川	かせん	rivers	ríos	draft	CHECK: formal word (N1 vocabulary); FreeDict had nothing. Keep or skip?
-N5	川	川	かわ	river; stream	río	draft	
-N5	千	千	せん	thousand; 1,000	mil	draft	
-N5	千	千葉	ちば	Chiba (city, prefecture)	Chiba	draft	
-N5	水	水曜日	すいようび	Wednesday	miércoles	draft	
-N5	水	水	みず	water (esp. cool or cold)	agua	draft	
-N5	男	男性	だんせい	man; male	hombre	draft	
-N5	男	男	おとこ	man; male	hombre	draft	
-N5	土	土曜日	どようび	Saturday	sábado	draft	
-N5	土	土	つち	earth; soil; dirt	tierra	draft	
-N5	木	木曜日	もくようび	Thursday	jueves	draft	
-N5	木	木	き	tree; shrub; bush	árbol	draft	
-N5	車	電車	でんしゃ	train; electric train	tren	draft	CHECK: FreeDict said "cola"
-N5	車	車	くるま	car; automobile; vehicle	coche	draft	
-N5	白	告白	こくはく	confession (to a crime, wrongdoing, etc.); admission	confesión	draft	
-N5	白	白い	しろい	white	blanco	draft	
-N5	天	天気	てんき	weather	tiempo, clima	draft	CHECK: FreeDict said "intemperie"
-N5	火	火曜日	かようび	Tuesday	martes	draft	
-N5	火	火	ひ	fire; flame; blaze	fuego	draft	
-N5	右,左	左右	さゆう	left and right; right and left	izquierda y derecha	draft	CHECK: FreeDict said "a diestro y siniestro"
-N5	右	右	みぎ	right; right-hand side	derecha	draft	CHECK: FreeDict said "derecho"
-N5	左	左	ひだり	left; left-hand side	izquierda	draft	
-N5	休	休憩	きゅうけい	rest; break; recess	descanso	draft	CHECK: FreeDict said "reposo"
-N5	休	休む	やすむ	to be absent; to take a day off	descansar	draft	CHECK: JMdict_e sense 1 is "to be absent"; FreeDict said "ausentarse"
-N5	雨	豪雨	ごうう	torrential rain; heavy rain; cloudburst	aguacero	draft	
-N5	雨	雨	あめ	rain	lluvia	draft	
-N5	国,外	外国	がいこく	foreign country	país extranjero	draft	CHECK: FreeDict said "el extranjero" (reads as "the foreigner", cf. 外国人)
-N5	国	国	くに	country; state	país	draft	
-N5	長	社長	しゃちょう	company president; manager; director	presidente de empresa	draft	CHECK: FreeDict said "gerente"
-N5	長	長い	ながい	long (distance, length)	largo	draft	
-N5	時,間	時間	じかん	time	tiempo	draft	CHECK: FreeDict said "estación"
-N5	時	時々	ときどき	sometimes; occasionally; at times	a veces	draft	
-N5	行	銀行	ぎんこう	bank; banking institution	banco	draft	CHECK: FreeDict said "orilla"
-N5	行	行く	いく	to go; to move (towards); to head (towards)	ir	draft	CHECK: FreeDict said "para llevar"
-N5	後,午	午後	ごご	afternoon; p.m.	la tarde (p. m.)	draft	CHECK: "tarde" alone also reads as "late"; FreeDict said "tarde"
-N5	後	後	あと	behind; rear	después, detrás	draft	CHECK: JMdict_e sense 1 is "behind"; everyday あと is "después"; FreeDict said "detrás"
-N5	前	午前	ごぜん	morning; a.m.	la mañana (a. m.)	draft	CHECK: "mañana" alone also reads as "tomorrow"; FreeDict said "mañana"
-N5	前	前	まえ	in front (of); before (e.g. a building)	delante, antes	draft	CHECK: FreeDict said "antes" (en sense 1 is "in front of")
-N5	間	間	あいだ	space (between); gap; interval	intervalo, espacio	draft	CHECK: あいだ is also "between, during"; FreeDict said "espacio"
-N5	東	東京	とうきょう	Tokyo	Tokio	draft	
-N5	東	東	ひがし	east	este (punto cardinal)	draft	CHECK: "este" alone also reads as "this"; FreeDict said "este"
-N5	今	今週	こんしゅう	this week	esta semana	draft	
-N5	今	今	いま	now; the present time; just now	ahora	draft	
-N5	高	最高	さいこう	best; supreme; wonderful	lo mejor, genial	draft	CHECK: FreeDict said "mejor"
-N5	高	高い	たかい	high; tall	alto, caro	draft	CHECK: adds "caro" (expensive, JMdict sense 2); FreeDict said "alto"
-N5	外	外	そと	outside; exterior	exterior	draft	
-N5	来	来年	らいねん	next year	el año próximo	draft	
-N5	来	来る	くる	to come (spatially or temporally); to approach; to arrive	venir	draft	
-N5	話,電	電話	でんわ	telephone call; phone call	teléfono	draft	CHECK: JMdict_e sense 1 is "telephone call"; FreeDict said "llamada"
-N5	話	話	はなし	talk; speech; chat	conversación	draft	
-N5	北	北海道	ほっかいどう	Hokkaido (island, prefectural-level administrative unit)	Hokkaido	draft	
-N5	北	北	きた	north	norte	draft	
-N5	書	図書館	としょかん	library	biblioteca	draft	
-N5	書	書く	かく	to write; to compose; to pen	escribir	draft	
-N5	半	半	はん	half; semi-; partial	mitad	draft	
-N5	半	半ば	なかば	middle; halfway; midway	mitad, mediados	draft	CHECK: FreeDict said "medio"
-N5	西	西洋	せいよう	the West; the Occident; Western countries	Occidente	draft	
-N5	西	西	にし	west	oeste	draft	
-N5	語	英語	えいご	English (language)	inglés (idioma)	draft	CHECK: FreeDict said "texto"
-N5	語	語る	かたる	to talk about; to speak of; to tell	hablar acerca de	draft	
-N5	聞	新聞	しんぶん	newspaper	periódico	draft	
-N5	聞	聞く	きく	to hear	escuchar, preguntar	draft	CHECK: JMdict_e sense 1 is "to hear"; 聞く also asks; FreeDict said "oír"
-N5	食	食堂	しょくどう	dining room; dining hall; cafeteria	comedor	draft	
-N5	食	食べる	たべる	to eat	comer	draft	
-N5	何	幾何	きか	geometry	geometría	draft	CHECK: the only word with 何 カ; rare for N5 learners (keep or skip?)
-N5	何	何	なに	what	qué	draft	
-N5	南	南部	なんぶ	southern part; the south (of a region)	zona sur	draft	CHECK: FreeDict said "sur" (as 南 みなみ)
-N5	南	南	みなみ	south	sur	draft	
-N5	万	万	まん	10,000; ten thousand	diez mil	draft	
-N5	母	祖母	そぼ	grandmother	abuela	draft	
-N5	母	母親	ははおや	mother	madre	draft	
-N5	読	読書	どくしょ	reading (books)	lectura	draft	
-N5	読	読む	よむ	to read	leer	draft	
-N5	友	友人	ゆうじん	friend	amigo	draft	
-N5	友	友達	ともだち	friend; companion	amigo	draft	
-N5	父	祖父	そふ	grandfather	abuelo	draft	
-N5	父	父親	ちちおや	father	padre	draft	
+N5	中	中	なか	inside; interior	interior	ok	
+N5	出	出身	しゅっしん	one's origin (e.g. city, country, parentage, school)	lugar de origen	ok	
+N5	出	出る	でる	to leave; to exit; to go out	salir	ok	FreeDict said "dejar" (en "to leave")
+N5	三	三	さん	three; 3	tres	ok	
+N5	三	三つ	みっつ	three	tres	ok	
+N5	見	意見	いけん	opinion; view; comment	opinión	ok	
+N5	見	見る	みる	to see; to look; to watch	ver	ok	
+N5	月	今月	こんげつ	this month	este mes	ok	
+N5	月	毎月	まいつき	every month; each month; monthly	mensualmente	ok	
+N5	生,先	先生	せんせい	teacher; instructor; master	profesor	ok	
+N5	生	生まれる	うまれる	to be born	nacer	ok	FreeDict said "nacido"
+N5	五	五	ご	five; 5	cinco	ok	
+N5	五	五つ	いつつ	five	cinco	ok	
+N5	上	以上	いじょう	not less than ...; ... and over; ... and above	o más, a partir de	ok	hard to gloss (en "... and over; not less than"); FreeDict had none
+N5	上	上	うえ	above; over; up	arriba	ok	
+N5	四	四	し	four; 4	cuatro	ok	
+N5	四	四	よん	four; 4	cuatro	ok	
+N5	金	金曜日	きんようび	Friday	viernes	ok	
+N5	金	お金	おかね	money	dinero	ok	FreeDict said "pasta" (slang)
+N5	九	九	きゅう	nine; 9	nueve	ok	
+N5	九	九つ	ここのつ	nine	nueve	ok	
+N5	入	収入	しゅうにゅう	income; earnings; revenue	ingresos	ok	FreeDict said "ingreso" (singular also reads as "entry")
+N5	入	入る	はいる	to enter; to come in; to go in	entrar	ok	
+N5	学,校	学校	がっこう	school	escuela	ok	
+N5	学	学ぶ	まなぶ	to learn; to study; to take lessons in	aprender	ok	
+N5	円	円	えん	yen (currency of Japan)	yen	ok	
+N5	円	円い	まるい	round; circular; spherical		skip	usually written 丸い; dropped in the maintainer's review
+N5	子	お菓子	おかし	confections; sweets; candy	dulces	ok	FreeDict said "caramelos"
+N5	子	子供	こども	child; children	niño	ok	
+N5	八	八	はち	eight; 8	ocho	ok	
+N5	八	八つ	やっつ	eight	ocho	ok	
+N5	六	六	ろく	six; 6	seis	ok	
+N5	六	六つ	むっつ	six	seis	ok	
+N5	下	地下鉄	ちかてつ	subway; metro; underground (railway)	metro	ok	
+N5	下	下	した	below; down; under	debajo	ok	FreeDict said "bajo cero"
+N5	気	元気	げんき	lively; full of spirit; energetic	animado	ok	
+N5	小	小説	しょうせつ	novel; story; (work of) fiction	novela	ok	
+N5	小	小さい	ちいさい	small; little; tiny	pequeño	ok	FreeDict said "esmol"
+N5	七	七	しち	seven	siete	ok	
+N5	七	七つ	ななつ	seven	siete	ok	
+N5	山	登山	とざん	mountain climbing; mountaineering; ascent of a mountain	montañismo	ok	
+N5	山	山	やま	mountain; hill	montaña	ok	
+N5	女	女性	じょせい	woman; female	mujer	ok	
+N5	女	女	おんな	woman; female	mujer	ok	
+N5	百	百	ひゃく	hundred; 100	cien	ok	
+N5	先	先	さき	point; tip; end	punta, adelante	ok	ambiguous (tip / ahead / earlier); FreeDict said "punto"
+N5	名	有名	ゆうめい	famous; well-known	famoso	ok	
+N5	名	名前	なまえ	name	nombre	ok	FreeDict said "ñame"
+N5	川	河川	かせん	rivers		skip	formal word (N1 vocabulary); dropped in the maintainer's review
+N5	川	川	かわ	river; stream	río	ok	
+N5	千	千	せん	thousand; 1,000	mil	ok	
+N5	千	千葉	ちば	Chiba (city, prefecture)	Chiba	ok	
+N5	水	水曜日	すいようび	Wednesday	miércoles	ok	
+N5	水	水	みず	water (esp. cool or cold)	agua	ok	
+N5	男	男性	だんせい	man; male	hombre	ok	
+N5	男	男	おとこ	man; male	hombre	ok	
+N5	土	土曜日	どようび	Saturday	sábado	ok	
+N5	土	土	つち	earth; soil; dirt	tierra	ok	
+N5	木	木曜日	もくようび	Thursday	jueves	ok	
+N5	木	木	き	tree; shrub; bush	árbol	ok	
+N5	車	電車	でんしゃ	train; electric train	tren	ok	FreeDict said "cola"
+N5	車	車	くるま	car; automobile; vehicle	coche	ok	
+N5	白	告白	こくはく	confession (to a crime, wrongdoing, etc.); admission	confesión	ok	
+N5	白	白い	しろい	white	blanco	ok	
+N5	天	天気	てんき	weather	tiempo, clima	ok	FreeDict said "intemperie"
+N5	火	火曜日	かようび	Tuesday	martes	ok	
+N5	火	火	ひ	fire; flame; blaze	fuego	ok	
+N5	右,左	左右	さゆう	left and right; right and left	izquierda y derecha	ok	FreeDict said "a diestro y siniestro"
+N5	右	右	みぎ	right; right-hand side	derecha	ok	FreeDict said "derecho"
+N5	左	左	ひだり	left; left-hand side	izquierda	ok	
+N5	休	休憩	きゅうけい	rest; break; recess	descanso	ok	FreeDict said "reposo"
+N5	休	休む	やすむ	to be absent; to take a day off	descansar	ok	JMdict_e sense 1 is "to be absent"; FreeDict said "ausentarse"
+N5	雨	豪雨	ごうう	torrential rain; heavy rain; cloudburst	aguacero	ok	
+N5	雨	雨	あめ	rain	lluvia	ok	
+N5	国,外	外国	がいこく	foreign country	país extranjero	ok	FreeDict said "el extranjero" (reads as "the foreigner", cf. 外国人)
+N5	国	国	くに	country; state	país	ok	
+N5	長	社長	しゃちょう	company president; manager; director	presidente de empresa	ok	FreeDict said "gerente"
+N5	長	長い	ながい	long (distance, length)	largo	ok	
+N5	時,間	時間	じかん	time	tiempo	ok	FreeDict said "estación"
+N5	時	時々	ときどき	sometimes; occasionally; at times	a veces	ok	
+N5	行	銀行	ぎんこう	bank; banking institution	banco	ok	FreeDict said "orilla"
+N5	行	行く	いく	to go; to move (towards); to head (towards)	ir	ok	FreeDict said "para llevar"
+N5	後,午	午後	ごご	afternoon; p.m.	la tarde (p. m.)	ok	"tarde" alone also reads as "late"; FreeDict said "tarde"
+N5	後	後	あと	behind; rear	después, detrás	ok	JMdict_e sense 1 is "behind"; everyday あと is "después"; FreeDict said "detrás"
+N5	前	午前	ごぜん	morning; a.m.	la mañana (a. m.)	ok	"mañana" alone also reads as "tomorrow"; FreeDict said "mañana"
+N5	前	前	まえ	in front (of); before (e.g. a building)	delante, antes	ok	FreeDict said "antes" (en sense 1 is "in front of")
+N5	間	間	あいだ	space (between); gap; interval	intervalo, espacio	ok	あいだ is also "between, during"; FreeDict said "espacio"
+N5	東	東京	とうきょう	Tokyo	Tokio	ok	
+N5	東	東	ひがし	east	este (punto cardinal)	ok	"este" alone also reads as "this"; FreeDict said "este"
+N5	今	今週	こんしゅう	this week	esta semana	ok	
+N5	今	今	いま	now; the present time; just now	ahora	ok	
+N5	高	最高	さいこう	best; supreme; wonderful	lo mejor, genial	ok	FreeDict said "mejor"
+N5	高	高い	たかい	high; tall	alto, caro	ok	adds "caro" (expensive, JMdict sense 2); FreeDict said "alto"
+N5	外	外	そと	outside; exterior	exterior	ok	
+N5	来	来年	らいねん	next year	el año próximo	ok	
+N5	来	来る	くる	to come (spatially or temporally); to approach; to arrive	venir	ok	
+N5	話,電	電話	でんわ	telephone call; phone call	teléfono	ok	JMdict_e sense 1 is "telephone call"; FreeDict said "llamada"
+N5	話	話	はなし	talk; speech; chat	conversación	ok	
+N5	北	北海道	ほっかいどう	Hokkaido (island, prefectural-level administrative unit)	Hokkaido	ok	
+N5	北	北	きた	north	norte	ok	
+N5	書	図書館	としょかん	library	biblioteca	ok	
+N5	書	書く	かく	to write; to compose; to pen	escribir	ok	
+N5	半	半	はん	half; semi-; partial	mitad	ok	
+N5	半	半ば	なかば	middle; halfway; midway	mitad, mediados	ok	FreeDict said "medio"
+N5	西	西洋	せいよう	the West; the Occident; Western countries	Occidente	ok	
+N5	西	西	にし	west	oeste	ok	
+N5	語	英語	えいご	English (language)	inglés (idioma)	ok	FreeDict said "texto"
+N5	語	語る	かたる	to talk about; to speak of; to tell	hablar acerca de	ok	
+N5	聞	新聞	しんぶん	newspaper	periódico	ok	
+N5	聞	聞く	きく	to hear	escuchar, preguntar	ok	JMdict_e sense 1 is "to hear"; 聞く also asks; FreeDict said "oír"
+N5	食	食堂	しょくどう	dining room; dining hall; cafeteria	comedor	ok	
+N5	食	食べる	たべる	to eat	comer	ok	
+N5	何	幾何	きか	geometry		skip	rare for an N5 learner; dropped in the maintainer's review
+N5	何	何	なに	what	qué	ok	
+N5	南	南部	なんぶ	southern part; the south (of a region)	zona sur	ok	FreeDict said "sur" (as 南 みなみ)
+N5	南	南	みなみ	south	sur	ok	
+N5	万	万	まん	10,000; ten thousand	diez mil	ok	
+N5	母	祖母	そぼ	grandmother	abuela	ok	
+N5	母	母親	ははおや	mother	madre	ok	
+N5	読	読書	どくしょ	reading (books)	lectura	ok	
+N5	読	読む	よむ	to read	leer	ok	
+N5	友	友人	ゆうじん	friend	amigo	ok	
+N5	友	友達	ともだち	friend; companion	amigo	ok	
+N5	父	祖父	そふ	grandfather	abuelo	ok	
+N5	父	父親	ちちおや	father	padre	ok	
