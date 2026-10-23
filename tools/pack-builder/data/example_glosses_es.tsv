@@ -170,3 +170,7 @@ N5	友	友人	ゆうじん	friend	amigo	ok
 N5	友	友達	ともだち	friend; companion	amigo	ok	
 N5	父	祖父	そふ	grandfather	abuelo	ok	
 N5	父	父親	ちちおや	father	padre	ok	
+N5	本	旗本	はたもと	headquarters (on the battlefield)	cuartel general	draft	CHECK: FreeDict suggestion (sync-glosses), not reviewed
+N5	中	途中	とちゅう	on the way; en route	en camino	draft	CHECK: FreeDict suggestion (sync-glosses), not reviewed
+N5	川	川柳	せんりゅう	senryū; comic haiku; humorous seventeen-mora poem		draft	CHECK: no FreeDict suggestion (sync-glosses)
+N5	何	幾何学	きかがく	geometry	geometría	draft	CHECK: FreeDict suggestion (sync-glosses), not reviewed
