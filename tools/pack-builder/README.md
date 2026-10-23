@@ -86,7 +86,8 @@ uv run pytest
   draws the name in its built-in ASCII font, and the builder warns otherwise.
   `--strokes` adds the optional KanjiVG stroke-order section (off by default).
   `--strokes-px` sets the em square for the masks and defaults to `--large-px`.
-  Packs are written in format **v2**: each glyph bitmap and stroke mask is
+  Packs are written in format **v2** (v3 only with `--example-words`, below):
+  each glyph bitmap and stroke mask is
   stored compressed when that is smaller (`docs/pack-format.md`), which makes a
   pack about a third to a quarter of its v1 size. Firmware older than v2
   support refuses these packs ("unsupported pack version"); it keeps reading its

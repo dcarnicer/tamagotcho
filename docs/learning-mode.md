@@ -424,6 +424,12 @@ The measurement and the gloss sources are in
 [docs/example-words.md](example-words.md); the Spanish glosses come from a
 reviewed project table, not from JMdict (§6, decision 9 revisited).
 
+**Data side done (2026-10-23, branch `feature/example-words`):** pack format
+v3 (docs/pack-format.md, "Example-words section"), `build --example-words`
+and `sync-glosses` in the builder, and the firmware reader
+(`PackReader::exampleWords()`, both memory modes). What the intro screen
+still needs is under phase 4 in §5.
+
 If the maintainer wants them (mockups:
 [T-Display-S3](learning-mode/intro-tdisplay-after@3x.png),
 [StickS3 second page](learning-mode/intro-words-after@3x.png)):
@@ -544,6 +550,36 @@ docs/pack-format.md (v3, the words section, set 2's kanji), the builder
 reader (`PackReader`, native tests in both memory modes), the intro's word
 rows or second page, docs/data-sources.md and `Credits.h`, and `decks.yml`.
 Independent of phases 1–3 until the last step.
+*Done 2026-10-23 except the intro and `decks.yml`*; what the intro needs:
+- **The words.** `PackReader::exampleWords(cardIdx, out, 2)` on the intro's
+  card (0 for a v1/v2 pack, or a card without words: the intro is exactly
+  phase 2's, with no second page). Each `ExampleWord` has `word`, `reading`,
+  `gloss` (`""` when the deck has none: show the word and reading only),
+  `kind` (on/kun: which `ON`/`KUN` row it illustrates) and the byte span
+  `readingStart`/`readingLen` of the part the kanji reads (`にち` in
+  `まいにち`; 0/0 when unknown). The strings follow the card strings'
+  lifetime rule (streamed: 16 string slots), so read them when drawing, or
+  copy them in `showIntro()`; two small reads per call, nothing resident.
+- **Drawing.** Every character is in the pack's set 2 at `text_px` (18 px),
+  kanji included, so `Renderer::drawText`/`drawLabel` with
+  `kGlyphSetText`, or `kTextUi` (whose Label face falls back to set 2 for
+  kana and kanji), draw them with no renderer change. The span is drawn by
+  splitting the reading into three byte ranges (copy each into a small
+  buffer, advance by `textWidth()`): the kanji's part in `text`, the rest in
+  `text-dim`. The gloss in set 2 too, not the built-in caption font, which
+  lacks most accented letters. The word's reading stays in hiragana
+  whatever Settings › Study › On'yomi says (it is how the word is written).
+- **Layout.** The T-Display-S3 portrait (170 px) puts the words under the
+  reading rows ([mockup](learning-mode/intro-tdisplay-after@3x.png)). The
+  135 px panels (StickS3 portrait; the Cardputer ADV's and the landscape
+  forms' 135 px height) need a **second page**
+  ([mockup](learning-mode/intro-words-after@3x.png)): a front tap (Cardputer:
+  Enter, → or ↓) on page 1 turns to it when the card has words, the next goes
+  on (one more press per new card); the header counter shows `2/2`; the kanji
+  small (set 1) with its first meaning, a rule, then per word its form,
+  reading and gloss. The side tap ("known") works on both pages. Pixel
+  budgets for the longest words and glosses belong in `test_quizui` (the
+  builder keeps glosses to 24 characters, about two lines at 135 px).
 
 **Hardware checks** (StickS3 first, then the T-Display-S3 and the Cardputer
 ADV; screenshots with `tools/screenshots/remote.py`):

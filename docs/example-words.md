@@ -1,11 +1,18 @@
 # Example words and their glosses
 
 Status (2026-10-23): measured for decision 9 of docs/learning-mode.md
-(§3.11: example words on the new-kanji intro card). Nothing is implemented:
-no pack, pack format, firmware or published deck changed. The numbers come
+(§3.11: example words on the new-kanji intro card). The numbers come
 from `tools/pack-builder/scripts/example_words_report.py` and, for the
 licence-compatible alternatives to JMdict's Spanish glosses ("Alternatives",
 which revises the recommendation), `scripts/example_words_alternatives.py`.
+**Since implemented on the data side** (branch `feature/example-words`): the
+pick below moved into the builder (`tamagotcho_pack/words.py`, `build
+--example-words`, which writes pack format v3; the scripts import it), the
+Spanish table is `data/example_glosses_es.tsv` (filled by `sync-glosses`),
+and the firmware reads the words (`PackReader::exampleWords()`); no
+published deck has them yet (docs/pack-format.md, "Rollout of v3"). One
+change from the measurement: the table's `skip` rows remove a word in every
+language, and the next candidate is taken.
 
 ## Question
 
