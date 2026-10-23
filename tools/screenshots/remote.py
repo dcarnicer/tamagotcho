@@ -25,6 +25,7 @@ quotes for text with spaces):
     until:[SECONDS:]TEXT   wait for a log line containing TEXT (60 s default)
     wake                   light a dim or dark panel without a press
     date                   test hook: the boot-time date question
+    due                    test hook: the next update check is due
     fail-pin               test hook: the next Wi-Fi join's pinned step fails
     fail-join              test hook: the next Wi-Fi join fails outright
 
@@ -62,7 +63,7 @@ PRESSES.update({f"key:{name}": b"k" + c for name, c in KEYS.items()})
 HELD_KEYS = {f"key-hold:{name}": b"k" + c.upper()
              for name, c in KEYS.items() if name in ("up", "down", "left", "right")}
 PRESSES.update(HELD_KEYS)
-HOOKS = {"wake": b"w", "date": b"d", "fail-pin": b"f", "fail-join": b"x"}
+HOOKS = {"wake": b"w", "date": b"d", "due": b"u", "fail-pin": b"f", "fail-join": b"x"}
 
 ROW_RE = re.compile(r"#r (\d+) ([0-9a-f]+)$")
 SHOT_RE = re.compile(r"#shot (\d+) (\d+)(?: (\w+))?$")
@@ -352,7 +353,7 @@ def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__.split("\n\n")[0],
         epilog="Steps: tap tap-side hold hold-side key:KEY key-hold:ARROW STEP:N shot[:NAME] "
-        "wait:S until:[S:]TEXT wake date fail-pin fail-join. See tools/screenshots/README.md.",
+        "wait:S until:[S:]TEXT wake date due fail-pin fail-join. See tools/screenshots/README.md.",
     )
     p.add_argument("steps", nargs="*", help="steps to run, after those of --file")
     p.add_argument("-f", "--file", action="append", default=[], help="scenario file(s)")

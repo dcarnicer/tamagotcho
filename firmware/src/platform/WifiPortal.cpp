@@ -991,10 +991,13 @@ void WifiPortal::appendHomeDecks(String& h, const PortalStats& st) {
     std::vector<CatalogEntry> rows = catalog_;
     const String lang = catalogLang();
     orderCatalogForLang(rows, lang.c_str());
+    std::vector<DeckState> states;
+    states.reserve(rows.size());
     h += "<table>";
     for (const CatalogEntry& e : rows) {
         const String name = htmlEscape(e.name.c_str());
         const DeckState ds = deckStateOnDisk(kPacksDir, e);
+        states.push_back(ds);
         // The deck's title, then the file it is saved as (what "Your decks"
         // lists) before its language, cards and size.
         h += "<tr><td><b>";
@@ -1027,6 +1030,7 @@ void WifiPortal::appendHomeDecks(String& h, const PortalStats& st) {
     h += "</table><p class=\"muted\">";
     h += t.deckNote;
     h += "</p>";
+    if (hooks_.onCatalog) hooks_.onCatalog(rows, states);
 }
 
 void WifiPortal::appendYourDecks(String& h, const PortalStats& st) {

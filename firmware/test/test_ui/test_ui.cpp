@@ -383,8 +383,8 @@ void test_update_text_fits() {
     const UiFace& f = uifont::kLabel;
     constexpr int kResultW = 127;  // W - 8 on the narrowest screen
     const int kSpace = uiTextWidth(f, " ", 0);
-    for (const char* text : {"6 mazos por actualizar", "1 actualización de mazo",
-                             "6 deck updates available", "1 deck update available"}) {
+    for (const char* text : {"6 mazos por actualizar", "1 actualización de mazo", "6 updates",
+                             "1 update"}) {
         int lineW = 0, lines = 1;
         const char* p = text;
         while (*p) {
@@ -407,8 +407,10 @@ void test_update_text_fits() {
         }
         TEST_ASSERT_TRUE_MESSAGE(lines <= 2, text);
     }
-    // The old Spanish line did not fit: its longest word alone was 130 px.
+    // The old lines did not fit: the Spanish word alone was 130 px, and the
+    // English line was 205 px (the device cut it to "updates avail...").
     TEST_ASSERT_TRUE(uiTextWidth(f, "actualizaciones", 0) > kResultW);
+    TEST_ASSERT_TRUE(uiTextWidth(f, "6 deck updates available", 0) > kResultW);
 
     // The home row: 135 - 2 * gutter - 2 * row pad - icon - chevron.
     constexpr int kHomeLabelPx = 135 - 2 * theme::kGutter - 2 * theme::kRowPadX -

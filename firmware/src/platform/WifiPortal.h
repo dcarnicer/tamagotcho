@@ -138,6 +138,12 @@ public:
         // reloads the store and rebuilds the queue. False on failure, with the
         // previous progress still loaded. Null hides the restore form.
         bool (*onRestoreProgress)(const char* tmpPath) = nullptr;
+        // Home mode: the catalog the page just rendered, with the on-disk
+        // state of every entry (the same comparison the rows show). The app
+        // refreshes its update count/badge from it, so a portal visit counts
+        // as a catalog read. Null: no refresh.
+        void (*onCatalog)(const std::vector<CatalogEntry>& entries,
+                          const std::vector<DeckState>& states) = nullptr;
     };
 
     WifiPortal() = default;

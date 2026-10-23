@@ -526,8 +526,8 @@ const UiStrings kUiEn = {
     "Press Enter when it shows today.",
     "Hold the G0 button to erase it. Decks and progress are lost.",
     "Updates", "check", "up to date", "1 upd", "%u upd",
-    "DECK UPDATES", "Checking deck updates...", "1 deck update available",
-    "%u deck updates available", "All decks are up to date",
+    "DECK UPDATES", "Checking deck updates...", "1 update",
+    "%u updates", "All decks are up to date",
     "Settings > Decks > Updates", "%s · %u", "skip", "continue",
 };
 
@@ -1122,6 +1122,8 @@ void openGetDecks(bool fromBoot, bool updatesOnly = false);
 void setUpdatesFromCatalog(const std::vector<tgc::CatalogEntry>& entries,
                            const std::vector<tgc::DeckState>* states = nullptr);
 void saveUpdateState();
+bool updateCheckDue();
+void updateCheckRead();
 void updateCheckTick(uint32_t now);
 void updateCheckInput(int a, int b);
 void openPortal(PortalMode mode);
@@ -3323,7 +3325,7 @@ void loadTimeZone() {
 // up to date: a pending power-cut date question is answered, and a new day
 // rebuilds the queue. False when the time was rejected as implausible; nothing
 // changes then.
-bool applyWallClock(int64_t utcMs, const tgc::TzRule& zone) {
+bool applyWallClock(int64_t utcMs, const tgc::TzRule& zone, bool leaveDateNow = true) {
     const uint16_t before = gSrs.today();
     const int offsetMin = tgc::tzOffsetMinAt(zone, utcMs);
     const tgc::ClockSyncResult r = gSrs.syncWallClock(utcMs, zone);
@@ -3347,7 +3349,9 @@ bool applyWallClock(int64_t utcMs, const tgc::TzRule& zone) {
                   (unsigned)before, (unsigned)gSrs.today(), date, offsetMin);
 
     // The boot-time "how many days?" question: the real time answers it.
-    if (gScreen == Screen::Date && gAfterDate == Screen::Quiz) {
+    // dateSyncPoll() may ask to stay on the screen for a moment: it takes the
+    // radio session over for the update check before leaving for the quiz.
+    if (gScreen == Screen::Date && gAfterDate == Screen::Quiz && leaveDateNow) {
         leaveDate();
         return true;
     }
@@ -3407,11 +3411,29 @@ void dateSyncBegin() {
     Serial.printf("clock: getting the date via \"%s\"\n", gHome.ssid());
 }
 
+// The date sync has the home Wi-Fi up. If the day's update check is due, take
+// the session over: read the catalog on the same connection and show the usual
+// result screen, then finishUpdateCheck() goes to the quiz. The radio is turned
+// off by updateCheckRead().
+void startUpdateCheckFromDate() {
+    gScreen = Screen::UpdateCheck;
+    gUpdateStep = UpdateStep::Catalog;
+    gUpdateStartedAt = millis();
+    gUpdateFound = 0;
+    gUpdateErr[0] = 0;
+    gUpdateDoneAt = 0;
+    gNetActivityAt = millis();
+    setCpuFrequencyMhz(kCpuWifiMhz);
+    drawScreen();       // "Reading catalog..."
+    updateCheckRead();  // the join is already up: fetch, count, radio off
+}
+
 // loop() on the date screen while Joining. Once the join succeeds: NTP
-// (blocking, at most 2 x kNtpTimeoutMs), radio off, then applyWallClock(), which
-// answers the question and leaves for the quiz -- true when that happened. On
-// any failure the radio is off too and the stepper comes up with a status line
-// that says to set the date by hand.
+// (blocking, at most 2 x kNtpTimeoutMs), then applyWallClock(). If the update
+// check is due, the same radio session reads the catalog before leaving for the
+// quiz; otherwise the radio is off and the quiz follows. On any failure the
+// radio is off too and the stepper comes up with a status line that says to set
+// the date by hand.
 bool dateSyncPoll() {
     if (gDateSync != DateSync::Joining) return false;
     const tgc::HomeWifi::State st = gHome.poll();
@@ -3419,10 +3441,18 @@ bool dateSyncPoll() {
     const bool joined = st == tgc::HomeWifi::State::Connected;
     int64_t utcMs = 0;
     const bool got = joined && gHome.fetchUtcMs(&utcMs, kNtpTimeoutMs);
-    netRadioOff();
     if (joined) gSwallowInput = true;  // presses made while blocked must not act now
     gDateSync = DateSync::None;
-    if (got && applyWallClock(utcMs, gTz)) return true;
+    if (got && applyWallClock(utcMs, gTz, false)) {
+        if (updateCheckDue()) {
+            startUpdateCheckFromDate();
+            return true;
+        }
+        netRadioOff();
+        leaveDate();
+        return true;
+    }
+    netRadioOff();
     gDateSync = joined ? DateSync::NoTime : DateSync::NoNetwork;
     // The status is news: the join's time does not count against the reader.
     gNetActivityAt = millis();
@@ -3953,10 +3983,18 @@ bool portalRestoreProgress(const char* tmpPath) {
     return true;
 }
 
+// The portal's home page has just read the catalog and compared every entry
+// with /packs: the same read the Updates row does, so refresh the badge from it
+// (docs/deck-updates.md, "any Wi-Fi session").
+void portalCatalog(const std::vector<tgc::CatalogEntry>& entries,
+                   const std::vector<tgc::DeckState>& states) {
+    setUpdatesFromCatalog(entries, &states);
+}
+
 const tgc::WifiPortal::Hooks kPortalHooks = {
     portalFillStats,      portalPacksChanged, portalTime,          wifiToGetDecks,
     portalUiLang,         portalSwitchToHome, portalDeckDownload,  portalDeleteDeck,
-    portalRestoreProgress,
+    portalRestoreProgress, portalCatalog,
 };
 
 // The mode the portal opens in: home once a network is saved, else setup.
@@ -5160,6 +5198,7 @@ void setUpdatesFromCatalog(const std::vector<tgc::CatalogEntry>& entries,
     if (states && states->size() == entries.size()) {
         for (tgc::DeckState s : *states)
             if (s == tgc::DeckState::Update) ++n;
+        Serial.printf("[update] %u update(s) from a catalog read\n", (unsigned)n);
     } else {
         HashStats hs;
         n = countUpdates(entries, &hs);
@@ -5177,9 +5216,11 @@ void setUpdatesFromCatalog(const std::vector<tgc::CatalogEntry>& entries,
 }
 
 // The automatic check's policy (docs/deck-updates.md: once a day on external
-// power; on battery, once a week and only from 50 %). A power-cut boot skips
-// it because the date screen already uses the network; the next normal boot
-// checks.
+// power; on battery, once a week and only from 50 %). The boot-time date sync
+// piggybacks on its join when due; a normal boot with no other Wi-Fi session
+// uses the standalone check. Any catalog read (Get decks, portal, network test)
+// refreshes the day, so this only spends a dedicated join when nothing else
+// has.
 bool updateCheckDue() {
     if (gPacks.empty() || !tgc::HomeWifi::hasCredentials() || !gSrs.hasWallClock()) return false;
     const bool external = tgc::board::externalPower() || tgc::board::isCharging();
@@ -5300,7 +5341,11 @@ void updateCheckTick(uint32_t now) {
         return;
     }
     if (gUpdateStep == UpdateStep::Done || gUpdateStep == UpdateStep::Failed) {
-        if (now - gUpdateDoneAt >= kUpdateResultMs) finishUpdateCheck();
+        // millis(), not `now`: the date-sync piggyback calls updateCheckRead()
+        // from the input path, and the hash blocks for seconds. `now` was read
+        // before that, so it would be older than gUpdateDoneAt and the result
+        // would vanish at once.
+        if (millis() - gUpdateDoneAt >= kUpdateResultMs) finishUpdateCheck();
     }
 }
 
@@ -5466,6 +5511,8 @@ void netTestCheck() {
         snprintf(gTestCatalog, sizeof gTestCatalog, ui().testCatalogFmt,
                  (unsigned)c.parse.entries.size());
         gTestCatalogColor = tgc::theme::kOkHi;
+        // A user-initiated read: refresh the update count too.
+        setUpdatesFromCatalog(c.parse.entries);
     }
     Serial.printf("[net] test: \"%s\" ip %s rssi %d dBm, catalog %s, time %d\n", gHome.ssid(),
                   gTestIp.c_str(), gTestRssi, gTestCatalog, gTestTime);
@@ -5685,6 +5732,11 @@ void remotePoll(uint32_t now) {
             if (gScreenOff || gDimmed) wakeScreen();
         } else if (c == 'd') {
             remoteDateQuestion();
+        } else if (c == 'u') {
+            // The next update check is due: clear the stored day. Test only.
+            gUpdateDay = 0;
+            gPrefs.putUInt(kPrefUpdateDay, 0);
+            Serial.println("remote: the next update check is due");
         } else if (c == 'f' || c == 'x') {
             tgc::HomeWifi::setTestFault(c == 'f' ? tgc::HomeWifi::TestFault::BadPin
                                                  : tgc::HomeWifi::TestFault::NoJoin);

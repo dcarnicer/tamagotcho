@@ -56,7 +56,7 @@ otherwise. The port is `--port`, else `$TGC_PORT`, else the first
 | `wait:S`                | pause S seconds, printing the log                        |
 | `until:[S:]TEXT`        | wait until a log line contains TEXT (at most S s, 60 by default), counting the lines since the last press or hook; quote TEXT with spaces |
 | `wake`                  | light a dim or dark panel without a press                |
-| `date`, `fail-pin`, `fail-join` | the test hooks below                             |
+| `date`, `due`, `fail-pin`, `fail-join` | the test hooks below                     |
 
 A scenario file holds the same words, whitespace-separated, with `#` comments
 and shell-style quotes. Device lines print as `| ...`, the tool's own as
@@ -77,6 +77,7 @@ Serial/JTAG ignores it), read by `loop()` (`TGC_REMOTE` block in
 | `s`   | dump the back buffer (below)                                         |
 | `w`   | wake: counts as activity and lights a dim or dark panel, no press    |
 | `d`   | test hook: the boot-time date question                               |
+| `u`   | test hook: the next deck update check is due                         |
 | `f`   | test hook: the next home Wi-Fi join's pinned step fails              |
 | `x`   | test hook: the next home Wi-Fi join fails                            |
 
@@ -134,6 +135,9 @@ Each one is a byte, compiled only into the `-shots` envs.
   hold confirms the date shown (saved, as at boot), and a network time that
   answers is applied as by every sync (a same-day one writes nothing). It is
   refused while the portal, Get decks or the network test has the radio.
+- **`due`**: clears the stored update-check day (`updday`), so the next
+  automatic check is due: the boot check, or the date sync when it piggybacks
+  on its join. Log: `remote: the next update check is due`.
 - **`fail-pin`**: the next home Wi-Fi join (date question, Get decks, network
   test, portal) pins its join to `02:00:00:00:7E:57`, an access point that does
   not exist, so the pinned step fails and the "any access point" step runs after
