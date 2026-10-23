@@ -369,6 +369,9 @@ it; the decks published so far use none of it.
   translational equivalents in other languages, e.g. German, French, Dutch,
   etc. are covered by separate copyright held by the compilers of that
   material)" (https://www.edrdg.org/edrdg/licence.html).
+  `scripts/example_words_report.py --fetch` downloads `JMdict.gz` into the
+  cache only to measure how many example words have a Spanish gloss
+  (docs/example-words.md); no pack contains them.
 
 ### Meaning overrides (project-authored)
 
@@ -387,6 +390,44 @@ miniatures in the TEI, JMdict and Anki-deck formats (a dozen English words
 with Spanish translations, four JMdict entries, a handful of vocabulary words)
 and KANJIDIC2-shaped entries with invented glosses; they are not copied from
 the sources or KANJIDIC2.
+
+## Example-word glosses (evaluated only; no pack uses them)
+
+`tools/pack-builder/scripts/example_words_alternatives.py --fetch` downloads
+these into `cache/research/` (git-ignored, SHA256-pinned in the script as
+fetched on 2026-10-23) to compare Spanish glosses for the example words of
+decision 9 (docs/example-words.md, "Alternatives"). FreeDict eng-spa (above)
+and JMdict (all languages, above) were compared too.
+
+- **Open Multilingual Wordnet 1.4** data release,
+  https://github.com/omwn/omw-data/releases/download/v1.4/omw-1.4.tar.xz
+  (49 MB). Read: the Japanese WordNet (NICT; licence: "Permission to use,
+  copy, modify and distribute this software and database … provided that …
+  the same appear on ALL copies", `omw-ja/LICENSE`), the Princeton WordNet 3.0
+  (the same terms, `omw-en/LICENSE`) and the Spanish wordnet of the
+  Multilingual Central Repository 3.0 ("distributed under Attribution 3.0
+  Unported (CC BY 3.0)", `omw-es/LICENSE`, https://adimen.si.ehu.es/web/MCR).
+  Compatible with CC BY-SA 4.0 packs with attribution and the notices.
+- **Wiktionary via kaikki.org** (wiktextract, Tatu Ylonen):
+  https://kaikki.org/dictionary/Japanese/kaikki.org-dictionary-Japanese.jsonl.gz
+  (English Wiktionary's Japanese entries, 49 MB) and
+  https://kaikki.org/eswiktionary/raw-wiktextract-data.jsonl.gz (Spanish
+  Wiktionary, 103 MB). Unversioned, regenerated weekly. Wiktionary text is CC
+  BY-SA 4.0 (and GFDL): "Permission is granted to copy, distribute and/or
+  modify the text of all Wiktionary entries under the terms of the Creative
+  Commons Attribution-ShareAlike 4.0 International License"
+  (https://en.wiktionary.org/wiki/Wiktionary:Copyrights); attribution:
+  Wiktionary contributors, with a link. kaikki.org asks for a link and a
+  citation, not a licence.
+- **Wikidata lexemes**: a SPARQL query (in the script) for Japanese lexemes,
+  their item-linked senses (P5137) and the items' Spanish labels, from
+  https://query.wikidata.org/sparql. CC0: "All structured data (i.e. the
+  main, Property, Lexeme, and EntitySchema namespaces) is released into the
+  public domain" (https://www.wikidata.org/wiki/Wikidata:Licensing).
+- **JMdict's Spanish glosses**, for the record: WWWJDIC's JSPANISH file, which
+  combines HISPADIC (a collaborative Spanish translation of EDICT, "licencia
+  creative commons" of unstated version) and RUI (Francisco Barberan,
+  "included with his permission"); https://www.edrdg.org/wwwjdic/wwwjdicinf.html.
 
 ## Root CA certificates (firmware)
 
