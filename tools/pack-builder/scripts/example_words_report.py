@@ -111,6 +111,7 @@ class Info:
     uk: bool          # the first sense is "usually written using kana alone" (為る, 沢山)
     eng: list[str] = field(default_factory=list)   # the first English sense's glosses
     spa: list[str] = field(default_factory=list)   # every Spanish gloss, in order
+    pos: tuple[str, ...] = ()                      # the first sense's parts of speech (n, v5k...)
 
 
 _ENTITY = re.compile(rb'<!ENTITY\s+([\w-]+)\s+"([^"]*)">')
@@ -135,6 +136,9 @@ def load_jmdict_info(data: bytes) -> dict[tuple[str, str], Info]:
                    {names.get(m.text or "", m.text) for m in s.findall("misc")},
                    [(g.get(XML_LANG, "eng"), g.text or "") for g in s.findall("gloss")])
                   for s in el.findall("sense")]
+        first = el.find("sense")
+        pos = tuple(names.get(p.text or "", p.text) for p in first.findall("pos")) \
+            if first is not None else ()
         for r in el.findall("r_ele"):
             reb = r.findtext("reb")
             restr = {x.text for x in r.findall("re_restr")}
@@ -144,7 +148,7 @@ def load_jmdict_info(data: bytes) -> dict[tuple[str, str], Info]:
                     continue
                 g = Info(pair_weight(ke_pri, re_pri),
                          priority_rank(ke_pri) is not None and priority_rank(re_pri) is not None,
-                         bool(senses) and "uk" in senses[0][2])
+                         bool(senses) and "uk" in senses[0][2], pos=pos)
                 for stagk, stagr, _, glosses in senses:
                     if (stagk and keb not in stagk) or (stagr and reb not in stagr):
                         continue
@@ -345,30 +349,25 @@ def pct(n: int, d: int) -> str:
     return f"{n / d * 100:.0f} %" if d else "–"
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--fetch", action="store_true", help="download JMdict.gz (all languages) first")
-    ap.add_argument("--force", action="store_true", help="with --fetch: download again")
-    ap.add_argument("--packs", help="directory with the published decks (n5-es.tgc ... joyo-en.tgc)")
-    ap.add_argument("--max-gloss", type=int, default=24,
-                    help="longest gloss (characters) that counts as short (default 24)")
-    ap.add_argument("--sample", type=int, default=30, help="spot-check size (N5-N3 words)")
-    ap.add_argument("--seed", type=int, default=9, help="spot-check random seed")
-    ap.add_argument("--tsv", help="write every picked word with its glosses to this file")
-    a = ap.parse_args()
+@dataclass
+class Picks:
+    """The picked words of every deck (compute_picks), for this report and
+    scripts/example_words_alternatives.py."""
+    decks: dict[str, list[int]]                       # deck -> card codepoints
+    packs: dict[tuple[str, str], Path]                # (deck, lang) -> published pack
+    mismatch: list[str]                               # asked readings that differ from a pack
+    new_jlpt: dict[int, int]
+    picks: dict[int, list[tuple[str, str, Word | None]]]  # cp -> (kind, asked, word) per asked kind
+    unfiltered: dict[int, int]                        # asked kinds with some word before usable()
+    rows: dict[int, list[Row]]                        # cp -> the picked words
+    all_cps: list[int]
+    full: bytes                                       # JMdict.gz as read
+    xml: bytes                                        # ... decompressed
+    info: dict[tuple[str, str], Info]
 
-    if a.fetch:
-        fetch_jmdict(a.force)
-    need = [paths.KANJIDIC_GZ, paths.KANJI_JSON, paths.JMDICT_GZ, paths.JMDICT_FURIGANA,
-            paths.WORDFREQ_JA, paths.TATOEBA_JPN, paths.JOYO_PDF, JMDICT_FULL,
-            *paths.JLPT_VOCAB.values()]
-    for p in need:
-        if not p.exists():
-            hint = "--fetch" if p == JMDICT_FULL else "`tamagotcho-pack fetch --readings`"
-            print(f"missing {p}: run {hint}", file=sys.stderr)
-            return 2
-    mx = a.max_gloss
 
+def compute_picks(packs_dir: str | Path | None = None) -> Picks:
+    """Every deck's asked readings and their picked words (see the docstring)."""
     # The asked readings, exactly as `build --common-readings` orders them.
     raw = parse_kanjidic(paths.KANJIDIC_GZ)
     new_jlpt = load_new_jlpt(paths.KANJI_JSON)
@@ -383,10 +382,10 @@ def main() -> int:
         decks[f"n{n}"] = [k.codepoint for k in raw if new_jlpt.get(k.codepoint) == n]
     decks["joyo"] = [k.codepoint for k in raw if k.grade in JOYO_GRADES]
     packs: dict[tuple[str, str], Path] = {}
-    if a.packs:
+    if packs_dir:
         for d in DECKS:
             for lang in ("es", "en"):
-                f = Path(a.packs) / f"{d}-{lang}.tgc"
+                f = Path(packs_dir) / f"{d}-{lang}.tgc"
                 if f.exists():
                     packs[(d, lang)] = f
     # The packs' own card lists win (a card the font lacks is dropped), and
@@ -412,7 +411,7 @@ def main() -> int:
     cands = words_by_reading(learner_pairs(vocab), kanji, furi, vocab)
     all_cps = sorted({cp for cps in decks.values() for cp in cps})
     picks: dict[int, list[tuple[str, str, Word | None]]] = {}
-    unfiltered: dict[int, int] = {}   # asked kinds with some word before usable()
+    unfiltered: dict[int, int] = {}
     for cp in all_cps:
         level = new_jlpt.get(cp) or 1   # no JLPT level (Jōyō only): any list word
         on, kun = asked[cp]
@@ -422,6 +421,38 @@ def main() -> int:
     rows: dict[int, list[Row]] = {
         cp: [Row(chr(cp), kind, r, w, info.get((w.text, w.reading))) for kind, r, w in ps if w]
         for cp, ps in picks.items()}
+    return Picks(decks, packs, mismatch, new_jlpt, picks, unfiltered, rows, all_cps, full, xml,
+                 info)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--fetch", action="store_true", help="download JMdict.gz (all languages) first")
+    ap.add_argument("--force", action="store_true", help="with --fetch: download again")
+    ap.add_argument("--packs", help="directory with the published decks (n5-es.tgc ... joyo-en.tgc)")
+    ap.add_argument("--max-gloss", type=int, default=24,
+                    help="longest gloss (characters) that counts as short (default 24)")
+    ap.add_argument("--sample", type=int, default=30, help="spot-check size (N5-N3 words)")
+    ap.add_argument("--seed", type=int, default=9, help="spot-check random seed")
+    ap.add_argument("--tsv", help="write every picked word with its glosses to this file")
+    a = ap.parse_args()
+
+    if a.fetch:
+        fetch_jmdict(a.force)
+    need = [paths.KANJIDIC_GZ, paths.KANJI_JSON, paths.JMDICT_GZ, paths.JMDICT_FURIGANA,
+            paths.WORDFREQ_JA, paths.TATOEBA_JPN, paths.JOYO_PDF, JMDICT_FULL,
+            *paths.JLPT_VOCAB.values()]
+    for p in need:
+        if not p.exists():
+            hint = "--fetch" if p == JMDICT_FULL else "`tamagotcho-pack fetch --readings`"
+            print(f"missing {p}: run {hint}", file=sys.stderr)
+            return 2
+    mx = a.max_gloss
+
+    s = compute_picks(a.packs)
+    decks, packs, mismatch, new_jlpt = s.decks, s.packs, s.mismatch, s.new_jlpt
+    picks, unfiltered, rows, all_cps = s.picks, s.unfiltered, s.rows, s.all_cps
+    full, xml = s.full, s.xml
 
     print("## Inputs\n")
     print(f"- JMdict (all languages): created {jmdict_created(xml)}, "
