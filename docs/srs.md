@@ -786,14 +786,14 @@ New globals: `tgc::SrsStore gSrs;`, `tgc::Queue gQueue;`, `uint32_t gShownAt;`.
 | `showError()` | a corrupt state file is *not* an error screen; log and start empty. |
 
 **Learning mode** (docs/learning-mode.md §5, phase 2). The SRS and queue part
-is in place (§2, §6 item 8) and nothing calls it yet, so the device behaves as
-before. The app will:
+is in place (§2, §6 item 8); the app calls it since `feature/learn-intro`
+(`app/Intro`, `app/Quiz`):
 
 | where | change |
 |-------|--------|
-| `setup()` and Study › Introduce | `gQueue.setLearning(opts)` with `opts.on` from NVS (`tangocho`/`intro`, On by default) before the first `rebuild()`; on a change of the setting, `setLearning()` and then a rebuild, since the queue already built keeps its items. |
-| `newQuestion()` → "next item" | after `gQueue.next(&item)`: `item.kind == tgc::ItemKind::Intro` opens the intro card for `item.cardIndex` (no question is built and `gReadingTurn` is left alone); `Step` and `Ask` build a question in `item.mode` with today's fallbacks. |
-| intro, front press (go on) | `gSrs.introduce(card.codepoint, gSrs.today())`, `gSrs.addIntroMs(ms on screen)` (capped at 30 s), `gQueue.introduced(item.cardIndex)`, `++gDirty`, then the next item. |
+| `boot()` and Study › Introduce | `gQueue.setLearning(learnOptions())` with `on` from NVS (`tangocho`/`intro`, On by default) before the first `rebuild()`; on a change of the setting, `setLearning()` and then a rebuild, since the queue already built keeps its items, and an intro, an unanswered question or the done screen behind the settings gives way to the new queue's next item (`refreshAfterRebuild()`). |
+| `newQuestion()` → `nextItem()` | after `gQueue.next(&item)`: `item.kind == tgc::ItemKind::Intro` opens the intro card for `item.cardIndex` (no question is built and `gReadingTurn` is left alone); `Step` and `Ask` build a question in `item.mode` with today's fallbacks. Any other rebuild with an intro behind the settings (New per day, a date set by hand or synced) replaces that intro too: the new queue would refuse its `introduced()`. |
+| intro, front press (go on) | `gQueue.introduced(item.cardIndex)`, then (when it accepted) `gSrs.introduce(card.codepoint, gSrs.today())`, `gSrs.addIntroMs(ms on screen)` (capped at 30 s), `++gDirty`; then the next item. |
 | intro, side tap ("known") | `gSrs.addIntroMs(ms on screen)`, `gQueue.known(item.cardIndex)`, then the next item, which is that card's question. |
 | `holdAction()` | unchanged: `gSrs.grade()` and `gQueue.answered()`; the queue knows when the answer was a step and inserts the next one. |
 | quiz header | unchanged: `sessionProgress(gQueue.answeredCount(), gQueue.remaining(), open)` already counts the steps to come and the intros done. |

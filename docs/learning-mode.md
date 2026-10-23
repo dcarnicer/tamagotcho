@@ -1,10 +1,13 @@
 # Learning mode: design and open decisions
 
-> **Status: approved (2026-10-23).** The maintainer accepted every
-> recommendation of §6 as written, so §3 is the design to build. Phases 1-3 of
-> §5 are being implemented. Decision 9 was revisited after the measurement in
-> docs/example-words.md: phase 4 (example words) is approved with glosses in
-> both languages (see §6).
+> **Status: approved (2026-10-23), built.** The maintainer accepted every
+> recommendation of §6 as written, so §3 is the design to build. Decision 9
+> was revisited after the measurement in docs/example-words.md: phase 4
+> (example words) is approved with glosses in both languages (see §6).
+> Phase 1 is on `feature/learn-srs`, the pack side of phase 4 on
+> `feature/example-words`, and phases 2 and 3 with the intro's example words
+> on `feature/learn-intro` (2026-10-23), awaiting the hardware checks of §5;
+> what changed from the design while building it is listed at the end of §5.
 
 The roadmap entry "Learning mode (idea, 2026-10-18)" asks for a mode for
 *learning* kanji, not only reviewing them: for example, introducing a new
@@ -517,6 +520,13 @@ phase 2 once the split has landed.
 
 **Phase 2 – The intro screen (M, ~2 d; after `refactor/split-main`; branch
 `feature/learn-intro`).**
+- **Done on `feature/learn-intro` (2026-10-23)**, with phase 3 and the intro
+  side of phase 4: `app/KanjiCard` (the shared parts), `app/Intro` (the
+  screen), `nextItem()` in `app/Quiz` (an intro, a question or the done
+  screen; every former `newQuestion()` caller takes it), Study › Introduce
+  (`Choice::Introduce`, NVS `tangocho`/`intro`), the pure layout in
+  `ui/QuizUi.h` with its budgets in `test_quizui` and the row in
+  `test_settings`. Hardware checks pending.
 - Take the detail card's kanji box, stroke animation and reading rows out of
   `drawDetail()` / `drawDetailKanji()` / `drawDetailFrame()` / `showDetail()`
   into parts keyed to a card index, used by both cards; the animation state
@@ -544,7 +554,9 @@ phase 2 once the split has landed.
 
 **Phase 3 – Statistics (S, ~0.5 d; may fold into phase 2).** Intro time into
 `review_ms` (capped); optionally `learning` in `/api/stats` and the portal
-page (`portal/PortalText`, both languages).
+page (`portal/PortalText`, both languages). *Done on `feature/learn-intro`*:
+the intro's time on screen (from its first frame, "known" included) goes
+through `addIntroMs()`; no `learning` count (decision 8 (b)).
 
 **Phase 4 – Example words (M–L, 2–3 d; only if decision 9 says so; branch
 `feature/example-words`).** Measure the Spanish gloss coverage first; then
@@ -553,7 +565,9 @@ docs/pack-format.md (v3, the words section, set 2's kanji), the builder
 reader (`PackReader`, native tests in both memory modes), the intro's word
 rows or second page, docs/data-sources.md and `Credits.h`, and `decks.yml`.
 Independent of phases 1–3 until the last step.
-*Done 2026-10-23 except the intro and `decks.yml`*; what the intro needs:
+*Done 2026-10-23 except the intro and `decks.yml`; the intro's words done on
+`feature/learn-intro` the same day (`decks.yml` still builds v2)*; what the
+intro needs:
 - **The words.** `PackReader::exampleWords(cardIdx, out, 2)` on the intro's
   card (0 for a v1/v2 pack, or a card without words: the intro is exactly
   phase 2's, with no second page). Each `ExampleWord` has `word`, `reading`,
@@ -596,6 +610,29 @@ ADV; screenshots with `tools/screenshots/remote.py`):
   an intro, a day rollover with cards still in their steps.
 - After a week: the share of introduced cards missed on their first next-day
   review (`TGC_QUIZ_LOG`), to check decision 6.
+
+**What building it changed** (`feature/learn-intro`, docs/decisions.md
+2026-10-23 "The intro card as built"):
+- **Words inline only when they all fit.** The T-Display-S3's portrait puts
+  the words under the readings when both fit there (a word's form and
+  reading side by side, its gloss under them); a card whose words would not
+  (外国人 がいこくじん is 168 px, the column 162) gets page 2 instead, so no
+  word is ever dropped. Its landscape (320×170) has no room under the rows
+  and always pages.
+- **Page 2 in landscape** (no mockup): the kanji and its first meaning on one
+  text line, a rule, then each word's form and reading side by side over a
+  one-line gloss. Two columns of 112 px would have cut two N5 glosses ("yen
+  (currency of Japan)", "long (distance, length)") at the third line; across
+  the 232 px every N5 gloss fits one line. Portrait keeps the mockup: the
+  set-1 kanji beside the meaning, then form, reading and up to two gloss
+  lines per word.
+- **Glosses in the UI font** (as the phase-4 notes say), so they are 18 px
+  like the rest, not the mockups' captions.
+- **The asked meaning takes two lines** when it is the card's only one.
+- **"+N" gives way to the reading**: a row whose first reading and "+N" do not
+  both fit shows the reading alone.
+- **The counter** fits worded for any two-digit stroke count in both
+  languages (§3.2 said up to 29: Jōyō's most).
 
 ---
 
