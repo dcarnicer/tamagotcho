@@ -1,9 +1,9 @@
 # Learning mode: design and open decisions
 
-> **Status: proposal (2026-10-23), awaiting the maintainer's decisions (§6).**
-> Nothing is implemented. §3 describes the design as it would be with every
-> recommended answer of §6; where an answer differs, §6 wins and §3 changes
-> with it.
+> **Status: approved (2026-10-23).** The maintainer accepted every
+> recommendation of §6 as written, so §3 is the design to build. Phases 1-3 of
+> §5 are being implemented; phase 4 (example words) waits for the Spanish
+> gloss measurement of decision 9.
 
 The roadmap entry "Learning mode (idea, 2026-10-18)" asks for a mode for
 *learning* kanji, not only reviewing them: for example, introducing a new
@@ -555,9 +555,17 @@ ADV; screenshots with `tools/screenshots/remote.py`):
 
 ---
 
-## 6. Open decisions
+## 6. Decisions
 
 Numbered for answering one by one. Each recommendation is what §3 assumes.
+
+**Answered on 2026-10-23: every recommendation accepted.** 1 (a) inside the
+daily session; 2 (b) the asked meaning and readings emphasised; 3 (a) on'yomi
+per the setting; 4 (b) side tap = "known"; 5 (b) two steps, gap 3; 6 (c) the
+intro as an exposure (S 0.40 d, D 5.28); 7 (b) Study › Introduce, On by
+default, global; 8 (b) intro time (capped at 30 s) in the time figure; 9 (a)
+no example words now, measure JMdict's Spanish gloss coverage first; 10 (a)
+new cards after the reviews.
 
 1. **Shape: inside the daily session, or a separate lessons mode?**
    - (a) Inside the session: a never-seen kanji gets its intro when it comes

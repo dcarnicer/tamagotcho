@@ -452,14 +452,18 @@ Scope for now: **kanji only** (no vocabulary decks).
       network" (cut to "Forget net...") is "Forget Wi-Fi".
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
       (picking an option on the device takes longer than in Anki).
-- [ ] **Learning mode** (idea, 2026-10-18). A mode for learning kanji, not
-      only reviewing them: for example, introducing a new kanji (meanings,
-      readings, stroke order) before its first multiple-choice question.
-      **Design proposal** (2026-10-23): `docs/learning-mode.md` (today's flow
-      of a new card, options, a recommended design: an intro card and two
-      same-day learning steps inside the daily session, the FSRS state it
-      records, mockups in `docs/learning-mode/`, a phased plan) with ten open
-      decisions for the maintainer. Nothing implemented yet.
+- [~] **Learning mode** (idea, 2026-10-18; approved 2026-10-23). A mode for
+      learning kanji, not only reviewing them: for example, introducing a new
+      kanji (meanings, readings, stroke order) before its first
+      multiple-choice question. **Design proposal** (2026-10-23):
+      `docs/learning-mode.md` (today's flow of a new card, options, a
+      recommended design: an intro card and two same-day learning steps inside
+      the daily session, the FSRS state it records, mockups in
+      `docs/learning-mode/`, a phased plan) with ten open decisions, all
+      answered with the recommendations on 2026-10-23 (docs/decisions.md). In
+      progress: phase 1 (SRS and queue), then the intro screen on top of the
+      `main.cpp` split; example words wait for a measurement of JMdict's
+      Spanish glosses.
 - [ ] **OTA firmware updates** (idea, 2026-10-21). Update the firmware over
       the home Wi-Fi, from the device, instead of over USB: for example a
       Settings › Device › Update row that reads the latest GitHub release
