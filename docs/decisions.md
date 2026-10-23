@@ -3184,3 +3184,20 @@ marked *to confirm* needs the device.
   hash the packs twice.
 - **English result.** The old "N deck updates available" was cut in the 127 px
   box ("6 deck / updates avail..."); the result now says "N updates".
+
+## 2026-10-23 – Learning mode: proposal first, mockups in today's style
+
+- The learning mode starts as a **proposal** (`docs/learning-mode.md`), like
+  the UX refresh: today's flow of a new card, options, a recommended design,
+  a phased plan and ten numbered decisions for the maintainer. Nothing in it
+  is decided here; the answers will get their own entry.
+- **Mockups from a sibling script.** `tools/ux-mockups/learning.py` reuses
+  `render.py`'s canvas, glyph and KanjiVG helpers but draws the style the
+  firmware has now (flat tiles, 2 px gaps, the Noto Sans JP UI font on its
+  20 px pitch, `quizGeom()` and `render/Widgets.cpp` geometry). `render.py`'s
+  "after" images are the proposal of 2026-10-18 (rounded corners, Klee One),
+  which §6 of docs/ux-refresh.md changed, so they are left as the record of
+  that proposal rather than restyled. The "before" images were checked
+  against the device screenshots in `docs/images/`. Output is deterministic;
+  the PNGs (native, 3x and a contact sheet, ~0.2 MB) are committed under
+  `docs/learning-mode/`.

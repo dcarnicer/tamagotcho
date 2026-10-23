@@ -17,7 +17,11 @@ and the UX mockups in `docs/ux/*.png`. The mockups render five N5 kanji with
 their KANJIDIC2 glosses and readings (hard-coded in
 `tools/ux-mockups/render.py`), Klee One glyphs (the default font when they
 were drawn) and the KanjiVG stroke shapes of one kanji, so they carry the same
-CC BY-SA terms and attribution as a pack. The firmware itself embeds glyph
+CC BY-SA terms and attribution as a pack. The learning-mode mockups in
+`docs/learning-mode/*.png` (`tools/ux-mockups/learning.py`) are the same kind:
+the same KANJIDIC2 sample data, Noto Sans JP glyphs, the KanjiVG strokes of 休,
+and two JMdict words with their readings and English glosses (休日, 休む;
+CC BY-SA 4.0, EDRDG), hard-coded in the script. The firmware itself embeds glyph
 bitmaps rendered from Noto Sans JP (`firmware/src/ui/UiFont.h`, see
 [Noto Sans JP](#noto-sans-jp-default-font) below); it contains no dictionary
 or stroke data.
