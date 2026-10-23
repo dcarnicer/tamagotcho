@@ -21,6 +21,7 @@ uv run python scripts/common_readings_report.py   # what --common-readings chang
 uv run tamagotcho-pack fetch --meanings # optional: English-Spanish dictionary for --meaning-order (with --readings)
 uv run tamagotcho-pack build --jlpt 5 --lang es --meaning-order -o out/n5-es-meanings.tgc
 uv run python scripts/meaning_order_report.py     # what --meaning-order changes
+uv run python scripts/example_words_report.py --fetch --packs DIR  # example-word measurement (docs/example-words.md)
 uv run tamagotcho-pack build --wanikani-token "$WANIKANI_TOKEN" -o out/wanikani.tgc
 uv run tamagotcho-pack build --wanikani-level 1 --wanikani-level 2 -o out/wanikani-l1-2.tgc
 uv run tamagotcho-pack inspect out/n5-es.tgc
