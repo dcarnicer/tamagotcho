@@ -2018,6 +2018,288 @@ void test_serialize_pre_anchor_file_unchanged() {
     TEST_ASSERT_TRUE(again == old);
 }
 
+// ------------------------------- learning mode (docs/learning-mode.md 3.5)
+
+namespace {
+
+constexpr uint32_t kYasumu = 0x4F11;  // 休, the sample card of the design
+constexpr uint8_t kMeaning = static_cast<uint8_t>(QuizMode::Meaning);
+constexpr uint8_t kReading = static_cast<uint8_t>(QuizMode::Reading);
+
+}  // namespace
+
+// The intro's memory: Again's stability (w[0]) and Good's difficulty (D0(3)).
+void test_intro_memory() {
+    const Memory m = introMemory();
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, kWeights[0], m.s);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5f, initMemory(Grade::Good).d, m.d);
+    TEST_ASSERT_FLOAT_WITHIN(0.005f, 5.28f, m.d);
+}
+
+// introduce() records an exposure, not an answer: S 0.40 d, D 5.28, due
+// today, bits 0 and 1; the answers, the Again answers, the streak and the
+// card's lapses stay as they were.
+void test_introduce_records_exposure() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(7);
+    s.grade(kHi, Grade::Good, 7, kMeaning, 0.5f);
+    s.grade(kTsuki, Grade::Again, 7, kMeaning, 0.5f);
+    s.addReviewMs(1000);
+    const uint32_t answers = s.answeredTotal();
+    const uint32_t again = s.againTotal();
+    const uint16_t streak = s.streakCurrent();
+    const uint16_t lastStudy = s.lastStudyDay();
+    const uint16_t newCount = s.newIntroducedCount();
+    const Record hi = *s.find(kHi);
+
+    TEST_ASSERT_TRUE(s.introduce(kYasumu, 7));
+    const Record* r = s.find(kYasumu);
+    TEST_ASSERT_NOT_NULL(r);
+    TEST_ASSERT_EQUAL_UINT16(40, r->stabilityCds);  // 0.40 d
+    TEST_ASSERT_EQUAL_UINT8(53, r->difficulty10);   // 5.28, stored as 5.3
+    TEST_ASSERT_EQUAL_UINT16(7, r->dueDay);         // due now
+    TEST_ASSERT_EQUAL_UINT16(7, r->lastDay);
+    TEST_ASSERT_EQUAL_UINT8(0, r->reps);
+    TEST_ASSERT_EQUAL_UINT8(0, r->lapses);
+    TEST_ASSERT_EQUAL_UINT8(0, r->modeSeen);
+    TEST_ASSERT_EQUAL_UINT8(0xFF, r->lastGrade);
+    TEST_ASSERT_EQUAL_HEX8(kRecordFlagIntroducedOnLastDay | kRecordFlagLearning, r->flags);
+    TEST_ASSERT_TRUE(isLearning(*r));
+    TEST_ASSERT_TRUE(introducedOn(*r, 7));
+    TEST_ASSERT_FALSE(isFresh(r));
+
+    TEST_ASSERT_EQUAL_UINT32(answers, s.answeredTotal());
+    TEST_ASSERT_EQUAL_UINT32(again, s.againTotal());
+    TEST_ASSERT_EQUAL_UINT16(streak, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(lastStudy, s.lastStudyDay());
+    TEST_ASSERT_EQUAL_UINT32(1000, s.reviewMs());
+    // The legacy header counter counts it, as a first grade would.
+    TEST_ASSERT_EQUAL_UINT16(newCount + 1, s.newIntroducedCount());
+    // Seen, not answered, not learned.
+    const Stats st = s.stats();
+    TEST_ASSERT_EQUAL_UINT32(3, st.seen);
+    TEST_ASSERT_EQUAL_UINT32(2, st.reps);
+    TEST_ASSERT_EQUAL_UINT32(1, st.lapses);
+    TEST_ASSERT_EQUAL_UINT32(0, st.learned);
+
+    // Twice, or a card already answered: refused, nothing changes.
+    TEST_ASSERT_FALSE(s.introduce(kYasumu, 7));
+    TEST_ASSERT_FALSE(s.introduce(kHi, 7));
+    TEST_ASSERT_EQUAL_MEMORY(&hi, s.find(kHi), sizeof(Record));
+    TEST_ASSERT_EQUAL_UINT16(newCount + 1, s.newIntroducedCount());
+
+    // A store that never studied stays so: an intro on day 0 starts no streak.
+    SrsStore fresh;
+    MemoryIo none;
+    fresh.begin(none);
+    TEST_ASSERT_TRUE(fresh.introduce(kYasumu, 0));
+    TEST_ASSERT_FALSE(fresh.hasStudied());
+    TEST_ASSERT_EQUAL_UINT16(0, fresh.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(0, fresh.find(kYasumu)->dueDay);  // day 0: still learning, see the queue
+
+    // A full table takes no new intro.
+    SrsStore full;
+    MemoryIo io3;
+    full.begin(io3);
+    for (uint32_t cp = 1; cp <= SrsStore::kMaxRecords; ++cp) full.getOrCreate(cp).reps = 1;
+    TEST_ASSERT_FALSE(full.introduce(999999, 0));
+    TEST_ASSERT_NULL(full.find(999999));
+    TEST_ASSERT_EQUAL_UINT32(8192, static_cast<uint32_t>(full.count()));
+}
+
+// The intro's time on screen counts as study time, capped at 30 s.
+void test_intro_time_capped() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.addIntroMs(12000);
+    TEST_ASSERT_EQUAL_UINT32(12000, s.reviewMs());
+    s.addIntroMs(600000);  // left on screen for ten minutes
+    TEST_ASSERT_EQUAL_UINT32(12000 + kIntroMsCap, s.reviewMs());
+    TEST_ASSERT_EQUAL_UINT32(0, s.answeredTotal());
+}
+
+// The steps on the intro day are same-day reviews (w[17], w[18]): a Good is
+// x1.41 (0.40 -> 0.56 d), an Again x0.50 and D + ~1.5. The first grade
+// clears bit1 and keeps bit0 (introduced today); it is an answer.
+void test_learning_grade_same_day() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(4);
+    TEST_ASSERT_TRUE(s.introduce(kYasumu, 4));
+    s.grade(kYasumu, Grade::Good, 4, kMeaning, 0.5f);
+    const Record* r = s.find(kYasumu);
+    TEST_ASSERT_EQUAL_UINT16(56, r->stabilityCds);
+    TEST_ASSERT_EQUAL_UINT8(53, r->difficulty10);
+    TEST_ASSERT_EQUAL_HEX8(kRecordFlagIntroducedOnLastDay, r->flags);
+    TEST_ASSERT_FALSE(isLearning(*r));
+    TEST_ASSERT_TRUE(introducedOn(*r, 4));
+    TEST_ASSERT_EQUAL_UINT16(5, r->dueDay);  // round(0.56) -> 1 day
+    TEST_ASSERT_EQUAL_UINT16(4, r->lastDay);
+    TEST_ASSERT_EQUAL_UINT8(1, r->reps);
+    TEST_ASSERT_EQUAL_UINT8(0, r->lapses);
+    TEST_ASSERT_EQUAL_UINT8(0x1, r->modeSeen);
+    TEST_ASSERT_EQUAL_UINT8(2, r->lastGrade);
+    TEST_ASSERT_EQUAL_UINT32(1, s.answeredTotal());
+    TEST_ASSERT_EQUAL_UINT16(1, s.streakCurrent());
+    TEST_ASSERT_EQUAL_UINT16(1, s.newIntroducedCount());  // the intro counted it once
+    // Step 2, right: 0.79 d, still due tomorrow.
+    s.grade(kYasumu, Grade::Good, 4, kReading, 0.5f);
+    TEST_ASSERT_EQUAL_UINT16(79, r->stabilityCds);
+    TEST_ASSERT_EQUAL_UINT16(5, r->dueDay);
+    TEST_ASSERT_EQUAL_UINT8(0x3, r->modeSeen);
+
+    // A missed step: S halves, D rises to 6.8, a lapse and an Again answer.
+    TEST_ASSERT_TRUE(s.introduce(kTsuki, 4));
+    s.grade(kTsuki, Grade::Again, 4, kMeaning, 0.5f);
+    const Record* m = s.find(kTsuki);
+    TEST_ASSERT_EQUAL_UINT16(20, m->stabilityCds);
+    TEST_ASSERT_EQUAL_UINT8(68, m->difficulty10);
+    TEST_ASSERT_EQUAL_UINT8(1, m->lapses);
+    TEST_ASSERT_EQUAL_UINT32(1, s.againTotal());
+    TEST_ASSERT_EQUAL_HEX8(kRecordFlagIntroducedOnLastDay, m->flags);
+    TEST_ASSERT_EQUAL_UINT16(5, m->dueDay);
+}
+
+// A learning record graded on a later day (its steps were dropped by a
+// rebuild) uses the regular formula from the intro's S and D, not a first
+// review's, and clears both bits.
+void test_learning_grade_later_day() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(5);
+    TEST_ASSERT_TRUE(s.introduce(kYasumu, 5));
+    s.setToday(7);
+    s.grade(kYasumu, Grade::Good, 7, kMeaning, 0.5f);
+
+    Memory from;
+    from.s = 0.40f;
+    from.d = 5.3f;
+    const Memory want = nextMemory(from, Grade::Good, 2.0f);
+    const Record* r = s.find(kYasumu);
+    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(std::lround(want.s * 100.0f)), r->stabilityCds);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(std::lround(want.d * 10.0f)), r->difficulty10);
+    TEST_ASSERT_TRUE(r->stabilityCds != 317);  // not initMemory(Good)
+    TEST_ASSERT_EQUAL_HEX8(0, r->flags);
+    TEST_ASSERT_FALSE(introducedOn(*r, 7));
+    TEST_ASSERT_EQUAL_UINT8(1, r->reps);
+    TEST_ASSERT_EQUAL_UINT16(7, r->lastDay);
+    TEST_ASSERT_EQUAL_UINT32(1, s.answeredTotal());
+}
+
+// The flag survives a save and a load: same layout, same size, bit1 in the
+// record's flags byte (offset 15).
+void test_learning_flag_roundtrip() {
+    SrsStore a;
+    MemoryIo none;
+    a.begin(none);
+    a.setToday(0);
+    TEST_ASSERT_TRUE(a.introduce(kYasumu, 0));
+    MemoryIo io;
+    TEST_ASSERT_TRUE(a.save(io));
+    TEST_ASSERT_EQUAL_UINT32(48 + 16 + 4, static_cast<uint32_t>(io.bytes.size()));
+    TEST_ASSERT_EQUAL_HEX8(0x03, io.bytes[48 + 15]);
+    TEST_ASSERT_TRUE(SrsStore::validateBytes(io.bytes.data(), io.bytes.size()));
+
+    SrsStore b;
+    TEST_ASSERT_TRUE(b.begin(io));
+    TEST_ASSERT_EQUAL_MEMORY(a.find(kYasumu), b.find(kYasumu), sizeof(Record));
+    TEST_ASSERT_TRUE(isLearning(*b.find(kYasumu)));
+    TEST_ASSERT_EQUAL_UINT32(0, b.answeredTotal());
+    TEST_ASSERT_EQUAL_UINT16(1, b.newIntroducedCount());
+}
+
+// Forgetting a learning record (Delete progress, a deleted deck) makes the
+// kanji new again: no record, and it can be introduced anew.
+void test_learning_forget() {
+    SrsStore s;
+    MemoryIo io;
+    s.begin(io);
+    s.setToday(3);
+    TEST_ASSERT_TRUE(s.introduce(kYasumu, 3));
+    const uint32_t cps[] = {kYasumu};
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(s.forget(cps, 1)));
+    TEST_ASSERT_NULL(s.find(kYasumu));
+    TEST_ASSERT_TRUE(isFresh(s.find(kYasumu)));
+    TEST_ASSERT_TRUE(s.introduce(kYasumu, 3));
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(s.resetProgress()));
+    TEST_ASSERT_NULL(s.find(kYasumu));
+}
+
+namespace {
+
+// Answers every review Good on its due day from the record's current state,
+// with the fuzz at its centre, and returns the intervals; `inYear` gets the
+// reviews after day 0 within 365 days (docs/learning-mode.md section 3.5).
+std::vector<int> goodIntervals(SrsStore& s, uint32_t cp, int n, int* inYear) {
+    std::vector<int> out;
+    *inYear = 0;
+    for (;;) {
+        const Record* r = s.find(cp);
+        if (static_cast<int>(out.size()) < n) out.push_back(r->dueDay - r->lastDay);
+        if (r->dueDay > 365) break;
+        ++*inYear;
+        s.grade(cp, Grade::Good, r->dueDay, kMeaning, 0.5f);
+    }
+    return out;
+}
+
+}  // namespace
+
+// The schedules of the design's table (section 3.5): path (C), the intro and
+// both steps right; (C) with step 1 missed, its relearn and step 2 right; and
+// "known", a first answer right and fast.
+void test_learning_schedules() {
+    int year = 0;
+    {
+        SrsStore s;
+        MemoryIo io;
+        s.begin(io);
+        TEST_ASSERT_TRUE(s.introduce(kYasumu, 0));
+        s.grade(kYasumu, Grade::Good, 0, kMeaning, 0.5f);
+        s.grade(kYasumu, Grade::Good, 0, kReading, 0.5f);
+        TEST_ASSERT_EQUAL_UINT16(79, s.find(kYasumu)->stabilityCds);
+        TEST_ASSERT_EQUAL_UINT8(53, s.find(kYasumu)->difficulty10);
+        const std::vector<int> iv = goodIntervals(s, kYasumu, 5, &year);
+        const int want[] = {1, 4, 13, 41, 116};
+        TEST_ASSERT_EQUAL_INT_ARRAY(want, iv.data(), 5);
+        TEST_ASSERT_EQUAL_INT(5, year);
+    }
+    {
+        SrsStore s;
+        MemoryIo io;
+        s.begin(io);
+        TEST_ASSERT_TRUE(s.introduce(kYasumu, 0));
+        s.grade(kYasumu, Grade::Again, 0, kMeaning, 0.5f);  // step 1
+        s.grade(kYasumu, Grade::Good, 0, kReading, 0.5f);   // step 2
+        s.grade(kYasumu, Grade::Good, 0, kMeaning, 0.5f);   // the relearn
+        TEST_ASSERT_EQUAL_UINT16(39, s.find(kYasumu)->stabilityCds);
+        TEST_ASSERT_EQUAL_UINT8(68, s.find(kYasumu)->difficulty10);
+        const std::vector<int> iv = goodIntervals(s, kYasumu, 5, &year);
+        const int want[] = {1, 2, 6, 17, 42};
+        TEST_ASSERT_EQUAL_INT_ARRAY(want, iv.data(), 5);
+        TEST_ASSERT_EQUAL_INT(6, year);
+    }
+    {
+        SrsStore s;
+        MemoryIo io;
+        s.begin(io);
+        s.grade(kYasumu, Grade::Good, 0, kMeaning, 0.5f);  // "known", right and fast
+        TEST_ASSERT_EQUAL_UINT16(317, s.find(kYasumu)->stabilityCds);
+        // The table's 3, 11, 34, 98, 261: the fourth review lands on S = 98.50,
+        // a rounding boundary that floats settle either way (99, then 263, on
+        // the host), so only the first three are pinned.
+        const std::vector<int> iv = goodIntervals(s, kYasumu, 3, &year);
+        const int want[] = {3, 11, 34};
+        TEST_ASSERT_EQUAL_INT_ARRAY(want, iv.data(), 3);
+        TEST_ASSERT_EQUAL_INT(4, year);
+    }
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -2074,5 +2356,13 @@ int main() {
     RUN_TEST(test_date_manual_floor);
     RUN_TEST(test_serialize_anchor_roundtrip);
     RUN_TEST(test_serialize_pre_anchor_file_unchanged);
+    RUN_TEST(test_intro_memory);
+    RUN_TEST(test_introduce_records_exposure);
+    RUN_TEST(test_intro_time_capped);
+    RUN_TEST(test_learning_grade_same_day);
+    RUN_TEST(test_learning_grade_later_day);
+    RUN_TEST(test_learning_flag_roundtrip);
+    RUN_TEST(test_learning_forget);
+    RUN_TEST(test_learning_schedules);
     return UNITY_END();
 }

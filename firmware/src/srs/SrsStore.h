@@ -48,11 +48,12 @@ constexpr uint16_t kSrsFlagHasStudied = 0x0002;
 constexpr uint16_t kLearnedStabilityDays = 21;
 
 // Per-card state, 16 bytes in memory and on disk (docs/srs.md section 2).
-// `dueDay == 0` means "new, never reviewed"; `lastGrade == 0xFF` means never.
+// `dueDay == 0` means "new, never reviewed" unless the learning flag is set
+// (an intro on day 0, see isFresh()); `lastGrade == 0xFF` means never.
 struct Record {
     uint32_t codepoint;
     uint16_t stabilityCds;  // S in centidays, 1..65535
-    uint16_t dueDay;        // 0 = new
+    uint16_t dueDay;        // 0 = new (without kRecordFlagLearning)
     uint16_t lastDay;       // 0 = never
     uint8_t difficulty10;   // D * 10, 10..100
     uint8_t reps;           // saturating
@@ -63,16 +64,36 @@ struct Record {
 };
 static_assert(sizeof(Record) == kSrsRecordSize, "Record must stay 16 bytes");
 
-// Record `flags` bits. bit0: the card's first review was on `lastDay`, i.e.
-// it was introduced that day (set by its first grade, cleared by a grade on a
-// later day). It makes the daily new-card cap per deck: a deck counts its own
-// cards introduced today (Queue::rebuild()).
+// Record `flags` bits. bit0: the card was introduced on `lastDay` (its first
+// review, or its intro card, was that day; set by the first grade or by
+// introduce(), cleared by a grade on a later day). It makes the daily new-card
+// cap per deck: a deck counts its own cards introduced today
+// (Queue::rebuild()).
 constexpr uint8_t kRecordFlagIntroducedOnLastDay = 0x01;
+// bit1: learning. The intro card was shown (introduce()) and the card has not
+// been answered since; its first grade clears it (docs/learning-mode.md
+// section 3.5). Always 0 in files written before learning mode, so the
+// layout is unchanged.
+constexpr uint8_t kRecordFlagLearning = 0x02;
 
-// True when the card was introduced (first reviewed) on `day`.
+// True when the card was introduced (first reviewed, or shown on an intro) on
+// `day`.
 inline bool introducedOn(const Record& r, uint16_t day) {
     return (r.flags & kRecordFlagIntroducedOnLastDay) != 0 && r.lastDay == day;
 }
+
+// True for a learning record: introduced, never answered. It is due whatever
+// its `dueDay` (0 for an intro on SRS day 0) and counts as seen, not new.
+inline bool isLearning(const Record& r) { return (r.flags & kRecordFlagLearning) != 0; }
+
+// True for a never-seen kanji: no record, or a record never scheduled
+// (`dueDay == 0`) that is not a learning one. What the queue offers as a new
+// card and the deck counts as "new".
+inline bool isFresh(const Record* r) { return !r || (r->dueDay == 0 && !isLearning(*r)); }
+
+// The most an intro card adds to the time on questions (docs/learning-mode.md
+// decision 8): a card left on screen is not 10 minutes of study.
+constexpr uint32_t kIntroMsCap = 30000;
 
 // Aggregate counters over the whole state table, for the statistics screen
 // (docs/roadmap.md "Statistics"). Pure and deterministic: no clock, no I/O.
@@ -83,7 +104,7 @@ inline bool introducedOn(const Record& r, uint16_t day) {
 // derived from the records, so they describe the kanji still tracked and drop
 // with forgotten records (docs/srs.md section 2.1).
 struct Stats {
-    uint32_t seen;           // records in the table (distinct kanji reviewed)
+    uint32_t seen;           // records in the table (distinct kanji reviewed or introduced)
     uint32_t learned;        // records whose stability >= kLearnedStabilityDays
     uint32_t answers;        // lifetime answers (header counter)
     uint32_t again;          // lifetime Again answers (header counter), <= answers
@@ -241,11 +262,26 @@ public:
     // is not part of the table (callers should check count()/find() first).
     Record& getOrCreate(uint32_t codepoint);
 
-    // Applies one answer at `day`. First review (reps == 0) uses initMemory,
-    // otherwise nextMemory with elapsed = day - lastDay (clamped at 0).
+    // Applies one answer at `day`. First review (reps == 0, not learning) uses
+    // initMemory, otherwise nextMemory with elapsed = day - lastDay (clamped
+    // at 0): a learning record goes on from its intro's S and D, as a same-day
+    // review on the intro day. The grade clears the learning flag.
     // `mode` is a QuizMode value (0..2) and sets its modeSeen bit.
     // `uniform01` is the caller-drawn fuzz value for intervalDays().
     void grade(uint32_t codepoint, Grade g, uint16_t day, uint8_t mode, float uniform01);
+
+    // The learner went on from a never-seen kanji's intro card on `day`
+    // (docs/learning-mode.md section 3.5): records an exposure, not an
+    // answer. S and D from introMemory() (0.40 d, 5.28), due on `day`,
+    // `lastDay = day`, flags introduced-today + learning; reps, lapses,
+    // modeSeen stay 0 and lastGrade 0xFF. The answer and Again counters and
+    // the streak do not move; the legacy new-card header counter does, as for
+    // a first grade. False, nothing changed, when the kanji was already
+    // answered or introduced, or the table is full.
+    bool introduce(uint32_t codepoint, uint16_t day);
+    // Adds an intro card's time on screen to the time on questions, capped at
+    // kIntroMsCap (docs/learning-mode.md decision 8).
+    void addIntroMs(uint32_t ms) { addReviewMs(ms < kIntroMsCap ? ms : kIntroMsCap); }
 
     size_t count() const { return records_.size(); }
     const std::vector<Record>& records() const { return records_; }
