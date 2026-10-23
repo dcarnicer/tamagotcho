@@ -3219,3 +3219,20 @@ marked *to confirm* needs the device.
 - **Order of work.** Phase 1 (SRS and queue, pure, native-tested) is built
   before the `main.cpp` split lands, with learning off unless enabled, so the
   device behaves as before; phase 2 (the intro screen) builds on the split.
+
+## 2026-10-23 – Example words: glosses in both languages, Spanish reviewed by hand
+
+- **Why not JMdict's Spanish glosses.** Only JMdict's Japanese and English parts
+  are CC BY-SA 4.0; the Spanish glosses come from HISPADIC and RUI, which have
+  no licence the packs can carry (docs/example-words.md). They stay unused, as
+  in docs/meaning-order.md.
+- **Decision 9 is (b) in both languages.** English glosses come from
+  `JMdict_e`. Spanish glosses come from a project-authored table,
+  `tools/pack-builder/data/example_glosses_es.tsv`, pre-filled from the
+  `JMdict_e` gloss through the pinned FreeDict dictionary (the best automatic
+  source, but wrong or doubtful for about one word in five: bank → "orilla")
+  and reviewed by the maintainer level by level, N5 first. A word without a
+  reviewed Spanish gloss is shown with its reading only, so a level can ship
+  before its review is done.
+- **One format.** Pack format v3 has one gloss slot per example word, empty
+  when there is none; the choice of source never changes the format.

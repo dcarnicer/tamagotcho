@@ -2,8 +2,9 @@
 
 > **Status: approved (2026-10-23).** The maintainer accepted every
 > recommendation of §6 as written, so §3 is the design to build. Phases 1-3 of
-> §5 are being implemented; phase 4 (example words) waits for the Spanish
-> gloss measurement of decision 9.
+> §5 are being implemented. Decision 9 was revisited after the measurement in
+> docs/example-words.md: phase 4 (example words) is approved with glosses in
+> both languages (see §6).
 
 The roadmap entry "Learning mode (idea, 2026-10-18)" asks for a mode for
 *learning* kanji, not only reviewing them: for example, introducing a new
@@ -419,6 +420,10 @@ first:
 
 ### 3.11 Example words (decision 9, option b)
 
+The measurement and the gloss sources are in
+[docs/example-words.md](example-words.md); the Spanish glosses come from a
+reviewed project table, not from JMdict (§6, decision 9 revisited).
+
 If the maintainer wants them (mockups:
 [T-Display-S3](learning-mode/intro-tdisplay-after@3x.png),
 [StickS3 second page](learning-mode/intro-words-after@3x.png)):
@@ -566,6 +571,16 @@ intro as an exposure (S 0.40 d, D 5.28); 7 (b) Study › Introduce, On by
 default, global; 8 (b) intro time (capped at 30 s) in the time figure; 9 (a)
 no example words now, measure JMdict's Spanish gloss coverage first; 10 (a)
 new cards after the reviews.
+
+**Decision 9 revisited on 2026-10-23**, after the measurement and the
+comparison of sources in docs/example-words.md: JMdict's Spanish glosses are
+not licence-clear, so **(b) for both languages** with different gloss
+sources. English glosses come from `JMdict_e`; Spanish glosses come from a
+project-authored table (`tools/pack-builder/data/example_glosses_es.tsv`),
+pre-filled from `JMdict_e` through FreeDict and reviewed by the maintainer
+level by level. Until a word's Spanish gloss is reviewed, the Spanish deck
+shows that word with its reading only, as in (c). One pack format serves
+both: a gloss slot per word, empty when there is none.
 
 1. **Shape: inside the daily session, or a separate lessons mode?**
    - (a) Inside the session: a never-seen kanji gets its intro when it comes
