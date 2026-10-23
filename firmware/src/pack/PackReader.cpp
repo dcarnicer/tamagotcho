@@ -133,6 +133,8 @@ void PackReader::close() {
     }
     src_ = nullptr;
     hdr_ = PackHeader{};
+    wordsTable_ = 0;
+    wordEntrySize_ = 0;
 }
 
 size_t PackReader::memoryBytes() const {
@@ -146,9 +148,9 @@ size_t PackReader::memoryBytes() const {
 }
 
 namespace {
-// Reads and checks the 64-byte header: magic, version, sizes, and that every
-// table and the deck name lie inside the file. Shared by PackReader::open()
-// and peekPackInfo().
+// Reads and checks the header (64 bytes; v3: 80, docs/pack-format.md): magic,
+// version, sizes, and that every table and the deck name lie inside the file.
+// Shared by PackReader::open() and peekPackInfo().
 PackError readHeader(PackSource& src, PackHeader* out) {
     const uint32_t total = src.size();
     uint8_t h[kPackHeaderSize];
@@ -182,6 +184,15 @@ PackError readHeader(PackSource& src, PackHeader* out) {
     hd.optionAscent = h[55];
     hd.buildTime = rd32(h + 56);
     hd.strokeOff = rd32(h + 60);
+    hd.wordsOff = 0;
+    if (hd.version >= 3) {
+        // The v3 header extension: words_off, then three reserved u32 (ignored;
+        // later optional sections). v1 and v2 headers have no extension.
+        if (hd.headerSize < kPackHeaderSizeV3) return PackError::BadHeader;
+        uint8_t ext[4];
+        if (!src.read(kPackHeaderSize, ext, sizeof ext)) return PackError::Io;
+        hd.wordsOff = rd32(ext);
+    }
 
     if (hd.cardCount > 65535 || hd.cardCount == 0) return PackError::BadHeader;
     const uint64_t cardBytes = static_cast<uint64_t>(hd.cardCount) * kCardSize;
@@ -391,8 +402,68 @@ PackError PackReader::open(PackSource& src, Allocator alloc, PackMemory mem) {
         const PackError e = loadIndex();
         if (e != PackError::Ok) return fail(e);
     }
-    const PackError e = checkStrokes();
+    PackError e = checkStrokes();
     if (e != PackError::Ok) return fail(e);
+    e = checkWords();
+    if (e != PackError::Ok) return fail(e);
+    return PackError::Ok;
+}
+
+// Example-words section (v3, optional; words_off != 0). Validated whole at
+// open(), like the other tables: the header, the card index (0 first, never
+// decreasing, word_count last) and every entry (strings inside the pool, a
+// known kind). Read in chunks of 256 bytes; nothing is kept but two numbers.
+PackError PackReader::checkWords() {
+    wordsTable_ = 0;
+    wordEntrySize_ = 0;
+    const PackHeader& hd = hdr_;
+    if (hd.wordsOff == 0) return PackError::Ok;
+    const uint32_t total = src_->size();
+    const uint64_t indexBytes = (static_cast<uint64_t>(hd.cardCount) + 1) * 4;
+    if ((hd.wordsOff & 3u) || !inBounds(hd.wordsOff, 8 + indexBytes, total))
+        return PackError::BadTable;
+    uint8_t sh[8];
+    if (!src_->read(hd.wordsOff, sh, sizeof sh)) return PackError::Io;
+    const uint32_t entrySize = rd16(sh);  // then u16 reserved
+    const uint32_t count = rd32(sh + 4);
+    if (entrySize < kWordEntrySize) return PackError::BadTable;
+    const uint64_t table = hd.wordsOff + 8 + indexBytes;
+    if (!inBounds(table, static_cast<uint64_t>(entrySize) * count, total)) return PackError::BadTable;
+
+    uint8_t buf[256];
+    uint32_t prev = 0;
+    const uint32_t n = hd.cardCount + 1;
+    for (uint32_t i = 0; i < n;) {
+        uint32_t m = n - i;
+        if (m > sizeof buf / 4) m = sizeof buf / 4;
+        if (!src_->read(hd.wordsOff + 8 + i * 4u, buf, m * 4u)) return PackError::Io;
+        for (uint32_t q = 0; q < m; ++q, ++i) {
+            const uint32_t first = rd32(buf + q * 4);
+            if ((i == 0 && first != 0) || first < prev) return PackError::BadTable;
+            prev = first;
+        }
+    }
+    if (prev != count) return PackError::BadTable;
+
+    // Entries: several per read when they are small (always, in v3).
+    const uint32_t per = entrySize <= sizeof buf ? static_cast<uint32_t>(sizeof buf) / entrySize : 1;
+    for (uint32_t k = 0; k < count;) {
+        uint32_t m = count - k;
+        if (m > per) m = per;
+        const uint32_t bytes = per > 1 ? m * entrySize : kWordEntrySize;
+        if (!src_->read(static_cast<uint32_t>(table + static_cast<uint64_t>(k) * entrySize), buf, bytes))
+            return PackError::Io;
+        for (uint32_t q = 0; q < m; ++q, ++k) {
+            const uint8_t* e = buf + q * entrySize;
+            for (int f = 0; f <= 8; f += 4) {
+                const uint32_t so = rd32(e + f);
+                if (so < hd.stringsOff || so - hd.stringsOff >= hd.stringsSize) return PackError::BadTable;
+            }
+            if (e[12] > kWordKindKun) return PackError::BadTable;
+        }
+    }
+    wordsTable_ = static_cast<uint32_t>(table);
+    wordEntrySize_ = entrySize;
     return PackError::Ok;
 }
 
@@ -732,6 +803,49 @@ bool PackReader::strokeAt(uint32_t cardIdx, uint16_t i, Stroke* out) const {
     out->w = e[2];
     out->h = e[3];
     return true;
+}
+
+bool PackReader::wordRange(uint32_t cardIdx, uint32_t* first, uint32_t* end) const {
+    if (!src_ || wordEntrySize_ == 0 || cardIdx >= hdr_.cardCount) return false;
+    uint8_t b[8];
+    if (!src_->read(hdr_.wordsOff + 8 + cardIdx * 4u, b, sizeof b)) return false;
+    *first = rd32(b);
+    *end = rd32(b + 4);
+    return *end >= *first;  // checked at open()
+}
+
+uint32_t PackReader::exampleWordCount(uint32_t cardIdx) const {
+    uint32_t first = 0, end = 0;
+    return wordRange(cardIdx, &first, &end) ? end - first : 0;
+}
+
+uint32_t PackReader::exampleWords(uint32_t cardIdx, ExampleWord* out, uint32_t cap) const {
+    uint32_t first = 0, end = 0;
+    if (!out || !wordRange(cardIdx, &first, &end)) return 0;
+    uint32_t n = 0;
+    for (uint32_t k = first; k < end && n < cap; ++k) {
+        uint8_t e[kWordEntrySize];
+        if (!src_->read(wordsTable_ + k * wordEntrySize_, e, sizeof e)) return n;
+        ExampleWord& w = out[n];
+        w.word = str(rd32(e));
+        w.reading = str(rd32(e + 4));
+        w.gloss = str(rd32(e + 8));
+        w.kind = e[12];
+        w.readingStart = e[14];
+        w.readingLen = e[15];
+        // A span that does not fit the reading, or cuts a character, is unknown.
+        const size_t len = std::strlen(w.reading);
+        const auto cont = [&](size_t i) {
+            return i < len && (static_cast<uint8_t>(w.reading[i]) & 0xC0) == 0x80;
+        };
+        if (w.readingLen == 0 || w.readingStart + w.readingLen > len || cont(w.readingStart) ||
+            cont(w.readingStart + w.readingLen)) {
+            w.readingStart = 0;
+            w.readingLen = 0;
+        }
+        ++n;
+    }
+    return n;
 }
 
 bool PackReader::readStrokeBitmap(const Stroke& s, uint8_t* buf, size_t cap) const {

@@ -53,6 +53,11 @@ struct StrokeSpec {  // one mask: position in the em square + size
     uint8_t enc = 0;              // v2 mask encoding
     std::vector<uint8_t> data{};  // stored bytes; empty -> raw test pattern
 };
+struct WordSpec {  // one v3 example word
+    const char *word, *reading, *gloss;
+    uint8_t kind, start, len;
+};
+using CardWords = std::vector<std::vector<WordSpec>>;  // per card
 
 // Raw test pattern of a glyph: byte i = (cp + i) & 0xFF; of a mask: 0xA0 + i.
 std::vector<uint8_t> glyphBytes(const GlyphSpec& g) {
@@ -72,10 +77,14 @@ std::vector<uint8_t> maskBytes(const StrokeSpec& s) {
 // Glyph and mask data are the specs' stored bytes, or the raw test patterns
 // above. `strokes` (optional, aligned with `cards`) appends a stroke section:
 // v1 layout (one absolute offset per 4-byte aligned raw mask) or v2 (encoding
-// and size per entry, masks back to back from the block's data_off).
+// and size per entry, masks back to back from the block's data_off). `words`
+// (aligned with `cards`) makes it a v3 pack: the 80-byte header and an
+// example-words section at the end, the words' strings in the pool.
 std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<GlyphSpec> glyphs,
                               const std::vector<std::vector<StrokeSpec>>& strokes = {},
-                              uint16_t version = 1) {
+                              uint16_t version = 1, const CardWords* words = nullptr) {
+    if (words) version = 3;
+    const uint32_t headerSize = words ? 80 : 64;
     std::sort(glyphs.begin(), glyphs.end(), [](const GlyphSpec& a, const GlyphSpec& b) {
         return a.set != b.set ? a.set < b.set : a.cp < b.cp;
     });
@@ -90,9 +99,15 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
     struct CS { uint32_t m, o, k; };
     std::vector<CS> cs;  // relative to the pool; made absolute below
     for (auto& c : cards) cs.push_back({addStr(c.mean), addStr(c.on), addStr(c.kun)});
+    std::vector<std::vector<CS>> ws;  // the words' (word, reading, gloss), pool-relative
+    if (words)
+        for (auto& cw : *words) {
+            ws.emplace_back();
+            for (auto& w : cw) ws.back().push_back({addStr(w.word), addStr(w.reading), addStr(w.gloss)});
+        }
     while (pool.size() % 4) pool.push_back('\0');
 
-    const uint32_t cardsOff = 64;
+    const uint32_t cardsOff = headerSize;
     const uint32_t glyphsOff = cardsOff + cards.size() * 32;
     const uint32_t distOff = glyphsOff + glyphs.size() * 16;
     std::vector<uint32_t> dOffs, drOffs;
@@ -115,10 +130,12 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
     const uint32_t gdOff = strOff + pool.size();
     const uint32_t deckOff = strOff + deckRel;  // string offsets are absolute
     for (auto& x : cs) { x.m += strOff; x.o += strOff; x.k += strOff; }
+    for (auto& cw : ws)
+        for (auto& x : cw) { x.m += strOff; x.o += strOff; x.k += strOff; }
 
     B b;
     b.u8('T'); b.u8('N'); b.u8('G'); b.u8('C');
-    b.u16(version); b.u16(64);
+    b.u16(version); b.u16(headerSize);
     b.u32(cards.size()); b.u32(glyphs.size());
     b.u32(cardsOff); b.u32(glyphsOff); b.u32(distOff); b.u32(strOff);
     b.u32(pool.size()); b.u32(gdOff); b.u32(deckOff);
@@ -126,6 +143,7 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
     b.u8(32); b.u8(16); b.u8(12); b.u8(18); b.u8(14);
     b.u8(0); b.u8(0); b.u8(0);
     b.u32(0); b.u32(0);
+    if (words) { b.u32(0); b.u32(0); b.u32(0); b.u32(0); }  // words_off (set below), reserved
     for (size_t i = 0; i < cards.size(); ++i) {
         b.u32(cards[i].cp); b.u32(cs[i].m); b.u32(cs[i].o); b.u32(cs[i].k); b.u32(dOffs[i]);
         b.u8(5); b.u8(1); b.u8(4); b.u8(0);
@@ -196,6 +214,27 @@ std::vector<uint8_t> makePack(const std::vector<CardSpec>& cards, std::vector<Gl
         b.v[61] = (strokeOff >> 8) & 0xFF;
         b.v[62] = (strokeOff >> 16) & 0xFF;
         b.v[63] = (strokeOff >> 24) & 0xFF;
+    }
+
+    if (words) {
+        b.pad4();
+        const uint32_t wordsOff = static_cast<uint32_t>(b.v.size());
+        uint32_t count = 0;
+        for (auto& cw : *words) count += static_cast<uint32_t>(cw.size());
+        b.u16(16); b.u16(0); b.u32(count);
+        uint32_t first = 0;
+        for (auto& cw : *words) {
+            b.u32(first);
+            first += static_cast<uint32_t>(cw.size());
+        }
+        b.u32(first);
+        for (size_t i = 0; i < words->size(); ++i)
+            for (size_t k = 0; k < (*words)[i].size(); ++k) {
+                const WordSpec& w = (*words)[i][k];
+                b.u32(ws[i][k].m); b.u32(ws[i][k].o); b.u32(ws[i][k].k);
+                b.u8(w.kind); b.u8(0); b.u8(w.start); b.u8(w.len);
+            }
+        for (int k = 0; k < 4; ++k) b.v[64 + k] = (wordsOff >> (8 * k)) & 0xFF;
     }
     return b.v;
 }
@@ -414,7 +453,7 @@ void test_rejects_bad_packs() {
         TEST_ASSERT_EQUAL(PackError::BadMagic, r.open(s, defaultAllocator(), gPackMem));
     }
     {
-        auto b = good; b[4] = 3;  // newer than this reader
+        auto b = good; b[4] = 4;  // newer than this reader
         MemorySource s(b);
         TEST_ASSERT_EQUAL(PackError::BadVersion, r.open(s, defaultAllocator(), gPackMem));
     }
@@ -1165,6 +1204,226 @@ void test_blend() {
     TEST_ASSERT_EQUAL_HEX16(0xF800, blend565(0xF800, 0xF800, 7));
 }
 
+// ------------------------------------------ v3 example words
+
+// Words for sixCards(): two for 日, one for 火 (kun only), one for 中 (kun),
+// none for the others; 日's on'yomi word has a gloss with an accent.
+CardWords sixWords() {
+    CardWords w(sixCards().size());
+    w[0] = {{"毎日", "まいにち", "todos los días", kWordKindOn, 6, 6},
+            {"日", "ひ", "día", kWordKindKun, 0, 3}};
+    w[2] = {{"火", "ひ", "", kWordKindKun, 0, 3}};
+    w[5] = {{"中", "なか", "inside", kWordKindKun, 0, 6}};
+    return w;
+}
+
+void test_v3_example_words() {
+    const CardWords words = sixWords();
+    auto buf = makePack(sixCards(), someGlyphs(), someStrokes(), 2, &words);
+    MemorySource src(buf);
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
+    TEST_ASSERT_EQUAL_UINT16(3, r.header().version);
+    TEST_ASSERT_EQUAL_UINT16(80, r.header().headerSize);
+    TEST_ASSERT_EQUAL_UINT32(80, r.header().cardsOff);
+    TEST_ASSERT_TRUE(r.hasExampleWords());
+    TEST_ASSERT_TRUE(r.hasStrokeOrder());  // the stroke section still reads
+    TEST_ASSERT_EQUAL_UINT16(2, r.strokeCount(0));
+    const uint32_t counts[6] = {2, 0, 1, 0, 0, 1};
+    for (uint32_t i = 0; i < 6; ++i) TEST_ASSERT_EQUAL_UINT32(counts[i], r.exampleWordCount(i));
+    TEST_ASSERT_EQUAL_UINT32(0, r.exampleWordCount(6));  // out of range
+
+    ExampleWord w[4];
+    TEST_ASSERT_EQUAL_UINT32(2, r.exampleWords(0, w, 4));
+    TEST_ASSERT_EQUAL_STRING("毎日", w[0].word);
+    TEST_ASSERT_EQUAL_STRING("まいにち", w[0].reading);
+    TEST_ASSERT_EQUAL_STRING("todos los días", w[0].gloss);
+    TEST_ASSERT_EQUAL_UINT8(kWordKindOn, w[0].kind);
+    TEST_ASSERT_EQUAL_UINT8(6, w[0].readingStart);
+    TEST_ASSERT_EQUAL_UINT8(6, w[0].readingLen);
+    TEST_ASSERT_EQUAL_STRING("日", w[1].word);
+    TEST_ASSERT_EQUAL_STRING("ひ", w[1].reading);
+    TEST_ASSERT_EQUAL_STRING("día", w[1].gloss);
+    TEST_ASSERT_EQUAL_UINT8(kWordKindKun, w[1].kind);
+    // The card's own strings read as before, next to the words'.
+    Card c;
+    TEST_ASSERT_TRUE(r.card(0, &c));
+    TEST_ASSERT_EQUAL_STRING("day; sun; Japan", c.meanings);
+    TEST_ASSERT_EQUAL_STRING("毎日", w[0].word);  // still valid after three more strings
+
+    TEST_ASSERT_EQUAL_UINT32(1, r.exampleWords(0, w, 1));  // cap
+    TEST_ASSERT_EQUAL_STRING("毎日", w[0].word);
+    TEST_ASSERT_EQUAL_UINT32(1, r.exampleWords(2, w, 4));
+    TEST_ASSERT_EQUAL_STRING("火", w[0].word);
+    TEST_ASSERT_EQUAL_STRING("", w[0].gloss);  // no gloss: an empty string
+    TEST_ASSERT_EQUAL_UINT8(kWordKindKun, w[0].kind);
+    TEST_ASSERT_EQUAL_UINT32(0, r.exampleWords(1, w, 4));
+    TEST_ASSERT_EQUAL_UINT32(0, r.exampleWords(9, w, 4));
+    TEST_ASSERT_EQUAL_UINT32(0, r.exampleWords(0, nullptr, 4));
+    // A span that cuts a character or passes the end is reported unknown.
+    CardWords bad(6);
+    bad[0] = {{"毎日", "まいにち", "", kWordKindOn, 7, 5}, {"日", "ひ", "", kWordKindKun, 0, 4}};
+    bad[1] = {{"月", "つき", "", kWordKindKun, 0, 0}};
+    auto bb = makePack(sixCards(), someGlyphs(), {}, 2, &bad);
+    MemorySource bs(bb);
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(bs, defaultAllocator(), gPackMem));
+    TEST_ASSERT_EQUAL_UINT32(2, r.exampleWords(0, w, 4));
+    TEST_ASSERT_EQUAL_UINT8(0, w[0].readingStart);
+    TEST_ASSERT_EQUAL_UINT8(0, w[0].readingLen);
+    TEST_ASSERT_EQUAL_UINT8(0, w[1].readingLen);
+    TEST_ASSERT_EQUAL_UINT32(1, r.exampleWords(1, w, 4));
+    TEST_ASSERT_EQUAL_UINT8(0, w[0].readingLen);
+}
+
+// v1 and v2 packs have no example words; a v3 pack may have none either.
+void test_no_example_words_before_v3() {
+    ExampleWord w[2];
+    PackReader r;
+    for (uint16_t v : {1, 2}) {
+        auto buf = makePack(sixCards(), someGlyphs(), someStrokes(), v);
+        MemorySource src(buf);
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
+        TEST_ASSERT_FALSE(r.hasExampleWords());
+        TEST_ASSERT_EQUAL_UINT32(0, r.header().wordsOff);
+        TEST_ASSERT_EQUAL_UINT32(0, r.exampleWordCount(0));
+        TEST_ASSERT_EQUAL_UINT32(0, r.exampleWords(0, w, 2));
+    }
+    // A header_size past cards_off (64) would overlap the card table.
+    {
+        auto buf = makePack(sixCards(), someGlyphs(), {}, 2);
+        buf[6] = 80;
+        MemorySource src(buf);
+        TEST_ASSERT_EQUAL(PackError::BadHeader, r.open(src, defaultAllocator(), gPackMem));
+    }
+    {
+        const CardWords none(sixCards().size());
+        auto buf = makePack(sixCards(), someGlyphs(), {}, 2, &none);
+        MemorySource src(buf);
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
+        TEST_ASSERT_TRUE(r.hasExampleWords());
+        TEST_ASSERT_EQUAL_UINT32(0, r.exampleWords(0, w, 2));
+        // words_off 0 in a v3 header: no section at all.
+        auto b0 = buf;
+        b0[64] = b0[65] = b0[66] = b0[67] = 0;
+        MemorySource s0(b0);
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(s0, defaultAllocator(), gPackMem));
+        TEST_ASSERT_FALSE(r.hasExampleWords());
+        TEST_ASSERT_EQUAL_UINT32(0, r.exampleWordCount(0));
+    }
+    StdioSource mini("../tools/pack-builder/fixtures/mini.tgc");
+    if (mini.ok()) {
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(mini, defaultAllocator(), gPackMem));
+        TEST_ASSERT_FALSE(r.hasExampleWords());
+        TEST_ASSERT_EQUAL_UINT32(0, r.exampleWords(0, w, 2));
+    }
+}
+
+void put32(std::vector<uint8_t>& b, size_t off, uint32_t v) {
+    for (int k = 0; k < 4; ++k) b[off + k] = (v >> (8 * k)) & 0xFF;
+}
+
+void test_v3_rejects_bad_words() {
+    const CardWords words = sixWords();
+    const auto good = makePack(sixCards(), someGlyphs(), {}, 2, &words);
+    const uint32_t wo = rd32le(good, 64);
+    const uint32_t table = wo + 8 + 4 * 7;  // six cards + 1
+    PackReader r;
+    auto expect = [&](std::vector<uint8_t> b, PackError want) {
+        MemorySource s(b);
+        TEST_ASSERT_EQUAL(want, r.open(s, defaultAllocator(), gPackMem));
+        TEST_ASSERT_FALSE(r.isOpen());
+    };
+    {
+        MemorySource s(good);
+        TEST_ASSERT_EQUAL(PackError::Ok, r.open(s, defaultAllocator(), gPackMem));
+        r.close();
+    }
+    { auto b = good; b[6] = 64; expect(b, PackError::BadHeader); }        // v3 needs 80
+    { auto b = good; put32(b, 64, wo + 2); expect(b, PackError::BadTable); }  // misaligned
+    { auto b = good; put32(b, 64, static_cast<uint32_t>(b.size())); expect(b, PackError::BadTable); }
+    { auto b = good; b[wo] = 12; expect(b, PackError::BadTable); }        // entry_size < 16
+    { auto b = good; put32(b, wo + 4, 5); expect(b, PackError::BadTable); }   // count != last
+    { auto b = good; put32(b, wo + 8, 1); expect(b, PackError::BadTable); }   // first[0] != 0
+    { auto b = good; put32(b, wo + 8 + 4, 3); expect(b, PackError::BadTable); }  // 0,3,2: decreasing
+    { auto b = good; put32(b, wo + 4, 400); put32(b, wo + 8 + 24, 400); expect(b, PackError::BadTable); }
+    { auto b = good; put32(b, table, 0); expect(b, PackError::BadTable); }    // string outside pool
+    { auto b = good; put32(b, table + 16 + 8, 0x7FFFFFFF); expect(b, PackError::BadTable); }
+    { auto b = good; b[table + 12] = 2; expect(b, PackError::BadTable); }     // unknown kind
+}
+
+// The builder's v3 fixture: the three mini kanji in Spanish, with strokes and
+// words picked from hand-written word data (tools/pack-builder/tests/data;
+// expected values in fixtures/mini_words.json).
+void test_mini_words_fixture() {
+    StdioSource src("../tools/pack-builder/fixtures/mini_words.tgc");
+    if (!src.ok()) TEST_IGNORE_MESSAGE("mini_words.tgc not found");
+    TEST_ASSERT_EQUAL_UINT32(8512, src.size());
+    PackReader r;
+    TEST_ASSERT_EQUAL(PackError::Ok, r.open(src, defaultAllocator(), gPackMem));
+    const PackHeader& h = r.header();
+    TEST_ASSERT_EQUAL_UINT16(3, h.version);
+    TEST_ASSERT_EQUAL_UINT16(80, h.headerSize);
+    TEST_ASSERT_EQUAL_UINT32(80, h.cardsOff);
+    TEST_ASSERT_EQUAL_UINT32(153, h.glyphCount);
+    TEST_ASSERT_EQUAL_UINT32(2656, h.stringsOff);
+    TEST_ASSERT_EQUAL_UINT32(222, h.stringsSize);
+    TEST_ASSERT_EQUAL_UINT32(8176, h.strokeOff);
+    TEST_ASSERT_EQUAL_UINT32(8392, h.wordsOff);
+    TEST_ASSERT_EQUAL_STRING("es", h.lang);
+    TEST_ASSERT_TRUE(r.hasExampleWords());
+    TEST_ASSERT_EQUAL_UINT16(4, r.strokeCount(0));
+
+    struct E {
+        const char *word, *reading, *gloss;
+        uint8_t kind, start, len;
+    };
+    const E exp[3][2] = {
+        {{"毎日", "まいにち", "todos los días", 0, 6, 6}, {"日", "ひ", "día", 1, 0, 3}},
+        {{"今月", "こんげつ", "", 0, 6, 6}, {"月", "つき", "", 1, 0, 6}},
+        {{"火山", "かざん", "volcán", 0, 0, 3}, {"火", "ひ", "fuego", 1, 0, 3}},
+    };
+    const uint32_t cps[3] = {0x65E5, 0x6708, 0x706B};
+    for (uint32_t i = 0; i < 3; ++i) {
+        TEST_ASSERT_EQUAL_UINT32(cps[i], r.codepointAt(i));
+        ExampleWord w[2];
+        TEST_ASSERT_EQUAL_UINT32(2, r.exampleWords(i, w, 2));
+        for (int k = 0; k < 2; ++k) {
+            TEST_ASSERT_EQUAL_STRING(exp[i][k].word, w[k].word);
+            TEST_ASSERT_EQUAL_STRING(exp[i][k].reading, w[k].reading);
+            TEST_ASSERT_EQUAL_STRING(exp[i][k].gloss, w[k].gloss);
+            TEST_ASSERT_EQUAL_UINT8(exp[i][k].kind, w[k].kind);
+            TEST_ASSERT_EQUAL_UINT8(exp[i][k].start, w[k].readingStart);
+            TEST_ASSERT_EQUAL_UINT8(exp[i][k].len, w[k].readingLen);
+            // Every character of the word, its reading and gloss has a set-2
+            // glyph (ASCII may fall back to the built-in font).
+            for (const char* s : {w[k].word, w[k].reading, w[k].gloss}) {
+                const char* p = s;
+                while (uint32_t cp = utf8Next(&p)) {
+                    if (cp >= 0x20 && cp < 0x7F) continue;
+                    const Glyph* g = r.findGlyph(kGlyphSetText, cp);
+                    TEST_ASSERT_NOT_NULL_MESSAGE(g, s);
+                    std::vector<uint8_t> bm(PackReader::bitmapSize(*g));
+                    TEST_ASSERT_TRUE(r.readGlyphBitmap(*g, bm.data(), bm.size()));
+                }
+            }
+        }
+    }
+    // The words' other kanji are in set 2 too, rendered as text (pen and
+    // baseline relative: a negative y_off, an advance), never in sets 0 and 1.
+    for (uint32_t cp : {0x6BCEu, 0x4ECAu, 0x5C71u}) {  // 毎 今 山
+        const Glyph* g = r.findGlyph(kGlyphSetText, cp);
+        TEST_ASSERT_NOT_NULL(g);
+        TEST_ASSERT_TRUE(g->yOff < 0 && g->advance > 0 && g->width > 0);
+        TEST_ASSERT_NULL(r.findGlyph(kGlyphSetLarge, cp));
+        TEST_ASSERT_NULL(r.findGlyph(kGlyphSetSmall, cp));
+    }
+    // And the pack still quizzes as a v2 one does.
+    XorShiftRng rng(5);
+    Question q;
+    TEST_ASSERT_TRUE(buildQuestion(r, 0, QuizMode::Meaning, rng, &q));
+    TEST_ASSERT_EQUAL(3, q.count);
+}
+
 // ------------------------------------------ real v1 fixture (mini_v1.tgc)
 // The last mini.tgc written by the v1 builder, kept frozen so this reader keeps
 // opening the v1 packs already on devices. The v2 mini.tgc is checked against
@@ -1414,6 +1673,22 @@ void checkModesAgree(PackSource& src) {
         TEST_ASSERT_EQUAL_UINT16(a.level, b.level);
         TEST_ASSERT_EQUAL_STRING("", b.meanings);
         TEST_ASSERT_EQUAL_STRING("", a.kunyomi);
+        // Example words (v3).
+        TEST_ASSERT_EQUAL(mem.hasExampleWords(), str.hasExampleWords());
+        TEST_ASSERT_EQUAL_UINT32(mem.exampleWordCount(i), str.exampleWordCount(i));
+        {
+            ExampleWord wa[4], wb[4];
+            const uint32_t na = mem.exampleWords(i, wa, 4);
+            TEST_ASSERT_EQUAL_UINT32(na, str.exampleWords(i, wb, 4));
+            for (uint32_t k = 0; k < na; ++k) {
+                TEST_ASSERT_EQUAL_STRING(wa[k].word, wb[k].word);
+                TEST_ASSERT_EQUAL_STRING(wa[k].reading, wb[k].reading);
+                TEST_ASSERT_EQUAL_STRING(wa[k].gloss, wb[k].gloss);
+                TEST_ASSERT_EQUAL_UINT8(wa[k].kind, wb[k].kind);
+                TEST_ASSERT_EQUAL_UINT8(wa[k].readingStart, wb[k].readingStart);
+                TEST_ASSERT_EQUAL_UINT8(wa[k].readingLen, wb[k].readingLen);
+            }
+        }
         // Strokes.
         TEST_ASSERT_EQUAL_UINT16(mem.strokeCount(i), str.strokeCount(i));
         for (uint16_t k = 0; k < mem.strokeCount(i); ++k) {
@@ -1490,6 +1765,14 @@ void test_streamed_matches_in_memory() {
     if (v1.ok()) checkModesAgree(v1);
     StdioSource v2("../tools/pack-builder/fixtures/mini.tgc");
     if (v2.ok()) checkModesAgree(v2);
+    {
+        const CardWords words = sixWords();
+        auto buf = makePack(sixCards(), someGlyphs(), someStrokes(), 2, &words);
+        MemorySource src(buf);
+        checkModesAgree(src);
+    }
+    StdioSource v3("../tools/pack-builder/fixtures/mini_words.tgc");
+    if (v3.ok()) checkModesAgree(v3);
 }
 
 // The published decks, when a directory with them is given in $TGC_PACK_DIR
@@ -1919,6 +2202,10 @@ void runPackTests() {
     RUN_TEST(test_v2_rejects_bad_masks_and_glyphs);
     RUN_TEST(test_stroke_section_read);
     RUN_TEST(test_rejects_bad_stroke_section);
+    RUN_TEST(test_v3_example_words);
+    RUN_TEST(test_no_example_words_before_v3);
+    RUN_TEST(test_v3_rejects_bad_words);
+    RUN_TEST(test_mini_words_fixture);
     RUN_TEST(test_quiz_text_helpers);
     RUN_TEST(test_quiz_meaning);
     RUN_TEST(test_quiz_meaning_to_kanji);
