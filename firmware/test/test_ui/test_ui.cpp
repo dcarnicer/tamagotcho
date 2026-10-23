@@ -428,6 +428,26 @@ void test_update_text_fits() {
     TEST_ASSERT_TRUE(uiTextWidth(f, "Decks", 0) + 5 + 9 * 6 > kHomeLabelPx);
 }
 
+// The Get decks / Updates header (main.cpp's UiStrings; copies). It is drawn
+// in Font0 at 1x (6 px per cell) in W - 2 * kGutter = 127 px. With the saved
+// network, "%s · %u updates" and "%s · %u decks" were cut ("..."); the header
+// already names the screen, so the network and the count alone fit.
+void test_get_decks_header_fits() {
+    constexpr int kHeaderW = 127;  // 135 - 2 * kGutter
+    auto width = [](const char* s) {
+        int cells = 0;
+        for (const char* p = s; utf8Next(&p);) ++cells;
+        return cells * 6;
+    };
+    TEST_ASSERT_EQUAL(102, width("Shimokitazawa · 6"));
+    TEST_ASSERT_TRUE(width("Shimokitazawa · 6") <= kHeaderW);
+    TEST_ASSERT_TRUE(width("Shimokitazawa · 8") <= kHeaderW);
+    TEST_ASSERT_TRUE(width("Shimokitazawa · 6 updates") > kHeaderW);
+    TEST_ASSERT_TRUE(width("Shimokitazawa · 8 decks") > kHeaderW);
+    TEST_ASSERT_TRUE(width("Shimokitazawa · 6 act.") > kHeaderW);
+    TEST_ASSERT_TRUE(width("Shimokitazawa · 8 mazos") > kHeaderW);
+}
+
 // ---------------------------------------------------------------- InputPrefs
 
 static void test_input_prefs() {
@@ -459,6 +479,7 @@ int main() {
     RUN_TEST(test_ui_font_app_name);
     RUN_TEST(test_delete_progress_labels);
     RUN_TEST(test_update_text_fits);
+    RUN_TEST(test_get_decks_header_fits);
     RUN_TEST(test_input_prefs);
     return UNITY_END();
 }

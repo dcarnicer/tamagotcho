@@ -502,7 +502,7 @@ const UiStrings kUiEn = {
     "Update the firmware from the release page.",
     "Choose another deck in Settings > Decks.",
     "erase", "settings",
-    "%s · %u decks", "on device", "stop",
+    "%s · %u", "on device", "stop",
     "%u kanji",
     "Readings:",
     "Meanings:",
@@ -528,7 +528,7 @@ const UiStrings kUiEn = {
     "Updates", "check", "up to date", "1 upd", "%u upd",
     "DECK UPDATES", "Checking deck updates...", "1 deck update available",
     "%u deck updates available", "All decks are up to date",
-    "Settings > Decks > Updates", "%s · %u updates", "skip", "continue",
+    "Settings > Decks > Updates", "%s · %u", "skip", "continue",
 };
 
 const UiStrings kUiEs = {
@@ -617,7 +617,7 @@ const UiStrings kUiEs = {
     "Actualiza el firmware desde la página de versiones.",
     "Elige otro mazo en Ajustes > Mazos.",
     "borrar", "ajustes",
-    "%s · %u mazos", "en el equipo", "parar",
+    "%s · %u", "en el equipo", "parar",
     "%u kanji",
     "Lecturas:",
     "Significados:",
@@ -643,7 +643,7 @@ const UiStrings kUiEs = {
     "Actualizar", "comprobar", "al día", "1 act", "%u act",
     "ACTUALIZACIONES", "Buscando actualizaciones...", "1 actualización de mazo",
     "%u mazos por actualizar", "Todos los mazos están al día",
-    "Ajustes > Mazos > Actualizar", "%s · %u act.", "saltar", "continuar",
+    "Ajustes > Mazos > Actualizar", "%s · %u", "saltar", "continuar",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
