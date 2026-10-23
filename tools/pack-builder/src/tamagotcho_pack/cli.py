@@ -58,9 +58,11 @@ def _meaning_order(raw: list, lang: str, check_raw: list | None = None) -> list 
     return reorder_raw(raw, lang, english, spanish, overrides)[0]
 
 
-def _common_readings(raw: list) -> tuple[list, object] | None:
+def _common_readings(raw: list, word_data: tuple | None = None) -> tuple[list, object] | None:
     """`build --common-readings`: KANJIDIC2 readings reordered most common
-    first (docs/common-readings.md), or None after printing an error."""
+    first (docs/common-readings.md), or None after printing an error.
+    `word_data` (_word_data()) saves weighing the JMdict words twice when
+    `--example-words` needs them too."""
     need = [paths.JMDICT_GZ, paths.JMDICT_FURIGANA, paths.WORDFREQ_JA, paths.TATOEBA_JPN,
             paths.JOYO_PDF, *paths.JLPT_VOCAB.values()]
     missing = [p for p in need if not p.exists()]
@@ -76,9 +78,76 @@ def _common_readings(raw: list) -> tuple[list, object] | None:
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return None
-    scores = compute_scores(raw, paths.JMDICT_GZ, paths.JMDICT_FURIGANA, paths.WORDFREQ_JA,
-                            paths.TATOEBA_JPN, load_jlpt_vocab(paths.JLPT_VOCAB))
+    if word_data is not None:
+        pairs, vocab = word_data
+        scores = compute_scores(raw, None, paths.JMDICT_FURIGANA, jlpt_vocab=vocab, pairs=pairs)
+    else:
+        scores = compute_scores(raw, paths.JMDICT_GZ, paths.JMDICT_FURIGANA, paths.WORDFREQ_JA,
+                                paths.TATOEBA_JPN, load_jlpt_vocab(paths.JLPT_VOCAB))
     return reorder_raw(raw, scores, joyo, drop=True)
+
+
+def _word_inputs() -> list:
+    """What `--example-words` reads (`fetch --readings`)."""
+    return [paths.JMDICT_GZ, paths.JMDICT_FURIGANA, paths.WORDFREQ_JA, paths.TATOEBA_JPN,
+            *paths.JLPT_VOCAB.values()]
+
+
+def _word_data() -> tuple[list, dict]:
+    """The JMdict words weighted for a learner, and the JLPT vocabulary:
+    what `--common-readings` scores readings with and `--example-words` picks
+    words from (readings.weighted_pairs)."""
+    from .readings import load_jlpt_vocab, weighted_pairs
+
+    vocab = load_jlpt_vocab(paths.JLPT_VOCAB)
+    return weighted_pairs(paths.JMDICT_GZ, paths.WORDFREQ_JA, paths.TATOEBA_JPN, vocab), vocab
+
+
+def _missing(files, flag: str, fetch: str) -> bool:
+    """Prints an error and returns True when an input of `flag` is missing."""
+    missing = [p for p in files if not p.exists()]
+    if missing:
+        print(f"error: {flag} needs " + ", ".join(p.name for p in missing)
+              + f": run `tamagotcho-pack fetch {fetch}`", file=sys.stderr)
+    return bool(missing)
+
+
+def _candidates(cards: list, word_data: tuple) -> tuple[dict, dict]:
+    """(candidate words per kanji and reading, JMdict_e's word info) for the
+    cards (words.py)."""
+    from .readings import parse_furigana
+    from .words import load_word_info, word_candidates
+
+    pairs, vocab = word_data
+    cands = word_candidates(cards, pairs, parse_furigana(paths.JMDICT_FURIGANA), vocab)
+    return cands, load_word_info(paths.JMDICT_GZ)
+
+
+def _example_words(cards: list, lang: str, word_data: tuple, table_path: Path) -> list | None:
+    """`build --example-words`: each card's words with the deck language's
+    glosses (words.py), or None after printing an error."""
+    from .words import example_words, load_gloss_table, pick_words, skip_words
+
+    try:
+        table = load_gloss_table(table_path)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return None
+    cands, info = _candidates(cards, word_data)
+    picks = pick_words(cards, cands, info, skip_words(table))
+    words = example_words(picks, info, lang, table)
+    kinds = sum(len(ps) for ps in picks)
+    n = sum(len(ws) for ws in words)
+    on = sum(1 for ws in words for w in ws if w.kind == 0)
+    glossed = sum(1 for ws in words for w in ws if w.gloss)
+    source = {"en": "JMdict_e", "es": f"the reviewed rows of {table_path.name}"}.get(lang)
+    print(f"example words: {n} for {len(cards)} cards (on'yomi {on}, kun'yomi {n - on}; "
+          f"{kinds - n} asked readings without a usable word); glosses for {glossed} of {n}"
+          + (f" from {source}" if source else f" (no gloss source for {lang!r})"))
+    if lang == "es" and not table:
+        print(f"warning: {table_path} not found: Spanish example words have no gloss",
+              file=sys.stderr)
+    return words
 
 
 def cmd_build(a) -> int:
@@ -90,6 +159,7 @@ def cmd_build(a) -> int:
     # instead of the cached KANJIDIC2 file. The token is never printed, logged
     # or written to cache/.
     token = a.wanikani_token or os.environ.get("WANIKANI_TOKEN")
+    words = None
     if a.kanji_file and (a.jlpt or a.grade or a.joyo):
         print("error: --kanji-file selects the kanji itself; it cannot be combined with "
               "--jlpt, --grade or --joyo", file=sys.stderr)
@@ -110,6 +180,10 @@ def cmd_build(a) -> int:
         if a.meaning_order:
             print("error: --meaning-order orders KANJIDIC2 meanings; WaniKani's are English "
                   "only, in WaniKani's order", file=sys.stderr)
+            return 2
+        if a.example_words:
+            print("error: --example-words picks words for KANJIDIC2 readings; it cannot be "
+                  "combined with a WaniKani import", file=sys.stderr)
             return 2
         from .wanikani import WaniKaniError, default_wanikani_name, wanikani_cards
 
@@ -171,10 +245,15 @@ def cmd_build(a) -> int:
                 return 1
         else:
             raw = parse_kanjidic(paths.KANJIDIC_GZ)
+        word_data = None
+        if a.example_words:
+            if _missing(_word_inputs(), "--example-words", "--readings"):
+                return 2
+            word_data = _word_data()
         before = None
         if a.common_readings:
             before = {k.codepoint: k for k in raw}
-            got = _common_readings(raw)
+            got = _common_readings(raw, word_data)
             if got is None:
                 return 2
             raw = got[0]
@@ -212,6 +291,10 @@ def cmd_build(a) -> int:
                   f"cards; the pack keeps other meanings for {kept}")
         name = a.name or (default_deck_name_from_file(a.kanji_file) if a.kanji_file
                           else default_deck_name(jlpt, grades, joyo=a.joyo))
+        if word_data is not None:
+            words = _example_words(cards, a.lang, word_data, Path(a.es_glosses))
+            if words is None:
+                return 2
     if not name.isascii():
         print(f"warning: deck name {name!r} is not ASCII; the device draws the deck name "
               "in its built-in ASCII font, so it will not show correctly", file=sys.stderr)
@@ -222,7 +305,7 @@ def cmd_build(a) -> int:
               "`catalog` will refuse this pack", file=sys.stderr)
     try:
         raw = build_pack(cards, a.font, a.lang, name, a.large_px, a.small_px, a.text_px, a.option_px,
-                         strokes=a.strokes, strokes_px=a.strokes_px)
+                         strokes=a.strokes, strokes_px=a.strokes_px, words=words)
     except (KanjiVGError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -241,11 +324,141 @@ def cmd_build(a) -> int:
     fb = sum(1 for c in p.cards if c.flags & 1)
     stroked = sum(1 for s in p.strokes if s)
     stroke_note = f", strokes for {stroked}/{len(p.cards)} cards" if p.header["stroke_off"] else ""
+    if p.header["words_off"]:
+        stroke_note += f", {sum(len(w) for w in p.words)} example words (v3)"
     print(f"{out}: {len(p.cards)} cards ({fb} with English fallback), "
           f"{len(p.glyphs)} glyphs, {len(raw):,} bytes{stroke_note}")
     if p.errors:
         print("pack validation errors:", *p.errors[:10], sep="\n  ", file=sys.stderr)
         return 1
+    return 0
+
+
+def cmd_sync_glosses(a) -> int:
+    """`sync-glosses`: append the picked words the Spanish table lacks as
+    draft rows (a FreeDict suggestion, never JMdict's Spanish), touching no
+    existing row, and report what still lacks a reviewed gloss per level."""
+    from .kanjidic import JOYO_GRADES, load_new_jlpt, make_cards, parse_kanji_file, parse_kanjidic
+    from .words import (KIND_NAME, GlossRow, append_rows, load_freedict_ordered,
+                        load_gloss_table, pick_words, skip_words, translate)
+
+    if bool(a.kanji_file) == bool(a.jlpt or a.joyo):
+        print("error: give --jlpt N (repeatable) and/or --joyo, or --kanji-file", file=sys.stderr)
+        return 2
+    need = [paths.KANJIDIC_GZ, paths.KANJI_JSON, paths.JOYO_PDF, *_word_inputs()]
+    if _missing(need + [paths.FREEDICT_ENG_SPA], "sync-glosses", "--readings --meanings"):
+        return 2
+    table_path = Path(a.es_glosses)
+    try:
+        table = load_gloss_table(table_path)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    all_raw = parse_kanjidic(paths.KANJIDIC_GZ)
+    new = load_new_jlpt(paths.KANJI_JSON)
+    jlpt, grades = set(a.jlpt or []), set(JOYO_GRADES) if a.joyo else set()
+    raw = all_raw
+    if a.kanji_file:
+        by_cp = {k.codepoint: k for k in all_raw}
+        try:
+            cps, warnings = parse_kanji_file(
+                Path(a.kanji_file).read_text(encoding="utf-8-sig"), set(by_cp))
+        except (OSError, UnicodeDecodeError, ValueError) as e:
+            print(f"error: {a.kanji_file}: {e}", file=sys.stderr)
+            return 2
+        for w in warnings:
+            print(f"warning: {a.kanji_file}: {w}", file=sys.stderr)
+        raw = [by_cp[cp] for cp in cps]
+    # The words are picked for the readings the published decks ask, so the
+    # readings are ordered as `build --common-readings` orders them.
+    word_data = _word_data()
+    got = _common_readings(raw, word_data)
+    if got is None:
+        return 2
+    if jlpt and a.joyo:
+        # Each level's kanji, then the Joyo kanji with no JLPT level: the union.
+        cards = make_cards(got[0], "en", jlpt, None, new, order="jlpt")
+        seen = {c.codepoint for c in cards}
+        cards += [c for c in make_cards(got[0], "en", None, grades, new, order="grade")
+                  if c.codepoint not in seen]
+    else:
+        order = "file" if a.kanji_file else ("grade" if a.joyo else "jlpt")
+        cards = make_cards(got[0], "en", jlpt, grades, new, order=order)
+    if not cards:
+        print("error: no cards selected", file=sys.stderr)
+        return 1
+    cands, info = _candidates(cards, word_data)
+    picks = pick_words(cards, cands, info, skip_words(table))
+    unskipped = pick_words(cards, cands, info)
+
+    def level_of(c) -> str:
+        return f"N{c.jlpt}" if c.jlpt else ("Joyo" if c.grade in JOYO_GRADES else "-")
+
+    # Every picked word once, in card order, with the kanji that picked it.
+    picked: dict[tuple[str, str], dict] = {}
+    for c, ps in zip(cards, picks):
+        for pk in ps:
+            if pk.word is None:
+                continue
+            e = picked.setdefault((pk.word.text, pk.word.reading),
+                                  {"level": level_of(c), "kanji": []})
+            if c.char not in e["kanji"]:
+                e["kanji"].append(c.char)
+    fd = load_freedict_ordered(paths.FREEDICT_ENG_SPA)
+    added: list[GlossRow] = []
+    for key, e in picked.items():
+        if key in table:
+            continue
+        i = info.get(key)
+        eng = i.eng if i else []
+        t = translate(eng, i.pos if i else (), fd)
+        note = ("CHECK: FreeDict suggestion (sync-glosses), not reviewed" if t
+                else "CHECK: no FreeDict suggestion (sync-glosses)")
+        added.append(GlossRow(e["level"], ",".join(e["kanji"]), key[0], key[1],
+                              "; ".join(eng[:3]), t[0] if t else "", "draft", note))
+    if added and not a.dry_run:
+        append_rows(table_path, added)
+    after = {**table, **{r.key(): r for r in added}}
+
+    # What the skip rows changed.
+    for c, ps, us in zip(cards, picks, unskipped):
+        for pk, uk in zip(ps, us):
+            if uk.word is not None and (pk.word is None or (pk.word.text, pk.word.reading)
+                                        != (uk.word.text, uk.word.reading)):
+                now = f"{pk.word.text} {pk.word.reading}" if pk.word else "no word"
+                print(f"skip: {c.char} {KIND_NAME[pk.kind]} {pk.asked}: {uk.word.text} "
+                      f"{uk.word.reading} is skipped, picked {now}")
+    verb = "would append" if a.dry_run else "appended"
+    print(f"{table_path.name}: {verb} {len(added)} draft row(s)")
+    for r in added[:a.show]:
+        print(f"  {r.level}  {r.kanji}  {r.word}  {r.reading}  [{r.en}]  {r.es or '-'}")
+    if len(added) > a.show:
+        print(f"  ... {len(added) - a.show} more (--show N)")
+
+    # Per level: the words and their state in the table.
+    levels: dict[str, dict] = {}
+    for c, ps in zip(cards, picks):
+        lv = levels.setdefault(level_of(c), {"cards": 0, "asked": 0, "slots": 0, "words": {}})
+        lv["cards"] += 1
+        lv["asked"] += len(ps)
+        for pk in ps:
+            if pk.word is not None:
+                lv["slots"] += 1
+                lv["words"].setdefault((pk.word.text, pk.word.reading), c.char)
+    print("level  cards  asked  words   ok  draft  no word")
+    lacking = []
+    for name in sorted(levels, key=lambda n: (n[0] != "N", -int(n[1:]) if n[0] == "N" else 0, n)):
+        lv = levels[name]
+        ws = lv["words"]
+        ok = sum(1 for k in ws if after[k].status == "ok")
+        print(f"{name:<6} {lv['cards']:>5}  {lv['asked']:>5}  {len(ws):>5}  {ok:>3}  "
+              f"{len(ws) - ok:>5}  {lv['asked'] - lv['slots']:>7}")
+        lacking += [(name, ch, k) for k, ch in ws.items() if after[k].status != "ok"]
+    print("(words: distinct picked words; ok/draft: their rows; no word: asked readings "
+          "without a usable word)")
+    if a.list:
+        for name, ch, (w, r) in lacking:
+            print(f"  lacks an ok gloss: {name} {ch} {w} {r} ({after[(w, r)].status})")
     return 0
 
 
@@ -284,8 +497,16 @@ def cmd_inspect(a) -> int:
     if h["stroke_off"]:
         stroked = sum(1 for s in p.strokes if s)
         strokes = sum(len(s) for s in p.strokes)
-        print(f"  strokes         {len(raw) - h['stroke_off']:>9,} "
+        end = h["words_off"] if h["words_off"] > h["stroke_off"] else len(raw)
+        print(f"  strokes         {end - h['stroke_off']:>9,} "
               f"({stroked} cards, {strokes} masks)")
+    if h["words_off"]:
+        n = sum(len(w) for w in p.words)
+        glossed = sum(1 for ws in p.words for w in ws if w.gloss)
+        kanji = sum(1 for g in p.glyphs if g.set == 2 and g.codepoint >= 0x3400)
+        print(f"  example words   {len(raw) - h['words_off']:>9,} "
+              f"({n} words for {sum(1 for w in p.words if w)} cards, {glossed} with a gloss; "
+              f"{kanji} kanji in set 2)")
     print(f"  total           {len(raw):>9,}")
     print("compression       raw    stored   ratio  (encoded)")
     for s, name in enumerate(("set 0", "set 1", "set 2", "set 3")):
@@ -452,9 +673,37 @@ def main(argv: list[str] | None = None) -> int:
                         "added or removed; fr/pt keep KANJIDIC2's order. In every language, "
                         "meaning distractors also avoid the meanings the pack leaves out. Needs "
                         "`fetch --readings --meanings` (docs/meaning-order.md)")
+    s.add_argument("--example-words", action="store_true",
+                   help="add example words (pack format v3): per card, a common word for its "
+                        "asked on'yomi and one for its asked kun'yomi, with the reading and a "
+                        "gloss in the deck's language (English from JMdict_e, Spanish only from "
+                        "the reviewed rows of --es-glosses; none otherwise), and their kanji "
+                        "in glyph set 2. Firmware without v3 support refuses the pack. Needs "
+                        "`fetch --readings`; meant with --common-readings, which orders the "
+                        "readings the device asks")
+    s.add_argument("--es-glosses", default=str(paths.EXAMPLE_GLOSSES_ES), metavar="PATH",
+                   help="the Spanish example-gloss table (default: data/example_glosses_es.tsv); "
+                        "its skip rows apply in every language")
     s.add_argument("--name", help="deck name (default derived from filters)")
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(fn=cmd_build)
+
+    s = sub.add_parser("sync-glosses",
+                       help="append the example words a deck picks and the Spanish gloss table "
+                            "lacks, as draft rows, and report what lacks a reviewed gloss")
+    s.add_argument("--jlpt", type=int, action="append", choices=range(1, 6), metavar="N",
+                   help="a JLPT level's deck (repeatable)")
+    s.add_argument("--joyo", action="store_true", help="the Joyo deck")
+    s.add_argument("--kanji-file", metavar="PATH", help="a deck from a kanji list (as `build`)")
+    s.add_argument("--es-glosses", default=str(paths.EXAMPLE_GLOSSES_ES), metavar="PATH",
+                   help="the table to fill (default: data/example_glosses_es.tsv; created "
+                        "when missing)")
+    s.add_argument("--dry-run", action="store_true", help="report only; write nothing")
+    s.add_argument("--list", action="store_true",
+                   help="also list every picked word that lacks an ok gloss")
+    s.add_argument("--show", type=int, default=50, metavar="N",
+                   help="appended rows to print (default 50)")
+    s.set_defaults(fn=cmd_sync_glosses)
 
     s = sub.add_parser("inspect", help="validate a pack (decoding every bitmap) and print a summary")
     s.add_argument("file")

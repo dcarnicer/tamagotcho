@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A hand-written miniature in JMdict_e's format for the example-word tests
+     and fixtures/mini_words.tgc (tamagotcho_pack/fixture.py): a few common
+     words with 日, 月 and 火, glosses written for the tests. Not copied from
+     JMdict. -->
+<!DOCTYPE JMdict [
+<!ELEMENT JMdict (entry*)>
+<!ENTITY n "noun (common) (futsuumeishi)">
+<!ENTITY adv "adverb (fukushi)">
+<!ENTITY uk "word usually written using kana alone">
+]>
+<JMdict>
+<entry><ent_seq>1</ent_seq>
+<k_ele><keb>毎日</keb><ke_pri>news1</ke_pri><ke_pri>nf05</ke_pri></k_ele>
+<r_ele><reb>まいにち</reb><re_pri>news1</re_pri><re_pri>nf05</re_pri></r_ele>
+<sense><pos>&adv;</pos><pos>&n;</pos><gloss>every day</gloss><gloss>daily</gloss></sense></entry>
+<entry><ent_seq>2</ent_seq>
+<k_ele><keb>日</keb><ke_pri>ichi1</ke_pri><ke_pri>news1</ke_pri></k_ele>
+<r_ele><reb>ひ</reb><re_pri>ichi1</re_pri><re_pri>news1</re_pri></r_ele>
+<sense><pos>&n;</pos><gloss>day</gloss><gloss>days</gloss></sense></entry>
+<entry><ent_seq>3</ent_seq>
+<k_ele><keb>日</keb></k_ele>
+<r_ele><reb>にち</reb></r_ele>
+<sense><pos>&n;</pos><gloss>day of the month</gloss></sense></entry>
+<entry><ent_seq>4</ent_seq>
+<k_ele><keb>今月</keb><ke_pri>news1</ke_pri><ke_pri>nf02</ke_pri></k_ele>
+<r_ele><reb>こんげつ</reb><re_pri>news1</re_pri><re_pri>nf02</re_pri></r_ele>
+<sense><pos>&n;</pos><gloss>this month</gloss></sense></entry>
+<entry><ent_seq>5</ent_seq>
+<k_ele><keb>月</keb><ke_pri>ichi1</ke_pri><ke_pri>news1</ke_pri></k_ele>
+<r_ele><reb>つき</reb><re_pri>ichi1</re_pri><re_pri>news1</re_pri></r_ele>
+<sense><pos>&n;</pos><gloss>moon</gloss><gloss>month</gloss></sense></entry>
+<entry><ent_seq>6</ent_seq>
+<k_ele><keb>火曜日</keb><ke_pri>ichi1</ke_pri><ke_pri>news1</ke_pri></k_ele>
+<r_ele><reb>かようび</reb><re_pri>ichi1</re_pri><re_pri>news1</re_pri></r_ele>
+<sense><pos>&n;</pos><gloss>Tuesday</gloss></sense></entry>
+<entry><ent_seq>7</ent_seq>
+<k_ele><keb>火山</keb><ke_pri>news1</ke_pri><ke_pri>nf01</ke_pri></k_ele>
+<r_ele><reb>かざん</reb><re_pri>news1</re_pri><re_pri>nf01</re_pri></r_ele>
+<sense><pos>&n;</pos><gloss>volcano</gloss></sense></entry>
+<entry><ent_seq>8</ent_seq>
+<k_ele><keb>火</keb><ke_pri>ichi1</ke_pri><ke_pri>news1</ke_pri></k_ele>
+<r_ele><reb>ひ</reb><re_pri>ichi1</re_pri><re_pri>news1</re_pri></r_ele>
+<sense><pos>&n;</pos><gloss>fire</gloss><gloss>flame</gloss></sense></entry>
+<entry><ent_seq>9</ent_seq>
+<k_ele><keb>火事</keb><ke_pri>news1</ke_pri><ke_pri>nf03</ke_pri></k_ele>
+<r_ele><reb>かじ</reb><re_pri>news1</re_pri><re_pri>nf03</re_pri></r_ele>
+<sense><pos>&n;</pos><misc>&uk;</misc><gloss>fire (in a building)</gloss></sense></entry>
+</JMdict>

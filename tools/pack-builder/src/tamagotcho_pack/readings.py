@@ -707,19 +707,14 @@ def zipf(x: float) -> float:
 LEVEL_MULT = {5: 16.0, 4: 8.0, 3: 4.0, 2: 2.0, 1: 1.5}
 
 
-def compute_scores(raw: list, jmdict: str | Path | bytes, furigana: str | Path | bytes,
-                   wordfreq: str | Path | bytes | None = None,
+def weighted_pairs(jmdict: str | Path | bytes, wordfreq: str | Path | bytes | None = None,
                    tatoeba: str | Path | bytes | None = None,
-                   jlpt_vocab: dict[tuple[str, str], int] | None = None) -> ReadingScores:
-    """Scores for the readings of every kanji in `raw` (KANJIDIC2 RawKanji).
-
-    Without `wordfreq` the JMdict priorities alone weigh the words; `tatoeba`
-    (only used with `wordfreq`) splits a form's frequency among its readings.
-    With `jlpt_vocab` ((word, reading) -> level, load_jlpt_vocab) each word's
-    weight is multiplied by LEVEL_MULT for its level, and `level` holds each
-    reading's easiest list level."""
-    kanji = {k.codepoint: KanjiReadings(k.onyomi, k.kunyomi) for k in raw}
-    furi = parse_furigana(furigana)
+                   jlpt_vocab: dict[tuple[str, str], int] | None = None) -> list[WordPair]:
+    """Every JMdict pair weighted for a learner: by corpus frequency with
+    `wordfreq` (shared among readings by `tatoeba`, used only with `wordfreq`),
+    else by the JMdict priorities alone; then times LEVEL_MULT for a word on a
+    JLPT list (`jlpt_vocab`). What compute_scores attributes to the readings,
+    and what the example words are picked from (words.py)."""
     pairs: list[WordPair] = list(parse_jmdict(jmdict))
     if wordfreq is not None:
         counts = load_tatoeba_counts(tatoeba) if tatoeba is not None else None
@@ -728,6 +723,27 @@ def compute_scores(raw: list, jmdict: str | Path | bytes, furigana: str | Path |
         pairs = [WordPair(p.text, p.reading,
                           p.weight * LEVEL_MULT.get(jlpt_vocab.get((p.text, p.reading), 0), 1.0),
                           p.pos) for p in pairs]
+    return pairs
+
+
+def compute_scores(raw: list, jmdict: str | Path | bytes | None, furigana: str | Path | bytes,
+                   wordfreq: str | Path | bytes | None = None,
+                   tatoeba: str | Path | bytes | None = None,
+                   jlpt_vocab: dict[tuple[str, str], int] | None = None,
+                   pairs: list[WordPair] | None = None) -> ReadingScores:
+    """Scores for the readings of every kanji in `raw` (KANJIDIC2 RawKanji).
+
+    Without `wordfreq` the JMdict priorities alone weigh the words; `tatoeba`
+    (only used with `wordfreq`) splits a form's frequency among its readings.
+    With `jlpt_vocab` ((word, reading) -> level, load_jlpt_vocab) each word's
+    weight is multiplied by LEVEL_MULT for its level, and `level` holds each
+    reading's easiest list level. `pairs`, when given, are those weighted
+    pairs already computed (weighted_pairs with the same inputs), and
+    `jmdict`, `wordfreq` and `tatoeba` are not read."""
+    kanji = {k.codepoint: KanjiReadings(k.onyomi, k.kunyomi) for k in raw}
+    furi = parse_furigana(furigana)
+    if pairs is None:
+        pairs = weighted_pairs(jmdict, wordfreq, tatoeba, jlpt_vocab)
     res = score_readings(kanji, pairs, furi)
     if jlpt_vocab:
         lv = score_readings(kanji, [WordPair(t, r, float(n)) for (t, r), n in jlpt_vocab.items()],

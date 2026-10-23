@@ -10,6 +10,7 @@ from .glyphs import SET_LARGE, SET_OPTION, SET_SMALL, SET_TEXT, FontRenderer, Gl
 from .kanjidic import Card
 from .kanjivg import KanjiVGDir, KanjiVGZip, default_source, masks_for
 from .pack import card_strings, on_hiragana, write_pack
+from .words import ExampleWord
 
 
 def default_deck_name(jlpt: set[int], grades: set[int], joyo: bool = False) -> str:
@@ -51,7 +52,11 @@ def build_pack(
     strokes: bool = False,
     strokes_px: int | None = None,
     kanjivg: KanjiVGDir | KanjiVGZip | None = None,
+    words: list[list[ExampleWord]] | None = None,
 ) -> bytes:
+    """The pack: v2, or v3 with `words` (aligned with `cards`: each card's
+    example words, words.example_words). A word the font cannot draw is left
+    out, a gloss it cannot draw is left empty (each with a warning)."""
     # The stroke masks store per-stroke placement as i8, so they only work up to
     # a 128 px em square (docs/pack-format.md "Limits"). Fail before rendering the
     # font or downloading KanjiVG.
@@ -59,13 +64,20 @@ def build_pack(
         raise ValueError(f"large_px ({large_px}) > 128 cannot be used with --strokes: "
                          "stroke x_off/y_off are signed bytes (max 127)")
     font = FontRenderer(font_path)
+    if words is not None and len(words) != len(cards):
+        raise ValueError("words must be index-aligned with cards")
     kept = []
-    for c in cards:
+    kept_words = []
+    for i, c in enumerate(cards):
         if font.has(c.codepoint):
             kept.append(c)
+            if words is not None:
+                kept_words.append(words[i])
         else:
             print(f"warning: font lacks U+{c.codepoint:04X} {c.char}; card dropped", file=sys.stderr)
     cards = kept
+    if words is not None:
+        words = _drawable_words(kept_words, font)
 
     # Kanji glyphs first: the meaning distractors are picked from how similar
     # the glyphs look, so we need the bitmaps before choosing them.
@@ -86,6 +98,10 @@ def build_pack(
         text_cps.update(ord(ch) for ch in s)
     for c in cards:
         text_cps.update(ord(ch) for ch in on_hiragana(card_strings(c)[1]))
+    # v3: the example words' kanji, kana and gloss letters too (docs/pack-format.md).
+    for ws in words or []:
+        for w in ws:
+            text_cps.update(ord(ch) for ch in w.text + w.reading + w.gloss)
     for cp in sorted(text_cps):
         if not font.has(cp):
             raise ValueError(f"font lacks text glyph U+{cp:04X} {chr(cp)!r}")
@@ -128,5 +144,33 @@ def build_pack(
     return write_pack(
         cards, glyphs, deck_name, lang, large_px, small_px, text_px, line_h, ascent,
         option_px, option_line_h, option_ascent, build_time,
-        strokes=card_strokes, strokes_px=px,
+        strokes=card_strokes, strokes_px=px, words=words,
     )
+
+
+def _drawable_words(words: list[list[ExampleWord]], font: FontRenderer
+                    ) -> list[list[ExampleWord]]:
+    """The words the font can draw: a word or reading with a character the font
+    lacks is left out, a gloss with one is emptied (warnings, not errors: the
+    words are an extra, and a card stays usable without them)."""
+    out = []
+    dropped: list[str] = []
+    emptied: list[str] = []
+    for ws in words:
+        row = []
+        for w in ws:
+            if not all(font.has(ord(ch)) for ch in w.text + w.reading):
+                dropped.append(w.text)
+                continue
+            if w.gloss and not all(font.has(ord(ch)) for ch in w.gloss):
+                emptied.append(w.text)
+                w = ExampleWord(w.kind, w.text, w.reading, "", w.span)
+            row.append(w)
+        out.append(row)
+    if dropped:
+        print(f"warning: font cannot draw {len(dropped)} example word(s), left out: "
+              + " ".join(dropped[:20]), file=sys.stderr)
+    if emptied:
+        print(f"warning: font cannot draw the gloss of {len(emptied)} example word(s), left "
+              "without one: " + " ".join(emptied[:20]), file=sys.stderr)
+    return out

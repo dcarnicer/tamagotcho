@@ -219,7 +219,7 @@ def test_reader_rejects_corrupt_rle_and_v1_rle():
     assert any("unsupported encoding 1 in a v1 pack" in e for e in read_pack(bytes(bad)).errors)
     # Unknown versions are refused outright.
     bad = bytearray(raw)
-    struct.pack_into("<H", bad, 4, 3)
+    struct.pack_into("<H", bad, 4, 4)
     with pytest.raises(ValueError, match="version"):
         read_pack(bytes(bad))
 

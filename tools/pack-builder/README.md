@@ -21,6 +21,8 @@ uv run python scripts/common_readings_report.py   # what --common-readings chang
 uv run tamagotcho-pack fetch --meanings # optional: English-Spanish dictionary for --meaning-order (with --readings)
 uv run tamagotcho-pack build --jlpt 5 --lang es --meaning-order -o out/n5-es-meanings.tgc
 uv run python scripts/meaning_order_report.py     # what --meaning-order changes
+uv run tamagotcho-pack build --jlpt 5 --lang es --common-readings --example-words -o out/n5-es-words.tgc  # pack v3
+uv run tamagotcho-pack sync-glosses --jlpt 5      # new example words -> draft rows of data/example_glosses_es.tsv
 uv run python scripts/example_words_report.py --fetch --packs DIR  # example-word measurement (docs/example-words.md)
 uv run python scripts/example_words_alternatives.py --fetch --packs DIR  # licence-compatible Spanish glosses compared
 uv run tamagotcho-pack build --wanikani-token "$WANIKANI_TOKEN" -o out/wanikani.tgc
@@ -126,6 +128,35 @@ uv run pytest
   change, the overrides, the cases to double-check); `scripts/check_meaning_distractors.py out/*.tgc` checks built
   packs (no meaning distractor shows a meaning of its card, or has the card's
   first meaning among its own, against KANJIDIC2's full lists).
+  `--example-words [--es-glosses PATH]` (needs `fetch --readings`, adds ~20 s)
+  adds **example words** for the learning mode's intro card and writes the pack
+  in format **v3** (docs/pack-format.md, "Example-words section"; firmware
+  without v3 support refuses it, so published decks stay v2 until the rollout
+  there). Per card: the most useful common word for its asked on'yomi and one
+  for its asked kun'yomi (a JLPT list word at or below the kanji's level first,
+  then the learner-weighted frequency of `--common-readings`; only words on a
+  JLPT list or with JMdict priority tags, not usually written in kana;
+  docs/example-words.md), each with its reading, the part of the reading the
+  kanji reads, and a gloss in the deck's language: English from JMdict_e (its
+  first non-romaji gloss, when 24 characters or fewer), Spanish only from the
+  `ok` rows of `data/example_glosses_es.tsv` (never JMdict's own Spanish
+  glosses), none in French or Portuguese. A word without a gloss is shown with
+  its reading only. The table's `skip` rows apply in every language: the next
+  candidate is taken. The words' kanji, kana and letters join glyph set 2. It
+  is meant with `--common-readings` (the readings the device asks) and cannot
+  be combined with `--wanikani-token`. Without the flag the output is
+  unchanged.
+- `sync-glosses (--jlpt N [--jlpt M ...] [--joyo] | --kanji-file PATH)
+  [--es-glosses PATH] [--dry-run] [--list] [--show N]` (needs `fetch --readings
+  --meanings`) fills the Spanish table for review: it picks the selection's
+  example words as `build --common-readings --example-words` does (honouring
+  `skip` rows), appends every picked word the table lacks as a `draft` row at
+  the end of the file (level, kanji, word, reading, JMdict_e's first English
+  glosses, a FreeDict suggestion as `es` and a `CHECK:` note; existing rows are
+  never touched), prints which skipped words were replaced by what, and
+  reports per level the picked words with an `ok` row and those still lacking
+  one (`--list` names them). Run it after a review sets rows to `skip`, and
+  after a JMdict update changes picks.
 - `build --wanikani-token TOKEN [--wanikani-level N ...]` builds from **your own
   WaniKani account** instead of KANJIDIC2 (so no `--jlpt`/`--grade`, and
   `fetch` is only needed for the font). It imports only the kanji you have
@@ -142,9 +173,10 @@ uv run pytest
 - `inspect FILE` validates (magic, version, offsets, alignment, glyph table
   order, set 0/1 glyph per card, every string character present in set 2, every
   reading character in set 3, and every compressed glyph and stroke mask decodes
-  within its size) and prints sizes, raw vs stored bytes per glyph set and for
-  the stroke masks, and the file's `sha256`; exit code 1 when invalid. It reads
-  v1 and v2 packs.
+  within its size; in v3, the example-words section: its index, entries,
+  strings, reading spans and set-2 glyphs) and prints sizes, raw vs stored
+  bytes per glyph set and for the stroke masks, and the file's `sha256`; exit
+  code 1 when invalid. It reads v1, v2 and v3 packs.
 - `preview FILE --card 日 --mode meaning|reading|kanji|strokes [--kind on|kun]
   -o out.png [--width 135 --height 240 --scale 3 --seed 1 --reveal]
   [--stroke N]` draws a mock quiz screen that mirrors the device: reading answers
@@ -159,7 +191,12 @@ uv run pytest
   firmware cross-checks against this encoder (format in `fixture.py`).
   `mini.json` lists the expected decoded fields; all offsets in it are absolute
   file offsets. `fixtures/mini_v1.tgc` is the last v1 fixture, kept frozen (not
-  regenerated) to test that v1 packs stay readable.
+  regenerated) to test that v1 packs stay readable. `fixtures/mini_words.tgc`
+  is the same three cards as a Spanish **v3** pack with strokes and example
+  words, picked from the hand-written word miniatures in `tests/data/`
+  (`mini_jmdict.xml`, `mini_furigana.txt`, `mini_glosses_es.tsv`: an `ok`, a
+  `draft`, a `skip` and a missing row); `mini_words.json` lists its header and
+  words.
 - `catalog DIRECTORY [-o FILE| -] [--base-url URL] [--json PATH] [--order NAMES]`
   scans a directory of `*.tgc` and writes the line-oriented **catalog** the
   device reads, format version 2 (see below; publish it as `catalog-v2.txt`). It
@@ -241,7 +278,9 @@ compatibility while the maintainer is the only user (docs/decisions.md,
   meanings, confusable readings for readings); `preview.py` UI mock;
   `catalog.py` the line-oriented device catalog; `build.py` orchestration;
   `readings.py` reading scores and order for `--common-readings`, with
-  `joyo_table.py` the parse of the official Jōyō table PDF.
+  `joyo_table.py` the parse of the official Jōyō table PDF; `words.py` the
+  example words of `--example-words` (the pick, the glosses, the Spanish table
+  and `sync-glosses`' FreeDict suggestions).
 
 ## Conventions (where the spec leaves room)
 
