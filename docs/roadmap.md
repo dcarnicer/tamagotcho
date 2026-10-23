@@ -311,8 +311,7 @@ Scope for now: **kanji only** (no vocabulary decks).
       download of a session (the TLS client's `close(0)`).
       **v0.4.2** (2026-10-22) adds the deck update checks and the portal's
       weakest-kanji view, and goes with the `decks-v2` rebuild of that day;
-      its notes are `docs/releases/v0.4.2.md` and its M5Burner version is ready
-      to submit (docs/m5burner.md).
+      its notes are `docs/releases/v0.4.2.md`.
       **v0.5.0** (2026-10-22) adds SHA-256 to the deck update check, progress
       backup and restore in the portal, `--kanji-file` in the pack builder, and
       the browser install page on GitHub Pages. It was checked on a StickS3
@@ -322,11 +321,13 @@ Scope for now: **kanji only** (no vocabulary decks).
       a Cardputer ADV (release `m5stack` image boot, board and TCA8418 keyboard
       detected, first-boot language picker; the `cardputer-adv-shots` setup
       portal on 240×135; original M5Launcher flash restored). Its notes are
-      `docs/releases/v0.5.0.md`; the M5Burner version is pending.
+      `docs/releases/v0.5.0.md`.
       **v0.5.1** (2026-10-23) refreshes the deck update count from any
       home-Wi-Fi session (Get decks, the portal, the network test, the
       boot-time date sync) and fits the update texts on the narrow screen,
       all checked on a StickS3; its notes are `docs/releases/v0.5.1.md`.
+      It is the first version on M5Burner after v0.4.1 (submitted
+      2026-10-23, pending review; v0.4.2 and v0.5.0 were skipped there).
       The **README** is a landing page since 2026-10-21: a cover and a
       gallery of real screens (`tools/screenshots/readme_images.py`, shots
       from a StickS3 through the serial remote), with the long manual moved

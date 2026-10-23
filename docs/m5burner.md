@@ -12,13 +12,12 @@ The entry: <https://burner.m5stack.com/firmware/2112925841991487490>, account
 `dabidesu`. v0.4.1 was submitted as Public on 2026-10-21 and approved on
 2026-10-22 (published at 04:16 CEST); v0.4.0, submitted first, was withdrawn
 the same day (back to a private draft) for the download bug v0.4.1 fixes.
-v0.4.2 followed as the 2026-10-22 release with the deck update checks.
-**v0.5.0** is the GitHub release of 2026-10-22 and is ready to add as the next
-Public version with `tamagotcho-m5stack-merged.bin`; its version description
-is the first lines of `docs/releases/v0.5.0.md`. That merged image was booted
-on a Cardputer ADV on 2026-10-22 (board and TCA8418 keyboard detected, first
-boot reached the language picker) as well as on a StickS3. A new
-version: `/developer/firmware/2112925841991487490/versions/new`
+v0.4.2 and v0.5.0 (both 2026-10-22) were never added. **v0.5.1** was
+submitted as Public on 2026-10-23 with the release's
+`tamagotcho-m5stack-merged.bin` and is pending review; since M5Burner users
+come from v0.4.1, its version description sums up everything since then
+(deck update checks, progress backup, the weakest kanji, texts that fit) and
+links the full notes. A new version: `/developer/firmware/2112925841991487490/versions/new`
 (My homepage › the entry › View all versions); it keeps the entry's name,
 categories, devices and description, and asks for the version, its notes,
 the release's `tamagotcho-m5stack-merged.bin`, the visibility and the cover.
