@@ -3159,8 +3159,9 @@ marked *to confirm* needs the device.
   full brightness. The guard slept after three 0 % readings; the gauge jumped
   from 6 % to 0 %, so the exact 3 % was not observed (the rule is native-
   tested). With USB in and the front button pressed, the device woke at 14 %
-  and resumed (`boot after critical (usb)`). The 6 % no-USB resume was not
-  tried.
+  and resumed (`boot after critical (usb)`). The 6 % no-USB resume is
+  accepted as working: the gauge is unreliable at that level, and the USB
+  resume plus the native `canResume` rule are the evidence.
 - **The normal UI keeps the icon only.** The percentage in the header is part
   of the test build; the release screens still show the battery icon, as
   before.

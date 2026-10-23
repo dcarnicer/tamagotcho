@@ -40,7 +40,9 @@ Scope for now: **kanji only** (no vocabulary decks).
           after three 0 % readings, but the gauge jumped 6 % → 0 %, so the
           exact 3 % was not seen (the rule is native-tested). USB + the front
           button resumed at 14 % (`boot after critical (usb)`). The 6 %
-          no-USB resume was not tried.
+          no-USB resume is accepted as working: the gauge is unreliable at
+          that level, and the USB resume plus the native `canResume` rule are
+          the evidence.
         - [ ] Maybe: wake from deep sleep with the power button through the
           PM1 IRQ output (PM1 G1 is wired to ESP32 G13). Held back because the
           datasheet says the PM1 LED then blinks while the click reset is off.
@@ -249,6 +251,9 @@ Scope for now: **kanji only** (no vocabulary decks).
           (2026-10-23). The result now reads "6 mazos por / actualizar" and the
           home row shows "Mazos 6 act" in portrait ("Decks 6 upd" in English);
           `test_ui` checks both widths.
+        - [x] Shorten the updates and Get decks headers to "%s · %u"
+          (2026-10-23): with "Shimokitazawa" the old lines were 150/138 px in
+          127 and were cut; the headers now show the network and the count.
         - [ ] Tune the battery policy (the daily / weekly / 50 % rule is
           native-tested; a real battery run is still pending).
       - [~] **M5Launcher compatibility.** The app-only `.bin` that

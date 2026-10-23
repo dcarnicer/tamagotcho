@@ -172,6 +172,12 @@ catalog.
   value in portrait because "6 act." did not fit (it now shows "Mazos 6 act",
   and "Decks 6 upd" in English; `test_ui` checks the widths). The device was
   restored from its 8 MB flash backup afterwards (hash verified).
+- **Get decks header, StickS3, 2026-10-23.** With the home network
+  "Shimokitazawa", the 127 px caption cut "%s · %u updates" (150 px) and
+  "%s · %u decks" (138 px) to "Shimokitazawa · 6...". Both now read "%s · %u":
+  the updates list showed "Shimokitazawa · 6" and Get decks
+  "Shimokitazawa · 12" with no ellipsis. `test_ui` checks the 102 px line and
+  the old widths. The device ran the normal `sticks3` build afterwards.
 - Not exercised: the battery thresholds (the daily / weekly / 50 % policy is
   native-tested; a real discharge needs the device unplugged and kept awake).
   The English result screen with N > 0 was not captured, but its strings are in
