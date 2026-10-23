@@ -79,7 +79,8 @@ RTC_DATA_ATTR bool gSleepUiEs = false;
 // went to sleep: the wake asks it again instead of silently dropping it.
 RTC_DATA_ATTR bool gDatePending = false;
 
-namespace {
+namespace tgc {
+namespace app {
 
 constexpr uint16_t kBlack = 0x0000;
 constexpr uint16_t kWhite = 0xFFFF;
@@ -6038,7 +6039,10 @@ void firstLangLoop(int a) {
     }
 }
 
-}  // namespace
+}  // namespace app
+}  // namespace tgc
+
+using namespace tgc::app;
 
 void setup() {
     Serial.begin(115200);
@@ -6207,6 +6211,9 @@ void setup() {
         drawScreen();
     }
 }
+
+namespace tgc {
+namespace app {
 
 // The quiz's input (docs/ux-refresh.md §6.7). On a question: front tap = the
 // next option (down), side tap = the previous one (up), both wrapping; front
@@ -6751,6 +6758,9 @@ void keyTurn(uint32_t t, bool swallow) {
         if (keyRepeatsHere()) keyAction(tgc::keyAction(r), t);
     }
 }
+
+}  // namespace app
+}  // namespace tgc
 
 void loop() {
     tgc::board::update();
