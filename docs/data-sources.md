@@ -369,6 +369,9 @@ it; the decks published so far use none of it.
   translational equivalents in other languages, e.g. German, French, Dutch,
   etc. are covered by separate copyright held by the compilers of that
   material)" (https://www.edrdg.org/edrdg/licence.html).
+  `scripts/example_words_report.py --fetch` downloads `JMdict.gz` into the
+  cache only to measure how many example words have a Spanish gloss
+  (docs/example-words.md); no pack contains them.
 
 ### Meaning overrides (project-authored)
 
