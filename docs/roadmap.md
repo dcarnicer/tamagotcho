@@ -323,6 +323,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       detected, first-boot language picker; the `cardputer-adv-shots` setup
       portal on 240×135; original M5Launcher flash restored). Its notes are
       `docs/releases/v0.5.0.md`; the M5Burner version is pending.
+      **v0.5.1** (2026-10-23) refreshes the deck update count from any
+      home-Wi-Fi session (Get decks, the portal, the network test, the
+      boot-time date sync) and fits the update texts on the narrow screen,
+      all checked on a StickS3; its notes are `docs/releases/v0.5.1.md`.
       The **README** is a landing page since 2026-10-21: a cover and a
       gallery of real screens (`tools/screenshots/readme_images.py`, shots
       from a StickS3 through the serial remote), with the long manual moved
