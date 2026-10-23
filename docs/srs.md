@@ -61,18 +61,41 @@ byte) without a format break, because the record has reserved bytes.
 |-----|------|----------------|--------------------------------------------------------------|
 | 0   | u32  | codepoint      | identity, sorted ascending (binary search)                   |
 | 4   | u16  | stability_cds  | stability S in **centidays** (1/100 day), 1 .. 65535         |
-| 6   | u16  | due_day        | day index this card is next due (0 = new, never reviewed)    |
+| 6   | u16  | due_day        | day index this card is next due (0 = new, never reviewed, unless learning) |
 | 8   | u16  | last_day       | day index of the last review (0 = never)                     |
 | 10  | u8   | difficulty10   | difficulty D × 10, 10 .. 100                                 |
 | 11  | u8   | reps           | saturating review count (255 max)                            |
 | 12  | u8   | lapses         | saturating Again count                                       |
 | 13  | u8   | mode_seen      | bit0 meaning, bit1 reading, bit2 meaning→kanji               |
 | 14  | u8   | last_grade     | 0 Again, 1 Hard, 2 Good, 0xFF never                          |
-| 15  | u8   | flags          | bit0 = introduced on `last_day` (first review that day); 0 in older files |
+| 15  | u8   | flags          | bit0 = introduced on `last_day` (first review or intro that day); bit1 = learning (intro shown, never answered); 0 in older files |
 
 S in centidays: resolution 14.4 min, which is far below the day resolution of
 intervals, and enough range for the 365-day interval cap (§3). A record with
-`due_day == 0` is a new card.
+`due_day == 0` is a new card, unless it is learning.
+
+**Flags** (`kRecordFlag*` in `srs/SrsStore.h`):
+
+- **bit0, introduced on `last_day`.** Set by a card's first grade, or by its
+  intro (below); cleared by a grade on a later day. The per-deck new-card cap
+  counts the deck's records with it set and `last_day == now_day` (§6).
+- **bit1, learning** (docs/learning-mode.md §3.5). With learning mode on, a
+  never-seen kanji is first shown on an intro card; when the learner goes on,
+  `introduce(codepoint, day)` records an *exposure*, not an answer: S 0.40 d
+  (`w[0]`, `stability_cds` 40), D 5.28 (`D0(Good)`, `difficulty10` 53),
+  `due_day` = `last_day` = today, `reps` and `lapses` 0, `mode_seen` 0,
+  `last_grade` 0xFF, flags bit0 + bit1 (`introMemory()` in `srs/Srs.h` holds
+  the two constants). It counts nothing but the legacy `new_introduced_*`
+  header counter: no answer, no Again, no streak day. The card's next grade is
+  not a first review: `grade()` goes on from the intro's S and D with
+  `nextMemory()` (the same-day formula on the intro day: a Good gives 0.56 d,
+  an Again 0.20 d and D 6.8) and clears bit1; bit0 follows its usual rule. A
+  learning record is **due whatever its `due_day`** (an intro on day 0 leaves
+  it 0) and is seen, not new, in the deck counts and the statistics
+  (`isLearning()`, `isFresh()`). The bit was always 0 before learning mode, so
+  the layout, the size and the version are unchanged; backup and restore,
+  Delete progress and deck deletion treat the record like any other (a
+  forgotten learning record leaves the kanji new again).
 
 In memory: `std::vector<Record>` kept sorted by codepoint, held in PSRAM on
 device (`psramAllocator`-style) — ~40 KB for a 2 500-card collection. The file
@@ -81,8 +104,9 @@ is a straight dump of that vector, so load and save are both O(n) with no
 
 ### 2.1 Record lifecycle
 
-A record is created by the first answer to its kanji (`grade()`) and changed by
-every later one. Nothing else touches it: switching decks, a deck that is not
+A record is created by the first answer to its kanji (`grade()`), or by its
+intro card with learning mode on (`introduce()`, §2), and changed by every
+later answer. Nothing else touches it: switching decks, a deck that is not
 loaded, and **updating a deck in place** (Get decks, or the portal downloading
 or uploading a file of the same name over it) all keep every record. Records
 are removed in three cases only, each an explicit request (docs/decisions.md,
@@ -184,7 +208,8 @@ The UI geometry still leaks into the number; see §9.
 All in `float` (the S3 has a single-precision FPU; `double` is software and
 slow). Grade `G` ∈ {1,2,3}; `t` = `last_day`..`today` elapsed days.
 
-First review (`reps == 0`):
+First review (`reps == 0` and not learning; a learning record goes on from its
+intro's S and D, §2):
 
 ```
 S = w[G-1]
@@ -666,7 +691,9 @@ for the boot-time date question:
 list. Rebuilt on boot and on every pack change.
 
 1. **Classify** every card in the current pack by codepoint:
-   `new` (`due_day == 0`), `due` (`due_day <= now_day`), or `future`.
+   `new` (no record, or `due_day == 0` and not learning: `isFresh()`), `due`
+   (learning, or `due_day <= now_day`), or `future`. A learning record (§2) is
+   due whatever its `due_day`, so an intro on day 0 is not mistaken for new.
 2. **Reviews first**, ordered by `due_day` ascending, then stability ascending
    (most overdue / weakest first). Ties broken by codepoint for determinism.
 3. **New cards**, ordered by the pack's `level` hint then codepoint — the
@@ -678,7 +705,9 @@ list. Rebuilt on boot and on every pack change.
    cap is per deck, as in Anki: another deck's new cards do not use it up, and
    a card two decks share counts in both. (The header's `new_introduced_*`
    counter is still kept but no longer drives the queue.) Reviews are not capped in a
-   day; the session as a whole has a soft `session_cap = 200`.
+   day; the session as a whole has a soft `session_cap = 200`. With learning
+   mode on (8 below) each new card is an intro item, and the cap counts it with
+   the steps it will add (1 + 2), so the session's screens stay within it.
 4. **Interleaving the three question types.** State is per card, so the mode is
    chosen when the item is served, not scheduled. For each item pick, among the
    modes this card can be asked (`buildQuestion`'s existing fallbacks), the one
@@ -693,14 +722,46 @@ list. Rebuilt on boot and on every pack change.
 6. **In-session relearn**: grade Again (or a lapse on a `t == 0` item) →
    re-insert the card `kRelearnGap = 5` items ahead of the cursor, max 3
    relearn pushes per card per session. At the end of the session its `due_day`
-   is `now_day` if still `I < 1`, so it comes back tomorrow. This is the only
-   path that can show a card twice.
+   is `now_day` if still `I < 1`, so it comes back tomorrow. This and the
+   learning steps (8 below) are the only paths that can show a card twice. A
+   relearn's mode is chosen when it is served, as for any item, except after a
+   missed learning step: that relearn asks the step's mode again (meaning →
+   kanji waits for the next day).
 7. **Empty queue**: "done" state showing the number due next and the interval
    of the next card (from `future`). A tap there is the "study more" override:
    each one raises today's new-card allowance by 10 and rebuilds the queue. It
    belongs to the day it was granted: once the day index moves on (uptime
    rollover, sleep time, a manual date or a real-time sync) it no longer
    applies, and loading another deck resets it.
+8. **Learning mode** (docs/learning-mode.md §3.4). Off unless
+   `setLearning(LearnOptions{on, steps, gap})` turns it on (defaults: off, 2
+   steps, gap 3); it applies from the next `rebuild()`, so the rebuild call
+   sites stay as they are, and with it off the queue is exactly the one above.
+   With it on, `QueueItem` has a `kind`:
+   - **`Intro`**: a never-seen kanji (step 3's new cards; no question). The
+     app shows the intro card and reports `introduced(cardIndex)` when the
+     learner goes on (after `SrsStore::introduce()`, §2), which inserts
+     **step 1** (`Step`, kanji → meaning) `gap` items after the cursor, or
+     `known(cardIndex)`, which inserts the card at the cursor as an ordinary
+     `Ask` item: asked at once, a first review, no steps. Both return false and
+     change nothing unless that intro is the item on screen.
+   - **`Step`** (`step` 1 or 2, `mode` fixed): answering step 1 inserts
+     **step 2** (a reading; on or kun is `ReadingTurn`'s, in the app) `gap`
+     items on, whatever the grade. An Again in a step also gets the relearn of
+     6; step 2 is inserted first, so both keep their gaps and step 2 comes
+     before the relearn. A step whose mode the card cannot be asked falls back
+     to the least used mode.
+   - **`Ask`**: everything else, as above.
+
+   With a gap of 3, ten new cards come in batches of four (`I` intro, `M`
+   step 1, `R` step 2): I A–D, M A–D, R A–D, then E–H, then I I, I J, M I,
+   M J, R I, R J; with fewer than `gap` items left a step goes to the end.
+   Steps live in the queue only: a rebuild drops them, and the learning
+   record is then a due card asked once (graded from its intro's S and D).
+   `remaining()` counts the steps the intros and steps still to come will add
+   (the item on screen's too) and `answeredCount()` counts an intro gone on
+   from as a done item, so the header's cards left drops by one per item and
+   the session bar's total holds; only a relearn adds to it, as before.
 
 Optionally mixing one new card every 3 reviews (instead of all reviews then all
 new) is a one-constant change; phase 2 keeps the literal reviews-first order.
@@ -722,6 +783,19 @@ New globals: `tgc::SrsStore gSrs;`, `tgc::Queue gQueue;`, `uint32_t gShownAt;`.
 | `applyReset()` | Settings › Study › Delete progress: `forget()` the loaded deck's kanji or `resetProgress()`, save, rebuild the queue and build a fresh question for when the settings close (§2.1). |
 | `openMenu()`/`drawMenu()` | optional: append `due/new` counts per pack (a `gSrs.countDue(gPack, now_day)` helper) and a small progress line in the quiz header. |
 | `showError()` | a corrupt state file is *not* an error screen; log and start empty. |
+
+**Learning mode** (docs/learning-mode.md §5, phase 2). The SRS and queue part
+is in place (§2, §6 item 8) and nothing calls it yet, so the device behaves as
+before. The app will:
+
+| where | change |
+|-------|--------|
+| `setup()` and Study › Introduce | `gQueue.setLearning(opts)` with `opts.on` from NVS (`tangocho`/`intro`, On by default) before the first `rebuild()`; on a change of the setting, `setLearning()` and then a rebuild, since the queue already built keeps its items. |
+| `newQuestion()` → "next item" | after `gQueue.next(&item)`: `item.kind == tgc::ItemKind::Intro` opens the intro card for `item.cardIndex` (no question is built and `gReadingTurn` is left alone); `Step` and `Ask` build a question in `item.mode` with today's fallbacks. |
+| intro, front press (go on) | `gSrs.introduce(card.codepoint, gSrs.today())`, `gSrs.addIntroMs(ms on screen)` (capped at 30 s), `gQueue.introduced(item.cardIndex)`, `++gDirty`, then the next item. |
+| intro, side tap ("known") | `gSrs.addIntroMs(ms on screen)`, `gQueue.known(item.cardIndex)`, then the next item, which is that card's question. |
+| `holdAction()` | unchanged: `gSrs.grade()` and `gQueue.answered()`; the queue knows when the answer was a step and inserts the next one. |
+| quiz header | unchanged: `sessionProgress(gQueue.answeredCount(), gQueue.remaining(), open)` already counts the steps to come and the intros done. |
 
 `TGC_QUIZ_LOG` stays the debugging channel; phase 2 adds the grade/S/D/interval
 line to it rather than introducing a second mechanism.

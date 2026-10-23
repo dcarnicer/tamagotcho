@@ -3219,3 +3219,31 @@ marked *to confirm* needs the device.
 - **Order of work.** Phase 1 (SRS and queue, pure, native-tested) is built
   before the `main.cpp` split lands, with learning off unless enabled, so the
   device behaves as before; phase 2 (the intro screen) builds on the split.
+
+## 2026-10-23 – Learning mode phase 1: choices the design left open
+
+- **A missed step is relearned in its own mode.** Today's relearn picks the
+  least used mode when it is served; after a missed step 1 and a step 2 that
+  would be meaning → kanji, which the design keeps for the next day (O3). So
+  the relearn of a step asks kanji → meaning (or the reading) again; any other
+  relearn is unchanged. Step 2 is inserted before the relearn push, so both
+  keep their gaps (3 and 5 items) and step 2 comes first.
+- **The session cap counts an intro with its steps** (1 + 2 of the 200), so a
+  session's screens stay within it; with 195 reviews due, one intro fits
+  instead of five cold questions. With learning off nothing changes.
+- **An intro is a done item, also on "known".** `answeredCount()` counts
+  `introduced()` and `known()`, so done + left holds through intros; "known"
+  then shortens the session by the two steps it skips.
+- **Strict reports.** `introduced()` and `known()` act only on the intro on
+  screen and `introduce()` only on a never-seen kanji (false otherwise), so a
+  double report cannot add steps or reset a record. An intro never moves the
+  mode rotation (no question was asked).
+- **Intro time is a separate call**, `addIntroMs()` (capped at 30 s), so the
+  app can count the intro's time on "known" too, where `introduce()` is not
+  called.
+- **Options are clamped:** 1 or 2 steps, a gap of at least 1 item.
+- **Schedules checked** with the firmware's own store: both path (C) rows of
+  docs/learning-mode.md §3.5 come out exactly (1, 4, 13, 41, 116 and 1, 2, 6,
+  17, 42; 5 and 6 reviews in the first year). The first-Good row (today's and
+  "known") has its fourth review on S = 98.50, a rounding boundary: the host
+  gives 99 and then 263 days where the table says 98 and 261.

@@ -479,6 +479,9 @@ phase 2 once the split has landed.
 
 **Phase 1 – SRS and queue (S–M, ~1 d; pure, native-tested; branch
 `feature/learn-srs`).**
+- **Done on `feature/learn-srs` (2026-10-23)**, learning off until phase 2
+  calls `Queue::setLearning()`; the API and the calls phase 2 makes are in
+  docs/srs.md §2, §6 (item 8) and §7.
 - `srs/SrsStore`: `kRecordFlagLearning` (bit1), `introduce(codepoint, day)`,
   `grade()` for a learning record, `isLearning()`.
 - `srs/Queue`: item kinds (`Ask`, `Intro`, `Step`) and the step's mode in
