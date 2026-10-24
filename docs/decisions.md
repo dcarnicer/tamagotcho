@@ -3460,3 +3460,31 @@ Design in docs/ota.md; every decision of its §8 taken as recommended.
   again.
 - **Later**: Previous version (switch back by hand) and a firmware upload on
   the portal for development.
+
+## 2026-10-24 – OTA phase 1: the layout and the release side
+
+docs/ota.md §6, phase 1: the two-slot tables of §2, the manifest of §3.1.
+
+- **`TGC_ENV` is a `build_src_flags` with `${this.__env__}`**, set once in
+  each board's base env (`sticks3`, `tdisplay-s3`, `cardputer-adv`,
+  `m5stack`). The derived envs copy `build_flags` with
+  `${env:sticks3.build_flags}`, which expands in the parent and would carry
+  its name; an option inherited through `extends` expands in the inheriting
+  env, so `sticks3-shots` gets `"sticks3-shots"`, once. It cannot sit in
+  `common_esp32s3`: PlatformIO expands every section for the project checksum
+  of `pio run`, and `${this.__env__}` fails outside an `env:` section. Only
+  `src/` gets it, which is where it is read.
+- **The manifest script finds each env's table in platformio.ini**
+  (`board_build.partitions`, followed through `extends` as PlatformIO does)
+  rather than in a second list in `release.yml`, and takes the envs from the
+  `tamagotcho-<env>.bin` files of `dist/`, sorted by name. A table must have
+  two or more app slots of one size, the limit an image is checked against;
+  every image over it is listed and nothing is published.
+- **Release tags must be `vMAJOR.MINOR.PATCH`** (the resolve job, before any
+  build): the manifest's `version` line has to parse that way, and a device
+  takes any other version for a development build, which never updates.
+- **`boot_app0.bin` is a release asset**, staged by the StickS3 job only (the
+  same framework file for every board), so the app-only USB update has
+  everything it needs: `write_flash 0xe000 boot_app0.bin 0x10000
+  tamagotcho-<board>.bin`. `merge_image.py` now always gets it (the tables
+  have `otadata`) and fails without it.
