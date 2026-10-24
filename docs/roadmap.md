@@ -479,7 +479,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       Later, on hold: the Spanish glosses beyond N5 (reviewed level by level,
       then `decks-v3` rebuilt in place) and the long-run checks of
       docs/learning-mode.md §5.
-- [ ] **OTA firmware updates** (idea, 2026-10-21). Update the firmware over
+- [~] **OTA firmware updates** (idea, 2026-10-21; design approved 2026-10-24
+      in `docs/ota.md`, being built). Update the firmware over
       the home Wi-Fi, from the device, instead of over USB: for example a
       Settings › Device › Update row that reads the latest GitHub release
       (as Get decks reads the decks catalog: HTTPS, size and SHA-256 checked),
