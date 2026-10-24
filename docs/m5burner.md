@@ -26,6 +26,16 @@ JMdict) and is under review as metadata. A new version: `/developer/firmware/211
 categories, devices and description, and asks for the version, its notes,
 the release's `tamagotcho-m5stack-merged.bin`, the visibility and the cover.
 
+**v0.7.0 is a fresh install** (the first version that updates over the
+air, docs/ota.md): it moves the flash layout to two app slots, so Burning it
+over v0.6.0 or older loses the decks and the progress as well as the
+settings (the deck storage moved and is formatted on the first boot). Its
+version description has to say so and link the move (docs/user-guide.md,
+"Moving to v0.7.0": the progress backup on the portal first). A device burned with
+v0.7.0 or later runs the `m5stack` build and takes the `m5stack` row of the
+release's `tamagotcho-firmware.txt` from then on; M5Burner stays the way to
+install it, and to start again from scratch.
+
 | field | value |
 |---|---|
 | Name | `Tamagotcho` |

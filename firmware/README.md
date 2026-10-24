@@ -23,6 +23,10 @@ Each build prints `Tamagotcho version: ...`: `scripts/version.py` takes
 --always --dirty --match "v[0-9]*"`, else `dev`, and compiles it into
 `src/Version.cpp` only (a new version recompiles one file). The device logs it
 on boot (`Tamagotcho <version>`) and shows it under Settings › Device › About.
+Every esp32 env also compiles in its own name, `TGC_ENV` (`"sticks3"`,
+`"m5stack-shots"`, ...): the row of the release's firmware manifest its
+updates over the air take (docs/ota.md; the comment at the top of
+`platformio.ini` says how each env gets exactly one).
 
 ## Flash
 
@@ -61,15 +65,16 @@ the image M5Burner carries.
 ### Prebuilt images from a release
 
 A GitHub release carries, per board, the app-only `tamagotcho-<env>.bin` (the same
-file `pio run` produces, e.g. for M5Launcher) and a **merged**
+file `pio run` produces, e.g. for M5Launcher, and the one an update over the
+air installs, listed in `tamagotcho-firmware.txt`), a **merged**
 `tamagotcho-<env>-merged.bin` that `esptool write_flash 0x0 …` or a browser (ESP
-Web Tools, via the release's `manifest.json`) can flash in one go. A merged image
+Web Tools, via the release's `manifest.json`) can flash in one go, and
+`boot_app0.bin`, written at `0xE000` with an app-only image. A merged image
 carries **no filesystem**: the first boot formats the data partition when it
 holds no LittleFS (erased or foreign), so a fresh device asks for its language
 (English / Español) and boots into the Wi-Fi portal, where a pack can be sent
-over the air. Offsets and the exact
-`esptool merge_bin` command are in the root README; the merged image is **not
-verified on hardware** yet (docs/decisions.md).
+over the air. Offsets and the exact `esptool merge_bin` command are in
+docs/user-guide.md, "Flashing".
 
 ## Putting a pack on the device
 
@@ -115,14 +120,24 @@ page.
 
 ## Flash layout
 
-No OTA: one 2 MB app slot, everything else is LittleFS (partition label
-`spiffs`, see `partitions/`).
+Two OTA app slots, `app0` at `0x10000` and `app1` after it, with `otadata`
+at `0xE000` saying which one boots; everything else is LittleFS (partition
+label `spiffs`, see `partitions/`). Details: docs/architecture.md, "Flash
+layout and storage"; the updates over the air: docs/ota.md.
 
-| board         | flash | app    | LittleFS         |
-|---------------|-------|--------|------------------|
-| StickS3       | 8 MB  | 2 MB   | 0x5F0000 = 5.94 MB |
-| T-Display-S3  | 16 MB | 2 MB   | 0xDF0000 = 13.94 MB |
-| Cardputer ADV | 8 MB  | 2 MB   | 0x5F0000 = 5.94 MB (the StickS3's table) |
+| board                     | flash | app slots      | LittleFS                          |
+|---------------------------|-------|----------------|-----------------------------------|
+| StickS3, `m5stack`        | 8 MB  | 2 x 1.75 MiB   | 0x470000 = 4.44 MiB at 0x390000   |
+| T-Display-S3              | 16 MB | 2 x 2 MiB      | 0xBF0000 = 11.94 MiB at 0x410000  |
+| Cardputer ADV             | 8 MB  | 2 x 1.75 MiB   | 4.44 MiB (the StickS3's table)    |
+
+The build fails when the app outgrows its slot (PlatformIO checks the size
+against the table), and so does a release (`tools/release/firmware_manifest.py`).
+Until v0.6.0 the table had one 2 MB app slot and 5.94 MiB of LittleFS (13.94
+MiB on the T-Display-S3); the move formats LittleFS once (docs/user-guide.md,
+"Moving to v0.7.0"). An app-only write over USB goes with `boot_app0.bin` at
+`0xE000` (docs/user-guide.md, "Flash a merged image"): after an update over
+the air the device may boot `app1`.
 
 ## Controls
 

@@ -216,6 +216,11 @@ pio run -e sticks3 -t upload      # app (also -e tdisplay-s3, -e cardputer-adv)
 pio run -e sticks3 -t uploadfs    # LittleFS image built from data/
 ```
 
+`upload` writes the bootloader, the partition table, `boot_app0.bin` (the
+OTA data record that boots `app0`) and the app, each at its offset, so the
+settings (NVS) and the decks (LittleFS) stay; `uploadfs` replaces the whole
+filesystem.
+
 ### Flash a merged image (esptool or a browser)
 
 A release's `tamagotcho-sticks3-merged.bin` (and the `tdisplay-s3`,
@@ -231,13 +236,27 @@ esptool --chip esp32s3 write_flash 0x0 tamagotcho-sticks3-merged.bin
 **What it overwrites:** everything from `0x0` to the end of the app, including
 the **settings** (the NVS partition: home Wi-Fi, preferences, time zone), which
 the merge pads with `0xFF`. The filesystem with the decks and the study
-progress starts after the 2 MB app slot and is not touched. To **update** a
+progress starts after the two app slots and is not touched. To **update** a
 device and keep its settings, flash the app-only image at the app offset
-instead:
+instead, together with `boot_app0.bin` (both are in the release):
 
 ```sh
+esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-sticks3.bin
+```
+
+`boot_app0.bin` is the framework's OTA data record that boots `app0`, the
+slot at `0x10000` (`framework-arduinoespressif32/tools/partitions/boot_app0.bin`,
+the same file for every board). After an update over the air the device may
+be running from `app1`, and an image written at `0x10000` alone would then
+not be the one that boots. Erasing the record does the same, since with no
+record the bootloader boots `app0`:
+
+```sh
+esptool --chip esp32s3 erase_region 0xe000 0x2000
 esptool --chip esp32s3 write_flash 0x10000 tamagotcho-sticks3.bin
 ```
+
+`pio run -t upload` and the merged images already write the record.
 
 It is produced from the PlatformIO build by
 [`tools/release/merge_image.py`](../tools/release/merge_image.py), which runs the
@@ -248,16 +267,18 @@ esptool --chip esp32s3 merge_bin -o tamagotcho-sticks3-merged.bin \
   --flash_mode dio --flash_freq 80m --flash_size 8MB \
   0x0     .pio/build/sticks3/bootloader.bin \
   0x8000  .pio/build/sticks3/partitions.bin \
+  0xe000  boot_app0.bin \
   0x10000 .pio/build/sticks3/firmware.bin
 ```
 
-The offsets are the ESP32-S3 bootloader (`0x0`), the partition table (`0x8000`)
-and the `app0` offset from `firmware/partitions/sticks3_8MB.csv`. Our partition
-tables have **no OTA data partition**, so no `boot_app0.bin` is added.
-PlatformIO's USB upload does write `boot_app0.bin` at `0xe000`, over the unused
-`phy_init` partition; leaving it out is right for a table without OTA. The
-bootloader header is written in DIO, as PlatformIO's upload does; the app
-switches the flash to QIO itself (see `docs/decisions.md`).
+The offsets are the ESP32-S3 bootloader (`0x0`), the partition table
+(`0x8000`), and the `otadata` and `app0` offsets from
+`firmware/partitions/sticks3_8MB.csv`: `boot_app0.bin` goes to `otadata`, as
+PlatformIO's USB upload writes it, so the merged image boots `app0` whatever
+an update over the air left selected (the script requires `--boot-app0` for
+a table with `otadata`). The bootloader header is written in DIO, as
+PlatformIO's upload does; the app switches the flash to QIO itself (see
+`docs/decisions.md`).
 
 For a **browser flash** (Chrome or Edge on a desktop), the project's install page
 <https://dcarnicer.github.io/tamagotcho/> is the shortest path: pick the board,
@@ -266,8 +287,8 @@ and serves the release's manifest and merged image from the same GitHub Pages
 origin (release assets send no CORS headers, so a page on another origin cannot
 load them). The page is **for a first install**: it writes the merged image, so
 the settings are erased as described above, while the decks and the study
-progress stay. For updates use the app-only image at `0x10000` (the commands
-above). GitHub Pages was enabled on 2026-10-22; the page is republished by
+progress stay. For updates use the app-only image with `boot_app0.bin` (the
+command above). GitHub Pages was enabled on 2026-10-22; the page is republished by
 `.github/workflows/pages.yml` after every successful Release. To republish a
 specific release by hand, run **Actions → Publish install page → Run workflow**
 with its tag (<https://github.com/dcarnicer/tamagotcho/settings/pages>).
@@ -303,6 +324,41 @@ and the zone again.
 > has not been tried on hardware yet; it writes the same merged image at `0x0`
 > that the esptool and esptool-js runs above verified.
 
+### Moving to v0.7.0 (once)
+
+v0.7.0 changes the flash layout for updates over the air: two app slots, and
+LittleFS from 5.94 to 4.44 MiB on the 8 MB boards (13.94 to 11.94 MiB on the
+T-Display-S3; [architecture](architecture.md#flash-layout-and-storage),
+[docs/ota.md](ota.md) §2). A partition table cannot change over the air, and
+the filesystem now starts elsewhere, so this one move is over USB and the
+first boot formats the storage ("Preparing storage..."): **the decks and the
+study progress are lost unless saved first.** Every later release can come
+over the air.
+
+1. On the portal page, **Advanced → Progress backup → Download progress
+   file** ([above](#backup-and-restore-progress)).
+2. Flash v0.7.0 with its partition table, one of:
+   - `pio run -e <env> -t upload`, or esptool with every part of the build
+     (in `.pio/build/<env>/`, `boot_app0.bin` from the release). Both keep
+     the **settings** (home Wi-Fi, preferences, time zone): NVS did not move.
+
+     ```sh
+     esptool --chip esp32s3 write_flash 0x0 bootloader.bin 0x8000 partitions.bin \
+       0xe000 boot_app0.bin 0x10000 firmware.bin
+     ```
+   - the release's merged image (esptool, the install page, M5Burner), which
+     also **erases the settings**: the first boot asks for the language and
+     the date, and the portal's setup mode saves the home Wi-Fi again.
+
+   An app-only write at `0x10000` is not enough: it keeps the old partition
+   table, so the device runs v0.7.0 on the old layout (decks kept) and is
+   never offered an update over the air.
+3. **Get decks** again (Settings → Decks). An 8 MB board now holds N5 to N1
+   in one language, or the Jōyō deck with N5 and N4, but no longer the Jōyō
+   deck with N1.
+4. On the portal page, **Advanced → Progress backup → Restore** the file of
+   step 1.
+
 ## M5Launcher and app-only `.bin`s
 
 `pio run -e sticks3` (or `-e tdisplay-s3`) produces an **app-only** image at
@@ -329,7 +385,7 @@ Honest status — **not verified on hardware**:
   has a 1,344 KB app0 and a 2,496 KB `firmw1` OTA app slot: the 1.48 MB image
   does not fit app0, so it would have to be installed in `firmw1` (not tried).
 - Our LittleFS partition as built by `uploadfs` (the partition labelled
-  `spiffs`, 5.94 MB at `0x210000` on the StickS3) is **not necessarily the same
+  `spiffs`, 4.44 MiB at `0x390000` on the StickS3) is **not necessarily the same
   partition** a launcher-managed app sees. The Cardputer's launcher data
   partition was 448 KB, far too small for a multi-MB pack: the N5 deck might
   fit, the larger decks will not. Whether the launcher's partition carries a
@@ -405,14 +461,20 @@ in its footer.
 
 Every push to `main` and every pull request runs
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): a firmware job (native
-tests plus StickS3, T-Display-S3 and Cardputer ADV builds, with `~/.platformio` cached and the
-cache keyed on the PlatformIO version) and a pack-builder job (`uv run pytest`).
+tests plus StickS3, T-Display-S3 and Cardputer ADV builds and the
+`tools/release` tests, with `~/.platformio` cached and the cache keyed on the
+PlatformIO version) and a pack-builder job (`uv run pytest`).
 A newer push on the same ref cancels the superseded run.
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on tags
-`v*` and on manual dispatch. It builds, per board, an **app-only** image and a
-**merged, single-file** image, writes an **ESP Web Tools** `manifest.json`, and
-publishes a GitHub release with those artifacts. Firmware releases carry **no
+`vX.Y.Z` and on manual dispatch (any other tag fails). It builds, per board,
+an **app-only** image and a **merged, single-file** image, writes an **ESP Web
+Tools** `manifest.json`, then the **firmware manifest**
+`tamagotcho-firmware.txt` the devices read for updates over the air
+([`tools/release/firmware_manifest.py`](../tools/release/firmware_manifest.py),
+format in [docs/ota.md](ota.md) §3.1), and publishes a GitHub release with
+those artifacts and `boot_app0.bin`. An image larger than its app slot fails
+the release before anything is published. Firmware releases carry **no
 packs**; their notes link to the decks release below.
 
 **Version.** Every firmware build carries a version string, shown under

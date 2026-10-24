@@ -130,12 +130,17 @@ address `0x0` and press **Program**.
 
 ```sh
 esptool --chip esp32s3 write_flash 0x0 tamagotcho-sticks3-merged.bin     # a new device
-esptool --chip esp32s3 write_flash 0x10000 tamagotcho-sticks3.bin        # update, keep the settings
+esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-sticks3.bin  # update, keep the settings
 ```
 
 A merged image erases the settings (home Wi-Fi, preferences); the decks and
 the study progress live in their own partition and stay, unless the flash was
-erased first. Details, and M5Launcher: [Flashing](docs/user-guide.md#flashing).
+erased first. An app-only update also writes the release's `boot_app0.bin`,
+so that the slot it fills is the one that boots. **Coming from v0.6.x or
+older**, v0.7.0's new flash layout (two app slots for updates over the air)
+formats the decks' storage once: back up the progress first ([Moving to
+v0.7.0](docs/user-guide.md#moving-to-v070-once)). Details, and M5Launcher:
+[Flashing](docs/user-guide.md#flashing).
 
 ## First start
 
