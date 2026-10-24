@@ -234,9 +234,10 @@ the home Wi-Fi ([docs/ota.md](ota.md)); settings, decks and progress stay.
   version as it was.
 - **If the new version does not start.** A new image counts as good after 10 s
   of normal running (or when it goes to sleep after its first screen). If it
-  crashes or is reset before that, the device goes back to the previous version
-  by itself and says once "Update failed: v0.7.0 did not start: back on
-  v0.6.0"; that version is not offered again.
+  crashes or is reset before that, or stops on an error screen while starting,
+  the device goes back to the previous version by itself and says once "Update
+  failed: v0.7.0 did not start: back on v0.6.0"; that version is not offered
+  again.
 - **Not available** on the factory layout of v0.6.0 and older, under
   M5Launcher or with any other partition table: the Firmware screen says to
   update over USB, the way the device was installed.

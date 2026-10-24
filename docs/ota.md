@@ -408,17 +408,27 @@ side as built"). The code is where §5 puts it: `ota/Manifest` and `ota/Offer`
 use it through a file sink), `platform/Ota`, `app/Firmware` (the screen, the
 checks, the first boot). What differs from the design above:
 
-- **A pending image cannot stay pending through a deep sleep** (§3.5). The
-  bootloader turns a pending image into an aborted one on any reset, the wake
-  from a deep sleep included, and boots the previous slot. So every deep sleep
-  of the running app (`prepareDeepSleep()`: the power button, Sleep, the idle
-  timer, unplugging a dark panel) first marks a pending image valid once the
-  loop has started; one that sleeps from inside the boot (`halt()`, the
-  critical-battery re-sleep) is not proven and rolls back. Otherwise valid after
-  `setup()` and 10 s of the loop, as designed.
-- **How a rollback is told.** Right before the restart the install stores the
-  version and the slot it wrote (NVS `otanew`, `otaslot`); a pending boot keeps
-  them until it is marked valid, which clears them. A boot that is not pending
+- **Deep sleep and the first boot** (§3.5). The framework's bootloader is built
+  with `CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP`: a deep-sleep wake boots
+  the slot it slept in without reading `otadata`, so a pending image most
+  likely stays pending through a sleep, as designed (to confirm on hardware).
+  The app does not depend on it: every deep sleep of the running app
+  (`prepareDeepSleep()`: the power button, Sleep, the idle timer, unplugging a
+  dark panel) first marks a pending image valid once the loop has started,
+  which is right whichever way the wake goes. Because a wake would not roll it
+  back, a pending image that fails inside its boot -- `halt()` (no deck opens,
+  the access point does not start) or the damaged-storage question -- rolls
+  back at once (`esp_ota_mark_app_invalid_rollback_and_reboot()`) after 3 s of
+  its error screen. Otherwise valid after `setup()` and 10 s of the loop, as
+  designed, and also before an install (which overwrites the slot it would
+  roll back to).
+- **Other layouts keep the framework's verdict**: `verifyRollbackLater()`
+  returns true only on our layout, so an app that M5Launcher put into one of its
+  own slots is still marked valid at once by `initArduino()`.
+- **How a rollback is told.** Once the image is in and matched the manifest,
+  and before `Update.end()` switches the boot slot, the install stores the
+  version and the slot it wrote (NVS `otanew`, `otaslot`; no record, no switch);
+  a pending boot keeps them until it is marked valid, which clears them. A boot that is not pending
   and runs the other slot is a rollback: that version goes to NVS `otabad`
   (never offered again, release or development build) and a notice says once
   "Update failed / v0.7.0 did not start: back on v0.6.0", for 4 s or until a
@@ -436,7 +446,10 @@ checks, the first boot). What differs from the design above:
   fresh (the badge may be from an earlier boot); then the download, "Checking
   the image..." while `Update.end()` reads it back, "Restarting into v0.7.0...".
   `Update.end()` is called without `evenIfRemaining`, so an image shorter than
-  the size it began with is refused there too.
+  the size it began with is refused there too. A power cut in the second
+  between the record and the switch makes the next boot report that version as
+  failed (and not offer it again); the reverse order would let a failed one
+  roll back unnoticed.
 - **The sessions' manifest read** (§3.3) is skipped when the catalog read got
   no answer from any server (connect or TLS failure: the manifest would wait
   for the same timeouts); its body has 10 s. Failures are only logged

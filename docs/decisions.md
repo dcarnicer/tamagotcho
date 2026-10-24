@@ -3465,14 +3465,21 @@ Design in docs/ota.md; every decision of its §8 taken as recommended.
 
 Phase 2 of docs/ota.md (its §9 lists what differs from the design).
 
-- **Valid before any deep sleep.** The bootloader aborts a pending image on
-  every reset, a deep-sleep wake included, so §3.5's "stays pending through a
-  sleep" cannot be: `prepareDeepSleep()` marks a pending image valid once the
-  loop has started (setup() returned: the filesystem, a deck or the no-deck
-  screens). A sleep from inside the boot (halt(), the critical re-sleep) is not
-  proven and rolls back. Else valid after 10 s of the loop.
+- **Valid before any deep sleep, rollback from a fatal boot screen.** The
+  framework's bootloader skips `otadata` on a deep-sleep wake
+  (`CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP`), so a pending image most
+  likely survives a sleep still pending; the hardware test confirms it.
+  `prepareDeepSleep()` marks a pending image valid once the loop has started
+  (setup() returned: the filesystem, a deck or the no-deck screens), which is
+  right either way. A pending image that reaches `halt()` or the
+  damaged-storage question rolls back at once, since sleeping there would wake
+  into it again. An install marks a pending image valid first: it overwrites
+  the slot the rollback would go to. Else valid after 10 s of the loop.
+- **`verifyRollbackLater()` is true only on our layout**: an app M5Launcher put
+  into its own slots is marked valid by `initArduino()` as before.
 - **A rollback is told by an NVS record**, not by the IDF: the install writes
-  `otanew` (the version) and `otaslot` (the slot) before the restart; the new
+  `otanew` (the version) and `otaslot` (the slot) once the image matched and
+  before `Update.end()` switches the slot (no record, no switch); the new
   image clears them when it is marked valid; a non-pending boot in the other
   slot with them set is a rollback, remembered in `otabad` (never offered
   again, dev builds included) and said once at boot after the deck opens.
@@ -3491,8 +3498,11 @@ Phase 2 of docs/ota.md (its §9 lists what differs from the design).
   the timeouts, the progress and the size and SHA-256 checks;
   `fetchPackFile()` keeps its space checks, temp, probe and rename around a
   file sink with the same order of checks. The OTA sink refuses a byte past the
-  manifest size itself, and `Update.end()` runs only after both checks passed
-  (without `evenIfRemaining`). Two new statuses: `NoSlot`, `BadImage`.
+  manifest size itself; `ota::install()` leaves Update open and
+  `ota::activate()` (`Update.end()`, without `evenIfRemaining`) runs only after
+  both checks passed and the record was written. Two new statuses: `NoSlot`,
+  `BadImage`. Version strings are kept up to 40 characters (a manifest's
+  `vX.Y.Z` is at most 33).
 - **The blocking-transfer progress is shared**: `netTransferBegin()`,
   `netProgress()`, `netTransferEnd()`, `netSleepIfAsked()` in `app/Net` serve the
   deck download and the install (side button / Esc cancel, the power button and
