@@ -17,7 +17,9 @@ submitted as Public on 2026-10-23 with the release's
 `tamagotcho-m5stack-merged.bin` and is pending review; since M5Burner users
 come from v0.4.1, its version description sums up everything since then
 (deck update checks, progress backup, the weakest kanji, texts that fit) and
-links the full notes. A new version: `/developer/firmware/2112925841991487490/versions/new`
+links the full notes. **v0.6.0** was submitted as Public on 2026-10-24, with
+v0.5.1 still pending review; its description gives v0.6.0's news, then sums
+up v0.4.2 to v0.5.1 in one line for those still on v0.4.1. A new version: `/developer/firmware/2112925841991487490/versions/new`
 (My homepage › the entry › View all versions); it keeps the entry's name,
 categories, devices and description, and asks for the version, its notes,
 the release's `tamagotcho-m5stack-merged.bin`, the visibility and the cover.
