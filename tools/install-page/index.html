@@ -253,6 +253,12 @@
       <em>merged</em> image, which erases the device's settings: home Wi-Fi,
       preferences and time zone. Decks and study progress live in a separate
       partition and are <strong>not</strong> erased.</p>
+      <p><strong>Coming from v0.6.x or older?</strong> v0.7.0 moved that
+      partition (two app slots for updates over the air), so the decks and the
+      progress are lost once: save the progress first on the device's portal
+      page (<em>Advanced → Progress backup</em>), then get the decks again and
+      restore it; see the
+      <a href="https://github.com/dcarnicer/tamagotcho/blob/main/docs/user-guide.md#moving-to-v070-once">user guide</a>.</p>
       <p>To <strong>update</strong> a device, use the app-only image from the
       <a href="https://github.com/dcarnicer/tamagotcho/releases/tag/{{TAG}}">release page</a>
       and keep the settings; see <a href="#updates">Updates</a> below.</p>
@@ -373,15 +379,19 @@
       Do not use this page to update an existing device: it always writes the
       merged image, so the Wi-Fi settings, preferences and time zone are
       erased. Get the board's <strong>app-only</strong> image
-      (<code>tamagotcho-&lt;board&gt;.bin</code>) from the
+      (<code>tamagotcho-&lt;board&gt;.bin</code>) and <code>boot_app0.bin</code>
+      from the
       <a href="https://github.com/dcarnicer/tamagotcho/releases/tag/{{TAG}}">release page</a>
-      and write it at the app offset instead:
+      and write them at their offsets instead:
     </p>
-    <pre><code>esptool --chip esp32s3 write_flash 0x10000 tamagotcho-sticks3.bin</code></pre>
+    <pre><code>esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-sticks3.bin</code></pre>
     <p>
-      Use <code>tdisplay-s3</code>, <code>cardputer-adv</code> or
+      <code>boot_app0.bin</code> makes the slot the image goes to the one that
+      boots: after an update over the air the device may be running from the
+      other. Use <code>tdisplay-s3</code>, <code>cardputer-adv</code> or
       <code>m5stack</code> in place of <code>sticks3</code> for the other
-      images. M5Launcher can install the app-only image too. Decks and study
+      images; <code>boot_app0.bin</code> is the same for every board.
+      M5Launcher can install the app-only image too. Decks and study
       progress survive both paths unless the flash was erased first.
     </p>
   </section>
