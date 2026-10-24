@@ -198,7 +198,7 @@ Restoring is refused while a deck download is running.
   deck yet follows the browser's language, and the page offers English /
   Español links.
 - The default catalog is
-  `https://github.com/dcarnicer/tamagotcho/releases/download/decks-v2/catalog-v2.txt`,
+  `https://github.com/dcarnicer/tamagotcho/releases/download/decks-v3/catalog-v2.txt`,
   in the dedicated **decks release** for the pack format this firmware reads (see
   [Prebuilt decks](#prebuilt-decks-and-their-licence) below). The page can point it at
   another catalog (any `http(s)://` URL, e.g. your own server); it must be
@@ -370,11 +370,13 @@ and the licence of the data.
 ## Prebuilt decks and their licence
 
 Prebuilt decks live in their own GitHub release with a fixed tag,
-**`decks-v<pack format version>`** (`decks-v2`), published by
+**`decks-v<pack format version>`** (`decks-v3`), published by
 [`.github/workflows/decks.yml`](../.github/workflows/decks.yml) when the maintainer
 runs it (manual dispatch only). That release is **never marked "latest"**, so a
 firmware release never hides it, and a rebuild replaces its files in place. It
-holds `*.tgc` packs built with `--strokes` — by default JLPT N5 to N1 and the
+holds `*.tgc` packs built with `--strokes` and `--example-words` (the
+intro card's words; Spanish glosses only where the table is reviewed, N5 so
+far) — by default JLPT N5 to N1 and the
 full **Jōyō** deck (2,136 kanji, in school order), each in Spanish and English
 (`n5-es.tgc` ... `n1-en.tgc`, `joyo-es.tgc`, `joyo-en.tgc`) — and the
 line-oriented `catalog-v2.txt` the device reads for **Get decks**, with each
@@ -392,7 +394,8 @@ over the device's 5 MiB per-pack limit.
 
 To install a deck by hand, download a `.tgc` from that release and upload it
 from the Wi-Fi portal page (Advanced). A pack contains **KANJIDIC2** data (CC
-BY-SA 4.0) and, with `--strokes`, **KanjiVG** data (CC BY-SA 3.0), so prebuilt
+BY-SA 4.0), with `--strokes` **KanjiVG** data (CC BY-SA 3.0) and, with
+`--example-words`, **JMdict** words (CC BY-SA 4.0), so prebuilt
 packs are licensed **CC BY-SA**. The combined attribution is in the decks release notes
 and in [docs/data-sources.md](data-sources.md); the device shows it under
 **Settings › Device › About** (with the loaded deck's name) and the portal page

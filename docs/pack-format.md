@@ -565,4 +565,7 @@ steps are, in this order:
    (docs/decisions.md) it can also just be left as it is.
 
 The builder and reader change does none of this by itself: no deck release
-and no firmware default changes with it.
+and no firmware default changes with it. Steps 2 and 3 were taken together
+for v0.6.0 (2026-10-24): `decks.yml` builds with `--example-words`, and
+`decks-v3` was published before the firmware tag (docs/decisions.md,
+"decks-v3 with v0.6.0").

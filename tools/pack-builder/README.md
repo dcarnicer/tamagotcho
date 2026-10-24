@@ -261,8 +261,8 @@ are independent. The published file is named after the **catalog** format,
 `catalog-v<N>.txt` (`catalog-v2.txt` now, with `catalog-v2.json` for people);
 the decks release tag `decks-v<N>` is named after the **pack** format. So the
 firmware's default catalog,
-`https://github.com/dcarnicer/tamagotcho/releases/download/decks-v2/catalog-v2.txt`,
-is catalog format v2 listing packs of format v2, and either version can change
+`https://github.com/dcarnicer/tamagotcho/releases/download/decks-v3/catalog-v2.txt`,
+is catalog format v2 listing packs of format v3, and either version can change
 without the other.
 
 **Version 1** (`catalog.txt`, the same columns without `title`) is no longer

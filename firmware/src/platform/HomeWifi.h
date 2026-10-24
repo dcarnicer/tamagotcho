@@ -24,9 +24,10 @@ public:
     // .github/workflows/decks.yml. A format bump publishes `decks-v<N+1>` and
     // changes this URL, so older firmware keeps the decks it can open. The file
     // is named after the catalog format this firmware reads (catalog-v2.txt,
-    // kCatalogVersion), independently of the pack format in the tag.
+    // kCatalogVersion), independently of the pack format in the tag. This
+    // firmware reads pack format v3 (and v1/v2): `decks-v3`.
     static constexpr const char* kDefaultCatalogUrl =
-        "https://github.com/dcarnicer/tamagotcho/releases/download/decks-v2/catalog-v2.txt";
+        "https://github.com/dcarnicer/tamagotcho/releases/download/decks-v3/catalog-v2.txt";
     // A join: a scan for the network (kScanMsPerChannel a channel, at most
     // kScanTimeoutMs), then kPinnedJoinMs on its strongest access point, which
     // may refuse a client's first tries for ~15-20 s (docs/decisions.md,

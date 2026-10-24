@@ -172,7 +172,7 @@ control: [firmware/README.md](firmware/README.md#controls).
 
 ## Decks
 
-The prebuilt decks are in the [`decks-v2`](https://github.com/dcarnicer/tamagotcho/releases/tag/decks-v2)
+The prebuilt decks are in the [`decks-v3`](https://github.com/dcarnicer/tamagotcho/releases/tag/decks-v3)
 release, which the device's **Get decks** and the portal page read:
 
 | Deck | Kanji | English | Spanish |
@@ -185,7 +185,7 @@ release, which the device's **Get decks** and the portal page read:
 | Jōyō kanji (school order) | 2,136 | `joyo-en` | `joyo-es` |
 
 Progress belongs to each kanji, so decks that share one share its progress.
-The decks contain KANJIDIC2 and KanjiVG data and are licensed **CC BY-SA**
+The decks contain KANJIDIC2, KanjiVG and JMdict data and are licensed **CC BY-SA**
 ([data sources](docs/data-sources.md)).
 
 ## Build it yourself

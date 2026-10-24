@@ -121,7 +121,11 @@ jobs:
       # meaning first (the one the device shows): English by the JLPT
       # vocabulary, Spanish by the English order, plus the project's overrides;
       # and in every language meaning distractors kept away from the meanings a
-      # pack leaves out (docs/meaning-order.md).
+      # pack leaves out (docs/meaning-order.md). --example-words: per card, a
+      # common word for each asked reading, shown on the intro card (pack format
+      # v3, so the packs go to `decks-v3`): English glosses from JMdict, Spanish
+      # ones only from the reviewed rows of data/example_glosses_es.tsv, the
+      # other words with their reading alone (docs/example-words.md).
       - name: Build packs
         env:
           LEVELS: ${{ steps.inputs.outputs.levels }}
@@ -133,11 +137,11 @@ jobs:
           for lang in $LANGS; do
             for n in $LEVELS; do
               uv run tamagotcho-pack build --jlpt "$n" --lang "$lang" --strokes --common-readings \
-                --meaning-order -o "out/n${n}-${lang}.tgc"
+                --meaning-order --example-words -o "out/n${n}-${lang}.tgc"
             done
             if [ "$JOYO" = "true" ]; then
               uv run tamagotcho-pack build --joyo --lang "$lang" --strokes --common-readings \
-                --meaning-order -o "out/joyo-${lang}.tgc"
+                --meaning-order --example-words -o "out/joyo-${lang}.tgc"
             fi
           done
 
@@ -303,7 +307,11 @@ jobs:
           (気 いき, 百 もも) is asked the other kind. The meaning shown is the one
           learners meet first: English meanings are ordered by the JLPT vocabulary
           that uses the kanji (私 "I", 機 "machine"), Spanish ones by the English
-          ones they translate (持 "sostener", not "duración").
+          ones they translate (持 "sostener", not "duración"). Each card carries up
+          to two common words that use its readings (水: 水曜日 すいようび
+          "Wednesday", 水 みず "water"), shown when the kanji is introduced, with
+          an English gloss from JMdict, or a Spanish one where the project's table
+          is reviewed (N5 so far; the other Spanish words show their reading alone).
 
           ## Install
 
@@ -338,7 +346,11 @@ jobs:
           > Meaning order from the same JLPT vocabulary lists and JMdict; Spanish
           > meaning order from FreeDict's English-Spanish dictionary (WikDict,
           > from Wiktionary via DBnary), CC BY-SA 3.0; and the Tamagotcho
-          > project's meaning overrides. These packs are licensed CC BY-SA.
+          > project's meaning overrides. Example words, their readings and English
+          > glosses from JMdict (EDRDG, CC BY-SA 4.0), the part each kanji reads from
+          > JmdictFurigana (CC BY-SA); Spanish example glosses from the Tamagotcho
+          > project's table (CC BY-SA 4.0, derived from JMdict's English glosses and
+          > FreeDict). These packs are licensed CC BY-SA.
           MD
           } > notes.md
           cat notes.md

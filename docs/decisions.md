@@ -3394,3 +3394,19 @@ changed").
 - **The detail card is unchanged**: its kanji box, animation, counter and
   reading rows moved to `app/KanjiCard` as they were, the animation keyed to
   `gAnim.cardIndex` instead of the question on screen.
+
+## 2026-10-24 – decks-v3 with v0.6.0
+
+- **Steps 2 and 3 of the v3 rollout together** (docs/pack-format.md,
+  "Rollout of v3"): `decks.yml` builds every published deck with
+  `--example-words`, which makes them v3 and sends them to `decks-v3`, and
+  `HomeWifi::kDefaultCatalogUrl` points at `decks-v3/catalog-v2.txt` in the
+  same release, v0.6.0, the first that shows the words (the intro card).
+  `decks-v3` is published before the firmware tag, so the default URL
+  answers from the first boot of v0.6.0.
+- **Spanish decks ship before their review.** Only N5's table is reviewed;
+  `n4-es` .. `joyo-es` show their words with the reading alone until each
+  level is reviewed and the decks rebuilt in place (the update check then
+  offers them, their SHA-256 changing).
+- **`decks-v2` is left as it is**, for v0.5.1 and older; no rebuild planned
+  (no backward compatibility, decisions of 2026-10-18).

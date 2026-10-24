@@ -231,8 +231,9 @@ contains no word data from them, only KANJIDIC2's own readings in a different
 order (some kinds left out), but it is derived from them, so it carries their
 attribution (below); a pack built with `--example-words` also stores JMdict
 words, readings and English glosses ([Example words](#example-words-optional-fetch---readings-build---example-words)).
-`decks.yml` builds the published decks with `--common-readings`, not with
-`--example-words`.
+`decks.yml` builds the published decks with both (`decks-v3`, from
+2026-10-24); `decks-v2`, which v0.5.1 and older read, keeps its packs
+without words.
 
 ### JMdict
 
