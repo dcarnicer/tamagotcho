@@ -19,7 +19,7 @@ namespace tgc {
 namespace app {
 
 tgc::HomeWifi gHome;
-bool gNetBusy = false;       // a download is running (footer shows the progress)
+bool gNetBusy = false;       // a transfer is running (footer shows the progress)
 int gNetPct = -1;            // last drawn download percentage
 char gNetDeck[72] = "";      // the title of the deck being downloaded (the portal screen shows it)
 uint32_t gNetActivityAt = 0; // millis() of the last network progress (idle timers)
@@ -28,15 +28,12 @@ char gNetErrDetail[96] = "";
 
 namespace {
 
-uint32_t gNetInputAt = 0;    // last button poll during a blocking download
-// A sleep asked for during a blocking download (power button, critical
-// battery): netProgress() cancels the download, and netDownload() sleeps once
-// fetchPackFile() has cleaned up after it.
+uint32_t gNetInputAt = 0;    // last button poll during a blocking transfer
+// A sleep asked for during a blocking transfer (power button, critical
+// battery): netProgress() cancels the transfer, and netSleepIfAsked() sleeps
+// once it has cleaned up after itself.
 enum class NetSleep : uint8_t { None, User, Critical };
 NetSleep gNetSleep = NetSleep::None;
-// TLS stalls are longer than on the local portal; a big pack may take minutes.
-constexpr uint32_t kNetIdleMs = 15000;
-constexpr uint32_t kNetDownloadMs = 10u * 60u * 1000u;
 
 }  // namespace
 
@@ -120,12 +117,19 @@ bool catalogFailure(const tgc::CatalogFetch& c, const String& url, char* title, 
     }
 }
 
-namespace {
+// A blocking transfer starts: the progress state and its first frame.
+void netTransferBegin() {
+    gNetBusy = true;
+    gNetPct = -1;
+    gNetInputAt = millis();
+    gNetSleep = NetSleep::None;
+    drawScreen();
+}
 
-// Download progress: redraw on a new percentage, keep the idle timers away and
+// Transfer progress: redraw on a new percentage, keep the idle timers away and
 // let the side button cancel (its release is swallowed afterwards). The power
-// button and a critical battery cancel too and ask downloadCatalogDeck() to
-// sleep: a download may run for minutes at 240 MHz, and neither can wait that
+// button and a critical battery cancel too and ask netSleepIfAsked() to
+// sleep: a transfer may run for minutes at 240 MHz, and neither can wait that
 // long. A download the portal page asked for also lets the portal answer the
 // page's progress view meanwhile.
 bool netProgress(size_t done, size_t total, void*) {
@@ -164,7 +168,19 @@ bool netProgress(size_t done, size_t total, void*) {
     return true;
 }
 
-}  // namespace
+// The transfer returned: presses made meanwhile must not act now.
+void netTransferEnd() {
+    gNetBusy = false;
+    gNetActivityAt = millis();
+    gSwallowInput = true;
+}
+
+// Cancelled for a sleep: the transfer has cleaned up (a deck's temp is gone and
+// the old deck untouched; a firmware slot aborted), so sleep now (sleepNow()
+// saves).
+void netSleepIfAsked() {
+    if (gNetSleep != NetSleep::None) sleepNow(gNetSleep == NetSleep::Critical);
+}
 
 // Downloads catalog deck `e` into /packs (atomic; size and SHA-256 checked),
 // then rescans /packs through the portal's path. Shared by the Get decks screen
@@ -184,11 +200,7 @@ tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e) {
     // the new one is renamed over it; portalPacksChanged() reloads it below.
     closePackIfLoaded(path);
     snprintf(gNetDeck, sizeof gNetDeck, "%s", tgc::catalogDisplayName(e).c_str());
-    gNetBusy = true;
-    gNetPct = -1;
-    gNetInputAt = millis();
-    gNetSleep = NetSleep::None;
-    drawScreen();
+    netTransferBegin();
 
     tgc::PackFetchRequest req;
     req.url = e.url.c_str();
@@ -203,15 +215,12 @@ tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e) {
     req.progress = netProgress;
     const uint32_t started = millis();
     const tgc::FetchResult r = tgc::fetchPackFile(req);
-    gNetBusy = false;
-    gNetActivityAt = millis();
-    gSwallowInput = true;
+    netTransferEnd();
     Serial.printf("[net] get %s: %s (%u bytes in %u ms, http %d, tls %d)\n", req.fileName.c_str(),
                   tgc::fetchStatusString(r.status), (unsigned)r.bytes,
                   (unsigned)(millis() - started), r.httpCode, r.tlsError);
-    // Cancelled for a sleep: the temp is gone and the old deck untouched, so
-    // sleep now (sleepNow() saves); the wake reopens the deck closed above.
-    if (gNetSleep != NetSleep::None) sleepNow(gNetSleep == NetSleep::Critical);
+    // Cancelled for a sleep: the wake reopens the deck closed above.
+    netSleepIfAsked();
 
     // Rescan /packs the portal's way; that also reopens the deck closed above, or
     // loads the first one when none was open (the boot-time path), and gives

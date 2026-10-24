@@ -1,8 +1,9 @@
 #pragma once
-// What Get decks, the portal's home mode, the network test, the boot-time date
-// and the deck update check share over the home Wi-Fi: the station (gHome)
-// and the radio off, why a join failed, a catalog deck's state against /packs,
-// why a catalog read failed, and the checked deck download with its progress.
+// What Get decks, the portal's home mode, the network test, the boot-time date,
+// the deck update check and the firmware install share over the home Wi-Fi:
+// the station (gHome) and the radio off, why a join failed, a catalog deck's
+// state against /packs, why a catalog read failed, the progress of a blocking
+// transfer, and the checked deck download.
 #include <Arduino.h>
 
 #include <cstddef>
@@ -17,7 +18,8 @@ namespace tgc {
 namespace app {
 
 extern tgc::HomeWifi gHome;
-// A deck download in progress (Get decks and the Wi-Fi screen show it).
+// A blocking transfer in progress: a deck download (Get decks and the Wi-Fi
+// screen show it) or a firmware install.
 extern bool gNetBusy;
 extern int gNetPct;
 extern char gNetDeck[72];
@@ -39,6 +41,19 @@ struct HashStats {
 tgc::DeckState deckStateOnDisk(const tgc::CatalogEntry& e, HashStats* stats = nullptr);
 bool catalogFailure(const tgc::CatalogFetch& c, const String& url, char* title, size_t tn,
                     char* detail, size_t dn);
+
+// A blocking transfer over the home Wi-Fi (a deck, a firmware image): TLS stalls
+// are longer than on the local portal, and a big one may take minutes.
+constexpr uint32_t kNetIdleMs = 15000;
+constexpr uint32_t kNetDownloadMs = 10u * 60u * 1000u;
+// Its progress: netTransferBegin() before (gNetBusy, a first frame), netProgress()
+// as the FetchProgressFn, netTransferEnd() after it returned, then
+// netSleepIfAsked(), which sleeps when the power button or a critical battery
+// cancelled it (the transfer cleaned up first).
+void netTransferBegin();
+bool netProgress(size_t done, size_t total, void*);
+void netTransferEnd();
+void netSleepIfAsked();
 tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e);
 
 }  // namespace app

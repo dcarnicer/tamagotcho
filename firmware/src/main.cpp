@@ -15,6 +15,7 @@
 #include "app/Detail.h"
 #include "app/Display.h"
 #include "app/Done.h"
+#include "app/Firmware.h"
 #include "app/GetDecks.h"
 #include "app/Input.h"
 #include "app/Intro.h"
@@ -55,6 +56,7 @@ void drawScreen() {
     else if (gScreen == Screen::WifiMenu) drawWifiMenu();
     else if (gScreen == Screen::NetTest) drawNetTest();
     else if (gScreen == Screen::About) drawAbout();
+    else if (gScreen == Screen::Firmware) drawFirmware();
     else if (gScreen == Screen::FirstLang) drawFirstLang();
     else if (gScreen == Screen::Reset) drawReset();
     else if (gScreen == Screen::ResetConfirm) drawResetConfirm();
@@ -90,6 +92,8 @@ void handleInput(int a, int b, uint32_t pressedAt, uint32_t t, bool down) {
         statsLoop(b);
     } else if (gScreen == Screen::About) {
         aboutLoop(a, b);
+    } else if (gScreen == Screen::Firmware) {
+        firmwareLoop(a, b);
     } else if (gScreen == Screen::Detail) {
         detailLoop(a, b, t);
     } else if (gScreen == Screen::Intro) {
@@ -232,6 +236,7 @@ void loop() {
     // timer (the SRS day clock) with it.
     if (batteryCritical(t)) sleepNow(true);
     updateCheckTick(t);
+    firmwareTick(t);  // a new image's first boot: valid after 10 s of this loop
     powerTick(t);
     delay(10);
 }

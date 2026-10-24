@@ -6,6 +6,7 @@
 #include "app/Clock.h"
 #include "app/DeckUpdates.h"
 #include "app/Display.h"
+#include "app/Firmware.h"
 #include "app/Net.h"
 #include "app/Power.h"
 #include "app/ScreenKit.h"
@@ -216,7 +217,8 @@ namespace {
 
 // Connected: the network time (as every join does, when the offset is saved)
 // and the catalog, the end-to-end check that the catalog host is reachable and
-// answers with a catalog. Blocking; the radio is off again afterwards.
+// answers with a catalog, then the firmware manifest (silent: the badge).
+// Blocking; the radio is off again afterwards.
 void netTestCheck() {
     gTestIp = gHome.localIp();
     gTestRssi = gHome.rssi();
@@ -229,6 +231,7 @@ void netTestCheck() {
     }
     const String url = tgc::HomeWifi::catalogUrl();
     const tgc::CatalogFetch c = tgc::fetchCatalog(url);
+    firmwareAfterCatalog(c.fetch);
     char title[48], detail[96];
     if (catalogFailure(c, url, title, sizeof title, detail, sizeof detail)) {
         // A 404 says more as "no catalog published at this URL yet".

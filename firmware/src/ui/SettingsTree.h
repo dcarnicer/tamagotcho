@@ -42,22 +42,25 @@ enum class Item : uint8_t {
     HoldTime,
     Date,
     Sleep,
+    Firmware,  // the running version, an update over the air (docs/ota.md §4)
     About,
 };
-constexpr int kItemCount = 18;
+constexpr int kItemCount = 19;
 
 inline constexpr Item kHomeItems[] = {Item::Decks, Item::Study, Item::Stats, Item::Wifi,
                                       Item::Device};
 // Introduce sits under New per day: both are about the new cards.
 inline constexpr Item kStudyItems[] = {Item::NewPerDay,   Item::Introduce, Item::HardAfter,
                                        Item::AutoAdvance, Item::OnKana,    Item::DeleteProgress};
+// Firmware sits before About: both are about the device's software.
 inline constexpr Item kDeviceItems[] = {Item::Orientation, Item::Brightness, Item::Language,
                                         Item::HoldTime,    Item::Date,       Item::Sleep,
-                                        Item::About};
+                                        Item::Firmware,    Item::About};
 // A board whose panel has one orientation only (the Cardputer ADV, landscape
 // over its keyboard) has no Orientation row.
 inline constexpr Item kDeviceItemsFixed[] = {Item::Brightness, Item::Language, Item::HoldTime,
-                                             Item::Date,       Item::Sleep,    Item::About};
+                                             Item::Date,       Item::Sleep,    Item::Firmware,
+                                             Item::About};
 
 struct PageItems {
     const Item* items;

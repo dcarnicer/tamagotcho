@@ -150,11 +150,12 @@ void test_tree_pages() {
     TEST_ASSERT_TRUE(study.items[4] == Item::OnKana);
     TEST_ASSERT_TRUE(study.items[5] == Item::DeleteProgress);
     const settings::PageItems device = settings::pageItems(Page::Device);
-    TEST_ASSERT_EQUAL(7, device.count);
+    TEST_ASSERT_EQUAL(8, device.count);
     TEST_ASSERT_TRUE(device.items[0] == Item::Orientation);
     TEST_ASSERT_TRUE(device.items[3] == Item::HoldTime);
     TEST_ASSERT_TRUE(device.items[4] == Item::Date);
-    TEST_ASSERT_TRUE(device.items[6] == Item::About);
+    TEST_ASSERT_TRUE(device.items[6] == Item::Firmware);
+    TEST_ASSERT_TRUE(device.items[7] == Item::About);
 }
 
 void test_tree_fixed_orientation_has_no_orientation_row() {
@@ -249,6 +250,120 @@ void test_introduce_row() {
         const std::vector<TextSpan> lines = wrapText(desc, 21);
         TEST_ASSERT_TRUE_MESSAGE(lines.size() <= 3, desc);
     }
+}
+
+namespace {
+
+// Lines `text` takes in the Label face wrapped at spaces to `w` px (greedy, as
+// Renderer::wrap() does), or -1 when one word alone is wider than `w`.
+int labelLines(const char* text, int w) {
+    const UiFace& f = uifont::kLabel;
+    const int space = uiTextWidth(f, " ", 0);
+    int lineW = 0, lines = 1;
+    const char* p = text;
+    while (*p) {
+        const char* word = p;
+        while (*p && *p != ' ') ++p;
+        const std::string wd(word, static_cast<size_t>(p - word));
+        const int ww = uiTextWidth(f, wd.c_str(), 0);
+        if (ww > w) return -1;
+        if (lineW && lineW + space + ww > w) {
+            ++lines;
+            lineW = ww;
+        } else {
+            lineW = lineW ? lineW + space + ww : ww;
+        }
+        if (*p == ' ') ++p;
+    }
+    return lines;
+}
+
+int captionCells(const char* s) {
+    int n = 0;
+    for (const char* p = s; utf8Next(&p);) ++n;
+    return n;
+}
+
+}  // namespace
+
+// Settings > Device > Firmware (docs/ota.md §4): a row before About on both
+// Device pages, and its screen's strings (app/UiStrings.cpp; copies here, with
+// the widest version, v0.10.12, filled in). The labels fit a portrait page
+// row's 107 px, the row's value the 19 caption cells under it; every status
+// two label lines of 127 px in portrait (no word wider) and one of 232 px in
+// landscape; the details that share a 240 x 135 screen with two rows one
+// caption line of 38 cells. The home's Device row has no room for a version
+// next to "Dispositivo" (92 of 93 px), which is why it shows a mark instead.
+void test_firmware_row() {
+    TEST_ASSERT_TRUE(settings::pageOf(Item::Firmware) == Page::Device);
+    TEST_ASSERT_EQUAL(settings::rowOf(Page::Device, Item::About) - 1,
+                      settings::rowOf(Page::Device, Item::Firmware));
+    const settings::PageItems fixed = settings::pageItems(Page::Device, true);
+    TEST_ASSERT_TRUE(fixed.items[fixed.count - 2] == Item::Firmware);
+    TEST_ASSERT_TRUE(fixed.items[fixed.count - 1] == Item::About);
+    TEST_ASSERT_TRUE(settings::hasChevron(Item::Firmware));
+    TEST_ASSERT_NULL(settings::itemIcon(Item::Firmware));
+
+    const UiFace& f = uifont::kLabel;
+    TEST_ASSERT_TRUE(uiTextWidth(f, "Firmware", 0) <= 107);
+    // The screen's rows: a list row's label in the 135 px portrait.
+    constexpr int kRowLabelPx = 135 - 2 * theme::kGutter - 2 * theme::kRowPadX;
+    for (const char* row : {"Install", "Check now", "Instalar", "Comprobar"})
+        TEST_ASSERT_TRUE_MESSAGE(uiTextWidth(f, row, 0) <= kRowLabelPx, row);
+    for (const char* value : {"v0.10.12 available", "v0.10.12 disponible"})
+        TEST_ASSERT_TRUE_MESSAGE(captionCells(value) <= 19, value);
+    // The home's Device row: "Device" or "Dispositivo", 5 px and "v0.7.0".
+    constexpr int kHomeLabelPx = 135 - 2 * theme::kGutter - 2 * theme::kRowPadX -
+                                 (kIconCards.w + 5) - (kIconChevron.w + 4);
+    TEST_ASSERT_TRUE(uiTextWidth(f, "Device", 0) + 5 + 6 * 6 > kHomeLabelPx);
+    TEST_ASSERT_TRUE(uiTextWidth(f, "Dispositivo", 0) + 5 > kHomeLabelPx - 6);
+    // Header titles (Font0, ASCII) with the version right of them.
+    TEST_ASSERT_TRUE((captionCells("FIRMWARE") + 1 + captionCells("v0.10.12")) * 6 <=
+                     135 - 2 * theme::kGutter - 18);
+
+    // Every status line, and the reused network ones it shows.
+    for (const char* status :
+         {"v0.10.12 available", "Up to date", "Not checked yet", "No update", "Development build",
+          "Not available", "Bad manifest", "Checking...", "Downloading...", "Checking the image...",
+          "Restarting into v0.10.12...", "Image rejected", "Flash write failed",
+          "Server unreachable", "Secure link failed", "Server error 404", "Download corrupt",
+          "Download failed", "Not enough space", "Cancelled", "Battery low", "No home Wi-Fi saved",
+          "Could not connect", "Network not found", "Wrong password?",
+          "v0.10.12 disponible", "Al día", "Sin comprobar", "Sin actualización",
+          "Versión de desarrollo", "No disponible", "Manifiesto no válido",
+          "Buscando...", "Descargando...", "Comprobando imagen...", "Reiniciando en v0.10.12...",
+          "Imagen rechazada", "Fallo al escribir", "Servidor inaccesible",
+          "Sin conexión segura", "Error del servidor 404", "Descarga dañada",
+          "Descarga fallida", "No hay espacio", "Cancelado", "Batería baja",
+          "Sin Wi-Fi de casa", "No se pudo conectar", "Red no encontrada",
+          "¿Contraseña incorrecta?"}) {
+        const int portrait = labelLines(status, 127);
+        TEST_ASSERT_TRUE_MESSAGE(portrait >= 1 && portrait <= 2, status);
+        TEST_ASSERT_TRUE_MESSAGE(uiTextWidth(f, status, 0) <= 232, status);
+    }
+    // One Spanish word is too wide for the portrait line ("Buscando..." took its
+    // place), and the TLS failure of the other screens takes three lines in
+    // both languages (the screen says "Secure link failed").
+    TEST_ASSERT_EQUAL(-1, labelLines("Comprobando...", 127));
+    TEST_ASSERT_EQUAL(3, labelLines("Secure connection failed", 127));
+    TEST_ASSERT_EQUAL(3, labelLines("Fallo de conexión segura", 127));
+    // Details next to two rows in landscape.
+    for (const char* detail : {"1.7 MB · settings and decks stay",
+                               "1.7 MB · ajustes y mazos se quedan",
+                               "Not installed: v0.10.12 stays.",
+                               "Sin instalar: se queda la v0.10.12.",
+                               "Charge it or plug in USB first.", "Cárgalo o conecta el USB antes."})
+        TEST_ASSERT_TRUE_MESSAGE(captionCells(detail) <= 38, detail);
+    // The install's numbers under the bar (Font0, 127 px).
+    TEST_ASSERT_TRUE(captionCells("1.7 / 1.7 MB · 100%") * 6 <= 127);
+    // The notice after a rollback: two label lines, then four caption lines.
+    for (const char* title : {"Update failed", "Actualización fallida"}) {
+        const int lines = labelLines(title, 127);
+        TEST_ASSERT_TRUE_MESSAGE(lines >= 1 && lines <= 2, title);
+    }
+    for (const char* text : {"v0.10.12 did not start: back on v0.10.11.",
+                             "v0.10.12 no arrancó: de vuelta a v0.10.11."})
+        TEST_ASSERT_TRUE_MESSAGE(wrapText(text, 21).size() <= 4, text);
 }
 
 // What the app sets the queue to (app/Settings.cpp learnOptions()): learning
@@ -439,6 +554,42 @@ void test_layout_done() {
 
 // ---------------------------------------------------------------- deck counts
 
+// Settings > Device > Firmware on every panel, with 0 to 2 rows: the parts stay
+// between the header and the rows (or the hint bar), in order, and leave at
+// least one detail line; the install's bar and numbers fit above the hint bar.
+void test_layout_firmware() {
+    using namespace theme;
+    for (const Panel& p : kPanels) {
+        for (int rows = 0; rows <= 2; ++rows) {
+            const layout::Firmware l = layout::firmwareFor(p.w, p.h, rows);
+            const Layout g = layoutFor(p.w, p.h);
+            const int hintY = p.h - kHintH;
+            TEST_ASSERT_TRUE(inside(l.version, p.w, kHeaderH, l.rowsTop));
+            TEST_ASSERT_TRUE(inside(l.status, p.w, kHeaderH, l.rowsTop));
+            TEST_ASSERT_TRUE(l.version.bottom() <= l.status.y);
+            TEST_ASSERT_TRUE(l.status.bottom() < l.detail.y);
+            TEST_ASSERT_TRUE(l.detail.bottom() < l.rowsTop);
+            TEST_ASSERT_TRUE(l.detailLines >= 1);
+            TEST_ASSERT_TRUE(l.detail.y + 10 * (l.detailLines - 1) + 8 <= l.detail.bottom());
+            TEST_ASSERT_EQUAL(p.w > p.h ? 1 : 2, l.statusLines);
+            TEST_ASSERT_EQUAL(20 * l.statusLines, l.status.h);
+            // The rows fit the band layoutList() is given.
+            const int band = hintY - l.rowsTop - 2 * kMarkerBand;
+            TEST_ASSERT_TRUE(rows == 0 ? l.rowsTop == hintY
+                                       : band >= rows * g.row1H + (rows - 1) * kGap);
+            if (rows == 0) {
+                TEST_ASSERT_TRUE(inside(l.bar, p.w, l.status.bottom(), hintY));
+                TEST_ASSERT_TRUE(l.numbersY + 8 <= hintY);
+            }
+        }
+    }
+    // The StickS3's and the Cardputer's landscape: one detail line with two
+    // rows, three with one.
+    TEST_ASSERT_EQUAL(1, layout::firmwareFor(240, 135, 2).detailLines);
+    TEST_ASSERT_EQUAL(3, layout::firmwareFor(240, 135, 1).detailLines);
+    TEST_ASSERT_TRUE(layout::firmwareFor(135, 240, 2).detailLines >= 6);
+}
+
 void test_deck_summary() {
     const std::vector<uint8_t> buf = makeDeck({0x4E00, 0x4E8C, 0x4E09, 0x56DB, 0x4E94}, "JLPT N5");
     MemorySource src(buf);
@@ -608,6 +759,7 @@ int main(int, char**) {
     RUN_TEST(test_tree_every_item_once);
     RUN_TEST(test_tree_groups_and_marks);
     RUN_TEST(test_introduce_row);
+    RUN_TEST(test_firmware_row);
     RUN_TEST(test_learn_options_defaults);
     RUN_TEST(test_values);
     RUN_TEST(test_live_streak);
@@ -615,6 +767,7 @@ int main(int, char**) {
     RUN_TEST(test_layout_stats);
     RUN_TEST(test_layout_date);
     RUN_TEST(test_layout_done);
+    RUN_TEST(test_layout_firmware);
     RUN_TEST(test_deck_summary);
     RUN_TEST(test_deck_summary_learning);
     RUN_TEST(test_study_more_extra);

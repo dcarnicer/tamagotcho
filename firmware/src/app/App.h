@@ -47,7 +47,7 @@ extern bool gSrsLoaded;   // the state file loaded at boot
 // (main.cpp).
 enum class Screen {
     Quiz, Menu, Decks, Choice, Done, Date, Stats, Detail, Wifi, GetDecks, UpdateCheck, WifiMenu,
-    NetTest, About, FirstLang, DateMenu, TzList, Reset, ResetConfirm, Intro
+    NetTest, About, FirstLang, DateMenu, TzList, Reset, ResetConfirm, Intro, Firmware
 };
 extern Screen gScreen;
 extern Screen gBeforeMenu;  // where the settings home goes back to (closeMenu())
