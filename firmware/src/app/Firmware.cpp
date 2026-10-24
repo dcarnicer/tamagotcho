@@ -29,7 +29,7 @@ using tgc::board::Button;
 namespace tgc {
 namespace app {
 
-char gFwBadge[24] = "";  // NVS `fwver`
+char gFwBadge[kFwVersionMax + 1] = "";  // NVS `fwver`
 tgc::ListView gFwList;
 
 namespace {
@@ -51,6 +51,7 @@ constexpr uint32_t kValidAfterMs = 10000;
 constexpr uint32_t kManifestTimeoutMs = 10000;
 constexpr uint32_t kNoticeMs = 4000;   // the rollback notice at boot
 constexpr uint32_t kRestartMs = 1500;  // "Restarting into ..." before the restart
+constexpr uint32_t kFailedBootMs = 3000;  // a fatal boot screen before the rollback
 
 bool gLayout = false;      // ota::layoutIsOurs(), read at boot
 bool gPending = false;     // this image boots pending verification
@@ -59,8 +60,8 @@ bool gPending = false;     // this image boots pending verification
 bool gOverridden = false;
 uint32_t gLoopAt = 0;      // millis() of the first loop() turn; 0 while setup() runs
 uint32_t gBadgeBytes = 0;  // NVS `fwsize`
-char gBad[24] = "";        // NVS `otabad`
-char gRolledBack[24] = ""; // this boot came back from that version (the notice, once)
+char gBad[kFwVersionMax + 1] = "";         // NVS `otabad`
+char gRolledBack[kFwVersionMax + 1] = "";  // this boot came back from it (the notice, once)
 
 // The last manifest read of this boot.
 struct Check {
@@ -293,8 +294,25 @@ void installOffer() {
     req.idleTimeoutMs = kNetIdleMs;
     req.totalTimeoutMs = kNetDownloadMs;
     req.progress = installProgress;
-    const tgc::FetchResult r = tgc::ota::install(req);
+    tgc::FetchResult r = tgc::ota::install(req);
     netTransferEnd();
+    if (r.status == tgc::FetchStatus::Ok) {
+        // The image is in and matched the manifest. What is installed where
+        // goes to NVS before the boot slot switches, so a boot in the other
+        // slot can only mean a rollback (firmwareBoot()); without that record
+        // the install does not go ahead.
+        const bool recorded =
+            gPrefs.putString(kPrefOtaNew, version.c_str()) == version.size() &&
+            gPrefs.putString(kPrefOtaSlot, slot) == std::strlen(slot);
+        if (!recorded) {
+            tgc::ota::abandon();
+            clearInstallRecord();
+            r.status = tgc::FetchStatus::WriteFailed;
+        } else if (!tgc::ota::activate()) {
+            clearInstallRecord();
+            r.status = tgc::FetchStatus::BadImage;
+        }
+    }
     if (r.status != tgc::FetchStatus::Ok) {
         netRadioOff();
         gStep = Step::Idle;
@@ -305,11 +323,7 @@ void installOffer() {
         sessionDone();
         return;
     }
-    // The boot slot is the new image now. What was installed where goes to
-    // NVS first, so the next boot can tell a rollback (firmwareBoot()); then
-    // the progress is saved and the device restarts into it.
-    gPrefs.putString(kPrefOtaNew, version.c_str());
-    gPrefs.putString(kPrefOtaSlot, slot);
+    // The boot slot is the new image now: save the progress and restart into it.
     if (gDirty || gSrsLoaded) {
         gSrs.save(gSrsIo);
         gDirty = 0;
@@ -354,6 +368,9 @@ void startSession(bool install) {
         drawScreen();
         return;
     }
+    // An install overwrites the other slot, the one a pending image would roll
+    // back to: this image has carried the user this far, so it is good now.
+    if (install && gPending) markGood("before an install");
     gInstalling = install;
     gNetActivityAt = millis();  // the join keeps the idle timers away (powerTick)
     setCpuFrequencyMhz(kCpuWifiMhz);
@@ -391,7 +408,7 @@ void idleStatus(const char** title, uint16_t* color, char* detail, size_t dn) {
         *color = kWarn;
         snprintf(detail, dn, "%s", gCheck.detail);
     } else if (offerKnown()) {
-        static char line[48];
+        static char line[kFwVersionMax + 24];
         snprintf(line, sizeof line, ui().fwAvailableFmt, offerVersion());
         *title = line;
         *color = kAccentHi;
@@ -460,7 +477,7 @@ void firmwareBoot() {
     Serial.printf("[ota] %s (%s) in %s; update slot %s, %u bytes\n", tgc::firmwareVersion(),
                   tgc::ota::buildEnv(), running, tgc::ota::nextSlot(),
                   (unsigned)tgc::ota::slotBytes());
-    char installing[24], slot[8];
+    char installing[kFwVersionMax + 1], slot[8];
     prefString(kPrefOtaNew, installing, sizeof installing);
     prefString(kPrefOtaSlot, slot, sizeof slot);
     if (gPending) {
@@ -472,8 +489,9 @@ void firmwareBoot() {
         } else {
             // The install switched the boot slot to `slot` and the device runs
             // the other one: the new image did not get as far as markGood()
-            // (a crash, a watchdog, a reset or a power cut before), and the
-            // bootloader went back. Never offered again.
+            // (a crash, a watchdog, a reset or a power cut before, or a fatal
+            // boot screen: firmwareFailedBoot()), and the bootloader went
+            // back. Never offered again.
             Serial.printf("[ota] %s did not start in %s (otadata: %s invalid): back on %s\n",
                           installing, slot, tgc::ota::lastInvalidSlot(), tgc::firmwareVersion());
             snprintf(gBad, sizeof gBad, "%s", installing);
@@ -516,13 +534,19 @@ void firmwareTick(uint32_t now) {
     if (gPending && now - gLoopAt >= kValidAfterMs) markGood("10 s of the loop");
 }
 
-// The bootloader rolls back on any reset of a pending image, the wake from a
-// deep sleep included, so the image cannot stay pending through one: one that
-// reached the loop (a deck open or the no-deck screens, the user's own sleep
-// or the idle timer) counts as good. One that sleeps from inside the boot
-// (halt(), the critical-battery re-sleep) does not, and rolls back.
+// A pending image that reached the loop (a deck open or the no-deck screens)
+// and goes to sleep -- the user's own sleep, the idle timer -- counts as good.
+// The framework's bootloader most likely wakes it still pending (it skips
+// otadata on a deep-sleep wake), but a wake that read otadata would roll it
+// back, so it is not left to that.
 void firmwareBeforeSleep() {
     if (gPending && gLoopAt) markGood("before a deep sleep");
+}
+
+void firmwareFailedBoot() {
+    if (!gPending) return;
+    delay(kFailedBootMs);  // the error screen, for a moment
+    tgc::ota::rollBackNow();
 }
 
 void firmwareAfterCatalog(const tgc::FetchResult& catalog) {
@@ -601,7 +625,7 @@ void drawFirmware() {
                             tgc::Renderer::kTextUi);
     };
     if (transfer) {
-        char line[48];
+        char line[kFwVersionMax + 24];
         if (gStep == Step::Restarting)
             snprintf(line, sizeof line, ui().fwRestartingFmt, gCheck.version.c_str());
         else

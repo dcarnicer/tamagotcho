@@ -15,9 +15,12 @@
 namespace tgc {
 namespace app {
 
+// The longest version kept (NVS strings, the badge): a manifest's vX.Y.Z is at
+// most 33 characters, a build's at most 40 (scripts/version.py).
+constexpr size_t kFwVersionMax = 40;
 // The badge: a newer firmware the last manifest read offered, "" for none
 // (NVS `fwver`; its size in `fwsize`). A failed read leaves it as it was.
-extern char gFwBadge[24];
+extern char gFwBadge[kFwVersionMax + 1];
 
 // boot(), once the settings namespace is open: the layout, a pending first
 // boot, the outcome of the last install (a rollback is remembered, NVS
@@ -29,8 +32,12 @@ void firmwareRollbackNotice();
 // loop(), every turn: a pending image is marked valid after 10 s of the loop.
 void firmwareTick(uint32_t now);
 // Before every deep sleep of the running app: a pending image that reached the
-// loop counts as good (the bootloader would roll back on the wake).
+// loop counts as good.
 void firmwareBeforeSleep();
+// A fatal screen of the boot (halt(), the damaged-storage question): a pending
+// image rolls back to the previous one at once instead of waiting there (a
+// deep sleep would wake into it again). Returns when nothing is pending.
+void firmwareFailedBoot();
 
 // A home-Wi-Fi session has just read the deck catalog (the boot check, the date
 // sync, Get decks, the network test, the portal page): read the firmware

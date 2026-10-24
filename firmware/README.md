@@ -211,9 +211,11 @@ leaves the badge: the update arrow on the home's Device row, "v0.7.0
 available" on the Firmware row (NVS `fwver`).
 
 The new image boots pending and is marked valid after 10 s of the loop, or
-before a deep sleep once the loop runs; a reset before that boots the previous
-slot (the framework bootloader's rollback), which then shows "Update failed"
-once and stores that version in NVS `otabad` so it is not offered again.
+before a deep sleep once the loop runs; a crash or reset before that boots the
+previous slot (the framework bootloader's rollback), and so does a fatal boot
+screen of the new image (no deck opens, damaged storage) after 3 s. The
+previous image then shows "Update failed" once and stores that version in NVS
+`otabad` so it is not offered again.
 Serial `[ota]` lines report the layout at boot, each manifest read, the
 install and the verdict.
 

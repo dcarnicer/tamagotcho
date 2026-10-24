@@ -14,12 +14,6 @@
 #define TGC_ENV "unknown"
 #endif
 
-// initArduino() (the framework's cores/esp32/esp32-hal-misc.c) marks a new
-// image valid before setup() unless this returns true. The app marks it valid
-// itself once it has shown it works (app/Firmware.cpp, docs/ota.md §3.5). On a
-// layout without OTA nothing is ever pending, so this changes nothing there.
-extern "C" bool verifyRollbackLater() { return true; }
-
 namespace tgc {
 namespace ota {
 
@@ -148,22 +142,38 @@ FetchResult install(const InstallRequest& req) {
     SlotSink sink(app.bytes);
     const uint32_t started = millis();
     res = fetchToSink(body, sink);
-    if (res.status == FetchStatus::Ok) {
-        // Size and SHA-256 matched the manifest: only now may Update check the
-        // image and switch the boot slot. end() without evenIfRemaining also
-        // refuses an image shorter than the size it began with.
-        if (!Update.end()) {
-            Serial.printf("[ota] Update.end: %s\n", Update.errorString());
-            res.status = FetchStatus::BadImage;
-        }
-    } else if (sink.begun()) {
-        Update.abort();  // the boot slot stays the running one
-    }
+    // Ok: size and SHA-256 matched the manifest; Update stays open for
+    // activate() or abandon(). Anything else: the boot slot stays the running one.
+    if (res.status != FetchStatus::Ok && sink.begun()) Update.abort();
     Serial.printf("[ota] install: %s (%u bytes in %u ms, http %d, tls %d)\n",
                   fetchStatusString(res.status), (unsigned)res.bytes,
                   (unsigned)(millis() - started), res.httpCode, res.tlsError);
     return res;
 }
 
+bool activate() {
+    // end() without evenIfRemaining also refuses an image shorter than the
+    // size it began with; it checks the image and switches the boot slot.
+    if (Update.end()) return true;
+    Serial.printf("[ota] Update.end: %s\n", Update.errorString());
+    return false;
+}
+
+void abandon() { Update.abort(); }
+
+void rollBackNow() {
+    Serial.printf("[ota] %s failed at boot: back to the previous image\n", runningSlot());
+    Serial.flush();
+    esp_ota_mark_app_invalid_rollback_and_reboot();  // returns only when there is none
+}
+
 }  // namespace ota
 }  // namespace tgc
+
+// initArduino() (the framework's cores/esp32/esp32-hal-misc.c) marks a pending
+// image valid before setup() unless this returns true. With our layout the app
+// gives that verdict itself once the image has shown it works (app/Firmware.cpp,
+// docs/ota.md §3.5). With any other layout -- M5Launcher's own slots, whose
+// bootloader may roll back too -- the framework marks it valid at once, as
+// before; with the factory-only tables nothing is ever pending.
+extern "C" bool verifyRollbackLater() { return tgc::ota::layoutIsOurs(); }

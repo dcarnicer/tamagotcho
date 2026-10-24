@@ -148,10 +148,11 @@ bool saveUrl(const char* key, const String& url) {
     Preferences p;
     if (!p.begin(kNs, false)) return false;
     bool ok = true;
-    if (u.isEmpty())
-        p.remove(key);
-    else
+    if (u.isEmpty()) {
+        if (p.isKey(key)) p.remove(key);  // removing a missing key logs an error
+    } else {
         ok = p.putString(key, u) == u.length();
+    }
     p.end();
     return ok;
 }

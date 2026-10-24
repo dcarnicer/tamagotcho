@@ -74,7 +74,7 @@ struct PortalStats {
     // Firmware (docs/ota.md §3.8): the newer release the device found ("" when
     // none is known) and whether it can update itself (our partition layout).
     // The page only shows them: the install starts on the device.
-    char fwAvailable[24] = "";
+    char fwAvailable[41] = "";
     bool fwOta = false;
 };
 

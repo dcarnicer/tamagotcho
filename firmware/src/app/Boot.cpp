@@ -122,6 +122,8 @@ bool mountFilesystem() {
     hints.hold = ui().hintErase;
     showError(ui().errNoFilesystem, keysOr(ui().errNoFilesystemHint, ui().errNoFilesystemHintKeys),
               &hints);
+    // A new image that cannot mount it goes back to the previous one first.
+    firmwareFailedBoot();
     bool released = !tgc::board::isHeld(tgc::board::Button::Select);
     const uint32_t start = millis();
     for (;;) {

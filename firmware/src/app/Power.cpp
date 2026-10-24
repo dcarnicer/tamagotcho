@@ -256,8 +256,10 @@ void powerTick(uint32_t now) {
 }
 
 // Fatal error screen. Nothing to save here (the SRS may not even be loaded), so
-// on battery it just sleeps after the usual timeout; a wake shows it again.
+// on battery it just sleeps after the usual timeout; a wake shows it again. A
+// new image on its first boot goes back to the previous one instead.
 void halt() {
+    firmwareFailedBoot();
     const uint32_t start = millis();
     for (;;) {
         tgc::board::update();
