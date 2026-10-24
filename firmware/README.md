@@ -142,7 +142,9 @@ of it and the statistics (**Everything**), after a confirmation that only a
 hold accepts (docs/srs.md §2.1).
 **Wi-Fi »** opens its own list (Web portal / Home network / Setup mode / Forget
 Wi-Fi) that works the same way, and so does **Date »** (Date / Time zone, see
-[Date](#date)). **About** shows the
+[Date](#date)). **Firmware** (before About) shows the running version and,
+with the two-slot layout, installs a newer release over the home Wi-Fi
+([Firmware updates](#firmware-updates-over-wi-fi)). **About** shows the
 firmware version and licence, the decks' licence, the repository, and the loaded
 deck's name with its data credits; a tap turns the page when it needs two, the
 side button goes back. The deck list's last row, **+ Get decks**, downloads decks
@@ -191,6 +193,48 @@ that press only wakes it) and keeps it from sleeping. The Delete progress
 confirmation ignores an Enter in its first half second, so a double Enter on
 its row does not delete; the intro card ignores every key in its first
 400 ms. The intro's hint bar reads `↵ next` and `← known`.
+
+## Firmware updates over Wi-Fi
+
+docs/ota.md has the design, the manifest format and, in §9, what was built.
+**Settings › Device › Firmware**: the running version and build environment
+(`TGC_ENV`, the manifest row the device takes), the status (an offer with its
+size, up to date, why a release is not offered, the last error), and two rows:
+**Check now** joins the home Wi-Fi and reads the manifest, **Install** (with an
+offer) reads it again and streams the image into the other app slot through
+Arduino's `Update` (size and SHA-256 checked against the manifest before
+`Update.end()` switches the boot slot), then restarts. Side button / Esc
+cancels, the power button cancels and sleeps; on battery below 6 % it does not
+start. Every Wi-Fi session that reads the deck catalog (boot check, date sync,
+Get decks, the network test, the portal page) reads the manifest too and
+leaves the badge: the update arrow on the home's Device row, "v0.7.0
+available" on the Firmware row (NVS `fwver`).
+
+The new image boots pending and is marked valid after 10 s of the loop, or
+before a deep sleep once the loop runs; a reset before that boots the previous
+slot (the framework bootloader's rollback), which then shows "Update failed"
+once and stores that version in NVS `otabad` so it is not offered again.
+Serial `[ota]` lines report the layout at boot, each manifest read, the
+install and the verdict.
+
+The manifest URL is `releases/latest/download/tamagotcho-firmware.txt`; the
+portal's **Advanced → Device firmware** overrides it (NVS `net`/`fwurl`,
+`http://` allowed). Development builds (a `git describe` version, `dev`) read
+only an overridden URL and then take any other version, e.g. to test with a
+manifest and images on the computer:
+
+```sh
+TGC_VERSION=v9.9.9 pio run -e sticks3  # the image to install, labelled as the manifest says
+mkdir -p /tmp/fw && cp .pio/build/sticks3/firmware.bin /tmp/fw/tamagotcho-sticks3.bin
+f=/tmp/fw/tamagotcho-sticks3.bin
+printf '#tamagotcho-firmware\t1\nversion\tv9.9.9\napp\tsticks3\t%s\t%s\t%s\n' \
+  tamagotcho-sticks3.bin "$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f")" \
+  "$(shasum -a 256 "$f" | cut -d' ' -f1)" > /tmp/fw/tamagotcho-firmware.txt
+python3 -m http.server -d /tmp/fw 8000  # manifest URL: http://<computer>:8000/tamagotcho-firmware.txt
+```
+
+Without the two-slot layout (the factory-only tables, M5Launcher) the screen
+says the device updates over USB only.
 
 ## Orientation
 

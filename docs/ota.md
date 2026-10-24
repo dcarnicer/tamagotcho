@@ -3,8 +3,9 @@
 > **Status: approved (2026-10-24), being built.** The maintainer took the
 > recommendation of every decision of §8 (D1, D2, D3 and D6/D8 asked
 > explicitly; D4, D5 and D7 as recommended). §3.1 is the manifest's spec, the
-> contract between `release.yml` and the firmware. Roadmap: "OTA firmware
-> updates" (`docs/roadmap.md`, idea of 2026-10-21).
+> contract between `release.yml` and the firmware. Phase 2, the device side,
+> is built (§9, "As built"); its hardware tests wait for phase 1's layout.
+> Roadmap: "OTA firmware updates" (`docs/roadmap.md`, idea of 2026-10-21).
 
 The device should update its own firmware over the home Wi-Fi: it finds out
 that a newer release exists, says so, and installs it when the user holds a
@@ -18,7 +19,8 @@ trust is the same as Get decks': GitHub over HTTPS, §3.7).
 This document covers: the facts that constrain the design (§1), the flash
 layout and the one-time move to it (§2), the design (§3), what the screens
 show (§4), the code (§5), a phased plan (§6), what only hardware can answer
-(§7), and the decisions to take (§8).
+(§7), the decisions to take (§8) and what building the device side changed
+(§9).
 
 ## 1. Today
 
@@ -397,3 +399,63 @@ decision).
 | D6 | Previous version row | later, optional | in the first version; never |
 | D7 | Install from the portal page | no: the page shows, the device installs | a portal button that starts it |
 | D8 | Development upload over Wi-Fi | later phase | with phase 2; never |
+
+## 9. As built (phase 2, the device side)
+
+Built on 2026-10-24 (`feature/ota-device`; docs/decisions.md, "OTA: device
+side as built"). The code is where §5 puts it: `ota/Manifest` and `ota/Offer`
+(pure, `test_ota`), `fetchToSink()` in `platform/NetFetch` (the deck downloads
+use it through a file sink), `platform/Ota`, `app/Firmware` (the screen, the
+checks, the first boot). What differs from the design above:
+
+- **A pending image cannot stay pending through a deep sleep** (§3.5). The
+  bootloader turns a pending image into an aborted one on any reset, the wake
+  from a deep sleep included, and boots the previous slot. So every deep sleep
+  of the running app (`prepareDeepSleep()`: the power button, Sleep, the idle
+  timer, unplugging a dark panel) first marks a pending image valid once the
+  loop has started; one that sleeps from inside the boot (`halt()`, the
+  critical-battery re-sleep) is not proven and rolls back. Otherwise valid after
+  `setup()` and 10 s of the loop, as designed.
+- **How a rollback is told.** Right before the restart the install stores the
+  version and the slot it wrote (NVS `otanew`, `otaslot`); a pending boot keeps
+  them until it is marked valid, which clears them. A boot that is not pending
+  and runs the other slot is a rollback: that version goes to NVS `otabad`
+  (never offered again, release or development build) and a notice says once
+  "Update failed / v0.7.0 did not start: back on v0.6.0", for 4 s or until a
+  press, after the deck is open (in its language). `esp_ota_get_last_invalid_partition()`
+  is only logged: on a device that never updated (erased `otadata`) it names
+  `ota_0`, the running slot. The images' app description has the IDF's version,
+  not the tag.
+- **The badge**: NVS `fwver` and `fwsize`. The home's **Device** row has no room
+  for a version next to "Dispositivo" (92 of its 93 px in portrait), so it
+  shows the update arrow Get decks uses in place of its chevron; the
+  **Firmware** row reads "v0.7.0 available" (else the running version). A read
+  that parsed sets or clears it, a failed one leaves it; it goes once the
+  device runs that version.
+- **Install reads the manifest again** in its own Wi-Fi session, so the row is
+  fresh (the badge may be from an earlier boot); then the download, "Checking
+  the image..." while `Update.end()` reads it back, "Restarting into v0.7.0...".
+  `Update.end()` is called without `evenIfRemaining`, so an image shorter than
+  the size it began with is refused there too.
+- **The sessions' manifest read** (§3.3) is skipped when the catalog read got
+  no answer from any server (connect or TLS failure: the manifest would wait
+  for the same timeouts); its body has 10 s. Failures are only logged
+  (`[ota] manifest ...`). Development builds without a URL of their own log that
+  they read none.
+- **Relative image names** resolve against the manifest URL as requested, so
+  the default gives `releases/latest/download/<file>`: a release published
+  between the manifest read and the download fails that download's size or
+  SHA-256 check, and the next check reads the new manifest.
+- **The Firmware screen** (sketch of §4): the running version with the build
+  environment right of it, a status line (an offer, "Up to date" with the
+  latest version, "No update" and why, "Development build", "Not available"
+  with the USB hint, or the last error), its detail, and the rows Install (only
+  with an offer) and Check now (only where a manifest may be read). Its TLS
+  failure reads "Secure link failed": "Secure connection failed" takes three
+  lines in the 135 px portrait.
+- **The portal**: Advanced → **Device firmware** (the version and build, a found
+  update, or that this layout does not update itself) with the manifest URL
+  field (`POST /fwurl`; in home mode saving it reads the catalog, and with it
+  the new manifest, again), and a line at the top while an update is known.
+- Not built (later, §6 step 4): **Previous version** (D6) and the development
+  upload over Wi-Fi (D8).

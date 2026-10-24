@@ -3460,3 +3460,49 @@ Design in docs/ota.md; every decision of its §8 taken as recommended.
   again.
 - **Later**: Previous version (switch back by hand) and a firmware upload on
   the portal for development.
+
+## 2026-10-24 – OTA: device side as built
+
+Phase 2 of docs/ota.md (its §9 lists what differs from the design).
+
+- **Valid before any deep sleep.** The bootloader aborts a pending image on
+  every reset, a deep-sleep wake included, so §3.5's "stays pending through a
+  sleep" cannot be: `prepareDeepSleep()` marks a pending image valid once the
+  loop has started (setup() returned: the filesystem, a deck or the no-deck
+  screens). A sleep from inside the boot (halt(), the critical re-sleep) is not
+  proven and rolls back. Else valid after 10 s of the loop.
+- **A rollback is told by an NVS record**, not by the IDF: the install writes
+  `otanew` (the version) and `otaslot` (the slot) before the restart; the new
+  image clears them when it is marked valid; a non-pending boot in the other
+  slot with them set is a rollback, remembered in `otabad` (never offered
+  again, dev builds included) and said once at boot after the deck opens.
+  `esp_ota_get_last_invalid_partition()` names `ota_0` on a device whose
+  `otadata` is erased, and the image's app description carries the IDF's
+  version, so neither is reliable alone; the first is logged.
+- **Install re-reads the manifest** in its own session, so a badge from an
+  earlier boot never installs a stale row; the RAM row is for the screen.
+- **The sessions skip the manifest when no server answered the catalog**
+  (connect or TLS failure), so a session without internet is not slower; the
+  manifest body has 10 s.
+- **The home's Device row shows the update arrow, not a version**:
+  "Dispositivo" leaves 1 px of its 93 (portrait), "Device" + "v0.7.0" misses by
+  3. The Firmware row names the version ("v0.7.0 available", 19 cells at most).
+- **The NetFetch sink**: `fetchToSink()` holds the request, the announced size,
+  the timeouts, the progress and the size and SHA-256 checks;
+  `fetchPackFile()` keeps its space checks, temp, probe and rename around a
+  file sink with the same order of checks. The OTA sink refuses a byte past the
+  manifest size itself, and `Update.end()` runs only after both checks passed
+  (without `evenIfRemaining`). Two new statuses: `NoSlot`, `BadImage`.
+- **The blocking-transfer progress is shared**: `netTransferBegin()`,
+  `netProgress()`, `netTransferEnd()`, `netSleepIfAsked()` in `app/Net` serve the
+  deck download and the install (side button / Esc cancel, the power button and
+  a critical battery cancel and sleep).
+- **The manifest URL override** is NVS `net`/`fwurl`, next to the catalog's
+  `cat`, written by the portal (`POST /fwurl`); http:// is accepted there as for
+  the catalog. The build environment is `TGC_ENV` (phase 1 sets it per env;
+  `platform/Ota.cpp` falls back to "unknown", which no row matches).
+- **Strings**: "Buscando..." for Spanish "Checking..." ("Comprobando...", 137
+  px, is one word too wide for the 127 px portrait line) and "Secure link
+  failed" / "Sin conexión segura" on the Firmware screen (the shared TLS
+  message takes three lines there). `test_settings` checks them.
+
