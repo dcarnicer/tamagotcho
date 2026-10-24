@@ -11,18 +11,22 @@ Offsets come from the partition CSV (authoritative), not from constants:
 
 - ESP32-S3 boots the second-stage bootloader from ``0x0`` and reads the partition
   table from ``0x8000``.
-- the application goes to the offset of the table's ``app`` partition.
-- an Arduino/ESP-IDF build with an **OTA data partition** also needs the
-  ``boot_app0.bin`` image (the "which OTA slot to boot" record) at that
-  partition's offset. Our tables have no OTA partition, so this part is omitted.
-  (PlatformIO's USB upload still writes ``boot_app0.bin`` at ``0xe000``, over
-  the unused ``phy_init`` partition; see docs/decisions.md.)
+- the application goes to the offset of the table's first ``app`` partition
+  (``app0``).
+- a table with an **OTA data partition** also needs ``boot_app0.bin``, the
+  framework's "boot app0" record, at that partition's offset. Ours have one
+  (two app slots for updates over the air, docs/ota.md), at ``0xe000``, where
+  PlatformIO's USB upload writes the same file: the image written at ``app0``
+  must also be the one that boots, whichever slot an update over the air left
+  selected. ``--boot-app0`` is then required, and a missing file fails the
+  merge (``framework-arduinoespressif32/tools/partitions/boot_app0.bin``).
 
-Usage (see README.md "Releases"):
+Usage (see docs/user-guide.md, "Flash a merged image"):
 
     python3 tools/release/merge_image.py \\
         --build-dir .pio/build/sticks3 \\
         --partitions firmware/partitions/sticks3_8MB.csv \\
+        --boot-app0 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \\
         --flash-size 8MB --out dist/tamagotcho-sticks3-merged.bin
 """
 
@@ -106,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--flash-mode", default="dio")
     ap.add_argument("--flash-freq", default="80m")
     ap.add_argument("--flash-size", default="8MB")
-    ap.add_argument("--boot-app0", help="only used when the table has an OTA data partition")
+    ap.add_argument("--boot-app0", help="required when the table has an OTA data partition (ours do)")
     ap.add_argument("--esptool", default="esptool")
     a = ap.parse_args(argv)
 
