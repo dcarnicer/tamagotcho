@@ -34,7 +34,10 @@ version description has to say so and link the move (docs/user-guide.md,
 "Moving to v0.7.0": the progress backup on the portal first). A device burned with
 v0.7.0 or later runs the `m5stack` build and takes the `m5stack` row of the
 release's `tamagotcho-firmware.txt` from then on; M5Burner stays the way to
-install it, and to start again from scratch.
+install it, and to start again from scratch. v0.7.0 was submitted as Public on
+2026-10-24 (v0.5.1 and v0.6.0 still pending review); its description gives
+v0.7.0's news, the fresh-install warning with the progress backup, and one
+line for everything since v0.4.1.
 
 | field | value |
 |---|---|
