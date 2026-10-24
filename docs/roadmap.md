@@ -328,6 +328,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       all checked on a StickS3; its notes are `docs/releases/v0.5.1.md`.
       It is the first version on M5Burner after v0.4.1 (submitted
       2026-10-23, pending review; v0.4.2 and v0.5.0 were skipped there).
+      **v0.6.0** (2026-10-24) adds learning mode (the intro card, learning
+      steps, example words from the new `decks-v3` release) and lets the
+      portal replace and delete the loaded deck; checked on the StickS3, the
+      T-Display-S3 and the Cardputer ADV; its notes are
+      `docs/releases/v0.6.0.md` (M5Burner: submitted, pending review).
       The **README** is a landing page since 2026-10-21: a cover and a
       gallery of real screens (`tools/screenshots/readme_images.py`, shots
       from a StickS3 through the serial remote), with the long manual moved
@@ -457,7 +462,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       network" (cut to "Forget net...") is "Forget Wi-Fi".
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
       (picking an option on the device takes longer than in Anki).
-- [~] **Learning mode** (idea, 2026-10-18; approved 2026-10-23). A mode for
+- [x] **Learning mode** (idea, 2026-10-18; approved 2026-10-23; released in
+      v0.6.0, 2026-10-24). A mode for
       learning kanji, not only reviewing them: for example, introducing a new
       kanji (meanings, readings, stroke order) before its first
       multiple-choice question. **Design proposal** (2026-10-23):
@@ -465,13 +471,14 @@ Scope for now: **kanji only** (no vocabulary decks).
       recommended design: an intro card and two same-day learning steps inside
       the daily session, the FSRS state it records, mockups in
       `docs/learning-mode/`, a phased plan) with ten open decisions, all
-      answered with the recommendations on 2026-10-23 (docs/decisions.md). In
-      progress: phase 1 (SRS and queue), then the intro screen on top of the
-      `main.cpp` split; example words (pack format v3) with English glosses
-      from JMdict_e and Spanish ones from a reviewed project table
-      (docs/example-words.md): format, builder (`build --example-words`,
-      `sync-glosses`) and firmware reader done on `feature/example-words`;
-      the intro's word page and the `decks-v3` rollout to come.
+      answered with the recommendations on 2026-10-23 (docs/decisions.md).
+      Built on top of the `main.cpp` split: the SRS learning steps, the intro
+      card (Settings › Study › Introduce), and example words (pack format v3)
+      with English glosses from JMdict_e and Spanish ones from a reviewed
+      project table (docs/example-words.md), published in `decks-v3`.
+      Later, on hold: the Spanish glosses beyond N5 (reviewed level by level,
+      then `decks-v3` rebuilt in place) and the long-run checks of
+      docs/learning-mode.md §5.
 - [ ] **OTA firmware updates** (idea, 2026-10-21). Update the firmware over
       the home Wi-Fi, from the device, instead of over USB: for example a
       Settings › Device › Update row that reads the latest GitHub release

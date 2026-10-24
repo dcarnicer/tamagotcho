@@ -1,13 +1,14 @@
 # Learning mode: design and open decisions
 
-> **Status: approved (2026-10-23), built.** The maintainer accepted every
-> recommendation of §6 as written, so §3 is the design to build. Decision 9
-> was revisited after the measurement in docs/example-words.md: phase 4
-> (example words) is approved with glosses in both languages (see §6).
-> Phase 1 is on `feature/learn-srs`, the pack side of phase 4 on
-> `feature/example-words`, and phases 2 and 3 with the intro's example words
-> on `feature/learn-intro` (2026-10-23), awaiting the hardware checks of §5;
-> what changed from the design while building it is listed at the end of §5.
+> **Status: approved (2026-10-23), built and released in v0.6.0
+> (2026-10-24).** The maintainer accepted every recommendation of §6 as
+> written, so §3 is the design that was built. Decision 9 was revisited after
+> the measurement in docs/example-words.md: phase 4 (example words) is built
+> with glosses in both languages (see §6), published in `decks-v3`. All four
+> phases are on `main`; the hardware checks of §5 that were run are listed in
+> docs/releases/v0.6.0.md, and what changed from the design while building it
+> is listed at the end of §5. On hold since 2026-10-24: the long-run checks
+> of §5 and the Spanish glosses beyond N5.
 
 The roadmap entry "Learning mode (idea, 2026-10-18)" asks for a mode for
 *learning* kanji, not only reviewing them: for example, introducing a new
@@ -526,7 +527,8 @@ phase 2 once the split has landed.
   screen; every former `newQuestion()` caller takes it), Study › Introduce
   (`Choice::Introduce`, NVS `tangocho`/`intro`), the pure layout in
   `ui/QuizUi.h` with its budgets in `test_quizui` and the row in
-  `test_settings`. Hardware checks pending.
+  `test_settings`. Checked on the StickS3, the T-Display-S3 and the
+  Cardputer ADV (docs/releases/v0.6.0.md).
 - Take the detail card's kanji box, stroke animation and reading rows out of
   `drawDetail()` / `drawDetailKanji()` / `drawDetailFrame()` / `showDetail()`
   into parts keyed to a card index, used by both cards; the animation state
@@ -599,7 +601,9 @@ intro needs:
   builder keeps glosses to 24 characters, about two lines at 135 px).
 
 **Hardware checks** (StickS3 first, then the T-Display-S3 and the Cardputer
-ADV; screenshots with `tools/screenshots/remote.py`):
+ADV; screenshots with `tools/screenshots/remote.py`). The first bullet was
+done for v0.6.0 (docs/releases/v0.6.0.md, without Auto rotation); the others
+are still open:
 - The intro in portrait, landscape and Auto rotation, English and Spanish;
   the Cardputer's keys and keycap hints.
 - Legibility of the dim meanings and readings outdoors.
