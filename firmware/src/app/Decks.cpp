@@ -1,21 +1,23 @@
 // The decks on the device and the deck list; see Decks.h.
 #include "app/Decks.h"
 
-#include <LittleFS.h>
 #include <esp_heap_caps.h>
 
 #include <algorithm>
 
 #include "app/App.h"
+#include "app/CardMove.h"
 #include "app/DeckUpdates.h"
 #include "app/Display.h"
 #include "app/Done.h"
 #include "app/GetDecks.h"
+#include "app/Power.h"
 #include "app/Quiz.h"
 #include "app/ScreenKit.h"
 #include "app/UiStrings.h"
 #include "pack/PackReader.h"
 #include "platform/FsPackSource.h"
+#include "platform/Storage.h"
 #include "render/Widgets.h"
 #include "ui/Icons.h"
 #include "ui/Theme.h"
@@ -23,22 +25,21 @@
 namespace tgc {
 namespace app {
 
-std::vector<String> gPacks;  // paths of the *.tgc files in /packs
+std::vector<String> gPacks;  // the deck list's paths, both places (listPacks())
 String gCurrentPack;
 
-// Fill `out` with the *.tgc files in /packs (sorted for a stable menu order).
-void listPacks(std::vector<String>& out) {
-    out.clear();
-    File dir = LittleFS.open("/packs");
-    if (!dir || !dir.isDirectory()) return;
-    for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
-        String name = f.name();
-        const int slash = name.lastIndexOf('/');
-        if (slash >= 0) name = name.substring(slash + 1);
-        if (!f.isDirectory() && name.endsWith(".tgc") && !name.startsWith("."))
-            out.push_back("/packs/" + name);
-    }
-    std::sort(out.begin(), out.end());
+// Fill `out` with the decks of /packs and of the card, one per file name
+// (LittleFS's copy over the card's: platform/Storage listDecks()), sorted by
+// it for a stable menu order.
+void listPacks(std::vector<String>& out) { tgc::storage::listDecks(out); }
+
+// The deck of `path`'s file name in `packs` -- the same deck in the other
+// place, after a move, a pulled card or a download that replaced it -- or "".
+String sameDeckIn(const std::vector<String>& packs, const String& path) {
+    const std::string name = tgc::fileNameOf(path.c_str());
+    for (const String& p : packs)
+        if (tgc::fileNameOf(p.c_str()) == name) return p;
+    return String();
 }
 
 // The loaded deck's counts (ui/DeckSummary.h): one pass over the card table,
@@ -66,11 +67,28 @@ void refreshPackInfo() {
     if (gPackInfoFor == gPacks) return;
     gPackInfo.assign(gPacks.size(), tgc::PackInfo{});
     for (size_t i = 0; i < gPacks.size(); ++i) {
-        tgc::FsPackSource src(LittleFS.open(gPacks[i], "r"));
+        tgc::FsPackSource src(tgc::storage::openFile(gPacks[i]));
         if (src.ok()) tgc::peekPackInfo(src, &gPackInfo[i]);
     }
     gPackInfoFor = gPacks;
 }
+
+// The deck list's top line: a card that did not mount or went away (a board
+// without a slot, or with a card mounted or none in, says nothing).
+const char* cardNote() {
+    switch (tgc::storage::cardState()) {
+        case tgc::storage::CardState::Unreadable: return ui().cardUnreadable;
+        case tgc::storage::CardState::Removed: return ui().cardRemoved;
+        default: return nullptr;
+    }
+}
+
+// A deck on the card whose reads failed (deckReadTick()): the times in a row,
+// and when the last one was.
+int gCardStrikes = 0;
+uint32_t gCardStrikeAt = 0;
+constexpr int kCardStrikesMax = 3;
+constexpr uint32_t kCardStrikeWindowMs = 60000;
 
 }  // namespace
 
@@ -95,7 +113,12 @@ void drawDecks() {
     const int getDecksRow = packs + 1;
     gDeckList.setCount(packs + 2);  // + "Updates" and "Get decks"
     const bool wide = wideRows();
-    layoutList(gDeckList, kHeaderH, H - kHintH, wide ? layout().row1H : layout().row2H);
+    // The card's trouble on top, in captions (one line in landscape).
+    int top = kHeaderH;
+    if (const char* note = cardNote())
+        top += 3 + 10 * drawCaptionLines(d, note, kGutter, kHeaderH + 3, W - 2 * kGutter, 2,
+                                         tgc::theme::kWarn);
+    layoutList(gDeckList, top, H - kHintH, wide ? layout().row1H : layout().row2H);
     wg::drawList(d, gDeckList, listX(), listW(), [&](int i, int x, int y, int w, int h, bool f) {
         wg::Row row;
         row.focused = f;
@@ -132,6 +155,7 @@ void drawDecks() {
             for (char* p = lang; *p; ++p)
                 if (*p >= 'a' && *p <= 'z') *p = static_cast<char>(*p - 'a' + 'A');
             if (lang[0]) row.tag = lang;
+            if (tgc::storage::onCard(gPacks[i])) row.tag2 = ui().deckCardTag;
             if (loaded)
                 snprintf(caption, sizeof caption, ui().deckCountsFmt, (unsigned)info.cards,
                          (unsigned)due);
@@ -158,7 +182,10 @@ void drawDecks() {
 // validated, so a failure leaves the live pack (and the renderer and queue that
 // point at it) untouched.
 bool loadPack(const String& path) {
-    auto src = std::make_unique<tgc::FsPackSource>(LittleFS.open(path, "r"));
+    // A deck on the card stops reading at its first error (a pulled card):
+    // deckReadTick() takes it from there.
+    auto src = std::make_unique<tgc::FsPackSource>(tgc::storage::openFile(path),
+                                                   tgc::storage::onCard(path));
     if (!src->ok()) return false;
     auto next = std::make_unique<tgc::PackReader>();
     if (next->open(*src, tgc::psramAllocator(), tgc::packMemory()) != tgc::PackError::Ok)
@@ -191,25 +218,31 @@ bool loadPack(const String& path) {
     return true;
 }
 
-// Before pack `path` is replaced (Get decks, a portal upload or URL download)
-// or deleted (the portal): when it is the loaded deck, closes the renderer,
-// the reader and the file, since LittleFS neither removes nor renames over an
-// open file. gCurrentPack stays, so the portalPacksChanged() that must follow
+// Before pack `path` is replaced (Get decks, a portal upload or URL download),
+// moved to the card or deleted (the portal): when it is the loaded deck -- the
+// same file name in either place, since storing a deck removes its copy in the
+// other one -- closes the renderer, the reader and the file. LittleFS neither
+// removes nor renames over an open file, and FAT would remove it under the
+// reader. gCurrentPack stays, so the portalPacksChanged() that must follow
 // reopens the same path (the new file, or the old one when the swap or the
-// delete failed), or falls back to another deck when it is gone. True when it
-// closed the loaded deck.
+// delete failed), or the same deck in the other place, or falls back to
+// another deck when it is gone. True when it closed the loaded deck.
 bool closePackIfLoaded(const String& path) {
-    if (!gPack->isOpen() || path != gCurrentPack) return false;
+    if (!gPack->isOpen() ||
+        tgc::fileNameOf(path.c_str()) != tgc::fileNameOf(gCurrentPack.c_str()))
+        return false;
     gRender.end();
     gPack->close();
     gSource.reset();
     return true;
 }
 
-// Called by the portal after /packs changed, and by Get decks after a download.
-// Rescans the folder and keeps the live pack usable: reload the loaded pack (its
-// contents may have changed), else fall back to the first remaining one, else
-// leave no pack open. Both callers run under the settings home, whose
+// Called by the portal after the decks changed, by Get decks after a download,
+// after the move to the card and after a pulled card. Rescans both places and
+// keeps the live pack usable: reload the loaded pack (its contents may have
+// changed), or the same deck in the other place, else fall back to the first
+// remaining one, else leave no pack open. The callers run under the settings
+// home (a pulled card's deckReadTick() takes care of its own screen), whose
 // "Continue" returns to the quiz, detail, intro or done screen; when the live
 // reader was replaced or closed, the question (or intro) kept for it belongs
 // to the old pack and must never be shown or graded. So Continue gets a fresh
@@ -228,8 +261,10 @@ bool portalPacksChanged() {
         gPrefs.remove("pack");
     } else {
         String want = gCurrentPack;
-        if (want.isEmpty() || std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end())
-            want = gPacks[0];
+        if (want.isEmpty() || std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end()) {
+            const String same = sameDeckIn(gPacks, want);
+            want = same.length() ? same : gPacks[0];
+        }
         if (loadPack(want) || loadPack(gPacks[0])) gPrefs.putString("pack", gCurrentPack);
     }
     if (!gPack->isOpen()) {
@@ -243,8 +278,11 @@ bool portalPacksChanged() {
     return gPack->isOpen();
 }
 
-// Opens the deck list with the loaded pack focused.
-void openDecks() {
+// Opens the deck list with the loaded pack focused. `mountCard`: a card put
+// in since (none mounted) is mounted first and the device's decks move to it
+// (app/CardMove).
+void openDecks(bool mountCard) {
+    if (mountCard) mountCardOnOpen();
     int sel = 0;
     for (size_t i = 0; i < gPacks.size(); ++i)
         if (gPacks[i] == gCurrentPack) sel = static_cast<int>(i);
@@ -269,6 +307,16 @@ void selectPack() {
         if (loadPack(path)) {
             gPrefs.putString("pack", path);
             loaded = true;
+        } else if (tgc::storage::onCard(path) && !tgc::storage::exists(path)) {
+            // Its file is gone from the card, or the card is (pulled out while
+            // no deck of it was open): mounted again or "removed", and the
+            // list follows. The old deck stays when it is on LittleFS; one on
+            // the card closes before the card is unmounted.
+            if (tgc::storage::onCard(gCurrentPack)) closePackIfLoaded(gCurrentPack);
+            tgc::storage::readFailed();
+            portalPacksChanged();
+            openDecks(false);
+            return;
         }
     }
     if (loaded) {
@@ -281,6 +329,41 @@ void selectPack() {
 }
 
 }  // namespace
+
+// loop(): the loaded deck is on the card and a read from it failed -- the
+// card was pulled out, most likely (docs/microsd.md §3.5: there is no
+// card-detect pin). Its file is closed and the card mounted again; one that
+// does not answer is "removed". Then the decks are rescanned as after any
+// change: the same deck again when the card answered, a deck on LittleFS when
+// one is left, else the deck list (with "Card removed"). What was on screen
+// drew from the deck: the quiz, the detail and intro cards and the done screen
+// get a fresh item (or the deck list), the others are drawn again. A card that
+// answers but fails three times within a minute is given up (unmounted, "not
+// readable"), so a bad sector cannot loop.
+void deckReadTick(uint32_t now) {
+    if (!gSource || !gSource->failed() || !tgc::storage::onCard(gCurrentPack)) return;
+    Serial.printf("[sd] reads from %s failed\n", gCurrentPack.c_str());
+    closePackIfLoaded(gCurrentPack);
+    if (now - gCardStrikeAt > kCardStrikeWindowMs) gCardStrikes = 0;
+    gCardStrikeAt = now;
+    if (++gCardStrikes >= kCardStrikesMax) {
+        gCardStrikes = 0;
+        tgc::storage::giveUp();
+    } else {
+        tgc::storage::readFailed();
+    }
+    portalPacksChanged();
+    const bool fromDeck = gScreen == Screen::Quiz || gScreen == Screen::Detail ||
+                          gScreen == Screen::Intro || gScreen == Screen::Done;
+    gSwallowInput = true;  // the probe blocked for a moment
+    if (!fromDeck) {
+        drawScreen();
+    } else if (gPack->isOpen()) {
+        showNextItem();
+    } else {
+        openDecks(false);  // the card was just tried
+    }
+}
 
 // loop() on the deck list (handleInput()).
 void decksLoop(int a, int b) {

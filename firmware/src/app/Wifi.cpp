@@ -28,6 +28,7 @@
 #include "pack/Utf8.h"
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
+#include "platform/Storage.h"
 #include "portal/PortalLogic.h"
 #include "render/Widgets.h"
 #include "ui/Theme.h"
@@ -93,18 +94,31 @@ void shownUrl(const char* url, int w, uint8_t set, char* out, size_t n) {
     if (len > 0 && out[len - 1] == '/') out[len - 1] = 0;
 }
 
-// The free space for decks: "free 4.9 / 5.9 MB" over a bar of it (13 px).
+// The free space for new decks: "free 4.9 / 5.9 MB" over a bar of it (13 px),
+// or with a microSD card mounted, where they go then, "SD 28.1 / 29.7 GB".
 void drawFreeSpace(lgfx::LovyanGFX& d, int x, int y, int w, tgc::Align align) {
-    const size_t total = LittleFS.totalBytes();
-    const size_t freeB = tgc::fsFreeBytes();
     char a[16], b[16], line[48];
-    formatMb(freeB, false, a, sizeof a);
-    formatMb(total, true, b, sizeof b);
-    snprintf(line, sizeof line, ui().wifiFreeFmt, a, b);
+    int num = 0, den = 0;  // the bar, in KB or MB
+    if (tgc::storage::cardMounted()) {
+        const uint64_t total = tgc::storage::cardTotalBytes();
+        const uint64_t freeB = tgc::storage::cardFreeBytes();
+        const char point = ui().decimalPoint[0];
+        snprintf(line, sizeof line, ui().wifiCardFreeFmt, tgc::formatGb(freeB, point, a, sizeof a),
+                 tgc::formatGb(total, point, b, sizeof b));
+        num = static_cast<int>(freeB >> 20);
+        den = static_cast<int>(total >> 20);
+    } else {
+        const size_t total = LittleFS.totalBytes();
+        const size_t freeB = tgc::storage::freeBytes(tgc::DeckPlace::Device);
+        formatMb(freeB, false, a, sizeof a);
+        formatMb(total, true, b, sizeof b);
+        snprintf(line, sizeof line, ui().wifiFreeFmt, a, b);
+        num = static_cast<int>(freeB / 1024u);
+        den = static_cast<int>(total / 1024u);
+    }
     gRender.drawLabel(d, line, x, y, w, 8, tgc::theme::kTextDim, kBlack,
                       tgc::Renderer::kTextBuiltinSmall, align);
-    wg::drawProgress(d, x, y + 10, w, 3, static_cast<int>(freeB / 1024u),
-                     static_cast<int>(total / 1024u));
+    wg::drawProgress(d, x, y + 10, w, 3, num, den);
 }
 
 }  // namespace
@@ -240,11 +254,7 @@ void portalFillStats(tgc::PortalStats& out) {
     out.streakBest = st.streakBest;
     out.reviewMs = st.reviewMs;
     out.packCards = gPack->isOpen() ? gPack->cardCount() : 0;
-    if (gPack->isOpen()) {
-        const int slash = gCurrentPack.lastIndexOf('/');
-        snprintf(out.loadedPack, sizeof out.loadedPack, "%s",
-                 gCurrentPack.substring(slash >= 0 ? slash + 1 : 0).c_str());
-    }
+    if (gPack->isOpen()) snprintf(out.loadedPack, sizeof out.loadedPack, "%s", gCurrentPack.c_str());
     // The per-kanji accuracy view: the worst cards, for the portal's table.
     tgc::Trouble rows[tgc::PortalStats::kTroubleMax];
     const size_t n = gSrs.trouble(rows, tgc::PortalStats::kTroubleMax);
@@ -261,8 +271,9 @@ void portalFillStats(tgc::PortalStats& out) {
 }
 
 // The portal is about to store pack `path` (the onBeforeReplace hook): an
-// upload or a URL download of the loaded deck's file name needs that file
-// closed, as Get decks does; the portal's onPacksChanged reopens it.
+// upload or a URL download of the loaded deck's file name (in either place)
+// needs that file closed, as Get decks does; the portal's onPacksChanged
+// reopens it.
 bool portalBeforeReplace(const char* path) { return closePackIfLoaded(path); }
 
 // The page's language: the screens' own ("en"/"es"), or none under Auto while
@@ -317,8 +328,8 @@ tgc::DeckDownloadResult portalDeckDownload(const tgc::CatalogEntry& e, bool upda
 }
 
 // The portal's home page has just read the catalog and compared every entry
-// with /packs: the same read the Updates row does, so refresh the badge from it
-// (docs/deck-updates.md, "any Wi-Fi session").
+// with the installed decks: the same read the Updates row does, so refresh the
+// badge from it (docs/deck-updates.md, "any Wi-Fi session").
 void portalCatalog(const std::vector<tgc::CatalogEntry>& entries,
                    const std::vector<tgc::DeckState>& states) {
     setUpdatesFromCatalog(entries, &states);

@@ -8,8 +8,7 @@
 #include "app/UiStrings.h"
 #include "app/Wifi.h"
 #include "board/Board.h"
-#include "platform/FsQuiet.h"
-#include "platform/PackHash.h"
+#include "platform/Storage.h"
 #include "power/BatteryGuard.h"
 #include "ui/KeyInput.h"
 
@@ -58,22 +57,28 @@ void formatMb(size_t bytes, bool unit, char* out, size_t n) {
     snprintf(out, n, unit ? "%u.%u MB" : "%u.%u", tenths / 10u, tenths % 10u);
 }
 
-String catalogPath(const tgc::CatalogEntry& e) { return String("/packs/") + e.name.c_str() + ".tgc"; }
+String catalogFile(const tgc::CatalogEntry& e) { return String(e.name.c_str()) + ".tgc"; }
 
-// The state of catalog deck `e` against /packs: existence and exact size first,
-// then -- only when the size matches -- the installed file's SHA-256 against
-// the catalog's (docs/deck-updates.md). A file whose size differs is never
-// hashed. A hash failure falls back to the size-only answer, so a read error
-// never invents an update.
+// The installed copy of catalog deck `e`, the one the deck list shows
+// (LittleFS's, else the card's); "" when it is not installed.
+String catalogPath(const tgc::CatalogEntry& e) {
+    return tgc::storage::installedPath(catalogFile(e));
+}
+
+// The state of catalog deck `e` against the installed decks: existence and
+// exact size first, then -- only when the size matches -- the installed file's
+// SHA-256 against the catalog's (docs/deck-updates.md). A file whose size
+// differs is never hashed. A hash failure falls back to the size-only answer,
+// so a read error never invents an update.
 tgc::DeckState deckStateOnDisk(const tgc::CatalogEntry& e, HashStats* stats) {
     const String path = catalogPath(e);
-    const long size = tgc::fsFileSize(path);
+    const long size = path.length() ? tgc::storage::fileSize(path) : -1;
     if (size < 0) return tgc::DeckState::New;
     const uint32_t localBytes = static_cast<uint32_t>(size);
     if (localBytes != e.bytes) return tgc::catalogDeckState(true, localBytes, e.bytes);
     uint8_t digest[32];
     const uint32_t t0 = millis();
-    const bool ok = tgc::fsFileSha256(path, digest);
+    const bool ok = tgc::storage::sha256(path, digest);
     if (stats) {
         stats->ms += millis() - t0;
         ++stats->files;
@@ -182,13 +187,15 @@ void netSleepIfAsked() {
     if (gNetSleep != NetSleep::None) sleepNow(gNetSleep == NetSleep::Critical);
 }
 
-// Downloads catalog deck `e` into /packs (atomic; size and SHA-256 checked),
-// then rescans /packs through the portal's path. Shared by the Get decks screen
-// and the portal page in home mode; the progress shows on whichever of the two
-// is open (netProgress() redraws it), and the side button cancels.
+// Downloads catalog deck `e` (atomic; size and SHA-256 checked) to the card
+// while one is mounted, else into /packs (docs/microsd.md D1), then rescans the
+// decks through the portal's path. Shared by the Get decks screen and the
+// portal page in home mode; the progress shows on whichever of the two is open
+// (netProgress() redraws it), and the side button cancels.
 tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e) {
     tgc::DeckDownloadResult out;
-    const String path = catalogPath(e);
+    const tgc::DeckPlace place = tgc::storage::writePlace();
+    const String path = tgc::storage::deckPathFor(place, catalogFile(e));
     // On battery below the level a critical sleep resumes at, the download
     // would likely be cut by the guard: refuse it up front.
     const bool external = tgc::board::externalPower() || tgc::board::isCharging();
@@ -196,15 +203,16 @@ tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e) {
         out.batteryLow = true;
         return out;
     }
-    // Replacing the loaded deck: close it first so its file is not open while
-    // the new one is renamed over it; portalPacksChanged() reloads it below.
+    // Replacing the loaded deck (in either place: the other copy goes once the
+    // new one is stored): close it first so its file is not open while the new
+    // one is renamed over it; portalPacksChanged() reloads it below.
     closePackIfLoaded(path);
     snprintf(gNetDeck, sizeof gNetDeck, "%s", tgc::catalogDisplayName(e).c_str());
     netTransferBegin();
 
     tgc::PackFetchRequest req;
     req.url = e.url.c_str();
-    req.fileName = String(e.name.c_str()) + ".tgc";
+    req.fileName = catalogFile(e);
     req.allowHttps = true;
     req.maxBytes = tgc::WifiPortal::kMaxPackBytes;
     req.expectBytes = e.bytes;
@@ -214,7 +222,7 @@ tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e) {
     req.http10 = true;
     req.progress = netProgress;
     const uint32_t started = millis();
-    const tgc::FetchResult r = tgc::fetchPackFile(req);
+    const tgc::FetchResult r = tgc::fetchPackFile(req, place);
     netTransferEnd();
     Serial.printf("[net] get %s: %s (%u bytes in %u ms, http %d, tls %d)\n", req.fileName.c_str(),
                   tgc::fetchStatusString(r.status), (unsigned)r.bytes,
@@ -222,7 +230,7 @@ tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e) {
     // Cancelled for a sleep: the wake reopens the deck closed above.
     netSleepIfAsked();
 
-    // Rescan /packs the portal's way; that also reopens the deck closed above, or
+    // Rescan the decks the portal's way; that also reopens the deck closed above, or
     // loads the first one when none was open (the boot-time path), and gives
     // the settings home's "Continue" a question from the deck now loaded.
     if (r.packsChanged || !gPack->isOpen()) portalPacksChanged();

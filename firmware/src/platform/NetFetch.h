@@ -4,11 +4,14 @@
 // (https:// over the home Wi-Fi, see HomeWifi.h). Arduino/ESP32 only; not part
 // of the native build.
 //
-// Packs are written the same atomic way everywhere: the body streams into
-// /packs/.fetch.tmp, is checked (size and SHA-256 when a catalog gave them, the
-// "TNGC" magic and a PackReader probe), and only then renamed over the
-// destination. Any failure removes the temp and nothing else, so a bad or
-// interrupted download never destroys the pack it was replacing.
+// Packs are written the same atomic way everywhere: the body streams into the
+// temp `.fetch.tmp` next to the destination (the card's decks folder while a
+// card is mounted, else /packs: platform/Storage.h writePlace()), is checked
+// (size and SHA-256 when a catalog gave them, the "TNGC" magic and a
+// PackReader probe), and only then renamed over the destination; a copy of
+// the same name in the other place goes then. Any failure removes the temp and
+// nothing else, so a bad or interrupted download never destroys the pack it
+// was replacing.
 //
 // HTTPS verifies the server against the small root-CA set in RootCerts.h
 // (never setInsecure()); redirects are followed (GitHub release assets redirect
@@ -24,17 +27,19 @@
 #include <string>
 
 #include "catalog/Catalog.h"
+#include "storage/DeckFiles.h"
 
 namespace tgc {
 
-// Free space every pack writer leaves on the filesystem, so a pack can never
-// fill it completely (the SRS state file and the temps need room too).
-constexpr size_t kPackFsReserveBytes = 96u * 1024u;
+// Free space every pack writer leaves on LittleFS, so a pack can never fill it
+// completely (the SRS state file and the temps need room too). The card keeps
+// its own reserve (storage/DeckFiles.h reserveFor()).
+constexpr size_t kPackFsReserveBytes = kDeviceReserveBytes;
 
-// Where every pack download streams before it is checked and renamed. Hidden
-// name, so the pack listers skip it. One left by a power cut mid-download is
-// removed at boot (setup()) and before the next download.
-constexpr const char* kFetchTmp = "/packs/.fetch.tmp";
+// Every pack download streams into kFetchTmpName (storage/DeckFiles.h) in the
+// destination's folder before it is checked and renamed. Hidden name, so the
+// pack listers skip it. One left by a power cut mid-download (or a pulled
+// card) is removed at boot, when the card mounts and before the next download.
 
 enum class FetchStatus : uint8_t {
     Ok,
@@ -63,7 +68,7 @@ struct FetchResult {
     size_t bytes = 0;       // body bytes received
     bool bodyStarted = false;   // the sink took the body (the temp file was opened, the
                                 // update slot begun): the body was being written
-    bool packsChanged = false;  // /packs changed: success, or the old pack was
+    bool packsChanged = false;  // the decks changed: success, or the old pack was
                                 // removed before a failed rename
 };
 
@@ -73,7 +78,7 @@ using FetchProgressFn = bool (*)(size_t done, size_t total, void* ctx);
 
 struct PackFetchRequest {
     String url;
-    String fileName;            // final basename in /packs ("<name>.tgc"), already sanitised
+    String fileName;            // the deck's file name ("<name>.tgc"), already sanitised
     bool allowHttps = false;
     size_t maxBytes = 5u * 1024u * 1024u;
     uint32_t expectBytes = 0;               // exact size from a catalog; 0 = unknown
@@ -87,9 +92,10 @@ struct PackFetchRequest {
     void* progressCtx = nullptr;
 };
 
-// Blocking download of `req.url` into /packs/<req.fileName>. Needs a network
-// (station or access point) to be up already.
-FetchResult fetchPackFile(const PackFetchRequest& req);
+// Blocking download of `req.url` into <req.fileName> in `place` (the card's
+// decks folder or /packs: the callers pass storage::writePlace()). Needs a
+// network (station or access point) to be up already.
+FetchResult fetchPackFile(const PackFetchRequest& req, DeckPlace place);
 
 // Where fetchToSink() writes a body. begin() is called once the server answered
 // 200 and its announced length (Content-Length, or -1 when it sent none) matched
@@ -142,6 +148,7 @@ struct CatalogFetch {
 CatalogFetch fetchCatalog(const String& url);
 
 // First 4 bytes are "TNGC" and a PackReader probe opens it (packMemory()).
+// `path` is a deck path, in either place.
 bool validatePackFile(const String& path);
 
 // One "[net] <what>: internal heap ..." line (free, largest block, minimum since
@@ -149,8 +156,5 @@ bool validatePackFile(const String& path);
 void logNetHeap(const char* what);
 
 const char* fetchStatusString(FetchStatus s);
-
-// Free bytes on LittleFS (total - used, never negative).
-size_t fsFreeBytes();
 
 }  // namespace tgc

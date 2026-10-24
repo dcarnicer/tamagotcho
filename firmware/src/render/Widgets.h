@@ -126,6 +126,7 @@ struct Row {
     // values that are a nicety (the settings home's "10/day", "87%").
     bool valueIfFits = false;
     const char* tag = nullptr;  // a caption pill right after the label ("EN")
+    const char* tag2 = nullptr;  // a second pill after it (a deck on the card's "SD")
     // Not focused: no fill, a 1 px `line` outline and faint text (a catalog
     // deck already on the device).
     bool muted = false;

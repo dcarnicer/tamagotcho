@@ -10,7 +10,9 @@
 #include "app/Display.h"
 #include "app/ScreenKit.h"
 #include "app/UiStrings.h"
+#include "platform/Storage.h"
 #include "render/Widgets.h"
+#include "storage/DeckFiles.h"
 #include "ui/TextLayout.h"
 #include "ui/Theme.h"
 
@@ -20,8 +22,10 @@ namespace app {
 namespace {
 
 // Settings > Device > About: the firmware's name, version and licence, the
-// decks' licence, the UI font and where the source lives; then the loaded deck
-// and the credits of its data (Credits.h, from docs/data-sources.md). Each item is
+// decks' licence, the UI font and where the source lives, and on a board with
+// a microSD slot the card ("29.7 GB, 28.1 free", or why there is none); then
+// the loaded deck and the credits of its data (Credits.h, from
+// docs/data-sources.md). Each item is
 // a label-face heading over its value in captions, so it works before any deck
 // is loaded. Two groups -- the firmware, the deck -- laid out by
 // ui/TextLayout.h: everything on one page when it fits, else a group that does
@@ -33,6 +37,24 @@ int gAboutPage = 0;
 // The app's name, たまごっちょ, in the label face (it has these kana).
 void drawAppName(lgfx::LovyanGFX& d, int x, int y, int h, uint16_t fg) {
     gRender.drawLabel(d, tgc::credits::kAppName, x, y, W - x, h, fg, kBlack);
+}
+
+// The card item's value: its size and free space, or why there is none.
+const char* cardValue(char* out, size_t n) {
+    using tgc::storage::CardState;
+    switch (tgc::storage::cardState()) {
+        case CardState::Mounted: {
+            char total[16], freeB[16];
+            const char point = ui().decimalPoint[0];
+            snprintf(out, n, ui().aboutCardFmt,
+                     tgc::formatGb(tgc::storage::cardTotalBytes(), point, total, sizeof total),
+                     tgc::formatGb(tgc::storage::cardFreeBytes(), point, freeB, sizeof freeB));
+            return out;
+        }
+        case CardState::Unreadable: return ui().cardUnreadable;
+        case CardState::Removed: return ui().cardRemoved;
+        default: return ui().aboutNoCard;
+    }
 }
 
 }  // namespace
@@ -55,15 +77,19 @@ void drawAbout() {
     };
     namespace cr = tgc::credits;
     const bool deckOpen = gPack->isOpen();
+    char card[48];
     std::vector<Item> items = {
         {"", tgc::firmwareVersion(), true, true},
         {ui().aboutFirmware, cr::kFirmwareLicence, false, false},
         {ui().aboutDecks, cr::kDecksLicence, false, false},
         {ui().aboutUiFont, cr::kUiFont, false, false},
         {"", cr::kRepo, false, false},
-        {ui().aboutDeck, deckOpen ? gPack->deckName() : ui().aboutNoDeck, false, true},
-        {ui().aboutKanji, cr::kKanjidic, false, false},
     };
+    if (tgc::storage::hasSlot())
+        items.push_back({ui().aboutCard, cardValue(card, sizeof card), false, false});
+    items.push_back(
+        {ui().aboutDeck, deckOpen ? gPack->deckName() : ui().aboutNoDeck, false, true});
+    items.push_back({ui().aboutKanji, cr::kKanjidic, false, false});
     // KanjiVG data is in a deck only when it was built with stroke order.
     if (!deckOpen || gPack->hasStrokeOrder())
         items.push_back({ui().aboutStrokes, cr::kKanjiVg, false, false});

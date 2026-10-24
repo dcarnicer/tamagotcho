@@ -140,6 +140,10 @@ const UiStrings kUiEn = {
     "Not installed: %s stays.", "Image rejected", "Flash write failed",
     "Charge it or plug in USB first.",
     "Update failed", "%s did not start: back on %s.",
+    "SD", "Card not readable: format it as FAT32", "Card removed",
+    "Card:", "%s GB, %s free", "No card",
+    "SD CARD", "Moving decks to the card...",
+    "SD: %s GB free", "SD %s / %s GB",
 };
 
 const UiStrings kUiEs = {
@@ -275,6 +279,10 @@ const UiStrings kUiEs = {
     "Sin instalar: se queda la %s.", "Imagen rechazada", "Fallo al escribir",
     "Cárgalo o conecta el USB antes.",
     "Actualización fallida", "%s no arrancó: de vuelta a %s.",
+    "SD", "Tarjeta ilegible: formatéala en FAT32", "Tarjeta retirada",
+    "Tarjeta:", "%s GB, %s libres", "Sin tarjeta",
+    "TARJETA SD", "Mazos a la tarjeta...",
+    "SD: %s GB libres", "SD %s / %s GB",
 };
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise

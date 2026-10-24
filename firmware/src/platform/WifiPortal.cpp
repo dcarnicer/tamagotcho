@@ -15,7 +15,7 @@
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
 #include "platform/Ota.h"
-#include "platform/PackHash.h"
+#include "platform/Storage.h"
 #include "portal/PortalLogic.h"
 #include "portal/PortalText.h"
 #include "srs/TimeZone.h"
@@ -34,9 +34,10 @@ namespace tgc {
 
 namespace {
 
-// Keep this much of the filesystem free so a pack (and the SRS state file and a
+// Keep this much of LittleFS free so a pack (and the SRS state file and a
 // download temp) can never fill it completely and strand the device. Shared
-// with every other pack writer (NetFetch.h).
+// with every other pack writer (NetFetch.h); the card has its own
+// (reserveFor()).
 constexpr size_t kFsReserveBytes = kPackFsReserveBytes;
 
 constexpr uint32_t kFetchIdleMs = 5000;      // no data for this long -> abort
@@ -68,7 +69,7 @@ constexpr size_t kMultipartSlack = 4096;
 
 // Basename only, must end in ".tgc", restricted to a safe character set and a
 // short length. Anything else is rejected so the portal never writes outside
-// /packs and never stores a surprising filename.
+// the decks folders and never stores a surprising filename.
 bool sanitizeName(const char* in, String& out) {
     if (!in) return false;
     String s(in);
@@ -91,7 +92,7 @@ bool sanitizeName(const char* in, String& out) {
 }
 
 // Splits a plain-http URL into host, port, path (no query) and a sanitised
-// /packs basename. https:// is deliberately rejected (see docs/decisions.md).
+// deck file name. https:// is deliberately rejected (see docs/decisions.md).
 bool parseHttpUrl(const String& in, String& host, uint16_t& port, String& path, String& name) {
     String s = in;
     s.trim();
@@ -341,35 +342,38 @@ bool validateProgressFile(const String& path) {
     return ok;
 }
 
-// The *.tgc files in /packs (name, size), sorted like the device's deck list.
-std::vector<std::pair<String, size_t>> listPackFiles(const char* dirPath) {
-    std::vector<std::pair<String, size_t>> out;
-    File dir = LittleFS.open(dirPath);
-    if (!dir || !dir.isDirectory()) return out;
-    for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
-        String n = f.name();
-        const int slash = n.lastIndexOf('/');
-        if (slash >= 0) n = n.substring(slash + 1);
-        if (f.isDirectory() || !n.endsWith(".tgc") || n.startsWith(".")) continue;
-        out.emplace_back(n, f.size());
-    }
-    std::sort(out.begin(), out.end());
+// Every deck file of both places (the device's, then the card's, each sorted
+// by name): the page lists them all, duplicates included, each with its place,
+// so either copy can be deleted.
+std::vector<DeckFile> allDeckFiles() {
+    std::vector<DeckFile> out, card;
+    storage::listFiles(DeckPlace::Device, out);
+    storage::listFiles(DeckPlace::Card, card);
+    out.insert(out.end(), card.begin(), card.end());
     return out;
 }
 
-// The state of catalog deck `e` against /packs (catalog/catalogDeckState):
-// existence and exact size, then -- only when the size matches -- the file's
-// SHA-256, so a same-size rebuild shows as an update on the portal too. A hash
-// failure falls back to the size-only answer rather than claiming an update.
-DeckState deckStateOnDisk(const char* dirPath, const CatalogEntry& e) {
-    const String path = String(dirPath) + "/" + e.name.c_str() + ".tgc";
-    const long size = fsFileSize(path);
+// How many decks the device lists (one per file name, docs/microsd.md §2).
+size_t deckCount() {
+    std::vector<String> decks;
+    storage::listDecks(decks);
+    return decks.size();
+}
+
+// The state of catalog deck `e` against the installed copy the deck list shows
+// (catalog/catalogDeckState): existence and exact size, then -- only when the
+// size matches -- the file's SHA-256, so a same-size rebuild shows as an
+// update on the portal too. A hash failure falls back to the size-only answer
+// rather than claiming an update.
+DeckState deckStateOnDisk(const CatalogEntry& e) {
+    const String path = storage::installedPath(String(e.name.c_str()) + ".tgc");
+    const long size = path.length() ? storage::fileSize(path) : -1;
     if (size < 0) return DeckState::New;
     const uint32_t localBytes = static_cast<uint32_t>(size);
     if (localBytes != e.bytes) return catalogDeckState(true, localBytes, e.bytes);
     uint8_t digest[32];
     return catalogDeckState(true, localBytes, e.bytes,
-                            fsFileSha256(path, digest) ? digest : nullptr, e.sha256);
+                            storage::sha256(path, digest) ? digest : nullptr, e.sha256);
 }
 
 String pageHeader(const PortalText& t, int refreshS = 0) {
@@ -470,7 +474,7 @@ const char* uploadErrorText(const PortalText& t, uint8_t e) {
 bool WifiPortal::begin(const Hooks& hooks) {
     if (active_) return true;
     mode_ = Mode::Setup;
-    LittleFS.mkdir(kPacksDir);
+    storage::makeDecksDir(storage::writePlace());
 
     scanNearby();
     WiFi.mode(WIFI_AP);
@@ -501,7 +505,7 @@ bool WifiPortal::begin(const Hooks& hooks) {
 bool WifiPortal::beginHome(const Hooks& hooks, const char* homeSsid) {
     if (active_) return true;
     mode_ = Mode::Home;
-    LittleFS.mkdir(kPacksDir);
+    storage::makeDecksDir(storage::writePlace());
     nearby_.clear();  // no scan while joined: the form takes a typed name
     snprintf(ssid_, sizeof ssid_, "%s", homeSsid ? homeSsid : "");
     snprintf(url_, sizeof url_, "http://%s/", WiFi.localIP().toString().c_str());
@@ -637,7 +641,7 @@ void WifiPortal::end() {
     if (uploadFile_) uploadFile_.close();
     if (progressFile_) progressFile_.close();
     // A temp left by an interrupted upload is of no use to anyone.
-    fsRemoveIfExists(kUploadTmp);
+    storage::removeIfExists(storage::deckPathFor(uploadPlace_, kUploadTmpName));
     fsRemoveIfExists(kProgressTmp);
     if (server_) {
         server_->stop();
@@ -823,7 +827,7 @@ void WifiPortal::handleRoot() {
     const PortalText& t = portalText(pageLang());
     PortalStats st;
     if (hooks_.fillStats) hooks_.fillStats(st);
-    const auto packs = listPackFiles(kPacksDir);
+    const size_t packs = deckCount();
     const String homeSsid = HomeWifi::savedSsid();
     const bool firstSetup = mode_ == Mode::Setup && homeSsid.isEmpty();
     const bool catalogBusy =
@@ -836,14 +840,14 @@ void WifiPortal::handleRoot() {
 
     // Status line: decks, free space, which network this page is on.
     h += "<p class=\"status muted\">";
-    if (packs.empty())
+    if (packs == 0)
         h += t.decksNone;
-    else if (packs.size() == 1)
+    else if (packs == 1)
         h += t.decksOne;
     else
-        h += fmt(t.decksFmt, (unsigned)packs.size());
+        h += fmt(t.decksFmt, (unsigned)packs);
     h += " &middot; ";
-    h += fmt(t.freeFmt, formatSize(fsFreeBytes()).c_str());
+    h += fmt(t.freeFmt, formatSize(storage::freeBytes(DeckPlace::Device)).c_str());
     h += " &middot; ";
     h += fmt(mode_ == Mode::Home ? t.viaFmt : t.ownNetFmt, htmlEscape(ssid_).c_str());
     h += "</p><p id=\"clk\" class=\"muted\" data-ok=\"";
@@ -1006,9 +1010,10 @@ void WifiPortal::appendHomeDecks(String& h, const PortalStats& st) {
     std::vector<DeckState> states;
     states.reserve(rows.size());
     h += "<table>";
+    const String loadedFile = fileNameOf(st.loadedPack).c_str();
     for (const CatalogEntry& e : rows) {
         const String name = htmlEscape(e.name.c_str());
-        const DeckState ds = deckStateOnDisk(kPacksDir, e);
+        const DeckState ds = deckStateOnDisk(e);
         states.push_back(ds);
         // The deck's title, then the file it is saved as (what "Your decks"
         // lists) before its language, cards and size.
@@ -1025,7 +1030,7 @@ void WifiPortal::appendHomeDecks(String& h, const PortalStats& st) {
         if (ds == DeckState::OnDevice) {
             h += "<span class=\"ok\">";
             h += t.onDevice;
-            if (std::strcmp(st.loadedPack, (String(e.name.c_str()) + ".tgc").c_str()) == 0) {
+            if (loadedFile == String(e.name.c_str()) + ".tgc") {
                 h += " &middot; ";
                 h += t.studying;
             }
@@ -1045,27 +1050,31 @@ void WifiPortal::appendHomeDecks(String& h, const PortalStats& st) {
     if (hooks_.onCatalog) hooks_.onCatalog(rows, states);
 }
 
+// Your decks: every deck file of both places, and a delete for each.
 void WifiPortal::appendYourDecks(String& h, const PortalStats& st) {
     const PortalText& t = portalText(pageLang());
     h += "<h2 id=\"yours\">";
     h += t.yoursTitle;
     h += "</h2><table>";
-    const auto packs = listPackFiles(kPacksDir);
-    for (const auto& p : packs) {
-        const String esc = htmlEscape(p.first);
+    const std::vector<DeckFile> packs = allDeckFiles();
+    for (const DeckFile& p : packs) {
+        const String esc = htmlEscape(p.name.c_str());
+        const bool card = p.place == DeckPlace::Card;
         h += "<tr><td>";
         h += esc;
-        if (p.first == st.loadedPack) {
+        if (p.path == st.loadedPack) {
             h += " <span class=\"ok\">&middot; ";
             h += t.studying;
             h += "</span>";
         }
         h += "</td><td class=\"r\">";
-        h += formatSize(p.second);
+        h += formatSize(p.bytes);
         h += "</td><td class=\"r\"><form method=\"post\" action=\"/delete\" data-q=\"";
         h += htmlEscape(t.deleteConfirm);
         h += "\" onsubmit=\"return confirm(this.dataset.q)\"><input type=\"hidden\" name=\"name\" value=\"";
         h += esc;
+        h += "\"><input type=\"hidden\" name=\"where\" value=\"";
+        h += card ? "card" : "device";
         h += "\"><button type=\"submit\">";
         h += t.deleteButton;
         h += "</button></form></td></tr>";
@@ -1266,7 +1275,7 @@ void WifiPortal::appendAdvanced(String& h, const PortalStats& st, const String& 
     }
 
     h += "<p>";
-    h += fmt(t.freeSpaceFmt, formatSize(fsFreeBytes()).c_str(),
+    h += fmt(t.freeSpaceFmt, formatSize(storage::freeBytes(DeckPlace::Device)).c_str(),
              formatSize(LittleFS.totalBytes()).c_str());
     h += "</p><p class=\"muted\">JSON: <a href=\"/api/stats\">/api/stats</a> &middot; ";
     h += "<a href=\"/api/status\">/api/status</a></p></details>";
@@ -1404,14 +1413,16 @@ void WifiPortal::handleApiStats() {
     j += String((unsigned)total);
     j += ",\"packs\":[";
     bool first = true;
-    for (const auto& p : listPackFiles(kPacksDir)) {
+    for (const DeckFile& p : allDeckFiles()) {
         if (!first) j += ",";
         first = false;
         j += "{\"name\":\"";
-        j += jsonEscape(p.first);
+        j += jsonEscape(p.name.c_str());
         j += "\",\"size\":";
-        j += String((unsigned)p.second);
-        j += "}";
+        j += String((unsigned)p.bytes);
+        j += ",\"place\":\"";
+        j += p.place == DeckPlace::Card ? "card" : "device";
+        j += "\"}";
     }
     j += "]}";
     server_->send(200, "application/json", j);
@@ -1501,14 +1512,16 @@ void WifiPortal::handleDelete() {
         return;
     }
     // The app deletes the file and the progress that goes with it, and rescans
-    // /packs (docs/srs.md section 2.1); without that hook, only the file.
-    const String path = String(kPacksDir) + "/" + name;
+    // the decks (docs/srs.md section 2.1); without that hook, only the file.
+    // `where` says which copy: the card's or the device's (the default).
+    const DeckPlace place = server_->arg("where") == "card" ? DeckPlace::Card : DeckPlace::Device;
+    const String path = storage::deckPathFor(place, name);
     uint32_t forgotten = 0;
     bool ok;
     if (hooks_.onDeleteDeck) {
         ok = hooks_.onDeleteDeck(path.c_str(), &forgotten);
     } else {
-        ok = LittleFS.remove(path);
+        ok = storage::removeFile(path);
         if (hooks_.onPacksChanged) hooks_.onPacksChanged();
     }
     Serial.printf("[wifi] delete %s: %s, progress of %u kanji forgotten\n", name.c_str(),
@@ -1592,7 +1605,7 @@ void WifiPortal::handleDeck() {
         redirect("/#decks", Notice::UnknownDeck);
         return;
     }
-    const DeckState ds = deckStateOnDisk(kPacksDir, *e);
+    const DeckState ds = deckStateOnDisk(*e);
     if (ds == DeckState::OnDevice) {  // a second tab, or a double submit
         redirect("/#decks", Notice::None);
         return;
@@ -1763,7 +1776,7 @@ void WifiPortal::scanNearby() {
 // connection, a size cap hit or a 0-byte body always leaves the old pack usable.
 void WifiPortal::abortUpload(UploadError why) {
     if (uploadFile_) uploadFile_.close();
-    fsRemoveIfExists(kUploadTmp);
+    storage::removeIfExists(storage::deckPathFor(uploadPlace_, kUploadTmpName));
     uploadOk_ = false;
     uploadError_ = why;
     Serial.printf("[wifi] upload failed %s: error %u\n", uploadName_.c_str(), (unsigned)why);
@@ -1777,7 +1790,7 @@ void WifiPortal::handleUploadChunk() {
             uploadOk_ = false;
             uploadError_ = UploadError::None;
             uploadName_ = "";
-            // One writer at a time: a download is filling /packs. (The server
+            // One writer at a time: a download is storing a deck. (The server
             // still reads the body; it is just not stored.)
             if (anyDownload()) {
                 uploadError_ = UploadError::Busy;
@@ -1788,11 +1801,14 @@ void WifiPortal::handleUploadChunk() {
                 uploadError_ = UploadError::BadName;
                 return;
             }
-            // Discard a temp left by an earlier run before measuring the space.
-            LittleFS.remove(kUploadTmp);
-            const size_t total = LittleFS.totalBytes();
-            const size_t used = LittleFS.usedBytes();
-            const size_t freeB = total > used ? total - used : 0;
+            // To the card while one is mounted, else LittleFS (docs/microsd.md
+            // D1). Discard a temp left by an earlier run before measuring the
+            // space.
+            uploadPlace_ = storage::writePlace();
+            const String tmp = storage::deckPathFor(uploadPlace_, kUploadTmpName);
+            storage::removeIfExists(tmp);
+            const size_t freeB = storage::freeBytes(uploadPlace_);
+            const size_t reserve = static_cast<size_t>(reserveFor(uploadPlace_));
             // `up.totalSize` is always 0 here (this WebServer core only fills it
             // on a buffer flush), so use the request's declared Content-Length.
             // 0 means "unknown/chunked" -- then only the write-time cap applies.
@@ -1802,14 +1818,14 @@ void WifiPortal::handleUploadChunk() {
                 uploadError_ = UploadError::TooLarge;
                 return;
             }
-            if (bodyLen && bodyLen + kFsReserveBytes > freeB) {
+            if (bodyLen && bodyLen + reserve > freeB) {
                 uploadError_ = UploadError::NoSpace;
                 return;
             }
-            LittleFS.mkdir(kPacksDir);
+            storage::makeDecksDir(uploadPlace_);
             uploadName_ = name;
-            uploadFree_ = freeB;
-            uploadFile_ = LittleFS.open(kUploadTmp, "w");
+            uploadFree_ = freeB > reserve ? freeB - reserve : 0;
+            uploadFile_ = storage::openFile(tmp, "w");
             if (!uploadFile_) {
                 uploadError_ = UploadError::CannotCreate;
                 return;
@@ -1820,8 +1836,7 @@ void WifiPortal::handleUploadChunk() {
         case UPLOAD_FILE_WRITE: {
             if (!uploadOk_) break;
             const size_t n = up.currentSize;
-            if (uploadWritten_ + n + kFsReserveBytes > uploadFree_ ||
-                uploadWritten_ + n > kMaxPackBytes) {
+            if (uploadWritten_ + n > uploadFree_ || uploadWritten_ + n > kMaxPackBytes) {
                 abortUpload(UploadError::NoSpace);
                 break;
             }
@@ -1837,20 +1852,22 @@ void WifiPortal::handleUploadChunk() {
             // Probe the temp, then swap it in. The destination is removed only
             // now, after the body is known-good, so a rejected upload leaves the
             // existing pack intact.
-            if (uploadWritten_ < 4 || !validatePackFile(kUploadTmp)) {
-                LittleFS.remove(kUploadTmp);
+            const String tmp = storage::deckPathFor(uploadPlace_, kUploadTmpName);
+            if (uploadWritten_ < 4 || !validatePackFile(tmp)) {
+                storage::removeIfExists(tmp);
                 uploadError_ = UploadError::Invalid;
                 Serial.printf("[wifi] upload rejected %s (%u bytes)\n", uploadName_.c_str(),
                               (unsigned)uploadWritten_);
                 break;
             }
-            // Replacing the loaded deck: the app closes its file first, or
-            // neither the remove nor the rename could touch it.
-            const String dst = String(kPacksDir) + "/" + uploadName_;
+            // Replacing the loaded deck (in either place): the app closes its
+            // file first, or neither the remove nor the rename could touch it.
+            // A FAT rename does not overwrite: the old file goes first.
+            const String dst = storage::deckPathFor(uploadPlace_, uploadName_);
             const bool closed = hooks_.onBeforeReplace && hooks_.onBeforeReplace(dst.c_str());
-            const bool hadDst = fsRemoveIfExists(dst);
-            if (!LittleFS.rename(kUploadTmp, dst)) {
-                LittleFS.remove(kUploadTmp);
+            const bool hadDst = storage::removeIfExists(dst);
+            if (!storage::renameFile(tmp, dst)) {
+                storage::removeIfExists(tmp);
                 uploadError_ = UploadError::CannotStore;
                 Serial.printf("[wifi] upload rename failed %s\n", uploadName_.c_str());
                 // The old pack is gone, or the app closed it: let it rescan
@@ -1858,6 +1875,8 @@ void WifiPortal::handleUploadChunk() {
                 if ((hadDst || closed) && hooks_.onPacksChanged) hooks_.onPacksChanged();
                 break;
             }
+            // The new copy is the one to list: the other place's goes.
+            storage::removeOtherCopy(dst);
             ++uploaded_;
             setMsg("uploaded %s (%u KB)", uploadName_.c_str(), (unsigned)(uploadWritten_ / 1024));
             Serial.printf("[wifi] upload ok %s %u bytes\n", uploadName_.c_str(),
@@ -1940,7 +1959,7 @@ void WifiPortal::handleProgressChunk() {
             progressWritten_ = 0;
             progressOk_ = false;
             progressError_ = ProgressError::None;
-            // A deck download owns the radio and /packs; a restore must wait.
+            // A deck download owns the radio and the decks; a restore must wait.
             if (anyDownload() || leave_ != Leave::None) {
                 progressError_ = ProgressError::Busy;
                 break;
@@ -2074,7 +2093,7 @@ void WifiPortal::handleFetchRequest() {
     }
     fetchPending_ = url;
     setMsg("downloading...");
-    redirect("/#yours", Notice::UrlStarted, String(kPacksDir) + "/" + name);
+    redirect("/#yours", Notice::UrlStarted, storage::deckPathFor(storage::writePlace(), name));
 }
 
 bool WifiPortal::doFetch(const String& url) {
@@ -2084,8 +2103,9 @@ bool WifiPortal::doFetch(const String& url) {
         setMsg("bad URL");
         return false;
     }
-    // The shared atomic download (NetFetch.h): /packs/.fetch.tmp, validated,
-    // then renamed over the destination.
+    // The shared atomic download (NetFetch.h): `.fetch.tmp` next to the
+    // destination (the card while one is mounted, else /packs), validated,
+    // then renamed over it.
     PackFetchRequest req;
     req.url = url;
     req.fileName = name;
@@ -2095,10 +2115,11 @@ bool WifiPortal::doFetch(const String& url) {
     // Replacing the loaded deck: the app closes its file first, as Get decks
     // does. The download has no progress callback, so nothing on the device
     // draws from the closed deck before the rescan below reopens it.
-    const String dst = String(kPacksDir) + "/" + name;
+    const DeckPlace place = storage::writePlace();
+    const String dst = storage::deckPathFor(place, name);
     const bool closed = hooks_.onBeforeReplace && hooks_.onBeforeReplace(dst.c_str());
-    const FetchResult r = fetchPackFile(req);
-    // /packs changed (on success, or a failed rename after the old pack was
+    const FetchResult r = fetchPackFile(req, place);
+    // The decks changed (on success, or a failed rename after the old pack was
     // removed), or the app closed the loaded deck: let it rescan, which reopens
     // the deck rather than keep a reader on a file that is gone, or none.
     if ((r.packsChanged || closed) && hooks_.onPacksChanged) hooks_.onPacksChanged();

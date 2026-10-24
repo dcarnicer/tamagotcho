@@ -12,7 +12,8 @@ namespace app {
 
 // "Get decks" (roadmap phase 4): the last row of the deck list. Joins the saved
 // home Wi-Fi on demand (HomeWifi), reads the release catalog over HTTPS and
-// downloads the chosen deck into /packs (NetFetch). The radio is on only while
+// downloads the chosen deck to the microSD card while one is mounted, else into
+// /packs (NetFetch). The radio is on only while
 // this screen is, at kCpuWifiMhz. Connecting is polled from loop() so the side
 // button can cancel; the catalog read and the download block, the latter with a
 // progress callback that redraws, keeps the idle timers away and lets the side

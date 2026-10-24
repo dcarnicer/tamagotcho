@@ -18,6 +18,7 @@
 #include "app/Wifi.h"
 #include "app/WifiMenu.h"
 #include "board/Board.h"
+#include "platform/Storage.h"
 #include "power/BatteryGuard.h"
 
 // RTC slow memory survives deep sleep but not a power cut: when the chip went to
@@ -118,12 +119,16 @@ void armSleep() {
 
 // Persists the SRS, which also persists the uptime day carry, and stops the
 // portal and the home Wi-Fi. A store that failed to load and has no answers is
-// not written, so a damaged file (and its .bak) stays on disk.
+// not written, so a damaged file (and its .bak) stays on disk. With a microSD
+// card mounted, the card gets a copy of the state file then
+// (/tamagotcho/progress.bin, docs/microsd.md D3): a recent backup a computer
+// can read and the portal can restore.
 void saveAndRadiosOff() {
     if (gDirty || gSrsLoaded) {
         gSrs.save(gSrsIo);
         gDirty = 0;
     }
+    tgc::storage::writeProgressCopy();
     if (gPortal.active()) {
         gPortal.end();
         setCpuFrequencyMhz(kCpuMhz);

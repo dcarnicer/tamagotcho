@@ -20,6 +20,7 @@
 #include "platform/FsPackSource.h"
 #include "platform/FsQuiet.h"
 #include "platform/FsSrsFile.h"
+#include "platform/Storage.h"
 #include "platform/WifiPortal.h"
 #include "render/Widgets.h"
 #include "srs/DeckProgress.h"
@@ -47,16 +48,18 @@ bool saveProgress() {
 // not read (its kanji cannot be known, so nothing of it is forgotten).
 std::vector<uint32_t> packCodepoints(const String& path) {
     std::vector<uint32_t> cps;
-    tgc::FsPackSource src(LittleFS.open(path, "r"));
+    tgc::FsPackSource src(tgc::storage::openFile(path));
     if (src.ok()) tgc::readPackCodepoints(src, &cps);
     tgc::sortUnique(cps);
     return cps;
 }
 
-// The code points of every pack in /packs but `except`, sorted and unique.
+// The code points of every deck file but `except`, in both places, sorted and
+// unique: a copy of the same deck in the other place counts as another deck,
+// since it stays (and shows) once `except` is gone.
 std::vector<uint32_t> otherDecksCodepoints(const String& except) {
     std::vector<String> packs;
-    listPacks(packs);
+    tgc::storage::listAllDecks(packs);
     std::vector<uint32_t> all;
     for (const String& p : packs) {
         if (p == except) continue;
@@ -70,28 +73,29 @@ std::vector<uint32_t> otherDecksCodepoints(const String& except) {
 }  // namespace
 
 // The portal's POST /delete (WifiPortal::Hooks::onDeleteDeck): deletes pack
-// `path` and the progress of its kanji that no other deck in /packs has, so a
-// later download of it starts from scratch; N5's kanji keep theirs while the
-// Jouyou deck is installed. The lifetime statistics stay (docs/srs.md 2.1).
+// `path` (on LittleFS or the card) and the progress of its kanji that no other
+// deck file in either place has, so a later download of it starts from
+// scratch; N5's kanji keep theirs while the Jouyou deck is installed. The lifetime statistics stay (docs/srs.md 2.1).
 // Order: the records are forgotten and the state file saved (temp + rename)
 // *before* the pack is removed. A power cut in between leaves the deck
 // installed without that progress (deleting it again finishes the job), never
 // records of a deck that is gone, which a new download of it would pick up
 // again. A failed save (a full filesystem: deleting a deck is how space is
 // made) is tried again once the pack is gone. The loaded deck is closed just
-// before the remove, which LittleFS refuses on an open file. Then the folder
-// is rescanned as after any other change: a deleted loaded deck gives way to
-// the first one left, and the queue is rebuilt (portalPacksChanged()).
+// before the remove, which LittleFS refuses on an open file (FAT would remove
+// it under the reader). Then the decks are rescanned as after any other change: a
+// deleted loaded deck gives way to its copy in the other place or to the first
+// one left, and the queue is rebuilt (portalPacksChanged()).
 bool portalDeleteDeck(const char* path, uint32_t* forgotten) {
     *forgotten = 0;
     const String p(path);
-    if (!tgc::fsExists(p)) return false;
+    if (!tgc::storage::exists(p)) return false;
     const std::vector<uint32_t> deck = packCodepoints(p);
     const std::vector<uint32_t> gone = tgc::forgetOnDelete(deck, otherDecksCodepoints(p));
     const size_t n = gSrs.forget(gone.data(), gone.size());
     const bool saved = n == 0 || saveProgress();
     closePackIfLoaded(p);  // LittleFS will not remove an open file
-    const bool removed = LittleFS.remove(p);
+    const bool removed = tgc::storage::removeFile(p);
     if (!saved) saveProgress();
     Serial.printf("delete %s: %s; progress of %u of its %u kanji forgotten, %u kanji left\n",
                   path, removed ? "ok" : "failed", (unsigned)n, (unsigned)deck.size(),
@@ -159,6 +163,7 @@ bool portalRestoreProgress(const char* tmpPath) {
     }
     Serial.printf("srs: restored from the portal: day %u, records %u\n", (unsigned)gSrs.today(),
                   (unsigned)gSrs.count());
+    tgc::storage::writeProgressCopy();  // the card's copy follows (docs/microsd.md D3)
     return true;
 }
 
@@ -240,7 +245,7 @@ void resetSharedPreview() {
         if (tgc::deckResetPreview(gSrs, gResetCps, cps).shared == 0) continue;
         if (++gResetSharedDecks == 1) {
             tgc::PackInfo info;
-            tgc::FsPackSource src(LittleFS.open(p, "r"));
+            tgc::FsPackSource src(tgc::storage::openFile(p));
             const bool named = src.ok() && tgc::peekPackInfo(src, &info) == tgc::PackError::Ok &&
                                info.name[0];
             gResetSharedName = named ? String(info.name) : packFileStem(p);

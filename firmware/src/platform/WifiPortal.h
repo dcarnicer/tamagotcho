@@ -1,6 +1,7 @@
 #pragma once
 // On-device Wi-Fi portal (roadmap phase 4): one web page to get decks onto the
-// device, upload, delete and download packs under /packs, back up and restore
+// device, upload, delete and download packs (on the microSD card while one is
+// mounted, else under /packs: platform/Storage.h), back up and restore
 // the study progress, save the home Wi-Fi and read the SRS statistics from a
 // phone or laptop -- no computer running
 // `uploadfs`. Opening the page also hands the browser's clock to the app, which
@@ -67,7 +68,9 @@ struct PortalStats {
     uint32_t streakCurrent = 0, streakBest = 0;
     uint32_t reviewMs = 0;
     uint32_t packCards = 0;   // cards in the loaded pack, 0 when none is open
-    char loadedPack[49] = ""; // file name of the loaded pack ("n5-en.tgc"), "" when none
+    // The loaded pack's deck path ("/packs/n5-en.tgc", "/sd/tamagotcho/decks/
+    // n5-en.tgc"), "" when none.
+    char loadedPack[72] = "";
     // The worst-accuracy kanji (SrsStore::trouble()), worst first.
     TroubleKanji trouble[kTroubleMax];
     uint8_t troubleCount = 0;
@@ -92,18 +95,19 @@ public:
     struct Hooks {
         // Fills the counters shown on `/` and `/api/stats`. Must be cheap.
         void (*fillStats)(PortalStats& out) = nullptr;
-        // Called after /packs changed (upload, delete or a finished URL
+        // Called after the decks changed (upload, delete or a finished URL
         // download), and after a failed one that removed the old file or had
-        // the loaded deck closed (onBeforeReplace). The app rescans the folder
+        // the loaded deck closed (onBeforeReplace). The app rescans both places
         // and loads a pack if needed.
         // Returns true when a usable pack is loaded afterwards.
         bool (*onPacksChanged)() = nullptr;
-        // Called right before the portal stores pack `path`
-        // ("/packs/<name>.tgc"), which may replace a file of that name: an
-        // upload once its body arrived and validated (a rejected one never
-        // gets here), a URL download before it starts. LittleFS neither
-        // removes nor renames over an open file, so when `path` is the loaded
-        // deck the app closes it. Returns true when it did; the portal then
+        // Called right before the portal stores pack `path` (a deck path in
+        // the write place, storage::writePlace()), which may replace a file of
+        // that name and removes its copy in the other place: an upload once
+        // its body arrived and validated (a rejected one never gets here), a
+        // URL download before it starts. LittleFS neither removes nor renames
+        // over an open file, so when `path` names the loaded deck (in either
+        // place) the app closes it. Returns true when it did; the portal then
         // calls onPacksChanged whatever the outcome, and the app reopens the
         // new file, or the old one when the swap failed. Null: nothing is
         // closed, and replacing the loaded deck fails, leaving it as it was.
@@ -134,16 +138,16 @@ public:
         // portal and open it again in home mode on the saved network. Called
         // from poll() like onGetDecks, after the response page went out.
         void (*onSwitchToHome)() = nullptr;
-        // Home mode: download catalog deck `entry` into /packs (blocking; called
-        // from poll() a moment after the page asked, POST /deck). `update` is
-        // true when a different build of it is on the device. The app runs the
+        // Home mode: download catalog deck `entry` (blocking; called from
+        // poll() a moment after the page asked, POST /deck). `update` is true
+        // when a different build of it is on the device. The app runs the
         // checked NetFetch download, shows the progress on its screen, calls
         // serviceDownload() from its progress callback so the page can follow,
-        // and rescans /packs. Null hides the page's download buttons.
+        // and rescans the decks. Null hides the page's download buttons.
         DeckDownloadResult (*onDeckDownload)(const CatalogEntry& entry, bool update) = nullptr;
-        // POST /delete: delete pack `path` ("/packs/<name>.tgc") and the progress
-        // of its kanji that no other deck still in /packs has (docs/srs.md
-        // section 2.1), then rescan /packs as onPacksChanged does. The app
+        // POST /delete: delete pack `path` (a deck path in either place) and
+        // the progress of its kanji that no other deck file still has
+        // (docs/srs.md section 2.1), then rescan as onPacksChanged does. The app
         // saves the state file before it removes the pack. Returns false when
         // the file could not be removed; `*forgotten` is the number of kanji
         // whose progress went. Null: the portal removes the file itself and
@@ -193,7 +197,7 @@ public:
     void end();
     // From the app's progress callback during Hooks::onDeckDownload: records
     // the progress for the page and answers its requests now and then (the
-    // status view, the clock; anything that would change /packs is refused
+    // status view, the clock; anything that would change the decks is refused
     // while the download runs).
     void serviceDownload(size_t done, size_t total);
 
@@ -225,15 +229,14 @@ public:
     static constexpr const char* kApUrl = "http://192.168.4.1/";
     static constexpr const char* kMdnsHost = "tamagotcho";
     static constexpr const char* kMdnsUrl = "http://tamagotcho.local/";
-    static constexpr const char* kPacksDir = "/packs";
-    // A pack larger than this is refused outright: the StickS3 filesystem is
-    // ~5.9 MB and the portal keeps a reserve free for /state and temp files.
+    // A pack larger than this is refused outright: the reader's limit, not the
+    // storage's (kCatalogMaxPackBytes; docs/microsd.md §3.3).
     static constexpr size_t kMaxPackBytes = 5u * 1024u * 1024u;
-    // Uploads stream here first and are renamed over the destination only after
-    // the whole body arrived and validated, so a dropped/oversized/invalid
-    // upload can never destroy the pack it was replacing. Hidden name, so the
-    // pack listers skip it.
-    static constexpr const char* kUploadTmp = "/packs/.upload.tmp";
+    // Uploads stream into kUploadTmpName (storage/DeckFiles.h) in the folder
+    // of their destination first and are renamed over it only after the whole
+    // body arrived and validated, so a dropped/oversized/invalid upload can
+    // never destroy the pack it was replacing. Hidden name, so the pack
+    // listers skip it.
     // POST /progress streams its multipart file here first (field name
     // "progress"), validates it with SrsStore::validateBytes() and only then
     // hands it to Hooks::onRestoreProgress. Hidden name: the pack listers skip
@@ -310,7 +313,7 @@ private:
     String catalogProblem() const;
     String downloadOutcome() const;
 
-    // Blocking download of `url` into /packs; true on success.
+    // Blocking download of `url` into the write place; true on success.
     bool doFetch(const String& url);
     void loadCatalog();
     void runDeckDownload();
@@ -319,7 +322,7 @@ private:
     // shows its progress instead of the forms).
     bool deckInFlight() const { return deckStage_ != 0; }
     // True while any download is staged or running: actions that change
-    // /packs (or start another download) are refused meanwhile.
+    // the decks (or start another download) are refused meanwhile.
     bool anyDownload() const { return deckInFlight() || fetchPending_.length() || fetchUrl_.length(); }
     // First 4 bytes are "TNGC" and a cheap PackReader probe succeeds.
     bool validatePackFile(const String& path) const;
@@ -349,10 +352,11 @@ private:
     uint32_t noticeCount_ = 0;  // Deleted: the kanji whose progress went
 
     // Upload state, valid between UPLOAD_FILE_START and UPLOAD_FILE_END. The
-    // body goes to kUploadTmp (never the destination); only the validated temp
-    // is renamed over the destination.
+    // body goes to the temp in `uploadPlace_` (never the destination); only
+    // the validated temp is renamed over the destination.
     File uploadFile_;
     String uploadName_;
+    DeckPlace uploadPlace_ = DeckPlace::Device;
     UploadError uploadError_ = UploadError::None;
     bool uploadOk_ = false;
     size_t uploadWritten_ = 0;

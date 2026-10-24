@@ -351,8 +351,9 @@ void rowContent(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, con
     const uint16_t valueFg = f ? kText : kTextDim;
     const int valueY = centreY(y, lineH, kCaptionCap);
     const bool hasValue = row.value && *row.value;
-    // A tag pill follows the label, 4 px after it.
-    const int tagW = row.tag ? pillWidth(row.tag) + 4 : 0;
+    // The tag pills follow the label, each 4 px after the last.
+    const int tag1W = row.tag ? pillWidth(row.tag) + 4 : 0;
+    const int tagW = tag1W + (row.tag2 ? pillWidth(row.tag2) + 4 : 0);
     int labelRoom = rx - lx;
     if (hasValue && row.keepLabel) {
         // The label as it is; the value gets what is left, cut if needed.
@@ -379,6 +380,9 @@ void rowContent(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, con
     if (row.tag)
         drawPill(d, r, lx + labelW + 4, centreY(y, lineH, kPillH), row.tag, f ? kText : kTextDim,
                  kSurfaceHi);
+    if (row.tag2)
+        drawPill(d, r, lx + labelW + tag1W + 4, centreY(y, lineH, kPillH), row.tag2,
+                 f ? kText : kTextDim, kSurfaceHi);
     const int barX = x + kRowPadX;
     const int barW = w - 2 * kRowPadX;
     const uint16_t barFill = f ? kText : kAccent;
