@@ -10,6 +10,7 @@
 #include "app/DateScreens.h"
 #include "app/Decks.h"
 #include "app/Display.h"
+#include "app/Firmware.h"
 #include "app/GetDecks.h"
 #include "app/Net.h"
 #include "app/Power.h"
@@ -175,6 +176,10 @@ bool listFocusUp() {
             if (note) dropPartialPush();
             break;
         }
+        case Screen::Firmware:
+            if (firmwareBusy() || gFwList.count() < 2) return false;
+            gFwList.prev();
+            break;
         case Screen::GetDecks: {
             if (gNetStep != NetStep::List || gCatalog.empty() || gNetBusy) return false;
             const int n = static_cast<int>(gCatalog.size());
@@ -227,6 +232,8 @@ bool menuKeyGoesHome() {
             return true;
         case Screen::Date:
             return gAfterDate != Screen::Quiz;
+        case Screen::Firmware:
+            return !firmwareBusy();  // a join leaves with esc, which turns the radio off
         default:
             return false;
     }

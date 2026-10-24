@@ -40,7 +40,7 @@ power and date handling) is in [firmware/README.md](../firmware/README.md).
    **Decks** (switch decks, Get decks), **Study** (new cards per day,
    introduce new kanji, Hard after, auto-advance, on'yomi answers in
    katakana or hiragana, delete progress), **Stats**, **Wi-Fi** and **Device** (orientation,
-   brightness, language, hold time, date and time zone, sleep, About). In
+   brightness, language, hold time, date and time zone, sleep, firmware, About). In
    every menu a tap moves, a hold opens or chooses, and the side button goes
    back; the bar at the bottom of the screen says what each does. The date
    screen is the one exception: there the front tap adds a day, the side tap
@@ -104,6 +104,8 @@ setup mode and a tap tries again.
   reviews and one miss, with their right/review counts) and, folded under
   **Advanced**: upload a
   `.tgc` file, download one from a plain `http://` URL, the deck catalog URL,
+  the device firmware (its version, a newer one the device found, the
+  manifest URL: see [Firmware updates](#firmware-updates-over-wi-fi)),
   a progress backup and restore, the home Wi-Fi (change, forget, reconnect),
   the free space and the JSON at `/api/stats` and `/api/status`. The side button
   on the device stops the portal.
@@ -179,8 +181,9 @@ Restoring is refused while a deck download is running.
 
 - **Neither mode has a password.** In setup mode anyone in radio range, in home
   mode anyone on your home network, can list, upload or delete decks, read the
-  statistics and replace the saved network or catalog URL **while the Wi-Fi
-  screen is open** on the device. Open it when you need it and leave it
+  statistics and replace the saved network, catalog URL or firmware manifest
+  URL **while the Wi-Fi screen is open** on the device (the page never installs
+  firmware: that takes a hold on the device). Open it when you need it and leave it
   afterwards (it also stops by itself after 5 min without use).
 - The home Wi-Fi password is stored on the device (NVS, **not encrypted**) and
   is never shown again, logged or sent back to a page.
@@ -205,6 +208,45 @@ Restoring is refused while a deck download is running.
   catalog format v2 (with deck titles), and an older `catalog.txt` is refused as
   an old format.
 - Everything else works offline.
+
+## Firmware updates over Wi-Fi
+
+A device flashed with the two-app-slot layout updates its own firmware over
+the home Wi-Fi ([docs/ota.md](ota.md)); settings, decks and progress stay.
+
+- **Finding out.** Whenever the device reads the deck catalog -- the boot-time
+  deck check, Get decks, the portal page, **Settings → Wi-Fi → Home** -- it
+  also reads the latest release's `tamagotcho-firmware.txt`, silently. When it
+  offers a newer version for this build, the settings home's **Device** row
+  shows the update arrow and **Settings › Device › Firmware** reads "v0.7.0
+  available"; the portal page says so too (at the top, and under Advanced).
+- **Settings › Device › Firmware** shows the running version and build, then
+  the newer version and its size, "Up to date", why a release is not offered
+  (no image for this build, too large for the slot, failed before), or the last
+  check's error. **Check now** (hold) joins the home Wi-Fi and reads the
+  manifest; **Install** (hold, only with an offer) checks that a home Wi-Fi is
+  saved and the battery is at 6 % or more (or USB is in), joins, reads the
+  manifest again and downloads the image straight into the other app slot with
+  a progress bar. Its size and SHA-256 must match the manifest before the
+  device switches to it. The side button (Esc on the Cardputer) cancels; a
+  click of the power button cancels and sleeps. Then "Restarting into
+  v0.7.0..." and the device restarts. A failure or a cancel leaves the running
+  version as it was.
+- **If the new version does not start.** A new image counts as good after 10 s
+  of normal running (or when it goes to sleep after its first screen). If it
+  crashes or is reset before that, or stops on an error screen while starting,
+  the device goes back to the previous version by itself and says once "Update
+  failed: v0.7.0 did not start: back on v0.6.0"; that version is not offered
+  again.
+- **Not available** on the factory layout of v0.6.0 and older, under
+  M5Launcher or with any other partition table: the Firmware screen says to
+  update over USB, the way the device was installed.
+- **Development builds** (a version that is not a plain `vX.Y.Z`) never read
+  the default manifest. To test an update, set the manifest URL on the portal
+  page, **Advanced → Device firmware** (empty = the default,
+  `https://github.com/dcarnicer/tamagotcho/releases/latest/download/tamagotcho-firmware.txt`);
+  a plain `http://` URL works there, e.g. a manifest and images served from
+  your computer. Then any version other than the running one is offered.
 
 ## Flashing
 

@@ -5,9 +5,9 @@
 // policy holds (the CPU runs at 240 MHz only while the radio is up).
 // Arduino/ESP32 only; not part of the native build.
 //
-// Settings live in NVS namespace "net": `ssid`, `pass` and the optional catalog
-// URL override `cat`. They are written from the Wi-Fi portal page and read
-// here. The password is never logged, never sent back to a page or JSON, and
+// Settings live in NVS namespace "net": `ssid`, `pass` and the optional URL
+// overrides of the deck catalog (`cat`) and of the firmware manifest (`fwurl`).
+// They are written from the Wi-Fi portal page and read here. The password is never logged, never sent back to a page or JSON, and
 // never returned by this API (savedSsid() is the only thing a page may show).
 // NVS is not encrypted on this device: anyone holding it with a USB cable can
 // read the flash, which is the usual trade-off for a stored Wi-Fi password.
@@ -28,6 +28,13 @@ public:
     // firmware reads pack format v3 (and v1/v2): `decks-v3`.
     static constexpr const char* kDefaultCatalogUrl =
         "https://github.com/dcarnicer/tamagotcho/releases/download/decks-v3/catalog-v2.txt";
+    // The firmware release manifest (docs/ota.md §3.1), an asset of every
+    // firmware release, read through GitHub's fixed URL for the latest one (the
+    // decks releases are never marked latest). Development builds never read
+    // it, only an override (§3.2), which may be http:// to test with a
+    // manifest and images served from a computer.
+    static constexpr const char* kDefaultFirmwareUrl =
+        "https://github.com/dcarnicer/tamagotcho/releases/latest/download/tamagotcho-firmware.txt";
     // A join: a scan for the network (kScanMsPerChannel a channel, at most
     // kScanTimeoutMs), then kPinnedJoinMs on its strongest access point, which
     // may refuse a client's first tries for ~15-20 s (docs/decisions.md,
@@ -53,6 +60,10 @@ public:
     // "" restores the default; otherwise an http(s):// URL of at most
     // kMaxUrlLen characters. False (nothing stored) for anything else.
     static bool saveCatalogUrl(const String& url);
+    // The firmware manifest URL, the same way: the override, else the default.
+    static String firmwareUrl();
+    static String firmwareUrlOverride();  // "" when the default is in use
+    static bool saveFirmwareUrl(const String& url);
 
     // --- station mode, on demand ----------------------------------------------
     enum class State : uint8_t { Off, Connecting, Connected, Failed };

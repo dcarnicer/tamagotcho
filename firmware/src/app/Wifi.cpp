@@ -15,6 +15,7 @@
 #include "app/Decks.h"
 #include "app/Display.h"
 #include "app/Done.h"
+#include "app/Firmware.h"
 #include "app/GetDecks.h"
 #include "app/Net.h"
 #include "app/Power.h"
@@ -255,6 +256,8 @@ void portalFillStats(tgc::PortalStats& out) {
         row.lapses = rows[i].lapses;
         tgc::utf8Encode(rows[i].codepoint, row.kanji);
     }
+    snprintf(out.fwAvailable, sizeof out.fwAvailable, "%s", firmwareAvailable());
+    out.fwOta = firmwareOtaLayout();
 }
 
 // The portal is about to store pack `path` (the onBeforeReplace hook): an
@@ -321,10 +324,14 @@ void portalCatalog(const std::vector<tgc::CatalogEntry>& entries,
     setUpdatesFromCatalog(entries, &states);
 }
 
+// The portal's home page has just read the catalog: the firmware manifest on
+// the same connection (docs/ota.md §3.3), for the badge and the page.
+void portalCatalogFetched(const tgc::FetchResult& fetch) { firmwareAfterCatalog(fetch); }
+
 const tgc::WifiPortal::Hooks kPortalHooks = {
     portalFillStats,  portalPacksChanged,    portalBeforeReplace, portalTime,
     wifiToGetDecks,   portalUiLang,          portalSwitchToHome,  portalDeckDownload,
-    portalDeleteDeck, portalRestoreProgress, portalCatalog,
+    portalDeleteDeck, portalRestoreProgress, portalCatalog,       portalCatalogFetched,
 };
 
 }  // namespace

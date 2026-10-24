@@ -22,6 +22,7 @@ constexpr const char* kNs = "net";
 constexpr const char* kKeySsid = "ssid";
 constexpr const char* kKeyPass = "pass";
 constexpr const char* kKeyCatalog = "cat";
+constexpr const char* kKeyFirmware = "fwurl";
 
 // Any NTP answer earlier than this (2026-01-01T00:00:00Z) is not believed.
 constexpr int64_t kMinPlausibleUtcMs = 1767225600000LL;
@@ -126,34 +127,55 @@ void HomeWifi::forgetCredentials() {
     Serial.printf("[net] home Wi-Fi forgotten\n");
 }
 
-String HomeWifi::catalogUrlOverride() {
+namespace {
+
+// A saved URL override ("" when none).
+String loadUrl(const char* key) {
     Preferences p;
     if (!p.begin(kNs, false)) return String();
-    const String s = p.isKey(kKeyCatalog) ? p.getString(kKeyCatalog, "") : String();
+    const String s = p.isKey(key) ? p.getString(key, "") : String();
     p.end();
     return s;
 }
+
+// "" removes the override; otherwise an http(s):// URL of at most kMaxUrlLen.
+bool saveUrl(const char* key, const String& url) {
+    String u = url;
+    u.trim();
+    if (u.length() &&
+        (u.length() > HomeWifi::kMaxUrlLen || !isHttpUrl(std::string(u.c_str()))))
+        return false;
+    Preferences p;
+    if (!p.begin(kNs, false)) return false;
+    bool ok = true;
+    if (u.isEmpty()) {
+        if (p.isKey(key)) p.remove(key);  // removing a missing key logs an error
+    } else {
+        ok = p.putString(key, u) == u.length();
+    }
+    p.end();
+    return ok;
+}
+
+}  // namespace
+
+String HomeWifi::catalogUrlOverride() { return loadUrl(kKeyCatalog); }
 
 String HomeWifi::catalogUrl() {
     const String s = catalogUrlOverride();
     return s.length() ? s : String(kDefaultCatalogUrl);
 }
 
-bool HomeWifi::saveCatalogUrl(const String& url) {
-    String u = url;
-    u.trim();
-    if (u.length() && (u.length() > kMaxUrlLen || !isHttpUrl(std::string(u.c_str()))))
-        return false;
-    Preferences p;
-    if (!p.begin(kNs, false)) return false;
-    bool ok = true;
-    if (u.isEmpty())
-        p.remove(kKeyCatalog);
-    else
-        ok = p.putString(kKeyCatalog, u) == u.length();
-    p.end();
-    return ok;
+bool HomeWifi::saveCatalogUrl(const String& url) { return saveUrl(kKeyCatalog, url); }
+
+String HomeWifi::firmwareUrlOverride() { return loadUrl(kKeyFirmware); }
+
+String HomeWifi::firmwareUrl() {
+    const String s = firmwareUrlOverride();
+    return s.length() ? s : String(kDefaultFirmwareUrl);
 }
+
+bool HomeWifi::saveFirmwareUrl(const String& url) { return saveUrl(kKeyFirmware, url); }
 
 // --- station mode -----------------------------------------------------------
 

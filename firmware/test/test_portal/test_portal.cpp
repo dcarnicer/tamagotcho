@@ -168,6 +168,25 @@ void test_page_delete_formats() {
     }
 }
 
+// Advanced > Device firmware (docs/ota.md §3.8) takes what appendFirmware()
+// passes: the version, then the build environment; the newer version; the
+// default manifest URL. The notices are plain text.
+void test_page_firmware_formats() {
+    for (const char* lang : {"en", "es"}) {
+        const PortalText& t = portalText(lang);
+        TEST_ASSERT_EQUAL(2, countConversions(t.fwRunningFmt));
+        const char* first = std::strstr(t.fwRunningFmt, "%s");
+        TEST_ASSERT_NOT_NULL(first);
+        TEST_ASSERT_NOT_NULL(std::strstr(first + 2, "%s"));
+        TEST_ASSERT_EQUAL(1, countConversions(t.fwAvailableFmt));
+        TEST_ASSERT_NOT_NULL(std::strstr(t.fwAvailableFmt, "%s"));
+        TEST_ASSERT_EQUAL(1, countConversions(t.fwUrlDefaultFmt));
+        TEST_ASSERT_NOT_NULL(std::strstr(t.fwUrlDefaultFmt, "%s"));
+        for (const char* plain : {t.fwNoOta, t.fwUrlSaved, t.fwUrlBad, t.fwTitle})
+            TEST_ASSERT_EQUAL(0, countConversions(plain));
+    }
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_wifi_qr_escape);
@@ -180,5 +199,6 @@ int main() {
     RUN_TEST(test_page_text_complete);
     RUN_TEST(test_page_footer_formats);
     RUN_TEST(test_page_delete_formats);
+    RUN_TEST(test_page_firmware_formats);
     return UNITY_END();
 }

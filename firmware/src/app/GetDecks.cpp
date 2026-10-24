@@ -10,6 +10,7 @@
 #include "app/DeckUpdates.h"
 #include "app/Decks.h"
 #include "app/Display.h"
+#include "app/Firmware.h"
 #include "app/Net.h"
 #include "app/Power.h"
 #include "app/ScreenKit.h"
@@ -269,10 +270,12 @@ void netSyncClock() { netTimeSync(); }
 
 namespace {
 
-// Connected: read and parse the catalog (blocking), then show the list.
+// Connected: read and parse the catalog (blocking), and the firmware manifest
+// (docs/ota.md §3.3), then show the list.
 void netLoadCatalog() {
     const String url = tgc::HomeWifi::catalogUrl();
     tgc::CatalogFetch c = tgc::fetchCatalog(url);
+    firmwareAfterCatalog(c.fetch);
     gNetActivityAt = millis();
     gSwallowInput = true;  // presses made while blocked must not act now
     char title[48], detail[96];

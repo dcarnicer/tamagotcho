@@ -8,6 +8,7 @@
 #include "app/Clock.h"
 #include "app/DateScreens.h"
 #include "app/Display.h"
+#include "app/Firmware.h"
 #include "app/GetDecks.h"
 #include "app/Net.h"
 #include "app/Quiz.h"
@@ -132,12 +133,14 @@ void saveAndRadiosOff() {
     netRadioOff();  // safe in any state
 }
 
-// What every deep sleep of the running app needs first: the state saved, the
-// radios off and the RTC timestamp the wake adds to the day clock. Used by the
-// idle sleep on battery, the sleep after unplugging a dark panel and the
-// explicit sleep. Not by the critical-battery re-sleep at boot, which keeps the
-// first sleep's timestamp, nor by halt(), where the SRS may not be loaded.
+// What every deep sleep of the running app needs first: a new image's first
+// boot settled (app/Firmware), the state saved, the radios off and the RTC
+// timestamp the wake adds to the day clock. Used by the idle sleep on battery,
+// the sleep after unplugging a dark panel and the explicit sleep. Not by the
+// critical-battery re-sleep at boot, which keeps the first sleep's timestamp,
+// nor by halt(), where the SRS may not be loaded.
 void prepareDeepSleep() {
+    firmwareBeforeSleep();  // the wake must not roll a working new image back
     saveAndRadiosOff();
     armSleep();
 }
@@ -253,8 +256,10 @@ void powerTick(uint32_t now) {
 }
 
 // Fatal error screen. Nothing to save here (the SRS may not even be loaded), so
-// on battery it just sleeps after the usual timeout; a wake shows it again.
+// on battery it just sleeps after the usual timeout; a wake shows it again. A
+// new image on its first boot goes back to the previous one instead.
 void halt() {
+    firmwareFailedBoot();
     const uint32_t start = millis();
     for (;;) {
         tgc::board::update();

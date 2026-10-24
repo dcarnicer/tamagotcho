@@ -189,6 +189,102 @@ size_t fsFreeBytes() {
     return total > used ? total - used : 0;
 }
 
+namespace {
+
+// A pack download's body: the temp file, within the free space (the reserve
+// kept) and the caller's cap. The caller removes the temp on any failure.
+class PackFileSink : public FetchSink {
+public:
+    PackFileSink(size_t freeBytes, size_t maxBytes) : free_(freeBytes), max_(maxBytes) {}
+    FetchStatus begin(int announced) override {
+        if (announced > 0 && static_cast<size_t>(announced) > max_) return FetchStatus::TooLarge;
+        if (announced > 0 && static_cast<size_t>(announced) + kPackFsReserveBytes > free_)
+            return FetchStatus::NoSpace;
+        file_ = LittleFS.open(kFetchTmp, "w");
+        return file_ ? FetchStatus::Ok : FetchStatus::WriteFailed;
+    }
+    FetchStatus write(const uint8_t* p, size_t n) override {
+        if (written_ + n + kPackFsReserveBytes > free_) return FetchStatus::NoSpace;
+        if (written_ + n > max_) return FetchStatus::TooLarge;
+        if (file_.write(p, n) != n) return FetchStatus::WriteFailed;
+        written_ += n;
+        return FetchStatus::Ok;
+    }
+    void close() {
+        if (file_) file_.close();
+    }
+
+private:
+    size_t free_;
+    size_t max_;
+    size_t written_ = 0;
+    File file_;
+};
+
+}  // namespace
+
+FetchResult fetchToSink(const FetchBodyRequest& req, FetchSink& sink) {
+    FetchResult res;
+    Transport transport;
+    HTTPClient http;
+    int code = 0;
+    if (!sendGet(http, transport, req.url, req.http10, &code, &res)) {
+        res.status = FetchStatus::BadUrl;
+        return res;
+    }
+    res.httpCode = code;
+    if (code != HTTP_CODE_OK) {
+        res.status = statusForCode(code, res.tlsError);
+        http.end();
+        return res;
+    }
+    const int remaining = http.getSize();
+    FetchStatus st = FetchStatus::Ok;
+    if (remaining > 0 && req.expectBytes && static_cast<uint32_t>(remaining) != req.expectBytes)
+        st = FetchStatus::SizeMismatch;
+    else
+        st = sink.begin(remaining);
+    if (st != FetchStatus::Ok) {
+        res.status = st;
+        http.end();
+        return res;
+    }
+    res.bodyStarted = true;
+    const size_t total = req.expectBytes ? req.expectBytes : (remaining > 0 ? remaining : 0);
+
+    std::unique_ptr<Sha256> sha;
+    if (req.expectSha256) sha.reset(new (std::nothrow) Sha256);
+    size_t written = 0;
+    if (req.expectSha256 && !sha) st = FetchStatus::WriteFailed;  // out of memory
+    if (st == FetchStatus::Ok && req.progress && !req.progress(0, total, req.progressCtx))
+        st = FetchStatus::Cancelled;
+    if (st == FetchStatus::Ok) {
+        st = readBody(http, remaining, req.idleTimeoutMs, req.totalTimeoutMs,
+                      [&](const uint8_t* p, size_t n) {
+                          const FetchStatus s = sink.write(p, n);
+                          if (s != FetchStatus::Ok) return s;
+                          if (sha) sha->update(p, n);
+                          written += n;
+                          if (req.progress && !req.progress(written, total, req.progressCtx))
+                              return FetchStatus::Cancelled;
+                          return FetchStatus::Ok;
+                      });
+    }
+    http.end();
+    res.bytes = written;
+
+    // The body must match the expected size and digest exactly.
+    if (st == FetchStatus::Ok && req.expectBytes && written != req.expectBytes)
+        st = FetchStatus::SizeMismatch;
+    if (st == FetchStatus::Ok && sha) {
+        uint8_t digest[32];
+        sha->finish(digest);
+        if (std::memcmp(digest, req.expectSha256, sizeof digest) != 0) st = FetchStatus::HashMismatch;
+    }
+    res.status = st;
+    return res;
+}
+
 FetchResult fetchPackFile(const PackFetchRequest& req) {
     FetchResult res;
     const bool https = req.url.startsWith("https://");
@@ -219,79 +315,26 @@ FetchResult fetchPackFile(const PackFetchRequest& req) {
         return res;
     }
 
-    Transport transport;
-    HTTPClient http;
-    int code = 0;
-    if (!sendGet(http, transport, req.url, req.http10, &code, &res)) {
-        res.status = FetchStatus::BadUrl;
-        return res;
-    }
-    res.httpCode = code;
-    if (code != HTTP_CODE_OK) {
-        res.status = statusForCode(code, res.tlsError);
-        http.end();
-        return res;
-    }
-    const int remaining = http.getSize();
-    FetchStatus early = FetchStatus::Ok;
-    if (remaining > 0 && req.expectBytes && static_cast<uint32_t>(remaining) != req.expectBytes)
-        early = FetchStatus::SizeMismatch;
-    else if (remaining > 0 && static_cast<size_t>(remaining) > req.maxBytes)
-        early = FetchStatus::TooLarge;
-    else if (remaining > 0 && static_cast<size_t>(remaining) + kPackFsReserveBytes > freeB)
-        early = FetchStatus::NoSpace;
-    if (early != FetchStatus::Ok) {
-        res.status = early;
-        http.end();
-        return res;
-    }
-    const size_t total = req.expectBytes ? req.expectBytes : (remaining > 0 ? remaining : 0);
+    FetchBodyRequest body;
+    body.url = req.url;
+    body.expectBytes = req.expectBytes;
+    body.expectSha256 = req.expectSha256;
+    body.idleTimeoutMs = req.idleTimeoutMs;
+    body.totalTimeoutMs = req.totalTimeoutMs;
+    body.http10 = req.http10;
+    body.progress = req.progress;
+    body.progressCtx = req.progressCtx;
+    PackFileSink sink(freeB, req.maxBytes);
+    res = fetchToSink(body, sink);
+    sink.close();
 
-    File f = LittleFS.open(kFetchTmp, "w");
-    if (!f) {
-        res.status = FetchStatus::WriteFailed;
-        http.end();
-        return res;
-    }
-    res.bodyStarted = true;
-
-    std::unique_ptr<Sha256> sha;
-    if (req.expectSha256) sha.reset(new (std::nothrow) Sha256);
-    size_t written = 0;
-    FetchStatus st = FetchStatus::Ok;
-    if (req.expectSha256 && !sha) st = FetchStatus::WriteFailed;  // out of memory
-    if (st == FetchStatus::Ok && req.progress && !req.progress(0, total, req.progressCtx))
-        st = FetchStatus::Cancelled;
-    if (st == FetchStatus::Ok) {
-        st = readBody(http, remaining, req.idleTimeoutMs, req.totalTimeoutMs,
-                      [&](const uint8_t* p, size_t n) {
-                          if (written + n + kPackFsReserveBytes > freeB) return FetchStatus::NoSpace;
-                          if (written + n > req.maxBytes) return FetchStatus::TooLarge;
-                          if (f.write(p, n) != n) return FetchStatus::WriteFailed;
-                          if (sha) sha->update(p, n);
-                          written += n;
-                          if (req.progress && !req.progress(written, total, req.progressCtx))
-                              return FetchStatus::Cancelled;
-                          return FetchStatus::Ok;
-                      });
-    }
-    f.close();
-    http.end();
-    res.bytes = written;
-
-    // Integrity before structure: a catalog download must match its size and
-    // digest exactly; then any download must look like a pack.
-    if (st == FetchStatus::Ok && req.expectBytes && written != req.expectBytes)
-        st = FetchStatus::SizeMismatch;
-    if (st == FetchStatus::Ok && sha) {
-        uint8_t digest[32];
-        sha->finish(digest);
-        if (std::memcmp(digest, req.expectSha256, sizeof digest) != 0) st = FetchStatus::HashMismatch;
-    }
-    if (st == FetchStatus::Ok && (written < 4 || !validatePackFile(kFetchTmp)))
+    // Integrity (fetchToSink: size and digest) before structure: then any
+    // download must look like a pack.
+    FetchStatus st = res.status;
+    if (st == FetchStatus::Ok && (res.bytes < 4 || !validatePackFile(kFetchTmp)))
         st = FetchStatus::InvalidPack;
     if (st != FetchStatus::Ok) {
-        LittleFS.remove(kFetchTmp);
+        if (res.bodyStarted) LittleFS.remove(kFetchTmp);
         res.status = st;
         return res;
     }
@@ -401,6 +444,8 @@ const char* fetchStatusString(FetchStatus s) {
         case FetchStatus::HashMismatch: return "sha256 mismatch";
         case FetchStatus::InvalidPack: return "not a valid pack";
         case FetchStatus::RenameFailed: return "rename failed";
+        case FetchStatus::NoSlot: return "no update slot";
+        case FetchStatus::BadImage: return "image rejected";
     }
     return "?";
 }

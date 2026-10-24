@@ -222,7 +222,8 @@ struct UiStrings {
     const char* groupRows[5];   // decks, study, stats, Wi-Fi, device
     // new per day, introduce, hard after, auto-advance, on'yomi, delete (progress)
     const char* studyRows[6];
-    const char* deviceRows[7];  // orientation, brightness, language, hold time, date, sleep, about
+    // orientation, brightness, language, hold time, date, sleep, firmware, about
+    const char* deviceRows[8];
     const char* studyTitle;     // headers (Font0, ASCII)
     const char* deviceTitle;
     const char* advanceTitle;
@@ -349,6 +350,48 @@ struct UiStrings {
     const char* introTitle;
     const char* introRows[2];
     const char* descIntro;
+    // --- Firmware updates (docs/ota.md §4: Settings > Device > Firmware) ------
+    // The header (Font0, ASCII), the status line (label face: two lines of
+    // 127 px in the 135 px portrait, so no word wider than that -- Spanish
+    // "Comprobando..." is 137 px -- and one of 232 px in landscape, where the
+    // StickS3 and the Cardputer have room for one detail line under it with two
+    // rows: 38 captions), the detail (captions, wrapped), the two rows (label
+    // face) and their hold words, the install's lines and the notice after a
+    // rollback. Checked in test_settings, which copies these. The Firmware
+    // row's value (fwAvailableFmt) is a caption under its label in portrait:
+    // 19 cells.
+    const char* fwTitle;
+    const char* fwAvailableFmt;   // %s = the newer version; also the Firmware row's value
+    const char* fwSizeFmt;        // detail of an offer: %s = "1.5 MB"
+    const char* fwUpToDate;
+    const char* fwLatestFmt;      // detail when up to date: %s = the manifest's version
+    const char* fwNotChecked;
+    const char* fwNoUpdate;       // a release the device does not take (the detail says why)
+    const char* fwNoImageFmt;     // %s = version, %s = build environment
+    const char* fwTooLargeFmt;    // %s = version
+    const char* fwRolledBackFmt;  // %s = version
+    const char* fwDevBuild;
+    const char* fwDevBuildHint;
+    const char* fwUnavailable;
+    const char* fwUnavailableHint;
+    const char* fwBadManifest;
+    const char* fwNotPublished;   // detail of a 404: no manifest at this URL
+    const char* fwTls;            // netTls takes three portrait lines in both languages
+    const char* fwRows[2];        // install, check now
+    const char* hintInstall;
+    const char* hintCheck;
+    const char* fwChecking;
+    const char* fwDownloading;
+    const char* fwProgressFmt;    // %s / %s MB, %u percent
+    const char* fwVerifying;      // Update checks the image and switches the boot slot
+    const char* fwRestartingFmt;  // %s = the new version
+    const char* fwKeepsHint;      // settings, decks and progress stay
+    const char* fwStaysFmt;       // detail after a failed install: %s = the running version
+    const char* fwBadImage;
+    const char* fwWriteFailed;
+    const char* fwBatteryHint;    // detail: the battery is too low to install
+    const char* fwFailedTitle;    // the boot notice after a rollback
+    const char* fwFailedFmt;      // %s = the version that failed, %s = the running one
 };
 
 extern const UiStrings kUiEn;

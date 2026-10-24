@@ -11,6 +11,7 @@
 #include "app/DeckUpdates.h"
 #include "app/Decks.h"
 #include "app/Display.h"
+#include "app/Firmware.h"
 #include "app/Intro.h"
 #include "app/Net.h"
 #include "app/Power.h"
@@ -133,6 +134,14 @@ void drawMenuRow(lgfx::LovyanGFX& d, st::Item id, int x, int y, int w, int h, bo
     row.icon = st::itemIcon(id);
     row.chevron = st::hasChevron(id);
     row.focused = focused;
+    // A firmware update (docs/ota.md §4): the home's Device row has no room
+    // for a version next to "Dispositivo" (92 of its 93 px), so it carries the
+    // update mark Get decks uses in place of its chevron; the Firmware row in
+    // the page names the version.
+    if (id == st::Item::Device && firmwareUpdateKnown()) {
+        row.mark = &tgc::kIconDown;
+        row.markColor = tgc::theme::kWarn;
+    }
     if (value[0]) {
         if (gMenuPage == st::Page::Home) {
             row.value = value;
@@ -311,7 +320,8 @@ const MenuItem& menuItem(st::Item id) {
         {I::Date, [] { return ui().deviceRows[4]; },
          [](char* o, size_t n) { shortDate(gSrs.today(), o, n); }, [] { openDateMenu(true); }},
         {I::Sleep, [] { return ui().deviceRows[5]; }, nullptr, [] { sleepNow(false); }},
-        {I::About, [] { return ui().deviceRows[6]; }, nullptr, openAbout},
+        {I::Firmware, [] { return ui().deviceRows[6]; }, firmwareRowValue, openFirmware},
+        {I::About, [] { return ui().deviceRows[7]; }, nullptr, openAbout},
     };
     static_assert(sizeof kItems / sizeof kItems[0] == st::kItemCount, "one entry per item");
     for (const MenuItem& m : kItems)

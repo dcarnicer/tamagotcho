@@ -70,7 +70,9 @@ has the home Wi-Fi up does not need a second join:
 
 The date sync only adds the catalog read when the policy says due (it is an
 automatic session); the user-initiated sessions refresh whenever they run,
-whatever the battery. The standalone check remains for days with no other
+whatever the battery. Each of these sessions also reads the firmware release
+manifest on the same connection, silently, for the Firmware badge
+(docs/ota.md §3.3, §9). The standalone check remains for days with no other
 session; `updday` records any catalog read, so it does not repeat a check the
 portal, Get decks, the network test or the date sync just did.
 

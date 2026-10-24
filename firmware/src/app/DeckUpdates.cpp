@@ -7,6 +7,7 @@
 #include "app/Decks.h"
 #include "app/Display.h"
 #include "app/Done.h"
+#include "app/Firmware.h"
 #include "app/Net.h"
 #include "app/Power.h"
 #include "app/Quiz.h"
@@ -129,11 +130,13 @@ void updateCheckCancel() {
     finishUpdateCheck();
 }
 
-// Connected: read the catalog (blocking), count the updates, radio off. The
-// result stays on screen for kUpdateResultMs, or until a press.
+// Connected: read the catalog (blocking), and the firmware manifest on the same
+// connection (docs/ota.md §3.3), count the updates, radio off. The result
+// stays on screen for kUpdateResultMs, or until a press.
 void updateCheckRead() {
     const String url = tgc::HomeWifi::catalogUrl();
     tgc::CatalogFetch c = tgc::fetchCatalog(url);
+    firmwareAfterCatalog(c.fetch);
     netRadioOff();
     gSwallowInput = true;
     char title[48], detail[96];

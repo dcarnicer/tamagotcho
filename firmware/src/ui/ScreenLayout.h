@@ -1,6 +1,7 @@
 #pragma once
-// Geometry of the settings home, the statistics, the date stepper and the done
-// screen (docs/ux-refresh.md §2.1, §3 and the mockups in docs/ux/), for any
+// Geometry of the settings home, the statistics, the date stepper, the done
+// screen (docs/ux-refresh.md §2.1, §3 and the mockups in docs/ux/) and
+// Settings > Device > Firmware (docs/ota.md §4), for any
 // w x h panel: StickS3 135x240 / 240x135 and T-Display-S3 170x320 / 320x170.
 // Portrait stacks the parts, landscape puts the summary card, the ring and the
 // calendar tile in a left column. Every part stays between the 16 px header
@@ -223,6 +224,48 @@ constexpr Done doneFor(int w, int h) {
     d.line1Y = static_cast<int16_t>(d.title.bottom() + 3);
     d.line2Y = static_cast<int16_t>(d.line1Y + 13);
     return d;
+}
+
+// ---------------------------------------------------------------- firmware
+// Settings > Device > Firmware: the running version (label face), the status
+// (label face: two lines in portrait, one in landscape), the detail (caption
+// lines, 10 px each) and the action rows over the hint bar, `rows` of them
+// (0..2: Install, Check now). While an install runs there are no rows: its
+// title goes in the status box, the progress bar and its numbers under it.
+// On the StickS3's and the Cardputer's landscape two rows leave one detail
+// line.
+struct Firmware {
+    Rect version;
+    Rect status;
+    int8_t statusLines;
+    Rect detail;
+    int8_t detailLines;
+    int16_t rowsTop;  // the band layoutList() fits the rows into, down to the hint bar
+    Rect bar;         // the install's progress bar
+    int16_t numbersY; // the caption cell under the bar
+};
+
+constexpr int kFwLabelH = 20;  // a label-face line
+
+constexpr Firmware firmwareFor(int w, int h, int rows) {
+    using namespace theme;
+    Firmware f{};
+    const Layout g = layoutFor(w, h);
+    const int hintY = h - kHintH;
+    const int n = imax(0, rows);
+    const int band = n > 0 ? n * g.row1H + (n - 1) * kGap + 2 * kMarkerBand : 0;
+    const int cw = w - 2 * kGutter;
+    f.rowsTop = static_cast<int16_t>(hintY - band);
+    f.version = rect(kGutter, kHeaderH + 2, cw, kFwLabelH);
+    f.statusLines = static_cast<int8_t>(w > h ? 1 : 2);
+    f.status = rect(kGutter, f.version.bottom(), cw, f.statusLines * kFwLabelH);
+    const int dy = f.status.bottom() + 1;
+    f.detail = rect(kGutter, dy, cw, imax(0, f.rowsTop - 1 - dy));
+    // 8 px a caption and 2 px of leading between them (none after the last).
+    f.detailLines = static_cast<int8_t>((f.detail.h + 2) / 10);
+    f.bar = rect(kGutter, f.status.bottom() + 6, cw, 6);
+    f.numbersY = static_cast<int16_t>(f.bar.bottom() + 5);
+    return f;
 }
 
 }  // namespace layout

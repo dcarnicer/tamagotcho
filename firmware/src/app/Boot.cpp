@@ -17,6 +17,7 @@
 #include "app/Decks.h"
 #include "app/Display.h"
 #include "app/Done.h"
+#include "app/Firmware.h"
 #include "app/Net.h"
 #include "app/Power.h"
 #include "app/Quiz.h"
@@ -121,6 +122,8 @@ bool mountFilesystem() {
     hints.hold = ui().hintErase;
     showError(ui().errNoFilesystem, keysOr(ui().errNoFilesystemHint, ui().errNoFilesystemHintKeys),
               &hints);
+    // A new image that cannot mount it goes back to the previous one first.
+    firmwareFailedBoot();
     bool released = !tgc::board::isHeld(tgc::board::Button::Select);
     const uint32_t start = millis();
     for (;;) {
@@ -218,6 +221,8 @@ void boot() {
     gUpdateCount = gPrefs.getUChar(kPrefUpdateCount, 0);
     gUpdateDay = gPrefs.getUInt(kPrefUpdateDay, 0);
     gUpdateKnown = gPrefs.getUChar(kPrefUpdateKnown, 0) != 0;
+    // The flash layout, a new image's first boot, how the last install went.
+    firmwareBoot();
     // Absent (never chosen) is not Auto: it may ask for the language below.
     const bool uiPrefStored = gPrefs.isKey("ui");
     gUiLangPref = gPrefs.getInt("ui", tgc::kUiLangAuto);
@@ -300,6 +305,7 @@ void boot() {
         gBootDay = gSrs.today();
         gSrs.beginSession();
         applySleepTime();
+        firmwareRollbackNotice();
         if (tgc::firstBootLangPicker(uiPrefStored, !gPacks.empty())) {
             Serial.println("ui: first boot, asking for the language");
             openFirstLang();
@@ -337,6 +343,9 @@ void boot() {
     Serial.printf("srs: day %u (%s), records %u, due %u, new %u%s, powered_off=%d\n",
                   (unsigned)gSrs.today(), today, (unsigned)gSrs.count(), (unsigned)counts.due,
                   (unsigned)counts.fresh, srsLoaded ? "" : " (new)", gPoweredOff ? 1 : 0);
+
+    // After a rollback, say so once (in the deck's language, now known).
+    firmwareRollbackNotice();
 
     // A wake from a sleep taken while the question was open asks it again.
     const bool datePending = tgc::board::wokeFromSleep() && gDatePending;
