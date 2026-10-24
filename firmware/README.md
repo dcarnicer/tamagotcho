@@ -222,8 +222,9 @@ Arduino's `Update` (size and SHA-256 checked against the manifest before
 cancels, the power button cancels and sleeps; on battery below 6 % it does not
 start. Every Wi-Fi session that reads the deck catalog (boot check, date sync,
 Get decks, the network test, the portal page) reads the manifest too and
-leaves the badge: the update arrow on the home's Device row, "v0.7.0
-available" on the Firmware row (NVS `fwver`).
+leaves the badge: on the home's Device row an amber gear in portrait, the
+update arrow in landscape; "v0.7.0 available" on the Firmware row (NVS
+`fwver`).
 
 The new image boots pending and is marked valid after 10 s of the loop, or
 before a deep sleep once the loop runs; a crash or reset before that boots the

@@ -135,12 +135,18 @@ void drawMenuRow(lgfx::LovyanGFX& d, st::Item id, int x, int y, int w, int h, bo
     row.chevron = st::hasChevron(id);
     row.focused = focused;
     // A firmware update (docs/ota.md §4): the home's Device row has no room
-    // for a version next to "Dispositivo" (92 of its 93 px), so it carries the
-    // update mark Get decks uses in place of its chevron; the Firmware row in
-    // the page names the version.
+    // for a version next to "Dispositivo" (92 of its 93 px in portrait). Wide
+    // rows carry the update mark Get decks uses in place of the chevron; narrow
+    // ones, where that mark (3 px wider than the chevron) would cut the label,
+    // colour the row's icon instead. The Firmware row in the page names the
+    // version.
     if (id == st::Item::Device && firmwareUpdateKnown()) {
-        row.mark = &tgc::kIconDown;
-        row.markColor = tgc::theme::kWarn;
+        if (wideRows()) {
+            row.mark = &tgc::kIconDown;
+            row.markColor = tgc::theme::kWarn;
+        } else {
+            row.iconColor = tgc::theme::kWarn;
+        }
     }
     if (value[0]) {
         if (gMenuPage == st::Page::Home) {

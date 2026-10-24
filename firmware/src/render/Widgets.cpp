@@ -335,7 +335,7 @@ void rowContent(lgfx::LovyanGFX& d, Renderer& r, int x, int y, int w, int h, con
         lx += 7 + 5;
     }
     if (row.icon) {
-        drawIcon(d, *row.icon, lx, centreY(y, lineH, row.icon->h), f ? kText : kTextDim);
+        drawIcon(d, *row.icon, lx, centreY(y, lineH, row.icon->h), f ? kText : row.iconColor);
         lx += row.icon->w + 5;
     }
     int rx = x + w - kRowPadX;

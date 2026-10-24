@@ -116,6 +116,7 @@ struct Row {
     const char* value = nullptr;
     const char* caption = nullptr;
     const Icon* icon = nullptr;
+    uint16_t iconColor = theme::kTextDim;  // while not focused
     Radio radio = Radio::None;
     bool chevron = false;
     bool focused = false;

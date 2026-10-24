@@ -3519,9 +3519,13 @@ Phase 2 of docs/ota.md (its §9 lists what differs from the design).
 - **The sessions skip the manifest when no server answered the catalog**
   (connect or TLS failure), so a session without internet is not slower; the
   manifest body has 10 s.
-- **The home's Device row shows the update arrow, not a version**:
+- **The home's Device row marks an update without a version**:
   "Dispositivo" leaves 1 px of its 93 (portrait), "Device" + "v0.7.0" misses by
-  3. The Firmware row names the version ("v0.7.0 available", 19 cells at most).
+  3. Wide rows (landscape) carry the update arrow in place of the chevron; in
+  portrait the arrow (3 px wider than the chevron) cut the label to
+  "Dispositi..." on the StickS3, so narrow rows colour the gear icon amber
+  instead (seen on the device, 2026-10-24). The Firmware row names the version
+  ("v0.7.0 available", 19 cells at most).
 - **The NetFetch sink**: `fetchToSink()` holds the request, the announced size,
   the timeouts, the progress and the size and SHA-256 checks;
   `fetchPackFile()` keeps its space checks, temp, probe and rename around a
