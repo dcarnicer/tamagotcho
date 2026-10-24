@@ -156,6 +156,22 @@ PortalText makeSpanish() {
         "No guardada: usa una URL http:// o https:// de 256 caracteres como mucho, o déjala "
         "vacía para la de por defecto.";
     t.catalogUrlSaved = "URL del catálogo guardada.";
+    t.fwTitle = "Firmware del dispositivo";
+    t.fwRunningFmt = "Este dispositivo lleva la <b>%s</b> (compilación %s).";
+    t.fwAvailableFmt =
+        "Hay firmware nuevo, <b>%s</b>: instálalo en el dispositivo, <b>Ajustes &gt; "
+        "Dispositivo &gt; Firmware</b>.";
+    t.fwNoOta =
+        "La memoria de este dispositivo no tiene segunda partición de app, así que no se "
+        "actualiza solo: actualízalo por USB, como se instaló.";
+    t.fwUrlPlaceholder = "manifiesto por defecto";
+    t.fwUrlDefaultFmt =
+        "Vacío = la última versión de Tamagotcho: %s. También vale una URL http://, para probar "
+        "un manifiesto e imágenes servidos desde un ordenador.";
+    t.fwUrlSaved = "URL del manifiesto de firmware guardada.";
+    t.fwUrlBad =
+        "No guardada: usa una URL http:// o https:// de 256 caracteres como mucho, o déjala "
+        "vacía para el manifiesto por defecto.";
     t.wifiTitle = "Wi-Fi de casa";
     t.savedNetFmt = "Red guardada: <b>%s</b>";
     t.noHomeWifi = "No hay red de casa guardada.";

@@ -21,9 +21,10 @@
 //
 // Security: neither mode has a password. In setup mode anyone in radio range,
 // in home mode anyone on the home network, can list, upload or delete packs,
-// replace the study progress, read the stats and replace the saved home Wi-Fi
-// or catalog URL (but never read
-// the password) while the Wi-Fi screen is open. The portal is meant to be
+// replace the study progress, read the stats and replace the saved home Wi-Fi,
+// catalog URL or firmware manifest URL (but never read
+// the password) while the Wi-Fi screen is open. The firmware itself is never
+// installed from the page, only on the device. The portal is meant to be
 // started for a moment and stopped again; the idle timeout stops it too.
 //
 // The class is deliberately decoupled from main.cpp: the app hands over a small
@@ -70,6 +71,11 @@ struct PortalStats {
     // The worst-accuracy kanji (SrsStore::trouble()), worst first.
     TroubleKanji trouble[kTroubleMax];
     uint8_t troubleCount = 0;
+    // Firmware (docs/ota.md §3.8): the newer release the device found ("" when
+    // none is known) and whether it can update itself (our partition layout).
+    // The page only shows them: the install starts on the device.
+    char fwAvailable[24] = "";
+    bool fwOta = false;
 };
 
 // What became of a deck download the page asked for (Hooks::onDeckDownload).
@@ -156,6 +162,11 @@ public:
         // as a catalog read. Null: no refresh.
         void (*onCatalog)(const std::vector<CatalogEntry>& entries,
                           const std::vector<DeckState>& states) = nullptr;
+        // Home mode: the portal has just read the deck catalog (`fetch` says how
+        // that went), from poll(), on the same connection. The app reads the
+        // firmware manifest too (docs/ota.md §3.3), for its badge and the
+        // page's firmware line. Blocking. Null: nothing.
+        void (*onCatalogFetched)(const FetchResult& fetch) = nullptr;
     };
 
     WifiPortal() = default;
@@ -238,6 +249,7 @@ private:
         None, WifiSaved, WifiBad, Forgotten, CatalogSaved, CatalogBad, Deleted, DeleteFailed,
         BadName, UrlStarted, UrlBad, Busy, UnknownDeck,
         ProgressRestored, ProgressBad, ProgressFailed, ProgressMissing,
+        FirmwareSaved, FirmwareBad,
     };
     enum class UploadError : uint8_t {
         None, BadName, TooLarge, NoSpace, CannotCreate, WriteFailed, Invalid, CannotStore,
@@ -269,6 +281,7 @@ private:
     void handleForgetWifi();
     void handleCatalogUrl();
     void handleCatalogReload();
+    void handleFirmwareUrl();
     void handleGetDecks();
     void handleSwitchHome();
     void handleDeck();
@@ -288,7 +301,9 @@ private:
     void appendYourDecks(String& h, const PortalStats& st);
     void appendStats(String& h, const PortalStats& st);
     void appendTrouble(String& h, const PortalStats& st);
-    void appendAdvanced(String& h, const String& homeSsid, bool firstSetup, bool open);
+    void appendAdvanced(String& h, const PortalStats& st, const String& homeSsid, bool firstSetup,
+                        bool open);
+    void appendFirmware(String& h, const PortalStats& st);
     bool noticeInAdvanced(Notice n, bool firstSetup) const;
     void appendWifiForm(String& h, const char* formId);
     void redirect(const char* where, Notice n, const String& arg = String(), uint32_t count = 0);

@@ -14,6 +14,7 @@
 #include "platform/FsSrsFile.h"
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
+#include "platform/Ota.h"
 #include "platform/PackHash.h"
 #include "portal/PortalLogic.h"
 #include "portal/PortalText.h"
@@ -557,6 +558,7 @@ void WifiPortal::registerRoutes() {
     server_->on("/wifi/forget", HTTP_POST, [this]() { touch(); handleForgetWifi(); });
     server_->on("/catalog", HTTP_POST, [this]() { touch(); handleCatalogUrl(); });
     server_->on("/catalog/reload", HTTP_POST, [this]() { touch(); handleCatalogReload(); });
+    server_->on("/fwurl", HTTP_POST, [this]() { touch(); handleFirmwareUrl(); });
     server_->on("/getdecks", HTTP_POST, [this]() { touch(); handleGetDecks(); });
     server_->on("/home", HTTP_POST, [this]() { touch(); handleSwitchHome(); });
     server_->on("/deck", HTTP_POST, [this]() { touch(); handleDeck(); });
@@ -745,6 +747,8 @@ bool WifiPortal::noticeInAdvanced(Notice n, bool firstSetup) const {
         case Notice::ProgressBad:
         case Notice::ProgressFailed:
         case Notice::ProgressMissing: return true;
+        case Notice::FirmwareSaved:
+        case Notice::FirmwareBad: return true;
         default: return false;
     }
 }
@@ -777,6 +781,8 @@ void WifiPortal::appendNotice(String& h) {
         case Notice::ProgressBad: text = t.progressBad; ok = false; break;
         case Notice::ProgressFailed: text = t.progressFailed; ok = false; break;
         case Notice::ProgressMissing: text = t.progressMissing; ok = false; break;
+        case Notice::FirmwareSaved: text = t.fwUrlSaved; break;
+        case Notice::FirmwareBad: text = t.fwUrlBad; ok = false; break;
     }
     h += ok ? "<p class=\"ok\">" : "<p class=\"err\">";
     h += text;
@@ -850,6 +856,12 @@ void WifiPortal::handleRoot() {
     h += t.clockHint;
     h += "</p>";
     appendNotice(h);
+    // A newer firmware the device found: said here, installed on the device.
+    if (st.fwAvailable[0]) {
+        h += "<p class=\"ok\">";
+        h += fmt(t.fwAvailableFmt, htmlEscape(st.fwAvailable).c_str());
+        h += "</p>";
+    }
 
     if (mode_ == Mode::Setup)
         appendSetupDecks(h, homeSsid, firstSetup);
@@ -857,7 +869,7 @@ void WifiPortal::handleRoot() {
         appendHomeDecks(h, st);
     appendYourDecks(h, st);
     if (!firstSetup) appendStats(h, st);
-    appendAdvanced(h, homeSsid, firstSetup, advOpen);
+    appendAdvanced(h, st, homeSsid, firstSetup, advOpen);
 
     h += "<p class=\"muted\">";
     if (mode_ == Mode::Home)
@@ -1159,10 +1171,11 @@ void WifiPortal::appendTrouble(String& h, const PortalStats& st) {
 }
 
 // Everything that is not the main task, collapsed: upload, URL download, the
-// catalog URL, the progress backup/restore, the home Wi-Fi, the free space and
-// the JSON endpoints. Opened when the last action was one of these, so its
-// result is in view.
-void WifiPortal::appendAdvanced(String& h, const String& homeSsid, bool firstSetup, bool open) {
+// catalog URL, the firmware (its version and manifest URL), the progress
+// backup/restore, the home Wi-Fi, the free space and the JSON endpoints.
+// Opened when the last action was one of these, so its result is in view.
+void WifiPortal::appendAdvanced(String& h, const PortalStats& st, const String& homeSsid,
+                                bool firstSetup, bool open) {
     const PortalText& t = portalText(pageLang());
     h += open ? "<details id=\"adv\" open><summary>" : "<details id=\"adv\"><summary>";
     h += t.advanced;
@@ -1197,6 +1210,8 @@ void WifiPortal::appendAdvanced(String& h, const String& homeSsid, bool firstSet
     h += "</button></form><p class=\"muted\">";
     h += fmt(t.catalogDefaultFmt, (String("<code>") + HomeWifi::kDefaultCatalogUrl + "</code>").c_str());
     h += "</p>";
+
+    appendFirmware(h, st);
 
     // Progress backup: the download is read-only; a restore replaces every
     // deck's progress, so it asks first and the app keeps the replaced file as
@@ -1255,6 +1270,40 @@ void WifiPortal::appendAdvanced(String& h, const String& homeSsid, bool firstSet
              formatSize(LittleFS.totalBytes()).c_str());
     h += "</p><p class=\"muted\">JSON: <a href=\"/api/stats\">/api/stats</a> &middot; ";
     h += "<a href=\"/api/status\">/api/status</a></p></details>";
+}
+
+// Advanced > Firmware: the version this device runs (and its build), the
+// newer one when the device found it or why it does not update itself, and the
+// manifest URL (docs/ota.md §3.8: http:// allowed there, for testing).
+void WifiPortal::appendFirmware(String& h, const PortalStats& st) {
+    const PortalText& t = portalText(pageLang());
+    h += "<h3 id=\"fw\">";
+    h += t.fwTitle;
+    h += "</h3><p>";
+    h += fmt(t.fwRunningFmt, htmlEscape(firmwareVersion()).c_str(),
+             htmlEscape(ota::buildEnv()).c_str());
+    if (st.fwAvailable[0]) {
+        h += " ";
+        h += fmt(t.fwAvailableFmt, htmlEscape(st.fwAvailable).c_str());
+    }
+    h += "</p>";
+    if (!st.fwOta) {
+        h += "<p class=\"muted\">";
+        h += t.fwNoOta;
+        h += "</p>";
+        return;
+    }
+    h += "<form method=\"post\" action=\"/fwurl\"><input type=\"url\" name=\"url\" ";
+    h += "maxlength=\"256\" value=\"";
+    h += htmlEscape(HomeWifi::firmwareUrlOverride());
+    h += "\" placeholder=\"";
+    h += t.fwUrlPlaceholder;
+    h += "\"> <button type=\"submit\">";
+    h += t.save;
+    h += "</button></form><p class=\"muted\">";
+    h += fmt(t.fwUrlDefaultFmt,
+             (String("<code>") + HomeWifi::kDefaultFirmwareUrl + "</code>").c_str());
+    h += "</p>";
 }
 
 String WifiPortal::catalogProblem() const {
@@ -1500,6 +1549,20 @@ void WifiPortal::handleCatalogUrl() {
     if (mode_ == Mode::Home && hooks_.onDeckDownload && !deckInFlight())
         catState_ = CatalogState::Pending;
     redirect(mode_ == Mode::Home ? "/#decks" : "/#adv", Notice::CatalogSaved);
+}
+
+// POST /fwurl: the firmware manifest URL ("" = the default). Home mode reads
+// the catalog again, and with it the manifest from the new URL, so the next
+// page shows what it offers (unless a download runs).
+void WifiPortal::handleFirmwareUrl() {
+    if (!HomeWifi::saveFirmwareUrl(server_->arg("url"))) {
+        redirect("/#fw", Notice::FirmwareBad);
+        return;
+    }
+    setMsg("firmware URL saved");
+    if (mode_ == Mode::Home && hooks_.onDeckDownload && !deckInFlight())
+        catState_ = CatalogState::Pending;
+    redirect("/#fw", Notice::FirmwareSaved);
 }
 
 // POST /catalog/reload, the page's "Try again" after a failed catalog read.
@@ -2092,7 +2155,9 @@ void WifiPortal::loadCatalog() {
                                   ? catalogErrorString(c.parse.error)
                                   : fetchStatusString(c.fetch.status));
     }
-    touch();  // the read may have taken a while
+    // The firmware manifest on the same connection (the app's, docs/ota.md §3.3).
+    if (hooks_.onCatalogFetched) hooks_.onCatalogFetched(c.fetch);
+    touch();  // the reads may have taken a while
 }
 
 bool WifiPortal::validatePackFile(const String& path) const { return tgc::validatePackFile(path); }

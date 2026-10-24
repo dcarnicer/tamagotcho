@@ -157,6 +157,23 @@ struct PortalText {
         "Not saved: use an http:// or https:// URL of at most 256 characters, or leave it empty "
         "for the default.";
     const char* catalogUrlSaved = "Catalog URL saved.";
+    // Advanced > Firmware (docs/ota.md §3.8). The page shows; the device installs.
+    const char* fwTitle = "Device firmware";
+    const char* fwRunningFmt = "This device runs <b>%s</b> (build %s).";  // version, environment
+    const char* fwAvailableFmt =  // %s = the newer version
+        "Firmware <b>%s</b> is available: install it on the device, <b>Settings &gt; Device "
+        "&gt; Firmware</b>.";
+    const char* fwNoOta =
+        "This device's flash layout has no second app slot, so it does not update itself: "
+        "update it over USB, the way it was installed.";
+    const char* fwUrlPlaceholder = "default manifest";
+    const char* fwUrlDefaultFmt =
+        "Empty = the latest Tamagotcho release: %s. An http:// URL works here too, to test a "
+        "manifest and images served from a computer.";
+    const char* fwUrlSaved = "Firmware manifest URL saved.";
+    const char* fwUrlBad =
+        "Not saved: use an http:// or https:// URL of at most 256 characters, or leave it empty "
+        "for the default manifest.";
     const char* wifiTitle = "Home Wi-Fi";
     const char* savedNetFmt = "Saved network: <b>%s</b>";
     const char* noHomeWifi = "No home network saved.";
