@@ -47,11 +47,15 @@ inline bool nextKeyEvent(KeyEvent*) { return false; }
 
 // --- microSD slot --------------------------------------------------------------
 // The SPI pins of the board's microSD slot (docs/microsd.md §1), -1 for none.
-// The card has a bus of its own, Arduino's `SPI` (SPI2), apart from the
-// display's. sdPins() is false on a board without a slot (the StickS3, the
+// The card has a bus of its own, SPI3 (an SPIClass on HSPI in
+// platform/Storage), apart from the display's SPI2. `otherCs` is the select
+// line of another chip that can sit on the same lines (an expansion module),
+// driven high before the card is used so that chip never answers with it.
+// sdPins() is false on a board without a slot (the StickS3, the
 // T-Display-S3); in the M5 image the board found at boot answers.
 struct SdPins {
     int8_t sck = -1, miso = -1, mosi = -1, cs = -1;
+    int8_t otherCs = -1;
 };
 #if defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5)
 bool sdPins(SdPins* out);

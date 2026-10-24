@@ -38,6 +38,10 @@ constexpr uint32_t kCardHz = 20000000;
 // the card at about 13 KB of internal heap. Listings use readdir() and stat(),
 // which open no file.
 constexpr uint8_t kCardMaxFiles = 2;
+// A mount that found no card costs about 1 s (the card's init retries before
+// it gives up), so after one the deck list and Get decks try again at most
+// this often; the boot always tries.
+constexpr uint32_t kRemountEveryMs = 20000;
 constexpr size_t kCopyChunk = 4 * 1024;
 constexpr size_t kReadBuffer = 512;  // one card sector
 
@@ -46,7 +50,7 @@ enum class Mount : uint8_t { Mounted, NoCard, NotFat };
 // fs::SDFS whose begin() tells a card that did not answer from one with no FAT
 // volume on it: SDFS::begin() is false for both, and the card type that tells
 // them apart (set by the card's init, which f_mount() runs) is reset before it
-// returns. The bus is the caller's (SPI.begin() with the board's pins).
+// returns. The bus is the caller's (gSpi.begin() with the board's pins).
 class CardFs : public fs::SDFS {
 public:
     CardFs() : fs::SDFS(fs::FSImplPtr(new VFSImpl())) {}
@@ -88,6 +92,11 @@ public:
 };
 
 CardFs gCard;
+// The card's own SPI bus, SPI3 (Arduino's HSPI). Not the global `SPI`: that
+// is SPI2 (FSPI), where M5GFX drives the Cardputer ADV's panel (its ESP32-S3
+// default, SPI2_HOST); a card on it never answered (seen 2026-10-24).
+SPIClass gSpi(HSPI);
+uint32_t gLastNoCardMs = 0;  // millis() of the last mount that found no card
 CardState gState = CardState::NoSlot;
 tgc::board::SdPins gPins;
 
@@ -115,10 +124,11 @@ const char* fatName(uint8_t t) {
 void mountNow(const char* why) {
     const size_t heapBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     const uint32_t t0 = millis();
-    const Mount m = gCard.mount(static_cast<uint8_t>(gPins.cs), SPI);
+    const Mount m = gCard.mount(static_cast<uint8_t>(gPins.cs), gSpi);
     const uint32_t mountMs = millis() - t0;
     if (m != Mount::Mounted) {
         gState = m == Mount::NotFat ? CardState::Unreadable : CardState::None;
+        if (m == Mount::NoCard) gLastNoCardMs = millis();
         Serial.printf("[sd] %s: %s (%u ms)\n", why,
                       m == Mount::NotFat ? "a card with no FAT16/FAT32 volume (exFAT?)" : "no card",
                       (unsigned)mountMs);
@@ -152,12 +162,19 @@ void begin() {
         gState = CardState::NoSlot;
         return;
     }
-    SPI.begin(gPins.sck, gPins.miso, gPins.mosi, gPins.cs);
+    if (gPins.otherCs >= 0) {
+        pinMode(gPins.otherCs, OUTPUT);
+        digitalWrite(gPins.otherCs, HIGH);
+    }
+    gSpi.begin(gPins.sck, gPins.miso, gPins.mosi, gPins.cs);
     mountNow("boot");
 }
 
 bool remount() {
     if (gState == CardState::NoSlot || gState == CardState::Mounted) return false;
+    if ((gState == CardState::None || gState == CardState::Removed) && gLastNoCardMs &&
+        millis() - gLastNoCardMs < kRemountEveryMs)
+        return false;
     const CardState before = gState;
     mountNow("mount again");
     if (gState == CardState::None && before == CardState::Removed) gState = CardState::Removed;

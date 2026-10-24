@@ -148,7 +148,7 @@ the air the device may boot `app1`.
 A FAT16/FAT32 card in the Cardputer ADV's slot holds the decks in
 `/tamagotcho/decks/` (docs/microsd.md; user side: docs/user-guide.md, "Decks
 on a microSD card"). The pins are the board layer's (`board::sdPins()`: SCK
-40, MISO 39, MOSI 14, CS 12, on SPI2; the panel is on SPI3), so the
+40, MISO 39, MOSI 14, CS 12, on SPI3; the panel is on SPI2), so the
 `m5stack` image asks at run time and the StickS3 has none.
 
 - **Mount**: at boot right after LittleFS (20 MHz, two open files), and again

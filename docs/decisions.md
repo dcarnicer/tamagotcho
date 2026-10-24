@@ -3565,7 +3565,8 @@ Design in docs/microsd.md.
 - **FAT32 only**: the framework's FatFs has no exFAT. A card that does not
   mount is reported ("format it as FAT32") and the device carries on with
   LittleFS.
-- **Pins in the board layer** (Cardputer ADV: SPI2, 40/39/14/12), so the
+- **Pins in the board layer** (Cardputer ADV: SPI3, 40/39/14/12; the panel is
+  on SPI2, see "microSD: as built"), so the
   watch's slot can be added when it is ported.
 
 ## 2026-10-24 – microSD: as built

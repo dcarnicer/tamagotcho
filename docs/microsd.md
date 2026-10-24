@@ -20,8 +20,9 @@ exFAT (§1); hot-plug detection (§3.5).
 ## 1. Facts
 
 - **Pins** (Cardputer ADV): SD on its own SPI bus, SCK G40, MISO G39, MOSI
-  G14, CS G12. The display is on another bus (M5GFX puts it on `SPI3_HOST`,
-  MOSI G35, SCLK G36), so the card takes `SPI2_HOST` (Arduino's `SPI`) and
+  G14, CS G12. The display is on another bus (M5GFX puts it on `SPI2_HOST`,
+  MOSI G35, SCLK G36), so the card takes `SPI3_HOST` (an `SPIClass` on
+  `HSPI`, not Arduino's global `SPI`, which is SPI2) and
   the two never share a bus or a lock. No card-detect pin.
 - **Filesystem**: Arduino-ESP32 2.0.17's FatFs is built with
   `FF_FS_EXFAT 0`: **FAT16/FAT32 only**. Cards up to 32 GB come as FAT32;
@@ -218,9 +219,19 @@ the checks of §6 are the hardware test.
   (`formatGb()`, GiB rounded down).
 - `board::sdPins()`: the Cardputer ADV's SCK 40, MISO 39, MOSI 14, CS 12;
   false on the StickS3 and the T-Display-S3, and in the `m5stack` image the
-  board found at boot answers. M5GFX's autodetect for `board_M5CardputerADV`
-  puts the panel on `SPI3_HOST` (checked in M5GFX's source), so the card is on
-  SPI2, Arduino's `SPI`.
+  board found at boot answers. M5GFX puts the panel on `SPI2_HOST` (its
+  ESP32-S3 default; the `SPI3_HOST` line in its source is the classic ESP32's
+  branch), so the card is on SPI3, `platform/Storage`'s own `SPIClass(HSPI)`:
+  on Arduino's global `SPI` (SPI2) it never answered (2026-10-24, on the
+  device). A mount that finds no card takes about 1 s, so the deck list and
+  Get decks retry at most every 20 s after one (the boot always tries).
+- **The EXT header shares the card's lines.** The Cap LoRa-1262 (Meshtastic's
+  radio for this board) sits on SCK G40, MOSI G14, MISO G39 with its own select
+  on G5; with the cap on and G5 left floating, the radio answered with the card
+  and the card's init read noise ("crc error" on `GO_IDLE_STATE`). `SdPins`
+  has an `otherCs` the storage drives high before the bus starts (G5 on the
+  Cardputer ADV); harmless without the cap. After both fixes a 32 GB SDHC FAT32
+  card mounted in 8 ms and took 15 KB of internal heap (2026-10-24).
 - `platform/Storage`: the mount (an `fs::SDFS` subclass whose mount tells "no
   card" from "a card without a FAT volume": `SD.begin()` is false for both),
   the states (no slot, none, unreadable, mounted, removed), the path mapping,
