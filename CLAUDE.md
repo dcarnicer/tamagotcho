@@ -9,8 +9,8 @@ Kanji multiple-choice review app for the M5Stack StickS3. Read
 - Record non-obvious decisions in `docs/decisions.md` (short entries, dated).
 - Firmware: PlatformIO, `cd firmware && pio run -e sticks3`, native tests
   with `pio test -e native`. Pure logic (`pack/`, `quiz/`, `srs/`, `imu/`,
-  `power/`, `catalog/`, `portal/`, `ota/`, `ui/`) must not include Arduino
-  headers; the `native` env builds and tests it.
+  `power/`, `catalog/`, `portal/`, `ota/`, `storage/`, `ui/`) must not include
+  Arduino headers; the `native` env builds and tests it.
 - The app (screens, quiz loop, settings, Wi-Fi glue, boot, power) is in
   `firmware/src/app/`, one file pair per screen or area; `main.cpp` keeps only
   `setup()`, `loop()` and the screen dispatch. A new screen gets its own file
