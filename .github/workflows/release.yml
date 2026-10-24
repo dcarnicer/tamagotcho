@@ -284,6 +284,10 @@ jobs:
           - **First install, browser** (Chrome or Edge): open
             <https://espressif.github.io/esptool-js/>, **Connect**, add
             \`tamagotcho-sticks3-merged.bin\` at address \`0x0\`, **Program**.
+          - **Update, over the air** (from v0.7.0): on the device, Settings >
+            Device > Firmware, **Check now**, then hold **Install**. The device
+            reads \`tamagotcho-firmware.txt\` from the latest release and installs
+            its own build's image; settings, decks and progress stay.
           - **Update, USB:** \`esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-sticks3.bin\`.
             \`boot_app0.bin\` makes the first app slot, where the image goes, the
             one that boots: after an update over the air the device may run from

@@ -1,7 +1,7 @@
 # Decks on the microSD card: design and decisions
 
-> **Status: approved (2026-10-24), built on `feature/microsd` (§8), not yet
-> checked on hardware.** The maintainer chose D2, D3
+> **Status: released in v0.7.0 (2026-10-24), checked on a Cardputer ADV
+> (docs/releases/v0.7.0.md, §8).** The maintainer chose D2, D3
 > as recommended and, for D4, that decks on LittleFS **move to the card by
 > themselves** (§3.6); D1, D5 and D6 as recommended. Roadmap: "Decks on the Cardputer ADV's microSD card" (idea of
 > 2026-10-21). The maintainer's brief (2026-10-24): on the Cardputer ADV, use

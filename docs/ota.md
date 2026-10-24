@@ -1,11 +1,14 @@
 # OTA firmware updates: design and decisions
 
-> **Status: approved (2026-10-24), being built.** The maintainer took the
+> **Status: released in v0.7.0 (2026-10-24).** Checked on the StickS3 and
+> the T-Display-S3 (docs/releases/v0.7.0.md); not yet on the Cardputer ADV.
+> The maintainer took the
 > recommendation of every decision of §8 (D1, D2, D3 and D6/D8 asked
 > explicitly; D4, D5 and D7 as recommended). §3.1 is the manifest's spec, the
 > contract between `release.yml` and the firmware. Phases 1 (the tables,
 > `TGC_ENV`, the manifest in `release.yml`, the docs) and 2 (the device side,
-> §9 "As built") of §6 are built and integrated; the hardware tests are next.
+> §9 "As built") of §6 are built and integrated; the first update over the
+> air will be v0.7.1 (§6 item 3).
 > §1 describes the layout before phase 1. Roadmap: "OTA firmware updates"
 > (`docs/roadmap.md`, idea of 2026-10-21).
 

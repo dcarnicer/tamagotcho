@@ -479,8 +479,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       Later, on hold: the Spanish glosses beyond N5 (reviewed level by level,
       then `decks-v3` rebuilt in place) and the long-run checks of
       docs/learning-mode.md §5.
-- [~] **OTA firmware updates** (idea, 2026-10-21; design approved 2026-10-24
-      in `docs/ota.md`, being built). Update the firmware over
+- [x] **OTA firmware updates** (idea, 2026-10-21; design approved 2026-10-24
+      in `docs/ota.md`; released in v0.7.0, 2026-10-24). Update the firmware over
       the home Wi-Fi, from the device, instead of over USB: for example a
       Settings › Device › Update row that reads the latest GitHub release
       (as Get decks reads the decks catalog: HTTPS, size and SHA-256 checked),
@@ -507,8 +507,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       not), so one M5Burner entry lists both devices; checked on both, and as
       a merged image on a blank Cardputer (docs/decisions.md, "One image for
       the StickS3 and the Cardputer ADV"). The single-board envs stay.
-- [~] **Decks on the Cardputer ADV's microSD card** (idea, 2026-10-21;
-      design approved 2026-10-24 in `docs/microsd.md`). The
+- [x] **Decks on the Cardputer ADV's microSD card** (idea, 2026-10-21;
+      design approved 2026-10-24 in `docs/microsd.md`; released in v0.7.0,
+      2026-10-24). The
       Cardputer has a microSD slot (CS G12, MOSI G14, CLK G40, MISO G39):
       decks copied there from a computer, beside or instead of the 4.44 MiB
       LittleFS (5.94 MiB before v0.7.0). Decided: a FAT32 card's
