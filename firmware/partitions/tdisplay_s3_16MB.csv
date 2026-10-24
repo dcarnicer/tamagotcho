@@ -1,7 +1,10 @@
-# Tamagotcho, 16 MB flash (LilyGO T-Display-S3). Same layout as the StickS3
-# table (single 2 MB app slot, no OTA) with the remainder given to LittleFS.
+# Tamagotcho, 16 MB flash (LilyGO T-Display-S3). The StickS3 table's layout
+# (nvs, otadata, two OTA app slots, LittleFS last; see sticks3_8MB.csv for the
+# labels and docs/ota.md) with 2 MiB slots and the remaining 11.94 MiB for
+# LittleFS.
 # Name,    Type, SubType, Offset,   Size,     Flags
 nvs,       data, nvs,     0x9000,   0x5000,
-phy_init,  data, phy,     0xE000,   0x1000,
-app0,      app,  factory, 0x10000,  0x200000,
-spiffs,    data, spiffs,  0x210000, 0xDF0000,
+otadata,   data, ota,     0xE000,   0x2000,
+app0,      app,  ota_0,   0x10000,  0x200000,
+app1,      app,  ota_1,   0x210000, 0x200000,
+spiffs,    data, spiffs,  0x410000, 0xBF0000,

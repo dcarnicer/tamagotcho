@@ -1,9 +1,17 @@
-# Tamagotcho, 8 MB flash (M5Stack StickS3).
-# No OTA: firmware is updated over USB, so a single app slot is enough and
-# nearly all flash goes to LittleFS for packs. App slot is 2 MB (current build
-# is well under 1.5 MB); raise it here if the app outgrows it.
+# Tamagotcho, 8 MB flash (M5Stack StickS3, Cardputer ADV, the m5stack image).
+# Two OTA app slots of 1.75 MiB, so the device can update itself over Wi-Fi
+# (docs/ota.md): one runs, the other receives; otadata says which one boots.
+# The rest, 4.44 MiB, is LittleFS for the decks and the progress. nvs and app0
+# keep the offsets of the single-slot table of v0.6.0 and older, so settings
+# survive the move and an app-only image written at 0x10000 is still slot 0.
+# Keep the labels: `spiffs` is the label Arduino's LittleFS mounts by default,
+# and the firmware offers an update only from app0/app1 of this table (labels
+# and sizes; docs/ota.md, "Trust and safety"). The slot size changes only
+# with a USB flash; tools/release/firmware_manifest.py fails a release whose
+# image outgrows it.
 # Name,    Type, SubType, Offset,   Size,     Flags
 nvs,       data, nvs,     0x9000,   0x5000,
-phy_init,  data, phy,     0xE000,   0x1000,
-app0,      app,  factory, 0x10000,  0x200000,
-spiffs,    data, spiffs,  0x210000, 0x5F0000,
+otadata,   data, ota,     0xE000,   0x2000,
+app0,      app,  ota_0,   0x10000,  0x1C0000,
+app1,      app,  ota_1,   0x1D0000, 0x1C0000,
+spiffs,    data, spiffs,  0x390000, 0x470000,

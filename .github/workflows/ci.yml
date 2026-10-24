@@ -50,6 +50,13 @@ jobs:
       - name: Native unit tests (pack/, quiz/, srs/)
         run: pio test -e native
 
+      # tools/release: the firmware manifest with its slot-size check, and the
+      # merged image's part list, against the real platformio.ini and tables
+      # (stdlib only, no build needed).
+      - name: Release tools tests
+        working-directory: .
+        run: python3 -m unittest discover -s tools/release -v
+
       - name: Build StickS3
         run: pio run -e sticks3
 

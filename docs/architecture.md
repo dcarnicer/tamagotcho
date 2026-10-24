@@ -146,6 +146,42 @@ side tap where that means previous or a list's focus up, back the screen's
 back or cancel, menu the settings home. The hint bar then names keys
 (keycaps) instead of the buttons' marks (docs/decisions.md, 2026-10-21).
 
+## Flash layout and storage
+
+Two app slots for updates over the air (docs/ota.md) and the rest LittleFS,
+from v0.7.0 (`firmware/partitions/*.csv`; the StickS3's table also serves the
+Cardputer ADV and the `m5stack` image):
+
+| name | type | 8 MB boards | 16 MB (T-Display-S3) |
+|---|---|---|---|
+| `nvs` | data, nvs | `0x9000`, 20 KB | same |
+| `otadata` | data, ota | `0xE000`, 8 KB | same |
+| `app0` | app, ota_0 | `0x10000`, 1.75 MiB | `0x10000`, 2 MiB |
+| `app1` | app, ota_1 | `0x1D0000`, 1.75 MiB | `0x210000`, 2 MiB |
+| `spiffs` (LittleFS) | data, spiffs | `0x390000`, 4.44 MiB | `0x410000`, 11.94 MiB |
+
+- **What is where.** Settings and the home Wi-Fi are in NVS (namespace
+  `tangocho`); decks (`/packs`) and progress (`/state/srs.bin`) on LittleFS,
+  under Arduino's default label `spiffs`. A download or an upload needs its
+  size plus a 96 KB reserve free (`kPackFsReserveBytes`,
+  `platform/NetFetch.h`); 4.44 MiB holds N5 to N1 in one language, or the
+  Jōyō deck with N5 and N4, but not the Jōyō deck with N1.
+- **Which slot boots** is in `otadata`, written by `pio run -t upload` and the
+  merged images as the framework's `boot_app0.bin` (boot `app0`). An update
+  over the air writes the other slot and switches `otadata` to it, so a USB
+  write of the app alone at `0x10000` also writes `boot_app0.bin` at
+  `0xE000` (or erases `otadata`), or the device keeps booting `app1`.
+- **The labels and sizes are a contract**: the firmware offers an update only
+  from `app0`/`app1` of these tables, and `tools/release/firmware_manifest.py`
+  fails a release whose image is larger than its env's slot (all app slots of
+  a table are one size). Each env compiles in its own name, `TGC_ENV`, the row
+  of the release manifest it installs (docs/ota.md §3.1, §3.2).
+- **Changing the table** (a slot size, where LittleFS starts) only works
+  over USB, and LittleFS is formatted where it moved. v0.7.0's change kept
+  the offsets of `nvs` and `app0`, so the settings stay and an app image at
+  `0x10000` is still slot 0, but the decks and the progress are lost unless
+  backed up first (docs/user-guide.md, "Moving to v0.7.0").
+
 ## Memory without PSRAM
 
 The StickS3 and the T-Display-S3 keep the big buffers in PSRAM: the canvas,

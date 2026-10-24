@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, must start with 'v' (e.g. v0.2.0)"
+        description: "Release tag, vMAJOR.MINOR.PATCH (e.g. v0.7.0)"
         required: true
         type: string
 
@@ -58,10 +58,13 @@ jobs:
           if [ "$EVENT" != "workflow_dispatch" ]; then
             tag="$REF_NAME"
           fi
-          case "$tag" in
-            v*) ;;
-            *) echo "error: release tag must start with 'v' (got '$tag')" >&2; exit 1 ;;
-          esac
+          # A plain vX.Y.Z: the firmware manifest's version line must be one
+          # (docs/ota.md, manifest format version 1), and a device takes any
+          # other version for a development build, which never updates.
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "error: release tag must be vMAJOR.MINOR.PATCH (got '$tag')" >&2
+            exit 1
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "resolved release tag: $tag"
 
@@ -77,6 +80,8 @@ jobs:
             name: StickS3
             partitions: sticks3_8MB.csv
             flash_size: 8MB
+            # boot_app0.bin is the same file for every board: published once.
+            publish_boot_app0: true
           - env: tdisplay-s3
             name: T-Display-S3
             partitions: tdisplay_s3_16MB.csv
@@ -136,27 +141,44 @@ jobs:
           echo "firmware.bin carries version $TGC_VERSION"
 
       # App-only image (ESP image magic 0xE9, no bootloader/partition table):
-      # what M5Launcher installs and what `pio run -t upload` writes to the app
-      # slot. The merged image below is the one ESP Web Tools needs.
+      # what M5Launcher installs, what `pio run -t upload` writes to the app
+      # slot and what an update over the air installs (its row in
+      # tamagotcho-firmware.txt, written by the release job). The merged image
+      # below is the one ESP Web Tools needs.
       - name: Stage app-only .bin
         run: |
           mkdir -p ../dist
           cp ".pio/build/${{ matrix.env }}/firmware.bin" "../dist/tamagotcho-${{ matrix.env }}.bin"
 
+      # The framework's otadata record that boots app0. The tables have an
+      # otadata partition (docs/ota.md), so the merged image needs it at
+      # 0xe000 as `pio run -t upload` writes it, and an app-only USB update
+      # writes it too: after an update over the air the device may run app1.
+      - name: Find boot_app0.bin
+        run: |
+          boot_app0="$HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"
+          if [ ! -f "$boot_app0" ]; then
+            echo "error: no $boot_app0 (the merged image and the release need it)" >&2
+            exit 1
+          fi
+          echo "BOOT_APP0=$boot_app0" >> "$GITHUB_ENV"
+
+      - name: Stage boot_app0.bin
+        if: matrix.publish_boot_app0
+        run: |
+          mkdir -p ../dist
+          cp "$BOOT_APP0" ../dist/boot_app0.bin
+
       - name: Build merged flashable image (for ESP Web Tools)
         run: |
           mkdir -p ../dist
-          boot_app0="$(find "$HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions" \
-            -name boot_app0.bin -print -quit 2>/dev/null || true)"
-          extra=()
-          if [ -n "$boot_app0" ]; then extra=(--boot-app0 "$boot_app0"); fi
           # merge_image.py shells out to the `esptool` CLI (installed above).
           python3 ../tools/release/merge_image.py \
             --build-dir ".pio/build/${{ matrix.env }}" \
             --partitions "partitions/${{ matrix.partitions }}" \
             --flash-size "${{ matrix.flash_size }}" \
-            --out "../dist/tamagotcho-${{ matrix.env }}-merged.bin" \
-            "${extra[@]}"
+            --boot-app0 "$BOOT_APP0" \
+            --out "../dist/tamagotcho-${{ matrix.env }}-merged.bin"
 
       - name: ESP Web Tools manifest
         env:
@@ -193,16 +215,35 @@ jobs:
     permissions:
       contents: write
     steps:
-      # The release's "What's new": docs/releases/<tag>.md when there is one.
+      # The release's "What's new": docs/releases/<tag>.md when there is one;
+      # the manifest's script, platformio.ini and the partition tables.
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: docs/releases
+          sparse-checkout: |
+            docs/releases
+            tools/release
+            firmware/platformio.ini
+            firmware/partitions
+          sparse-checkout-cone-mode: false
           path: repo
 
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      # tamagotcho-firmware.txt, the manifest the devices read from
+      # releases/latest/download/ (docs/ota.md, "The release side"): one row
+      # per app-only image of the four builds. It fails, before anything is
+      # published, when an image is larger than its env's app slot (read from
+      # the env's partition table), or the tag is not a plain vX.Y.Z.
+      - name: Firmware manifest and app slot check
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          python3 repo/tools/release/firmware_manifest.py --version "$TAG" \
+            --project repo/firmware --dist dist --out dist/tamagotcho-firmware.txt
+          cat dist/tamagotcho-firmware.txt
 
       - name: Write release notes
         env:
@@ -233,6 +274,8 @@ jobs:
           | \`tamagotcho-tdisplay-s3.bin\`, \`tamagotcho-cardputer-adv.bin\` | app-only images (T-Display-S3, Cardputer ADV) |
           | \`tamagotcho-m5stack.bin\` | app-only image for the StickS3 **and** the Cardputer ADV (the board is found at boot; the one on M5Burner) |
           | \`tamagotcho-<board>-merged.bin\` | single images for a first install (offset 0x0), one per board |
+          | \`boot_app0.bin\` | the OTA data record that boots the first app slot: written at 0xe000 with an app-only image over USB (the same for every board) |
+          | \`tamagotcho-firmware.txt\` | the update manifest the devices read: per build, its app-only image, size and SHA-256 |
           | \`tamagotcho-*-manifest.json\` | ESP Web Tools manifests (for an install page) |
 
           ## Flash it
@@ -241,9 +284,12 @@ jobs:
           - **First install, browser** (Chrome or Edge): open
             <https://espressif.github.io/esptool-js/>, **Connect**, add
             \`tamagotcho-sticks3-merged.bin\` at address \`0x0\`, **Program**.
-          - **Update:** \`esptool --chip esp32s3 write_flash 0x10000 tamagotcho-sticks3.bin\`.
-            The merged image also erases the settings (home Wi-Fi, preferences);
-            the app-only image keeps them. Decks and study progress survive both.
+          - **Update, USB:** \`esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-sticks3.bin\`.
+            \`boot_app0.bin\` makes the first app slot, where the image goes, the
+            one that boots: after an update over the air the device may run from
+            the other. The merged image also erases the settings (home Wi-Fi,
+            preferences); the app-only image keeps them. Decks and study progress
+            survive both.
           - **M5Launcher:** install the app-only \`tamagotcho-sticks3.bin\` (or the
             Cardputer ADV's), then put a deck on the device over Wi-Fi (a device
             with no deck boots into the Wi-Fi upload screen).

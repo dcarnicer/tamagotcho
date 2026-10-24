@@ -4,7 +4,9 @@
 > recommendation of every decision of §8 (D1, D2, D3 and D6/D8 asked
 > explicitly; D4, D5 and D7 as recommended). §3.1 is the manifest's spec, the
 > contract between `release.yml` and the firmware. Roadmap: "OTA firmware
-> updates" (`docs/roadmap.md`, idea of 2026-10-21).
+> updates" (`docs/roadmap.md`, idea of 2026-10-21). Phase 1 of §6 (the
+> tables, `TGC_ENV`, the manifest in `release.yml`, the docs) is built; §1
+> describes the layout before it.
 
 The device should update its own firmware over the home Wi-Fi: it finds out
 that a newer release exists, says so, and installs it when the user holds a
@@ -296,7 +298,8 @@ warns or is hidden.
   an OTA the device may boot `app1`, so an app-only `write_flash 0x10000`
   must also write `boot_app0.bin` at `0xE000` (or erase `otadata`), or the
   new image is not the one that boots. `pio run -t upload` and the merged
-  images already do.
+  images already do; the release publishes `boot_app0.bin` for the rest
+  (docs/user-guide.md, "Flash a merged image").
 
 ### 3.8 The portal and development
 

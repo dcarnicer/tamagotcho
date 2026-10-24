@@ -485,19 +485,23 @@ Scope for now: **kanji only** (no vocabulary decks).
       Settings › Device › Update row that reads the latest GitHub release
       (as Get decks reads the decks catalog: HTTPS, size and SHA-256 checked),
       says what is new and installs the board's app-only image, keeping
-      settings, decks and progress. To be decided first:
-      - The flash layout: today one 2 MB app slot and no OTA data partition
-        (`partitions/*.csv`), so nearly all flash is LittleFS. Two OTA slots
-        of about 1.6 MB (the app is 1.48 MB) would take some 1.2 MB from the
-        5.9 MB of decks on the 8 MB boards; the change itself needs one more
-        USB flash, and must keep the LittleFS data where it is or move it.
-      - Which image: the `m5stack` one on both M5 boards, the T-Display-S3's
-        own; a manifest in the release so the device does not guess file
-        names.
+      settings, decks and progress. Decided (docs/ota.md §8):
+      - The flash layout: two app slots of 1.75 MiB on the 8 MB boards
+        (LittleFS 5.94 → 4.44 MiB: the Jōyō deck and N1 no longer fit
+        together), 2 MiB on the T-Display-S3 (11.94 MiB left); `nvs` and
+        `app0` keep their offsets. The move is one USB flash, by hand:
+        progress backup, flash, Get decks, restore.
+      - Which image: the running build's environment (`TGC_ENV`), its row of
+        the release's manifest `tamagotcho-firmware.txt`; development builds
+        never update.
       - Safety: battery and free heap checks before starting (TLS without
         PSRAM on the Cardputer ADV), the bootloader's rollback if the new
         image does not boot, never in the middle of a review.
       - M5Launcher installs keep their own update path.
+      - Status: phase 1 (docs/ota.md §6) built 2026-10-24: the two tables,
+        `TGC_ENV`, the manifest and its slot-size check in `release.yml`,
+        `boot_app0.bin` as a release asset for app-only USB updates, the
+        docs. Not yet flashed on the boards.
 - [x] **One image for the StickS3 and the Cardputer ADV** (2026-10-21).
       The `m5stack` env compiles both boards and picks one at boot (PSRAM or
       not), so one M5Burner entry lists both devices; checked on both, and as
@@ -505,9 +509,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       the StickS3 and the Cardputer ADV"). The single-board envs stay.
 - [ ] **Decks on the Cardputer ADV's microSD card** (idea, 2026-10-21). The
       Cardputer has a microSD slot (CS G12, MOSI G14, CLK G40, MISO G39):
-      decks copied there from a computer, beside or instead of the 5.9 MB
-      LittleFS; maybe the SRS state too. Kept out of the first port on
-      purpose (simple first); the streamed pack tables already read on demand.
+      decks copied there from a computer, beside or instead of the 4.44 MiB
+      LittleFS (5.94 MiB before v0.7.0); maybe the SRS state too. Kept out of
+      the first port on purpose (simple first); the streamed pack tables
+      already read on demand.
 - [ ] **A watch: Waveshare ESP32-S3-Touch-AMOLED-2.06** (idea, 2026-10-24;
       after OTA). ESP32-S3R8 (8 MB PSRAM), 32 MB flash, 2.06" AMOLED
       410×502 (CO5300 over QSPI, which LovyanGFX 1.2.34 drives:
