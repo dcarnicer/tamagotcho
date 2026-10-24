@@ -13,6 +13,11 @@
 // HTTPS verifies the server against the small root-CA set in RootCerts.h
 // (never setInsecure()); redirects are followed (GitHub release assets redirect
 // to another host).
+//
+// The body loop -- the request, the timeouts, the size and SHA-256 checks while
+// it streams, the progress and the cancel -- is fetchToSink(), which writes into
+// a FetchSink: the pack temp file here, or the firmware update slot
+// (platform/Ota.h).
 #include <Arduino.h>
 
 #include <cstdint>
@@ -47,6 +52,8 @@ enum class FetchStatus : uint8_t {
     HashMismatch,  // the SHA-256 differs from the expected digest
     InvalidPack,   // not a pack (magic or PackReader probe failed)
     RenameFailed,  // the validated temp could not replace the destination
+    NoSlot,        // firmware: no update slot (not our partition layout, platform/Ota.h)
+    BadImage,      // firmware: the update library refused the image (magic, verification)
 };
 
 struct FetchResult {
@@ -54,7 +61,8 @@ struct FetchResult {
     int httpCode = 0;       // HTTP status, a negative HTTPClient error, or 0 before the request
     int tlsError = 0;       // mbedTLS error code when status == Tls
     size_t bytes = 0;       // body bytes received
-    bool bodyStarted = false;   // the temp file was opened (the body was being written)
+    bool bodyStarted = false;   // the sink took the body (the temp file was opened, the
+                                // update slot begun): the body was being written
     bool packsChanged = false;  // /packs changed: success, or the old pack was
                                 // removed before a failed rename
 };
@@ -82,6 +90,38 @@ struct PackFetchRequest {
 // Blocking download of `req.url` into /packs/<req.fileName>. Needs a network
 // (station or access point) to be up already.
 FetchResult fetchPackFile(const PackFetchRequest& req);
+
+// Where fetchToSink() writes a body. begin() is called once the server answered
+// 200 and its announced length (Content-Length, or -1 when it sent none) matched
+// the expected size, before the first byte; write() takes every chunk in order.
+// A status other than Ok from either stops the download with that status.
+class FetchSink {
+public:
+    virtual ~FetchSink() = default;
+    virtual FetchStatus begin(int announced) = 0;
+    virtual FetchStatus write(const uint8_t* data, size_t n) = 0;
+};
+
+// The part of a download that does not depend on where the body goes.
+struct FetchBodyRequest {
+    String url;                             // http:// or https:// (the caller's policy)
+    uint32_t expectBytes = 0;               // exact size; 0 = unknown
+    const uint8_t* expectSha256 = nullptr;  // 32-byte digest; nullptr = unchecked
+    uint32_t idleTimeoutMs = 5000;          // no data for this long -> Stalled
+    uint32_t totalTimeoutMs = 60000;        // whole body budget -> Stalled
+    bool http10 = false;                    // see PackFetchRequest::http10
+    FetchProgressFn progress = nullptr;
+    void* progressCtx = nullptr;
+};
+
+// Blocking GET of `req.url` (redirects followed, HTTPS against RootCerts.h)
+// streamed into `sink`: an announced length other than `expectBytes` is refused
+// before the body, progress() is called before it and after every chunk, and
+// once it is in, its length and SHA-256 are checked against `expectBytes` and
+// `expectSha256`. Ok only when everything matched, so the sink then holds
+// exactly the expected body; on any failure the caller discards what the sink
+// has (`bodyStarted` says whether it began).
+FetchResult fetchToSink(const FetchBodyRequest& req, FetchSink& sink);
 
 // Blocking GET of a small text resource (the deck catalog) into `out`, at most
 // `maxBytes`; http:// or https://, HTTP/1.0, redirects followed.
