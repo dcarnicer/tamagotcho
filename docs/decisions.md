@@ -3410,3 +3410,27 @@ changed").
   offers them, their SHA-256 changing).
 - **`decks-v2` is left as it is**, for v0.5.1 and older; no rebuild planned
   (no backward compatibility, decisions of 2026-10-18).
+
+## 2026-10-24 – The portal can replace and delete the loaded deck
+
+- **Found on the StickS3:** an upload under the loaded deck's file name failed
+  with `upload rename failed`. The app keeps that file open (`gSource`: the
+  glyphs are read from it), and esp_littlefs refuses to unlink an open file
+  ("Has open FD") or to rename over one ("dst is open"). Get decks closed the
+  deck before its download; the upload, the URL download and the delete did
+  not. The delete is the worse case by the same rule (not seen on the device):
+  it forgets the deck's progress and saves before it removes the file (save
+  order, docs/srs.md §2.1), so it lost that progress and kept the deck.
+- **A hook, `Hooks::onBeforeReplace(path)`**, so the portal still knows
+  nothing of the loaded deck: the app closes it when `path` is its file
+  (`closePackIfLoaded()` in `app/Decks`, which Get decks and the delete use
+  too) and says whether it did; then the portal calls `onPacksChanged`
+  whatever the outcome, which reopens the new file, or the old one when the
+  swap failed. A failed rename after the old file was removed rescans as well,
+  as the URL download already did.
+- **When:** an upload calls it only after its body validated, right before
+  the remove and the rename, so a rejected upload leaves the deck open and the
+  question kept for "Continue" as it was. The URL download calls it before it
+  starts, as Get decks does: `fetchPackFile()` validates inside, and a callback
+  into NetFetch for one rarely used form was not worth it; a failed download
+  then reopens the deck, with a fresh question (`portalPacksChanged()`).

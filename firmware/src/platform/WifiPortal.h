@@ -87,9 +87,21 @@ public:
         // Fills the counters shown on `/` and `/api/stats`. Must be cheap.
         void (*fillStats)(PortalStats& out) = nullptr;
         // Called after /packs changed (upload, delete or a finished URL
-        // download). The app rescans the folder and loads a pack if needed.
+        // download), and after a failed one that removed the old file or had
+        // the loaded deck closed (onBeforeReplace). The app rescans the folder
+        // and loads a pack if needed.
         // Returns true when a usable pack is loaded afterwards.
         bool (*onPacksChanged)() = nullptr;
+        // Called right before the portal stores pack `path`
+        // ("/packs/<name>.tgc"), which may replace a file of that name: an
+        // upload once its body arrived and validated (a rejected one never
+        // gets here), a URL download before it starts. LittleFS neither
+        // removes nor renames over an open file, so when `path` is the loaded
+        // deck the app closes it. Returns true when it did; the portal then
+        // calls onPacksChanged whatever the outcome, and the app reopens the
+        // new file, or the old one when the swap failed. Null: nothing is
+        // closed, and replacing the loaded deck fails, leaving it as it was.
+        bool (*onBeforeReplace)(const char* path) = nullptr;
         // Called with the browser's clock, which the page posts on every load
         // (POST /time): `utcMs` is Date.now(), `tzOffsetMin` the offset in
         // minutes east of UTC (-getTimezoneOffset()), `tzRule` the browser's

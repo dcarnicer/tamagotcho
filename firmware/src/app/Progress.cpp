@@ -78,9 +78,10 @@ std::vector<uint32_t> otherDecksCodepoints(const String& except) {
 // installed without that progress (deleting it again finishes the job), never
 // records of a deck that is gone, which a new download of it would pick up
 // again. A failed save (a full filesystem: deleting a deck is how space is
-// made) is tried again once the pack is gone. Then the folder is rescanned as
-// after any other change: a deleted loaded deck gives way to the first one
-// left, and the queue is rebuilt (portalPacksChanged()).
+// made) is tried again once the pack is gone. The loaded deck is closed just
+// before the remove, which LittleFS refuses on an open file. Then the folder
+// is rescanned as after any other change: a deleted loaded deck gives way to
+// the first one left, and the queue is rebuilt (portalPacksChanged()).
 bool portalDeleteDeck(const char* path, uint32_t* forgotten) {
     *forgotten = 0;
     const String p(path);
@@ -89,6 +90,7 @@ bool portalDeleteDeck(const char* path, uint32_t* forgotten) {
     const std::vector<uint32_t> gone = tgc::forgetOnDelete(deck, otherDecksCodepoints(p));
     const size_t n = gSrs.forget(gone.data(), gone.size());
     const bool saved = n == 0 || saveProgress();
+    closePackIfLoaded(p);  // LittleFS will not remove an open file
     const bool removed = LittleFS.remove(p);
     if (!saved) saveProgress();
     Serial.printf("delete %s: %s; progress of %u of its %u kanji forgotten, %u kanji left\n",

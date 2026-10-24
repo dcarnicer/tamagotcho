@@ -182,12 +182,7 @@ tgc::DeckDownloadResult downloadCatalogDeck(const tgc::CatalogEntry& e) {
     }
     // Replacing the loaded deck: close it first so its file is not open while
     // the new one is renamed over it; portalPacksChanged() reloads it below.
-    const bool replacingLive = gPack->isOpen() && path == gCurrentPack;
-    if (replacingLive) {
-        gRender.end();
-        gPack->close();
-        gSource.reset();
-    }
+    closePackIfLoaded(path);
     snprintf(gNetDeck, sizeof gNetDeck, "%s", tgc::catalogDisplayName(e).c_str());
     gNetBusy = true;
     gNetPct = -1;

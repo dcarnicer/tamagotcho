@@ -257,6 +257,11 @@ void portalFillStats(tgc::PortalStats& out) {
     }
 }
 
+// The portal is about to store pack `path` (the onBeforeReplace hook): an
+// upload or a URL download of the loaded deck's file name needs that file
+// closed, as Get decks does; the portal's onPacksChanged reopens it.
+bool portalBeforeReplace(const char* path) { return closePackIfLoaded(path); }
+
 // The page's language: the screens' own ("en"/"es"), or none under Auto while
 // no deck is loaded (the page then follows the browser, as Get decks follows
 // the phone's language in that case).
@@ -317,9 +322,9 @@ void portalCatalog(const std::vector<tgc::CatalogEntry>& entries,
 }
 
 const tgc::WifiPortal::Hooks kPortalHooks = {
-    portalFillStats,      portalPacksChanged, portalTime,          wifiToGetDecks,
-    portalUiLang,         portalSwitchToHome, portalDeckDownload,  portalDeleteDeck,
-    portalRestoreProgress, portalCatalog,
+    portalFillStats,  portalPacksChanged,    portalBeforeReplace, portalTime,
+    wifiToGetDecks,   portalUiLang,          portalSwitchToHome,  portalDeckDownload,
+    portalDeleteDeck, portalRestoreProgress, portalCatalog,
 };
 
 }  // namespace
