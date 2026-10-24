@@ -187,6 +187,24 @@ void test_page_firmware_formats() {
     }
 }
 
+// The microSD card's lines (docs/microsd.md §3.7) take what the page passes:
+// the card's free space ("28.1 GB"); its free space and size, in that order.
+// The rest are plain text.
+void test_page_card_formats() {
+    for (const char* lang : {"en", "es"}) {
+        const PortalText& t = portalText(lang);
+        TEST_ASSERT_EQUAL(1, countConversions(t.cardFreeFmt));
+        TEST_ASSERT_NOT_NULL(std::strstr(t.cardFreeFmt, "%s"));
+        TEST_ASSERT_EQUAL(2, countConversions(t.cardSpaceFmt));
+        const char* first = std::strstr(t.cardSpaceFmt, "%s");
+        TEST_ASSERT_NOT_NULL(first);
+        TEST_ASSERT_NOT_NULL(std::strstr(first + 2, "%s"));
+        for (const char* plain : {t.cardUnreadable, t.cardRemoved, t.placeCard, t.placeDevice,
+                                  t.progressCardNote})
+            TEST_ASSERT_EQUAL(0, countConversions(plain));
+    }
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_wifi_qr_escape);
@@ -198,6 +216,7 @@ int main() {
     RUN_TEST(test_rssi_quality);
     RUN_TEST(test_page_text_complete);
     RUN_TEST(test_page_footer_formats);
+    RUN_TEST(test_page_card_formats);
     RUN_TEST(test_page_delete_formats);
     RUN_TEST(test_page_firmware_formats);
     return UNITY_END();

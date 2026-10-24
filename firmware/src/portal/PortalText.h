@@ -16,6 +16,16 @@ struct PortalText {
     const char* decksOne = "1 deck on the device";
     const char* decksFmt = "%u decks on the device";
     const char* freeFmt = "%s free";
+    // The microSD card (docs/microsd.md §3.7): where new decks go while it is
+    // in, the place of each deck, and why there is none.
+    const char* cardFreeFmt = "%s free on the card";  // %s = "28.1 GB"
+    const char* cardUnreadable =
+        "The microSD card cannot be read: format it as FAT32 (exFAT cards are not read). The "
+        "decks stay on the device meanwhile.";
+    const char* cardRemoved = "The microSD card was removed.";
+    const char* placeCard = "card";
+    const char* placeDevice = "device";
+    const char* cardSpaceFmt = "Card: %s free of %s";
     const char* viaFmt = "via <b>%s</b>";
     const char* ownNetFmt = "on the device's own network <b>%s</b>";
     const char* clockHint = "Opening this page sets the device date and time zone from this browser.";
@@ -130,6 +140,10 @@ struct PortalText {
         "counters). Settings such as Wi-Fi, language and time zone are not included.";
     const char* progressSafetyNote =
         "A restore saves the previous file on the device as /state/srs.before-restore.bin.";
+    const char* progressCardNote =
+        "The microSD card holds a copy too, <code>/tamagotcho/progress.bin</code>, written "
+        "whenever the device goes to sleep: a backup a computer can keep and this page can "
+        "restore.";
     const char* progressRestored =
         "Progress restored. This page load also sets the device date and time zone from the "
         "browser.";

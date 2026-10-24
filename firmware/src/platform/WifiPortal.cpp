@@ -376,6 +376,12 @@ DeckState deckStateOnDisk(const CatalogEntry& e) {
                             storage::sha256(path, digest) ? digest : nullptr, e.sha256);
 }
 
+// "28.1 GB" (the card's sizes).
+String formatGbSize(uint64_t bytes) {
+    char buf[16];
+    return String(formatGb(bytes, '.', buf, sizeof buf)) + " GB";
+}
+
 String pageHeader(const PortalText& t, int refreshS = 0) {
     String h;
     h += "<!doctype html><html lang=\"";
@@ -838,7 +844,8 @@ void WifiPortal::handleRoot() {
     h.reserve(12 * 1024);
     h += pageHeader(t, catalogBusy ? kCatalogRefreshS : 0);
 
-    // Status line: decks, free space, which network this page is on.
+    // Status line: decks, the free space where new ones go (the card while one
+    // is mounted), which network this page is on.
     h += "<p class=\"status muted\">";
     if (packs == 0)
         h += t.decksNone;
@@ -847,7 +854,10 @@ void WifiPortal::handleRoot() {
     else
         h += fmt(t.decksFmt, (unsigned)packs);
     h += " &middot; ";
-    h += fmt(t.freeFmt, formatSize(storage::freeBytes(DeckPlace::Device)).c_str());
+    if (storage::cardMounted())
+        h += fmt(t.cardFreeFmt, formatGbSize(storage::cardFreeBytes()).c_str());
+    else
+        h += fmt(t.freeFmt, formatSize(storage::freeBytes(DeckPlace::Device)).c_str());
     h += " &middot; ";
     h += fmt(mode_ == Mode::Home ? t.viaFmt : t.ownNetFmt, htmlEscape(ssid_).c_str());
     h += "</p><p id=\"clk\" class=\"muted\" data-ok=\"";
@@ -859,6 +869,14 @@ void WifiPortal::handleRoot() {
     h += "\">";
     h += t.clockHint;
     h += "</p>";
+    // A card that did not mount or went away (docs/microsd.md §3.1, §3.5).
+    if (storage::cardState() == storage::CardState::Unreadable ||
+        storage::cardState() == storage::CardState::Removed) {
+        h += "<p class=\"err\">";
+        h += storage::cardState() == storage::CardState::Removed ? t.cardRemoved
+                                                                 : t.cardUnreadable;
+        h += "</p>";
+    }
     appendNotice(h);
     // A newer firmware the device found: said here, installed on the device.
     if (st.fwAvailable[0]) {
@@ -1050,18 +1068,25 @@ void WifiPortal::appendHomeDecks(String& h, const PortalStats& st) {
     if (hooks_.onCatalog) hooks_.onCatalog(rows, states);
 }
 
-// Your decks: every deck file of both places, and a delete for each.
+// Your decks: every deck file, with its place on a board with a microSD slot
+// ("card" or "device", docs/microsd.md §3.7), and a delete for each.
 void WifiPortal::appendYourDecks(String& h, const PortalStats& st) {
     const PortalText& t = portalText(pageLang());
     h += "<h2 id=\"yours\">";
     h += t.yoursTitle;
     h += "</h2><table>";
     const std::vector<DeckFile> packs = allDeckFiles();
+    const bool places = storage::hasSlot();
     for (const DeckFile& p : packs) {
         const String esc = htmlEscape(p.name.c_str());
         const bool card = p.place == DeckPlace::Card;
         h += "<tr><td>";
         h += esc;
+        if (places) {
+            h += " <span class=\"muted\">&middot; ";
+            h += card ? t.placeCard : t.placeDevice;
+            h += "</span>";
+        }
         if (p.path == st.loadedPack) {
             h += " <span class=\"ok\">&middot; ";
             h += t.studying;
@@ -1243,6 +1268,10 @@ void WifiPortal::appendAdvanced(String& h, const PortalStats& st, const String& 
     h += t.progressNote;
     h += " ";
     h += t.progressSafetyNote;
+    if (storage::cardMounted()) {
+        h += " ";
+        h += t.progressCardNote;
+    }
     h += "</p>";
 
     // Home Wi-Fi: change or forget it. The first setup has its form on top. The
@@ -1277,6 +1306,11 @@ void WifiPortal::appendAdvanced(String& h, const PortalStats& st, const String& 
     h += "<p>";
     h += fmt(t.freeSpaceFmt, formatSize(storage::freeBytes(DeckPlace::Device)).c_str(),
              formatSize(LittleFS.totalBytes()).c_str());
+    if (storage::cardMounted()) {
+        h += "<br>";
+        h += fmt(t.cardSpaceFmt, formatGbSize(storage::cardFreeBytes()).c_str(),
+                 formatGbSize(storage::cardTotalBytes()).c_str());
+    }
     h += "</p><p class=\"muted\">JSON: <a href=\"/api/stats\">/api/stats</a> &middot; ";
     h += "<a href=\"/api/status\">/api/status</a></p></details>";
 }
@@ -1411,7 +1445,22 @@ void WifiPortal::handleApiStats() {
     j += String((unsigned)freeB);
     j += ",\"totalBytes\":";
     j += String((unsigned)total);
-    j += ",\"packs\":[";
+    // The microSD card: "none" on a board without a slot (docs/microsd.md).
+    const char* card = "none";
+    switch (storage::cardState()) {
+        case storage::CardState::NoSlot: card = "none"; break;
+        case storage::CardState::None: card = "empty"; break;
+        case storage::CardState::Unreadable: card = "unreadable"; break;
+        case storage::CardState::Mounted: card = "mounted"; break;
+        case storage::CardState::Removed: card = "removed"; break;
+    }
+    j += ",\"card\":{\"state\":\"";
+    j += card;
+    j += "\",\"freeBytes\":";
+    j += String(static_cast<double>(storage::cardFreeBytes()), 0);
+    j += ",\"totalBytes\":";
+    j += String(static_cast<double>(storage::cardTotalBytes()), 0);
+    j += "},\"packs\":[";
     bool first = true;
     for (const DeckFile& p : allDeckFiles()) {
         if (!first) j += ",";
