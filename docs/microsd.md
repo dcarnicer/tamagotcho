@@ -1,7 +1,8 @@
-# Decks on the microSD card: design and open decisions
+# Decks on the microSD card: design and decisions
 
-> **Status: proposal (2026-10-24), decisions open (§7).** Nothing here is
-> built yet. Roadmap: "Decks on the Cardputer ADV's microSD card" (idea of
+> **Status: approved (2026-10-24), being built.** The maintainer chose D2, D3
+> as recommended and, for D4, that decks on LittleFS **move to the card by
+> themselves** (§3.6); D1, D5 and D6 as recommended. Roadmap: "Decks on the Cardputer ADV's microSD card" (idea of
 > 2026-10-21). The maintainer's brief (2026-10-24): on the Cardputer ADV, use
 > the card for storage as far as possible. Built on top of the OTA work
 > (docs/ota.md), whose two app slots left the Cardputer 4.44 MiB of LittleFS.
@@ -53,12 +54,13 @@ exFAT (§1); hot-plug detection (§3.5).
 | the firmware (OTA) | streamed into the other app slot | unchanged |
 
 **Decks.** The card's folder **`/tamagotcho/decks/`** (created on first use)
-holds decks like `/packs` does. The deck list shows both places, the card's
-decks marked as such (an SD icon or "SD" pill); Get decks, the portal upload
-and the portal URL download write to the card when it is mounted, else to
-LittleFS. Decks already on LittleFS stay there and keep working; the portal
-can move one to the card (D4). A deck name on both is listed once, the card's
-copy used.
+holds decks like `/packs` does. Get decks, the portal upload and the portal
+URL download write to the card when it is mounted, else to LittleFS. Decks on
+LittleFS move to the card by themselves when one is mounted (§3.6, D4), so
+with a card the device normally has every deck on it and LittleFS holds only
+the progress. The deck list shows both places while a deck is still on
+LittleFS (a card that was full, or a deck fetched while no card was in), the
+card's decks marked as such (an "SD" pill).
 
 **Progress stays on LittleFS** (recommended, D3): it is small (a few KB, 40 KB
 for every Jōyō kanji), written every 8 answers, and must survive a card that
@@ -121,12 +123,37 @@ deck disappearing: `portalPacksChanged()` rescans, the deck list opens with
 Progress is not at risk (it is on LittleFS). A write in progress when the
 card is pulled fails like a full filesystem.
 
-### 3.6 The portal
+### 3.6 Moving LittleFS decks to the card (D4)
+
+Every time a card mounts (at boot, or when the deck list or Get decks mounts
+it later), each `/packs/<name>.tgc` on LittleFS moves to
+`/sd/tamagotcho/decks/<name>.tgc`, before any deck is opened:
+1. Copy into the card's temp (`.move.tmp` in the decks folder), with the
+   card's free space checked first (the size plus a small reserve). A deck
+   that does not fit stays on LittleFS and the move stops there (later decks
+   are not tried either: the card is full).
+2. Check the copy: the same size and SHA-256 as the source (`PackHash`), and
+   the pack probe (`validatePackFile`).
+3. Rename the temp over the card's `<name>.tgc` (removing a card copy of the
+   same name first: the device's own copy is the one it used last, e.g. an
+   update fetched while the card was out), then remove the LittleFS file.
+4. If the moved deck is the one NVS `pack` names, `pack` is rewritten to its
+   new path, so the same deck opens.
+
+A failure at any step leaves the LittleFS deck as it was and removes the
+temp. The screen shows "Moving decks to the card... 2/5" with a bar while it
+runs (about 1 MB/s; a full 4.4 MiB LittleFS takes a few seconds); the side
+button does not cancel it (each deck is atomic, and the next boot finishes the
+rest anyway). The serial log lists each deck moved or kept and why.
+
+Progress records are keyed by kanji, not by file (docs/srs.md §2), so a moved
+deck keeps its progress.
+
+### 3.7 The portal
 
 The page lists the decks of both places (with "card" or "device" next to
-each), shows the card's free space, deletes from either, and gets a "Move to
-the card" button for LittleFS decks (D4). The progress backup link stays; the
-page says that the card holds a copy.
+each), shows the card's free space and deletes from either. The progress
+backup link stays; the page says that the card holds a copy.
 
 ## 4. Screens
 
@@ -154,18 +181,22 @@ page says that the card holds a copy.
    new question and of the intro card with a Jōyō deck on the card vs on
    LittleFS (`TGC_QUIZ_LOG`), and the heap with the card mounted, during TLS.
 2. Writes: Get decks, the portal upload and URL download to the card; the
-   loaded deck replaced on the card; delete; move to the card (D4).
+   loaded deck replaced on the card; delete. The move of §3.6 with the loaded
+   deck among the moved ones, with a card that fills up half-way, and with a
+   deck of the same name already on the card.
 3. The progress copy on the card; a pulled card (reading, writing); an exFAT
    card (the message); no card (as today).
 4. The `m5stack` image on the StickS3 (no slot) and on the Cardputer.
 
 ## 7. Decisions
 
+Taken on 2026-10-24: the "recommended" column, except D4 (marked).
+
 | # | question | recommended | alternatives |
 |---|---|---|---|
 | D1 | Where new decks go when a card is mounted | the card | ask each time; LittleFS first, the card when it is full |
 | D2 | The card's folder | `/tamagotcho/decks/` | `/decks/`; the card's root |
 | D3 | Progress | LittleFS, with a copy on the card at sleep and after a restore | on the card only; LittleFS only (no copy) |
-| D4 | LittleFS decks when a card is mounted | stay and keep working; the portal can move one to the card | moved to the card automatically at boot; hidden while a card is mounted |
+| D4 | LittleFS decks when a card is mounted | **chosen: moved to the card by themselves** (§3.6) | (recommended) stay, the portal moves one; hidden while a card is mounted |
 | D5 | A card that does not mount | say "format it as FAT32", carry on with LittleFS | silent |
 | D6 | Which boards | the Cardputer ADV now, the watch when it is ported (pins in the board layer) | Cardputer only |

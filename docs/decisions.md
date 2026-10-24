@@ -3548,3 +3548,22 @@ Phase 2 of docs/ota.md (its §9 lists what differs from the design).
   failed" / "Sin conexión segura" on the Firmware screen (the shared TLS
   message takes three lines there). `test_settings` checks them.
 
+
+## 2026-10-24 – Decks on the microSD card
+
+Design in docs/microsd.md.
+
+- **Decks on the card, progress on LittleFS.** With a FAT32 card mounted,
+  every deck lives in `/tamagotcho/decks/`; the SRS state stays on LittleFS
+  (small, written every 8 answers, safe from a pulled card) and a copy goes
+  to `/tamagotcho/progress.bin` at sleep and after a restore.
+- **LittleFS decks move to the card by themselves** whenever a card mounts
+  (the maintainer's choice over "stay, the portal moves one"): copy, check
+  size, SHA-256 and the pack probe, rename over a card copy of the same name
+  (the device's own copy wins), then remove the LittleFS file; NVS `pack`
+  follows the deck. A full card stops the move; nothing is lost on a failure.
+- **FAT32 only**: the framework's FatFs has no exFAT. A card that does not
+  mount is reported ("format it as FAT32") and the device carries on with
+  LittleFS.
+- **Pins in the board layer** (Cardputer ADV: SPI2, 40/39/14/12), so the
+  watch's slot can be added when it is ported.
