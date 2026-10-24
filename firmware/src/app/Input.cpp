@@ -232,14 +232,16 @@ bool menuKeyGoesHome() {
     }
 }
 
-// One key action on the current screen (see above). The quiz, the detail card
-// and the done screen have no "back": there esc opens the settings home, as
-// the menu key does (the side hold). The date stepper's esc cancels (its side
-// hold); a picker's, a list's or a page's goes back (the side tap).
+// One key action on the current screen (see above). The quiz, the detail card,
+// the intro card and the done screen have no "back": there esc opens the
+// settings home, as the menu key does (the side hold). The date stepper's esc
+// cancels (its side hold); a picker's, a list's or a page's goes back (the
+// side tap). On the intro, Enter, right and down go on (the front press) and
+// left and up say "known" (the side tap).
 void keyAction(tgc::KeyAction act, uint32_t now) {
     using A = tgc::KeyAction;
-    const bool quizFlow =
-        gScreen == Screen::Quiz || gScreen == Screen::Detail || gScreen == Screen::Done;
+    const bool quizFlow = gScreen == Screen::Quiz || gScreen == Screen::Detail ||
+                          gScreen == Screen::Done || gScreen == Screen::Intro;
     const bool stepper = gScreen == Screen::Date && gDateSync != DateSync::Joining;
     switch (act) {
         case A::Next:
@@ -251,8 +253,10 @@ void keyAction(tgc::KeyAction act, uint32_t now) {
             break;
         case A::Prev:
             // The side tap where it is "previous": the quiz's option up, the
-            // stepper's day less (and any key gives up the network time).
-            if ((gScreen == Screen::Quiz && !gRevealed) || gScreen == Screen::Date)
+            // stepper's day less (and any key gives up the network time); and
+            // the intro's "known".
+            if ((gScreen == Screen::Quiz && !gRevealed) || gScreen == Screen::Date ||
+                gScreen == Screen::Intro)
                 handleInput(0, 1, now, now, false);
             else
                 listFocusUp();  // a list's focus up; elsewhere nothing

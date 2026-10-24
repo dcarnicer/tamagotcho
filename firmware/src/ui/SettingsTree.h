@@ -30,6 +30,7 @@ enum class Item : uint8_t {
     Device,
     // Study ›
     NewPerDay,
+    Introduce,       // learning mode: an intro card before a new kanji's first question
     HardAfter,
     AutoAdvance,
     OnKana,          // on'yomi in katakana or hiragana
@@ -43,12 +44,13 @@ enum class Item : uint8_t {
     Sleep,
     About,
 };
-constexpr int kItemCount = 17;
+constexpr int kItemCount = 18;
 
 inline constexpr Item kHomeItems[] = {Item::Decks, Item::Study, Item::Stats, Item::Wifi,
                                       Item::Device};
-inline constexpr Item kStudyItems[] = {Item::NewPerDay, Item::HardAfter, Item::AutoAdvance,
-                                       Item::OnKana, Item::DeleteProgress};
+// Introduce sits under New per day: both are about the new cards.
+inline constexpr Item kStudyItems[] = {Item::NewPerDay,   Item::Introduce, Item::HardAfter,
+                                       Item::AutoAdvance, Item::OnKana,    Item::DeleteProgress};
 inline constexpr Item kDeviceItems[] = {Item::Orientation, Item::Brightness, Item::Language,
                                         Item::HoldTime,    Item::Date,       Item::Sleep,
                                         Item::About};

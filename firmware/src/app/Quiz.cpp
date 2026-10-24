@@ -10,6 +10,7 @@
 #include "app/Detail.h"
 #include "app/Display.h"
 #include "app/Done.h"
+#include "app/Intro.h"
 #include "app/Power.h"
 #include "app/ScreenKit.h"
 #include "app/Settings.h"
@@ -73,16 +74,22 @@ uint16_t extraNewToday() {
     return gExtraNew;
 }
 
-// Pops the next queue item and builds a question for it, trying the item's
-// mode first and then the other two (a card may lack readings/meanings).
-// False when the queue is exhausted.
-bool newQuestion() {
+// Pops the next queue item (see Quiz.h). An intro card is handed to
+// app/Intro with no question built, and leaves the on/kun turn alone. A
+// question tries the item's mode first -- a learning step's is fixed: kanji
+// -> meaning, then a reading -- and then the other two (a card may lack
+// readings or meanings); a card asked in no mode is skipped.
+Screen nextItem() {
     static const tgc::QuizMode kModes[] = {tgc::QuizMode::Meaning, tgc::QuizMode::Reading,
                                            tgc::QuizMode::MeaningToKanji};
     constexpr int kN = 3;
     for (;;) {
         tgc::QueueItem item;
-        if (!gQueue.next(&item)) return false;
+        if (!gQueue.next(&item)) return Screen::Done;
+        if (item.kind == tgc::ItemKind::Intro) {
+            if (prepareIntro(item.cardIndex)) return Screen::Intro;
+            continue;  // unreadable card: the next item
+        }
         // Ask for on'yomi and kun'yomi in turn, so both kinds show up.
         const tgc::ReadingKind want = gReadingTurn.want();
         for (int k = 0; k < kN; ++k) {
@@ -102,13 +109,30 @@ bool newQuestion() {
                                  ? (gQ.readingKind == tgc::ReadingKind::Kun ? "read-kun" : "read-on")
                                  : (gQ.mode == tgc::QuizMode::MeaningToKanji ? "k2m" : "mean");
             QLOG("Q %s mode=%d U+%04X", mk, static_cast<int>(gQ.mode), (unsigned)c.codepoint);
+            if (item.kind == tgc::ItemKind::Step) QLOG(" step=%u", (unsigned)item.step);
             for (int i = 0; i < gQ.count; ++i)
                 QLOG(" |%s %s", i == gQ.correct ? "*" : " ", gQ.options[i].c_str());
             QLOG("\n");
-            return true;
+            return Screen::Quiz;
         }
         // Card cannot be asked in any mode: skip it and try the next item.
     }
+}
+
+void showNextItem() {
+    const Screen s = nextItem();
+    if (s == Screen::Done) {
+        showDone();
+        return;
+    }
+    gScreen = s;
+    drawScreen();
+}
+
+void refreshAfterRebuild(Screen& s, bool keepQuestion) {
+    const bool open = s == Screen::Intro ||
+                      (!keepQuestion && ((s == Screen::Quiz && !gRevealed) || s == Screen::Done));
+    if (open) s = nextItem();
 }
 
 // The card of the question on screen. False when there is none to draw or
@@ -481,12 +505,7 @@ void afterReveal() {
         showDetail();
         return;
     }
-    if (newQuestion()) {
-        gScreen = Screen::Quiz;
-        drawScreen();
-    } else {
-        showDone();
-    }
+    showNextItem();
 }
 
 void holdAction(uint32_t pressedAt) {

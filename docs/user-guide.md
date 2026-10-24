@@ -20,11 +20,26 @@ power and date handling) is in [firmware/README.md](../firmware/README.md).
    side button moves it up, and **holding the front button answers** (the
    option fills up while you hold); holding the side button opens the
    settings. After a correct answer the next card follows by itself.
-4. Hold the side button for the **settings**: a summary of the loaded deck
+4. **New kanji are introduced first** (learning mode, on by default). Before
+   a kanji you have never seen is asked, an intro card shows it: its stroke
+   order animating, its meanings (the one the quiz asks first, the others
+   dimmed), its readings (the asked one of each kind first; `+2` means two
+   more) and, with a deck that has them, two **example words** with their
+   readings and a short meaning (under the readings on the T-Display-S3,
+   on a second page elsewhere: the first tap turns to it). Read it, then tap
+   the front button: the kanji is asked twice more a few cards later, first
+   its meaning, then a reading, and comes back the next day. New kanji then
+   arrive in batches of four: four intros, their meanings, their readings.
+   If you already know the kanji, tap the side button instead (**known**,
+   ✓ on the bar): it is asked at once, as an ordinary first question. The
+   intro is not an answer: it does not count against your accuracy, only its
+   time (at most 30 s) goes into the time statistic. **Settings › Study ›
+   Introduce** turns it off (every new kanji is then asked straight away).
+5. Hold the side button for the **settings**: a summary of the loaded deck
    (due and new cards, how much of it you have seen) and five groups --
-   **Decks** (switch decks, Get decks), **Study** (new cards per day, Hard
-   after, auto-advance, on'yomi answers in katakana or hiragana, delete
-   progress), **Stats**, **Wi-Fi** and **Device** (orientation,
+   **Decks** (switch decks, Get decks), **Study** (new cards per day,
+   introduce new kanji, Hard after, auto-advance, on'yomi answers in
+   katakana or hiragana, delete progress), **Stats**, **Wi-Fi** and **Device** (orientation,
    brightness, language, hold time, date and time zone, sleep, About). In
    every menu a tap moves, a hold opens or chooses, and the side button goes
    back; the bar at the bottom of the screen says what each does. The date

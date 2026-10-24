@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "quiz/Quiz.h"
+#include "srs/Queue.h"
 #include "ui/InputPrefs.h"
 #include "ui/ListView.h"
 #include "ui/SettingsTree.h"
@@ -21,6 +22,13 @@ extern uint8_t gBrightness;   // NVS `tangocho`/`bri`
 extern uint8_t gAdvancePref;  // NVS `tangocho`/`adv` (ui/InputPrefs.h)
 extern uint8_t gHoldPref;     // NVS `tangocho`/`hold`
 extern tgc::OnKana gOnKana;   // NVS `tangocho`/`onkana` (0 katakana, 1 hiragana)
+// Study > Introduce (docs/learning-mode.md §3.8): learning mode, an intro
+// card before a new kanji's first question. NVS `tangocho`/`intro` (1 on, the
+// default; 0 off), global.
+extern bool gIntroOn;
+constexpr const char* kPrefIntro = "intro";
+// The queue's learning options for gIntroOn (Queue::setLearning()).
+tgc::LearnOptions learnOptions();
 
 // The page on screen, and its note (after Delete progress) until the next press.
 extern st::Page gMenuPage;

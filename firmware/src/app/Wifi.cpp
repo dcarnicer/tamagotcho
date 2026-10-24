@@ -395,12 +395,7 @@ void openPortal(PortalMode mode) {
 void startQuizFromPortal() {
     gExtraNew = 0;
     gQueue.rebuild(*gPack, gSrs, gRng);
-    if (!newQuestion()) {
-        showDone();
-        return;
-    }
-    gScreen = Screen::Quiz;
-    drawScreen();
+    showNextItem();
 }
 
 namespace {

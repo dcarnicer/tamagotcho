@@ -105,12 +105,7 @@ void doneLoop(int a, int b) {
                                         extraNewToday());
         gExtraNewDay = gSrs.today();
         gQueue.rebuild(*gPack, gSrs, gRng, gExtraNew);
-        if (newQuestion()) {
-            gScreen = Screen::Quiz;
-            drawScreen();
-        } else {
-            drawDone();
-        }
+        showNextItem();  // with learning on, the first of ten intros
     }
 }
 

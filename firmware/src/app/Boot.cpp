@@ -228,6 +228,9 @@ void boot() {
     gAdvancePref = gPrefs.getUChar(tgc::kPrefAdvance, tgc::kAdvanceDefault);
     gHoldPref = gPrefs.getUChar(tgc::kPrefHold, tgc::kHoldDefault);
     gOnKana = gPrefs.getUChar("onkana", 0) == 1 ? tgc::OnKana::Hiragana : tgc::OnKana::Katakana;
+    // Learning mode, before the first rebuild (loadPack() below).
+    gIntroOn = gPrefs.getUChar(kPrefIntro, 1) != 0;
+    gQueue.setLearning(learnOptions());
     tgc::board::setBrightness(gBrightness);
     setUiForLang(nullptr);  // localise the pre-pack error screens to the choice too
     gOrientPref = loadOrientPref();
@@ -353,11 +356,7 @@ void boot() {
         openUpdateCheck();
         return;
     }
-    if (!newQuestion()) {
-        showDone();
-    } else {
-        drawScreen();
-    }
+    showNextItem();
 }
 
 }  // namespace app

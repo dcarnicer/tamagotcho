@@ -4,6 +4,7 @@
 // tiles the detail card and the hold progress share, and its input.
 #include <cstdint>
 
+#include "app/App.h"
 #include "board/Board.h"
 #include "pack/PackReader.h"
 #include "quiz/Quiz.h"
@@ -34,7 +35,21 @@ extern int gShownBattery;
 extern uint32_t gBatteryCheckAt;
 
 uint16_t extraNewToday();
-bool newQuestion();
+// Takes the next queue item and makes it ready, without drawing it: a
+// question (Screen::Quiz; a review, a new card with learning off, a relearn
+// or a learning step, asked in the item's mode), a never-seen kanji's intro
+// card (Screen::Intro, app/Intro.h; no question is built), or Screen::Done
+// when the queue is done. The caller sets gScreen (or gBeforeMenu) to it.
+Screen nextItem();
+// nextItem() on screen: the question or the intro, else the done screen.
+void showNextItem();
+// After a rebuild: `s` (the screen on top, or gBeforeMenu) gives way to the
+// new queue's next item when it holds an item of the old queue still open --
+// an intro card, an unanswered question -- or is the done screen. An intro's
+// introduced() / known() would be refused by the new queue. `keepQuestion`
+// leaves an unanswered question as it is (only an intro is replaced): a
+// rebuild for New per day or a date set by hand, as before learning mode.
+void refreshAfterRebuild(Screen& s, bool keepQuestion = false);
 bool questionCard(tgc::Card* out);
 void drawNoQuestion();
 

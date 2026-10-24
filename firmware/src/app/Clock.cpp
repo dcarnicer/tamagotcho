@@ -164,20 +164,19 @@ bool applyWallClock(int64_t utcMs, const tgc::TzRule& zone, bool leaveDateNow) {
     // A manual correction in progress restarts from the new (real) today.
     if (gScreen == Screen::Date) gDateSteps = 0;
     if (gSrs.today() != before && gPack->isOpen()) {
-        // A new day: cards may have come due. An unanswered question (or the
-        // done screen) gives way to the new queue; after an answer, the next
-        // question comes from it. On the portal, Get decks or network test
-        // screen the same goes for the quiz screen that the settings home's
-        // "Continue" shows.
+        // A new day: cards may have come due. An unanswered question, an
+        // intro card (or the done screen) gives way to the new queue; after an
+        // answer, the next item comes from it. On the portal, Get decks or
+        // network test screen the same goes for the screen that the settings
+        // home's "Continue" shows; under the rest of the settings only an
+        // intro does (the new queue would refuse its report).
         gQueue.rebuild(*gPack, gSrs, gRng);
-        auto refresh = [](Screen& s) {
-            if ((s == Screen::Quiz && !gRevealed) || s == Screen::Done)
-                s = newQuestion() ? Screen::Quiz : Screen::Done;
-        };
-        if (gScreen == Screen::Quiz || gScreen == Screen::Done)
-            refresh(gScreen);
+        if (gScreen == Screen::Quiz || gScreen == Screen::Done || gScreen == Screen::Intro)
+            refreshAfterRebuild(gScreen);
         else if (gScreen == Screen::Wifi || gScreen == Screen::GetDecks || gScreen == Screen::NetTest)
-            refresh(gBeforeMenu);
+            refreshAfterRebuild(gBeforeMenu);
+        else
+            refreshAfterRebuild(gBeforeMenu, true);
     }
     if (!gScreenOff) drawScreen();
     return true;

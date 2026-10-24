@@ -3350,3 +3350,47 @@ marked *to confirm* needs the device.
   suggestion. After the N5 review it appended the replacements for the five
   skipped words: 旗本 (本 もと), 途中 (中 チュウ), 川柳 (川 セン), 幾何学
   (何 カ); 円 まる.い has no other word.
+
+## 2026-10-23 – The intro card as built
+
+Learning mode phases 2 and 3 and the intro's example words
+(`feature/learn-intro`; docs/learning-mode.md §5, "What building it
+changed").
+
+- **One "next item" for every caller.** `newQuestion()` became `nextItem()`,
+  which returns the screen to show (Quiz, Intro or Done) without drawing it;
+  the callers that set `gScreen` take `showNextItem()`, those that set
+  `gBeforeMenu` take the value. No caller keeps a two-way branch.
+- **An intro is never left stale.** Every rebuild drops the open intro from
+  the queue, whose `introduced()` / `known()` then refuse it. Each rebuild
+  with an intro on screen or behind the settings replaces it with the new
+  queue's next item (`refreshAfterRebuild()`: New per day, Introduce, a date
+  set by hand or synced, a failed restore); the deck, restore and reset paths
+  already took a fresh item. Should one slip through, a press on it records
+  nothing and goes on.
+- **The intro's clock starts with its first frame**, not when the queue hands
+  it over: one made ready behind the settings (a deck change) is seen only
+  when they close. The press guard (400 ms) restarts on that frame, on the
+  turn to page 2 and when the settings close. A press that went down inside
+  the guard is dropped up to its release; keys, which have no release here,
+  only inside it.
+- **The layout is pure** (`introLayout()`, `planIntroCard()`,
+  `planIntroWords()` in `ui/QuizUi.h`) over a per-code-point advance, so
+  `test_quizui` checks it with the UI font's real advances (18 px for kana
+  and kanji) and the widest strings of the N5 decks; `wrapLines()` copies
+  `Renderer::wrap()`'s rules so the plan and the drawing agree.
+- **Words: inline only when none would be lost** (the T-Display-S3's
+  portrait), else page 2. **Landscape page 2** sets each word's form and
+  reading side by side over a one-line gloss across the panel, the head as one
+  text line (the kanji from the text set, which holds it in a deck with
+  words): two 112 px columns cut two N5 English glosses at the third line,
+  the full 232 px fits every one on one. Portrait keeps the mockup.
+- **Study › Introduce sits under New per day** (both are about new cards);
+  Spanish values "Sí" / "No". Changing it rebuilds with the day's "+10 new"
+  kept (`extraNewToday()`).
+- **Keys**: the intro joins the quiz flow (Esc and Tab open the settings);
+  left and up are "known" (the side tap), right, down and Enter go on, so the
+  hint bar's side keycap is ← (`boardHints()` maps the check icon to it).
+- **The detail card is unchanged**: its kanji box, animation, counter and
+  reading rows moved to `app/KanjiCard` as they were, the animation keyed to
+  `gAnim.cardIndex` instead of the question on screen.

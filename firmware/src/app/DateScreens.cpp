@@ -341,17 +341,12 @@ void drawTzList() {
     presentList(gTzListView);
 }
 
-// Rebuilds the queue and shows the quiz (or the done screen if nothing is due).
-// Used after the date screen so newly due cards appear.
+// Rebuilds the queue and shows its first item (or the done screen if nothing
+// is due). Used after the date screen so newly due cards appear.
 void leaveDate() {
     dateSyncCancel();
     gQueue.rebuild(*gPack, gSrs, gRng);
-    if (!newQuestion()) {
-        showDone();
-        return;
-    }
-    gScreen = Screen::Quiz;
-    drawScreen();
+    showNextItem();
 }
 
 namespace {
@@ -377,15 +372,11 @@ void applyDate() {
     gDirty = 0;
     gQueue.rebuild(*gPack, gSrs, gRng);
     if (gAfterDate != Screen::Quiz) {
+        refreshAfterRebuild(gBeforeMenu, true);  // an intro behind the settings
         openDateMenu(false);
         return;
     }
-    if (!newQuestion()) {
-        showDone();
-        return;
-    }
-    gScreen = Screen::Quiz;
-    drawScreen();
+    showNextItem();
 }
 
 // --- Settings > Device > Date: loop ------------------------------------------

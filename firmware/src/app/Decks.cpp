@@ -195,12 +195,12 @@ bool loadPack(const String& path) {
 // Rescans the folder and keeps the live pack usable: reload the loaded pack (its
 // contents may have changed), else fall back to the first remaining one, else
 // leave no pack open. Both callers run under the settings home, whose
-// "Continue" returns to the quiz, detail or done screen; when the live reader
-// was replaced or closed, the question kept for it belongs to the old pack and
-// must never be shown or graded. So Continue gets a fresh question from the
-// rebuilt queue (or the done screen) -- or, with no pack left, the deck list,
-// where "+ Get decks" still works. A failed reload that kept the old reader
-// keeps its question too.
+// "Continue" returns to the quiz, detail, intro or done screen; when the live
+// reader was replaced or closed, the question (or intro) kept for it belongs
+// to the old pack and must never be shown or graded. So Continue gets a fresh
+// item from the rebuilt queue (or the done screen) -- or, with no pack left,
+// the deck list, where "+ Get decks" still works. A failed reload that kept
+// the old reader keeps its question too.
 bool portalPacksChanged() {
     const tgc::PackReader* const before = gPack->isOpen() ? gPack.get() : nullptr;
     const String pathBefore = gCurrentPack;
@@ -223,7 +223,7 @@ bool portalPacksChanged() {
     } else if (gPack.get() != before) {
         if (gCurrentPack != pathBefore) gExtraNew = 0;  // another deck, as in selectPack()
         gQueue.rebuild(*gPack, gSrs, gRng, extraNewToday());
-        gBeforeMenu = newQuestion() ? Screen::Quiz : Screen::Done;
+        gBeforeMenu = nextItem();
     }
     return gPack->isOpen();
 }
@@ -256,11 +256,12 @@ void selectPack() {
             loaded = true;
         }
     }
-    if (loaded && !newQuestion()) {
-        showDone();
+    if (loaded) {
+        showNextItem();
         return;
     }
-    gScreen = Screen::Quiz;
+    // The deck did not open: back to what was on screen (the old deck stays).
+    gScreen = gBeforeMenu == Screen::Intro ? Screen::Intro : Screen::Quiz;
     drawScreen();
 }
 

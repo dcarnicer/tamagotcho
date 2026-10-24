@@ -149,6 +149,19 @@ side button goes back. The deck list's last row, **+ Get decks**, downloads deck
 over the home Wi-Fi (tap moves, hold downloads or studies, side button
 cancels/back).
 
+**Intro card** (learning mode, **Settings › Study › Introduce**, On by
+default; docs/learning-mode.md). A kanji never seen before is shown before it
+is asked: the stroke order animating, the meanings and readings (the asked
+ones first), and with a v3 deck built with `--example-words` its example
+words (under the readings on the T-Display-S3's portrait, else on a second
+page, `2/2` in the header). A **front tap or hold** goes on: to the words'
+page when there is one, else to the next card (the kanji is then asked kanji
+→ meaning three cards later and a reading three after that). A **side tap**
+means "known": the kanji is asked at once as an ordinary first question, with
+no steps. A **side hold** opens the settings, which return to the intro.
+Presses that go down in the intro's first 400 ms are ignored, so a double tap
+on the card before cannot skip it; it never moves on by itself.
+
 **Language.** The screens are in English or Spanish. The first boot of a device
 with no decks and no saved language asks once (**English** preselected /
 **Español**; tap moves, hold chooses) and stores that as the Language setting,
@@ -165,18 +178,19 @@ or without Fn, and so does Esc. The hint bar names the keys.
 
 | key                         | does                                                       |
 |-----------------------------|------------------------------------------------------------|
-| `.` (down) and `/` (right)  | what the front tap does: the next option, row, day or page |
-| `;` (up) and `,` (left)     | the previous option (quiz) or day (date stepper); a list's row up, wrapping; nothing elsewhere |
+| `.` (down) and `/` (right)  | what the front tap does: the next option, row, day or page; on the intro card, go on |
+| `;` (up) and `,` (left)     | the previous option (quiz) or day (date stepper); a list's row up, wrapping; on the intro card, "known"; nothing elsewhere |
 | arrows on the 2×2 answers   | up and down change row, left and right column (each wraps), as the tiles look |
-| Enter                       | what the front hold does, at once (no hold, no fill)       |
-| `` ` `` (Esc) and del       | back, or cancel (pickers, the date stepper, a download); in the quiz, the detail card and the done screen, the settings home |
+| Enter                       | what the front hold does, at once (no hold, no fill); on the intro card, go on |
+| `` ` `` (Esc) and del       | back, or cancel (pickers, the date stepper, a download); in the quiz, the detail card, the intro card and the done screen, the settings home |
 | Tab                         | the settings home (from the quiz; from a settings screen without Wi-Fi on); on the home, back where it was opened |
 
 Held arrows repeat (after 0.4 s, every 0.12 s) on the lists and the date
 stepper. Any key wakes a dimmed or dark screen like a button (on a dark one
 that press only wakes it) and keeps it from sleeping. The Delete progress
 confirmation ignores an Enter in its first half second, so a double Enter on
-its row does not delete.
+its row does not delete; the intro card ignores every key in its first
+400 ms. The intro's hint bar reads `↵ next` and `← known`.
 
 ## Orientation
 

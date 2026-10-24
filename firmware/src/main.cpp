@@ -17,6 +17,7 @@
 #include "app/Done.h"
 #include "app/GetDecks.h"
 #include "app/Input.h"
+#include "app/Intro.h"
 #include "app/Power.h"
 #include "app/Progress.h"
 #include "app/Quiz.h"
@@ -47,6 +48,7 @@ void drawScreen() {
     else if (gScreen == Screen::TzList) drawTzList();
     else if (gScreen == Screen::Stats) drawStats();
     else if (gScreen == Screen::Detail) drawDetail();
+    else if (gScreen == Screen::Intro) drawIntro();
     else if (gScreen == Screen::Wifi) drawWifi();
     else if (gScreen == Screen::GetDecks) drawGetDecks();
     else if (gScreen == Screen::UpdateCheck) drawUpdateCheck();
@@ -90,6 +92,8 @@ void handleInput(int a, int b, uint32_t pressedAt, uint32_t t, bool down) {
         aboutLoop(a, b);
     } else if (gScreen == Screen::Detail) {
         detailLoop(a, b, t);
+    } else if (gScreen == Screen::Intro) {
+        introLoop(a, b, t, down);
     } else if (gScreen == Screen::Done) {
         doneLoop(a, b);
     } else if (gScreen == Screen::Wifi) {
@@ -211,7 +215,8 @@ void loop() {
         gSrs.save(gSrsIo);
         gDirty = 0;
     }
-    if (gScreen == Screen::Quiz && !gScreenOff && t - gBatteryCheckAt >= kBatteryCheckMs) {
+    if ((gScreen == Screen::Quiz || gScreen == Screen::Intro) && !gScreenOff &&
+        t - gBatteryCheckAt >= kBatteryCheckMs) {
         gBatteryCheckAt = t;
         if (tgc::board::batteryPercent() != gShownBattery) drawScreen();
     }
