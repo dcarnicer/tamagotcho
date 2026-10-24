@@ -85,6 +85,10 @@ side button to switch decks. `uploadfs` replaces the whole filesystem, so keep
 every pack you want in `data/packs/`, and note that it also clears review
 progress (`/state/srs.bin`).
 
+On the Cardputer ADV a microSD card can hold the decks instead
+([below](#microsd-card-cardputer-adv)): copy the `.tgc` files into its
+`/tamagotcho/decks/`.
+
 Alternatively, use the **Wi-Fi portal** with no `uploadfs` (root README, "Getting
 decks onto the device"). **Settings → Wi-Fi »** (hold the side button, then hold
 the row) has four rows: **Web portal** joins the saved home Wi-Fi and serves the
@@ -138,6 +142,35 @@ MiB on the T-Display-S3); the move formats LittleFS once (docs/user-guide.md,
 "Moving to v0.7.0"). An app-only write over USB goes with `boot_app0.bin` at
 `0xE000` (docs/user-guide.md, "Flash a merged image"): after an update over
 the air the device may boot `app1`.
+
+## microSD card (Cardputer ADV)
+
+A FAT16/FAT32 card in the Cardputer ADV's slot holds the decks in
+`/tamagotcho/decks/` (docs/microsd.md; user side: docs/user-guide.md, "Decks
+on a microSD card"). The pins are the board layer's (`board::sdPins()`: SCK
+40, MISO 39, MOSI 14, CS 12, on SPI2; the panel is on SPI3), so the
+`m5stack` image asks at run time and the StickS3 has none.
+
+- **Mount**: at boot right after LittleFS (20 MHz, two open files), and again
+  when the deck list or Get decks opens with no card mounted (or with one that
+  no longer answers). exFAT and unformatted cards do not mount: "Card not
+  readable: format it as FAT32".
+- **The move**: whenever a card mounts, every `/packs/*.tgc` moves to the card
+  (copy to `.move.tmp`, size, SHA-256 and pack probe, rename, then the LittleFS
+  file goes; NVS `pack` follows), before any deck opens at boot. A deck that
+  does not fit stops it.
+- **Writes**: downloads and uploads go to the card while it is mounted; a copy
+  of the same name on LittleFS goes once the new one is stored. With the same
+  name in both places, the deck list shows LittleFS's.
+- **Progress** stays in `/state/srs.bin` on LittleFS; `/tamagotcho/progress.bin`
+  on the card is a copy written at every sleep and after a restore.
+- **A pulled card**: the loaded deck stops at its first failed read, the card is
+  unmounted and tried again, and the app goes on with a LittleFS deck or the
+  deck list ("Card removed").
+- **Log**: `[sd] boot: mounted in N ms, SDHC/SDXC FAT32, <total> GB, <free>
+  free (N ms); internal heap F free (B before), L largest` (the card should
+  take about 13 KB of internal heap), `[sd] move <file> (<bytes>): moved|kept
+  ...`, `[sd] progress copy ...`, `[sd] reads from <deck> failed`.
 
 ## Controls
 

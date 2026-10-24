@@ -23,8 +23,9 @@ check only tells; the user chooses the deck and holds to update it.
 
 The catalog (`docs/pack-format.md`, `catalog-v2.txt`) has one record per
 published deck: `name`, `title`, `lang`, `cards`, exact `bytes`, `sha256` and
-`url`. An installed file `/packs/<name>.tgc` whose catalog record has a
-different `bytes` is an **update**, and so is one with the same size but a
+`url`. An installed file `/packs/<name>.tgc` (or `/tamagotcho/decks/<name>.tgc`
+on a microSD card, docs/microsd.md: the copy the deck list shows) whose
+catalog record has a different `bytes` is an **update**, and so is one with the same size but a
 different SHA-256 (`tgc::DeckState::Update`, the same state Get decks already
 shows as "update"). Consequences:
 

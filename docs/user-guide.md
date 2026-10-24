@@ -189,7 +189,7 @@ Restoring is refused while a deck download is running.
   is never shown again, logged or sent back to a page.
 - Every catalog download is checked against the catalog's **size and SHA-256**
   and must be a valid pack before it replaces anything; a failure leaves
-  `/packs` as it was. HTTPS is verified against a small embedded set of root
+  the decks as they were. HTTPS is verified against a small embedded set of root
   certificates (Let's Encrypt, Sectigo/USERTrust, DigiCert, Google Trust
   Services, Amazon); see `docs/decisions.md`. A download is refused on battery
   below 6 %, and an update needs room for the old and the new copy at once.
@@ -208,6 +208,52 @@ Restoring is refused while a deck download is running.
   catalog format v2 (with deck titles), and an older `catalog.txt` is refused as
   an old format.
 - Everything else works offline.
+
+## Decks on a microSD card (Cardputer ADV)
+
+The Cardputer ADV has a microSD slot, and a card there holds every deck you
+want: the device's own storage (4.44 MiB) fits the Jōyō deck with N5 and N4,
+not with N1, and both languages of everything never fit.
+
+- **The card must be FAT32** (or FAT16). Cards up to 32 GB come that way;
+  larger ones (SDXC) come as **exFAT**, which the device cannot read: format
+  them as FAT32 first (most formatters do it for 64 GB cards). A card it
+  cannot read shows **"Card not readable: format it as FAT32"** on top of the
+  deck list and on the portal page, and the device carries on with its own
+  storage.
+- **Its folder is `/tamagotcho/decks/`**, created on first use. Decks can be
+  copied there from a computer too (`.tgc` files with lowercase names, as the
+  releases have them); they show in **Decks** with an **SD** pill next to the
+  language.
+- **Decks move to the card by themselves.** Whenever a card is mounted -- at
+  boot, or when you open **Decks** or **Get decks** after putting one in -- the
+  decks on the device's storage move to it ("Moving decks to the card... 2/5",
+  a few seconds; nothing to press). Each one is copied, checked and only then
+  removed from the device; a deck the card has no room for stays on the device,
+  and so do the ones after it. A deck of the same name already on the card is
+  replaced by the device's copy. Progress stays as it is: it belongs to the
+  kanji, not to the file.
+- **New decks go to the card** while one is in: Get decks, the portal's
+  downloads and uploads. Get decks says how much room the card has ("SD: 28.1
+  GB free"), the Wi-Fi screen and the portal page show the card's free space,
+  and the page lists each deck as on the **card** or the **device** and can
+  delete either.
+- **Progress stays on the device**, and the card gets a copy,
+  **`/tamagotcho/progress.bin`**, every time the device goes to sleep and after
+  a restore. It is the same file as the portal's progress backup: keep it on a
+  computer, or restore it from the page (Advanced → Progress backup).
+- **Settings → Device → About** shows the card ("Card: 29.7 GB, 28.1 free") or
+  why there is none.
+- **Taking the card out**: there is no switch that tells the device, so it
+  notices when it next reads the card. While you study a deck on the card, the
+  next screen that needs it finds it gone: the device goes on with a deck on its
+  own storage if there is one, else it opens **Decks** with **"Card removed"**.
+  Nothing of your progress is lost. Put the card back and open **Decks**: its
+  decks are back. Without a deck of the card open, it notices when you open
+  **Decks** or **Get decks**.
+- Without a card the device works as before, and decks downloaded while the
+  card is out go to the device's storage (they move to the card the next time
+  it is mounted).
 
 ## Firmware updates over Wi-Fi
 

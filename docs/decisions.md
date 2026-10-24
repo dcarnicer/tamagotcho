@@ -3567,3 +3567,47 @@ Design in docs/microsd.md.
   LittleFS.
 - **Pins in the board layer** (Cardputer ADV: SPI2, 40/39/14/12), so the
   watch's slot can be added when it is ported.
+
+## 2026-10-24 – microSD: as built
+
+docs/microsd.md §8 describes it; the choices the design left open:
+
+- **The card's heap is about 13 KB, not 6-8.** This framework's FatFs has
+  4 KB sector buffers (FF_MAX_SS follows the flash's 4 KB wear-levelling
+  sector), one for the volume and one per open file. Two open files (the
+  loaded deck and one more) is the least that works, so listings use
+  readdir() and stat(): the core's `openNextFile()` opens every file it
+  lists. A deck read from the card gets a 512-byte stdio buffer (the core
+  gives FAT files 4 KB, since FAT's stat() has no block size): one sector,
+  no 4 KB read behind each glyph. The `[sd]` mount line logs the heap.
+- **"No card" and "not FAT" told apart** by an `fs::SDFS` subclass that
+  mounts the way `SD.begin()` does and reads the card type before
+  unmounting: `SD.begin()` is false for both.
+- **One deck per file name in normal use.** The deck list shows LittleFS's
+  copy when both places have the name; storing a deck removes its copy in the
+  other place, the move replaces the card's. Closing "the loaded deck" before
+  a replace, and reopening "the same deck" after a rescan, go by file name.
+- **The move counts a same-name card copy as room** (it goes first when the
+  deck fits only in its place), hashes the source as it reads it and the
+  card's temp again from the card, and runs on every mount but the one after
+  a read error (nothing can have reached LittleFS meanwhile).
+- **A pulled card**: only the card's decks stop at their first failed read
+  (each read waits for the SD driver's timeouts without a card); the loop
+  then unmounts and mounts the card again. Three failures within a minute
+  with the card answering give it up ("not readable"). The deck list and Get
+  decks ask a mounted card whether it still answers (a few ms), since no
+  deck of it may have been read.
+- **The progress copy is written whenever the state is saved for a sleep**,
+  the dark panel on USB included, and after a restore.
+- **The SD code is in every image** (about 47 KB of flash on the boards
+  without a slot): the board answers at run time, as the `m5stack` image
+  needs. Static RAM +244 to +268 B.
+- **Strings**: Spanish "Mazos a la tarjeta..." for the move ("Pasando los
+  mazos a la tarjeta..." takes three label lines in the 127 px portrait);
+  "SD" for the pill and in the free-space lines of both languages (the Wi-Fi
+  screen has 20 cells next to the QR code). `test_settings` checks them.
+- **Sizes** (`TGC_VERSION=v0.0.0-cmp`, `firmware.bin` against `c8d2e0b`):
+  cardputer-adv 1,475,824 → 1,522,288 B (+46,464), m5stack 1,534,496 →
+  1,582,272 B (+47,776), sticks3 1,528,384 → 1,576,096 B, tdisplay-s3
+  1,369,696 → 1,417,408 B; all within the 1,835,008-byte slots (2 MiB on
+  the T-Display-S3).

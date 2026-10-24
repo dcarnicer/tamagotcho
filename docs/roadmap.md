@@ -507,12 +507,18 @@ Scope for now: **kanji only** (no vocabulary decks).
       not), so one M5Burner entry lists both devices; checked on both, and as
       a merged image on a blank Cardputer (docs/decisions.md, "One image for
       the StickS3 and the Cardputer ADV"). The single-board envs stay.
-- [ ] **Decks on the Cardputer ADV's microSD card** (idea, 2026-10-21). The
+- [~] **Decks on the Cardputer ADV's microSD card** (idea, 2026-10-21;
+      design approved 2026-10-24 in `docs/microsd.md`). The
       Cardputer has a microSD slot (CS G12, MOSI G14, CLK G40, MISO G39):
       decks copied there from a computer, beside or instead of the 4.44 MiB
-      LittleFS (5.94 MiB before v0.7.0); maybe the SRS state too. Kept out of
-      the first port on purpose (simple first); the streamed pack tables
-      already read on demand.
+      LittleFS (5.94 MiB before v0.7.0). Decided: a FAT32 card's
+      `/tamagotcho/decks/` holds the decks, new ones go there, the LittleFS
+      decks move there by themselves whenever a card mounts, the progress
+      stays on LittleFS with a copy on the card at every sleep.
+      - Status: built 2026-10-24 on `feature/microsd` (docs/microsd.md §8:
+        the board's pins, `platform/Storage`, the move and its screen, a
+        pulled card, the deck list's SD pill, About, the portal); not yet
+        checked on a Cardputer ADV (the checks of docs/microsd.md §6).
 - [ ] **A watch: Waveshare ESP32-S3-Touch-AMOLED-2.06** (idea, 2026-10-24;
       after OTA). ESP32-S3R8 (8 MB PSRAM), 32 MB flash, 2.06" AMOLED
       410×502 (CO5300 over QSPI, which LovyanGFX 1.2.34 drives:

@@ -436,6 +436,12 @@ zone) are NVS, not this file, and deck files are not included.
   so the redirect that follows a restore is itself a page load: `applyWallClock`
   anchors or advances the restored day index to the current real day and aligns
   the 04:00 rollover with this device's zone. No extra request is needed.
+- **The microSD card's copy** (Cardputer ADV, docs/microsd.md D3). With a
+  card mounted, the device also writes this file to the card as
+  `/tamagotcho/progress.bin` (through `/tamagotcho/.progress.tmp`) whenever it
+  saves for a sleep and after a restore: the same bytes `GET /progress`
+  serves, so a computer can keep it and the page can restore it. The state
+  itself never leaves LittleFS.
 - **Busy and safety.** The portal is open, so a restore is destructive by
   nature: the page asks for confirmation, the download is read-only, and a
   restore is refused with the existing Busy notice while a deck download or URL

@@ -1,6 +1,7 @@
 # Decks on the microSD card: design and decisions
 
-> **Status: approved (2026-10-24), being built.** The maintainer chose D2, D3
+> **Status: approved (2026-10-24), built on `feature/microsd` (§8), not yet
+> checked on hardware.** The maintainer chose D2, D3
 > as recommended and, for D4, that decks on LittleFS **move to the card by
 > themselves** (§3.6); D1, D5 and D6 as recommended. Roadmap: "Decks on the Cardputer ADV's microSD card" (idea of
 > 2026-10-21). The maintainer's brief (2026-10-24): on the Cardputer ADV, use
@@ -200,3 +201,111 @@ Taken on 2026-10-24: the "recommended" column, except D4 (marked).
 | D4 | LittleFS decks when a card is mounted | **chosen: moved to the card by themselves** (§3.6) | (recommended) stay, the portal moves one; hidden while a card is mounted |
 | D5 | A card that does not mount | say "format it as FAT32", carry on with LittleFS | silent |
 | D6 | Which boards | the Cardputer ADV now, the watch when it is ported (pins in the board layer) | Cardputer only |
+
+## 8. As built (2026-10-24)
+
+What the code does, where it differs from §1-§6 or fills a gap they left
+(docs/decisions.md, "microSD: as built"). Not yet run on a Cardputer ADV:
+the checks of §6 are the hardware test.
+
+**Code.**
+- `storage/DeckFiles` (pure, `test_storage`): the deck paths of the two
+  places (`/packs/<file>` and `/sd/tamagotcho/decks/<file>`; `placeOf()` reads
+  the place from the path), the listing filter (`*.tgc`, not hidden: no temp,
+  no Mac `._` file), the merge by file name (`mergeDecks()`), the move's room
+  rule (`moveFit()`), the reserves (`kCardReserveBytes` 256 KB: the progress
+  copy plus cluster rounding; LittleFS keeps its 96 KB) and the GB of About
+  (`formatGb()`, GiB rounded down).
+- `board::sdPins()`: the Cardputer ADV's SCK 40, MISO 39, MOSI 14, CS 12;
+  false on the StickS3 and the T-Display-S3, and in the `m5stack` image the
+  board found at boot answers. M5GFX's autodetect for `board_M5CardputerADV`
+  puts the panel on `SPI3_HOST` (checked in M5GFX's source), so the card is on
+  SPI2, Arduino's `SPI`.
+- `platform/Storage`: the mount (an `fs::SDFS` subclass whose mount tells "no
+  card" from "a card without a FAT volume": `SD.begin()` is false for both),
+  the states (no slot, none, unreadable, mounted, removed), the path mapping,
+  the listings (readdir() and stat(), no file opened), the copy with its
+  SHA-256, the progress copy. `FsQuiet.h` and `PackHash.h` take the
+  filesystem; `FsPackSource` can stop at its first read error and says it had
+  one.
+- `app/CardMove`: the move of §3.6 and its screen ("SD CARD", "2/5" right of
+  it, "Moving decks to the card..." over a bar of the bytes moved and the
+  deck's file name). Its callers: `app/Boot` (right after LittleFS and the
+  card mount, before the deck opens) and `mountCardOnOpen()` (the deck list and
+  Get decks).
+
+**Mounting.** 20 MHz and two open files (§3.1). This framework's FatFs has
+4 KB sector buffers (FF_MAX_SS is 4096 for the flash's wear levelling), one per
+open file and one for the volume, so the mount takes about 13 KB of internal
+heap, not 6-8 KB; the `[sd] boot: mounted ...` line logs the heap before and
+after. Two files are enough because nothing keeps a second card file open:
+the loaded deck plus one temp, hash, probe or copy at a time, and the
+listings open none (the core's `openNextFile()` opens every file it lists).
+The core gives a FAT file a 4 KB stdio buffer; a deck opened for reading on
+the card gets 512 bytes (one sector: less heap, no 4 KB read behind each
+glyph). The first mount of a card whose FSINFO has no free count reads the
+whole FAT once (logged in ms); FatFs writes the count back on the next write.
+
+**Which copy wins.** With the same file name in both places, the deck list
+shows and loads LittleFS's copy (§3.6: the device's copy is the one it used
+last). Storing a deck (Get decks, an upload, a URL download) removes its copy
+in the other place once the new one is in, so in normal use a name is in one
+place only; the move removes the card's old copy itself. "The loaded deck"
+means the same file name in either place for closing it before a replace,
+and a rescan that no longer finds its path opens the same file name in the
+other place first (`sameDeckIn()`), at boot too. A saved deck on a card that
+is not in stays saved in NVS, so the card's return opens it again.
+
+**The move** follows §3.6, with two additions. The room check counts a
+same-name card copy: a deck that fits only in its place removes it first (the
+LittleFS copy, the one that wins, is still there), otherwise the old copy goes
+right before the rename. The copy is hashed while it is read, and the card's
+temp hashed again from the card. A LittleFS file that will not go after the
+rename (never seen) leaves both copies; the device's still wins and the next
+mount finishes. The move runs at boot and when the deck list or Get decks
+mounts a card later, not after a pulled card mounts again (§3.5): no deck can
+have reached LittleFS meanwhile. A later mount with the loaded deck among the
+moved ones closes it, points `gCurrentPack` (and NVS `pack`) at the card and
+rescans, which reopens it and gives the settings home's Continue a fresh
+question.
+
+**Writes.** New decks go to the card while one is mounted (D1), also an update
+of a deck that sits on LittleFS (the card was full): with no room on the card
+it fails as "not enough space", as a full LittleFS did. The free-space checks
+and the reserve are the destination's. The per-pack cap stays 5 MiB.
+
+**A pulled card (§3.5).** The loaded deck's source stops at its first failed
+read (the SD driver spends about a second of timeouts on each read without a
+card, and a screen is dozens of reads). `deckReadTick()` in the loop then
+closes the deck, unmounts the card and mounts it again: no answer is
+"Card removed" (it stays until a card mounts), an answer reopens the deck.
+The decks are rescanned; the quiz, the detail and intro cards and the done
+screen get a fresh item from a LittleFS deck, or the deck list when none is
+left, and other screens are drawn again. Three failures within a minute with
+the card answering give it up (unmounted, "Card not readable: format it as
+FAT32"), so a bad sector cannot loop. A card pulled while no deck of it is
+open is noticed when the deck list or Get decks opens (a mounted card is asked
+whether it still answers, a few ms) or when a deck of it is chosen (its file
+is gone): the same unmount and mount again. Until then the Wi-Fi portal's
+uploads and downloads fail on it ("cannot create the file"). A write cut by a
+pulled card fails like a full filesystem and removes its temp when it can.
+
+**Screens and page.** As §4, plus: Get decks' note line shows "SD: 28.1 GB
+free" while nothing else is there; the Wi-Fi screen's free-space line becomes
+"SD 28.1 / 29.7 GB" over its bar while a card is mounted; About shows "No
+card", "Card removed" or the unreadable line too. The deck list's top line is
+one caption line in landscape. The page: the status line gives the card's free
+space ("28.1 GB free on the card"), a red line says unreadable or removed,
+*Your decks* lists every file of both places with "card" or "device" (only on
+a board with a slot) and deletes the one chosen (`where=card|device`),
+Advanced gives both free spaces and, with a card in, the note on the progress
+copy, and `/api/stats` has `card` (state, free and total bytes) and a
+`place` per pack.
+
+**Progress copy.** Written whenever the device saves for a sleep (the idle
+and explicit deep sleeps, the critical battery, and the dark panel on USB)
+and after a restore, through `/tamagotcho/.progress.tmp`; `srs.bin`, else the
+`.bak` a cut save left, as the portal's download serves.
+
+**Sizes** (`TGC_VERSION=v0.0.0-cmp`, against `c8d2e0b`): see
+docs/decisions.md, "microSD: as built".
