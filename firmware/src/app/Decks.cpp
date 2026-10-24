@@ -258,9 +258,15 @@ bool portalPacksChanged() {
         gPack->close();
         gSource.reset();
         gCurrentPack = "";
-        gPrefs.remove("pack");
+        // A deck on a card that was pulled stays the remembered one (NVS
+        // `pack`), so it opens again when the card is back; any other loss of
+        // the last deck forgets it.
+        if (!(tgc::storage::onCard(pathBefore) &&
+              tgc::storage::cardState() == tgc::storage::CardState::Removed))
+            gPrefs.remove("pack");
     } else {
         String want = gCurrentPack;
+        if (want.isEmpty()) want = gPrefs.getString("pack", "");
         if (want.isEmpty() || std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end()) {
             const String same = sameDeckIn(gPacks, want);
             want = same.length() ? same : gPacks[0];

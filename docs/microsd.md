@@ -232,6 +232,11 @@ the checks of §6 are the hardware test.
   has an `otherCs` the storage drives high before the bus starts (G5 on the
   Cardputer ADV); harmless without the cap. After both fixes a 32 GB SDHC FAT32
   card mounted in 8 ms and took 15 KB of internal heap (2026-10-24).
+- **A pulled card keeps its deck remembered.** When the loaded deck was on a
+  card that was pulled and no deck is left, NVS `pack` stays, and the rescan
+  after the card is back opens it again (it used to forget it and open the
+  first deck of the list). Checked on the device: N3 studied, card out ("Card
+  removed"), card in, N3 again.
 - `platform/Storage`: the mount (an `fs::SDFS` subclass whose mount tells "no
   card" from "a card without a FAT volume": `SD.begin()` is false for both),
   the states (no slot, none, unreadable, mounted, removed), the path mapping,
