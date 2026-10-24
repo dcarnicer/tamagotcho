@@ -263,7 +263,7 @@ const MenuItem& menuItem(st::Item id) {
              else
                  snprintf(o, n, "%u", (unsigned)gPacks.size());
          },
-         openDecks},
+         [] { openDecks(); }},
         {I::Study, [] { return ui().groupRows[1]; },
          [](char* o, size_t n) { snprintf(o, n, ui().studyValueFmt, (unsigned)gSrs.newPerDay()); },
          [] { openMenuPage(st::Page::Study); }},

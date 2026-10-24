@@ -45,6 +45,20 @@ inline bool hasKeyboard() { return false; }
 inline bool nextKeyEvent(KeyEvent*) { return false; }
 #endif
 
+// --- microSD slot --------------------------------------------------------------
+// The SPI pins of the board's microSD slot (docs/microsd.md §1), -1 for none.
+// The card has a bus of its own, Arduino's `SPI` (SPI2), apart from the
+// display's. sdPins() is false on a board without a slot (the StickS3, the
+// T-Display-S3); in the M5 image the board found at boot answers.
+struct SdPins {
+    int8_t sck = -1, miso = -1, mosi = -1, cs = -1;
+};
+#if defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5)
+bool sdPins(SdPins* out);
+#else
+inline bool sdPins(SdPins*) { return false; }
+#endif
+
 constexpr uint32_t kHoldMs = 600;  // threshold for wasHeld()
 
 // Initialise display (portrait; the Cardputer ADV landscape), buttons, the

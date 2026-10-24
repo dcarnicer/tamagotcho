@@ -265,10 +265,12 @@ uint32_t randomSeed() { return esp_random(); }
 const char* name() { return "StickS3"; }
 
 #if defined(TGC_BOARD_M5)
-// No keyboard, every orientation (the inline ones of Board.h elsewhere).
+// No keyboard, every orientation, no microSD slot (the inline ones of Board.h
+// elsewhere).
 bool fixedLandscape() { return false; }
 bool hasKeyboard() { return false; }
 bool nextKeyEvent(KeyEvent*) { return false; }
+bool sdPins(SdPins*) { return false; }
 }  // namespace sticks3
 #endif
 }  // namespace board

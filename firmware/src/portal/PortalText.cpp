@@ -16,6 +16,14 @@ PortalText makeSpanish() {
     t.decksOne = "1 mazo en el dispositivo";
     t.decksFmt = "%u mazos en el dispositivo";
     t.freeFmt = "%s libres";
+    t.cardFreeFmt = "%s libres en la tarjeta";
+    t.cardUnreadable =
+        "La tarjeta microSD no se puede leer: formatéala en FAT32 (las exFAT no se leen). "
+        "Mientras tanto, los mazos siguen en el dispositivo.";
+    t.cardRemoved = "Se ha retirado la tarjeta microSD.";
+    t.placeCard = "tarjeta";
+    t.placeDevice = "dispositivo";
+    t.cardSpaceFmt = "Tarjeta: %s libres de %s";
     t.viaFmt = "vía <b>%s</b>";
     t.ownNetFmt = "en la red propia del dispositivo <b>%s</b>";
     t.clockHint = "Abrir esta página pone la fecha y la zona horaria del dispositivo con las de este navegador.";
@@ -128,6 +136,10 @@ PortalText makeSpanish() {
     t.progressSafetyNote =
         "Al restaurar, el archivo anterior se guarda en el dispositivo como "
         "/state/srs.before-restore.bin.";
+    t.progressCardNote =
+        "La tarjeta microSD también guarda una copia, <code>/tamagotcho/progress.bin</code>, que "
+        "se escribe cada vez que el dispositivo se suspende: una copia de seguridad que un "
+        "ordenador puede guardar y esta página restaurar.";
     t.progressRestored =
         "Progreso restaurado. Al cargar esta página, el dispositivo también ajusta la fecha y la "
         "zona horaria con el navegador.";

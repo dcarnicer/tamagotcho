@@ -25,6 +25,7 @@ namespace board {
     bool fixedLandscape();                    \
     bool hasKeyboard();                       \
     bool nextKeyEvent(KeyEvent* out);         \
+    bool sdPins(SdPins* out);                 \
     void begin();                             \
     void update();                            \
     lgfx::LGFX_Device& display();             \
@@ -73,6 +74,7 @@ bool cardputerBoard() {
 bool fixedLandscape() { return TGC_BOARD_CALL(fixedLandscape); }
 bool hasKeyboard() { return TGC_BOARD_CALL(hasKeyboard); }
 bool nextKeyEvent(KeyEvent* out) { return TGC_BOARD_CALL(nextKeyEvent, out); }
+bool sdPins(SdPins* out) { return TGC_BOARD_CALL(sdPins, out); }
 
 void begin() {
     TGC_BOARD_CALL(begin);

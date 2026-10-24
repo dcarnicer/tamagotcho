@@ -366,6 +366,42 @@ void test_firmware_row() {
         TEST_ASSERT_TRUE_MESSAGE(wrapText(text, 21).size() <= 4, text);
 }
 
+// The microSD card's strings (docs/microsd.md §4; app/UiStrings.cpp, copies
+// here with the widest numbers filled in: a 128 GB card reformatted as FAT32,
+// "119.2"). Only the Cardputer ADV (240 x 135) shows them today, but they fit
+// the 135 px portrait too. The deck list's top line: one caption line of 38
+// cells in landscape, two of 21 in portrait. About's heading in the label
+// face; the move's header with "12/12" right of it and its status in two label
+// lines; Get decks' note in 21 cells and the Wi-Fi screen's free-space line in
+// the 20 cells next to the QR code in landscape.
+void test_card_strings() {
+    for (const char* line : {"Card not readable: format it as FAT32", "Card removed",
+                             "Tarjeta ilegible: formatéala en FAT32", "Tarjeta retirada"}) {
+        TEST_ASSERT_TRUE_MESSAGE(captionCells(line) <= 38, line);
+        TEST_ASSERT_TRUE_MESSAGE(wrapText(line, 21).size() <= 2, line);
+    }
+    const UiFace& f = uifont::kLabel;
+    for (const char* heading : {"Card", "Tarjeta"})
+        TEST_ASSERT_TRUE_MESSAGE(uiTextWidth(f, heading, 0) <= 127, heading);
+    for (const char* value : {"119.2 GB, 119.2 free", "119,2 GB, 119,2 libres", "No card",
+                              "Sin tarjeta"})
+        TEST_ASSERT_TRUE_MESSAGE(wrapText(value, 21).size() <= 2, value);
+    for (const char* title : {"SD CARD", "TARJETA SD"})
+        TEST_ASSERT_TRUE_MESSAGE(
+            (captionCells(title) + 1 + captionCells("12/12")) * 6 <= 135 - 2 * theme::kGutter - 18,
+            title);
+    for (const char* status : {"Moving decks to the card...", "Mazos a la tarjeta..."}) {
+        const int portrait = labelLines(status, 127);
+        TEST_ASSERT_TRUE_MESSAGE(portrait >= 1 && portrait <= 2, status);
+        TEST_ASSERT_TRUE_MESSAGE(labelLines(status, 232) <= 2, status);
+    }
+    for (const char* note : {"SD: 119.2 GB free", "SD: 119,2 GB libres"})
+        TEST_ASSERT_TRUE_MESSAGE(captionCells(note) <= 21, note);
+    TEST_ASSERT_TRUE(captionCells("SD 119.2 / 119.2 GB") <= 20);
+    // The pill: two Font0 cells, like a language's.
+    TEST_ASSERT_EQUAL(2, captionCells("SD"));
+}
+
 // What the app sets the queue to (app/Settings.cpp learnOptions()): learning
 // on or off, with the queue's defaults of two steps three items apart
 // (docs/learning-mode.md §6, decision 5); off is the default of the queue
@@ -760,6 +796,7 @@ int main(int, char**) {
     RUN_TEST(test_tree_groups_and_marks);
     RUN_TEST(test_introduce_row);
     RUN_TEST(test_firmware_row);
+    RUN_TEST(test_card_strings);
     RUN_TEST(test_learn_options_defaults);
     RUN_TEST(test_values);
     RUN_TEST(test_live_streak);

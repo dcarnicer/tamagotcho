@@ -2,7 +2,6 @@
 #include "platform/NetFetch.h"
 
 #include <HTTPClient.h>
-#include <LittleFS.h>
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
@@ -14,8 +13,8 @@
 
 #include "pack/PackReader.h"
 #include "platform/FsPackSource.h"
-#include "platform/FsQuiet.h"
 #include "platform/RootCerts.h"
+#include "platform/Storage.h"
 
 // The TLS handshake (certificate parsing, RSA/ECDSA verification) runs on the
 // Arduino loop task, whose default 8 KB stack leaves little margin under the
@@ -26,7 +25,6 @@ namespace tgc {
 
 namespace {
 
-constexpr const char* kPacksDir = "/packs";
 constexpr uint16_t kHttpTimeoutMs = 8000;            // per read (HTTPClient)
 constexpr int32_t kTlsConnectTimeoutMs = 10000;      // TCP connect + TLS socket timeout
 constexpr unsigned long kTlsHandshakeTimeoutS = 15;  // whole handshake
@@ -183,29 +181,26 @@ void logNetHeap(const char* what) {
                   (unsigned)ESP.getFreePsram());
 }
 
-size_t fsFreeBytes() {
-    const size_t total = LittleFS.totalBytes();
-    const size_t used = LittleFS.usedBytes();
-    return total > used ? total - used : 0;
-}
-
 namespace {
 
-// A pack download's body: the temp file, within the free space (the reserve
-// kept) and the caller's cap. The caller removes the temp on any failure.
+// A pack download's body: the temp file `tmp`, within the free space (the
+// destination's reserve kept) and the caller's cap. The caller removes the
+// temp on any failure.
 class PackFileSink : public FetchSink {
 public:
-    PackFileSink(size_t freeBytes, size_t maxBytes) : free_(freeBytes), max_(maxBytes) {}
+    PackFileSink(const String& tmp, size_t freeBytes, size_t reserve, size_t maxBytes)
+        : tmp_(tmp), free_(freeBytes), reserve_(reserve), max_(maxBytes) {}
     FetchStatus begin(int announced) override {
         if (announced > 0 && static_cast<size_t>(announced) > max_) return FetchStatus::TooLarge;
-        if (announced > 0 && static_cast<size_t>(announced) + kPackFsReserveBytes > free_)
+        if (announced > 0 && static_cast<size_t>(announced) + reserve_ > free_)
             return FetchStatus::NoSpace;
-        file_ = LittleFS.open(kFetchTmp, "w");
+        file_ = storage::openFile(tmp_, "w");
         return file_ ? FetchStatus::Ok : FetchStatus::WriteFailed;
     }
     FetchStatus write(const uint8_t* p, size_t n) override {
-        if (written_ + n + kPackFsReserveBytes > free_) return FetchStatus::NoSpace;
+        if (written_ + n + reserve_ > free_) return FetchStatus::NoSpace;
         if (written_ + n > max_) return FetchStatus::TooLarge;
+        // A pulled card fails here like a full filesystem (docs/microsd.md §3.5).
         if (file_.write(p, n) != n) return FetchStatus::WriteFailed;
         written_ += n;
         return FetchStatus::Ok;
@@ -215,7 +210,9 @@ public:
     }
 
 private:
+    String tmp_;
     size_t free_;
+    size_t reserve_;
     size_t max_;
     size_t written_ = 0;
     File file_;
@@ -285,7 +282,7 @@ FetchResult fetchToSink(const FetchBodyRequest& req, FetchSink& sink) {
     return res;
 }
 
-FetchResult fetchPackFile(const PackFetchRequest& req) {
+FetchResult fetchPackFile(const PackFetchRequest& req, DeckPlace place) {
     FetchResult res;
     const bool https = req.url.startsWith("https://");
     if ((!https && !req.url.startsWith("http://")) || (https && !req.allowHttps) ||
@@ -293,16 +290,18 @@ FetchResult fetchPackFile(const PackFetchRequest& req) {
         res.status = FetchStatus::BadUrl;
         return res;
     }
-    const String dst = String(kPacksDir) + "/" + req.fileName;
-    LittleFS.mkdir(kPacksDir);
+    const String dst = storage::deckPathFor(place, req.fileName);
+    const String tmp = storage::deckPathFor(place, kFetchTmpName);
+    storage::makeDecksDir(place);
     // Discard a temp left by an interrupted run before measuring the space, or
     // its size would count against this download.
-    fsRemoveIfExists(kFetchTmp);
+    storage::removeIfExists(tmp);
 
     // Space first, before any network traffic: the reserve must stay free, and
     // a catalog size that cannot fit is refused without downloading it.
-    const size_t freeB = fsFreeBytes();
-    if (freeB < kPackFsReserveBytes) {
+    const size_t freeB = storage::freeBytes(place);
+    const size_t reserve = static_cast<size_t>(reserveFor(place));
+    if (freeB < reserve) {
         res.status = FetchStatus::NoSpace;
         return res;
     }
@@ -310,7 +309,7 @@ FetchResult fetchPackFile(const PackFetchRequest& req) {
         res.status = FetchStatus::TooLarge;
         return res;
     }
-    if (req.expectBytes && req.expectBytes + kPackFsReserveBytes > freeB) {
+    if (req.expectBytes && req.expectBytes + reserve > freeB) {
         res.status = FetchStatus::NoSpace;
         return res;
     }
@@ -324,30 +323,35 @@ FetchResult fetchPackFile(const PackFetchRequest& req) {
     body.http10 = req.http10;
     body.progress = req.progress;
     body.progressCtx = req.progressCtx;
-    PackFileSink sink(freeB, req.maxBytes);
+    PackFileSink sink(tmp, freeB, reserve, req.maxBytes);
     res = fetchToSink(body, sink);
     sink.close();
 
     // Integrity (fetchToSink: size and digest) before structure: then any
     // download must look like a pack.
     FetchStatus st = res.status;
-    if (st == FetchStatus::Ok && (res.bytes < 4 || !validatePackFile(kFetchTmp)))
+    if (st == FetchStatus::Ok && (res.bytes < 4 || !validatePackFile(tmp)))
         st = FetchStatus::InvalidPack;
     if (st != FetchStatus::Ok) {
-        if (res.bodyStarted) LittleFS.remove(kFetchTmp);
+        if (res.bodyStarted) storage::removeIfExists(tmp);
         res.status = st;
         return res;
     }
 
-    const bool hadDst = fsRemoveIfExists(dst);
-    if (!LittleFS.rename(kFetchTmp, dst)) {
-        LittleFS.remove(kFetchTmp);
-        // The old pack was already removed, so /packs did change: the app must
-        // rescan rather than keep a handle to a file that is gone.
+    // A FAT rename does not overwrite, a LittleFS one not over an open file:
+    // the old pack goes first (the caller closed it if it is the loaded deck).
+    const bool hadDst = storage::removeIfExists(dst);
+    if (!storage::renameFile(tmp, dst)) {
+        storage::removeIfExists(tmp);
+        // The old pack was already removed, so the decks did change: the app
+        // must rescan rather than keep a handle to a file that is gone.
         res.status = FetchStatus::RenameFailed;
         res.packsChanged = hadDst;
         return res;
     }
+    // The new copy is the one to list: one of the same name in the other place
+    // (a deck the card had no room for, or one fetched while it was out) goes.
+    storage::removeOtherCopy(dst);
     res.packsChanged = true;
     return res;
 }
@@ -411,7 +415,7 @@ CatalogFetch fetchCatalog(const String& url) {
 }
 
 bool validatePackFile(const String& path) {
-    File f = LittleFS.open(path, "r");
+    File f = storage::openFile(path, "r");
     if (!f) return false;
     uint8_t magic[4] = {0, 0, 0, 0};
     const size_t n = f.read(magic, sizeof magic);
@@ -420,7 +424,7 @@ bool validatePackFile(const String& path) {
 
     // Structural probe (the whole validation of open(), in the memory mode the
     // app opens packs in, so no PSRAM is needed); freed again before we return.
-    auto src = std::make_unique<FsPackSource>(LittleFS.open(path, "r"));
+    auto src = std::make_unique<FsPackSource>(storage::openFile(path, "r"));
     if (!src->ok()) return false;
     PackReader probe;
     const PackError e = probe.open(*src, psramAllocator(), packMemory());

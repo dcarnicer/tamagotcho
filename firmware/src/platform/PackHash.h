@@ -1,22 +1,23 @@
 #pragma once
-// SHA-256 of a file in LittleFS, streamed so a multi-megabyte pack never sits
-// in RAM at once. The deck update check reads the installed file's digest only
+// SHA-256 of a file on LittleFS or the microSD card, streamed so a
+// multi-megabyte pack never sits in RAM at once. The deck update check reads the installed file's digest only
 // when its size already matches the catalog (docs/deck-updates.md); the hash
 // itself uses the same mbedTLS implementation as the download check
 // (platform/NetFetch.cpp). Arduino/ESP32 only; not part of the native build.
 #include <Arduino.h>
-#include <LittleFS.h>
+#include <FS.h>
 #include <mbedtls/sha256.h>
 #include <stdlib.h>
 
 namespace tgc {
 
-// Digest of the file at LittleFS path `path` ("/packs/n5-es.tgc") into
+// Digest of the file at `path` on `fs` ("/packs/n5-es.tgc" on LittleFS) into
 // `out[32]`. False when the file cannot be opened, read or allocated for, so a
-// caller can fall back to its size-only answer.
-inline bool fsFileSha256(const String& path, uint8_t out[32]) {
+// caller can fall back to its size-only answer. Deck paths go through
+// platform/Storage's sha256(), which finds the filesystem.
+inline bool fsFileSha256(fs::FS& fs, const String& path, uint8_t out[32]) {
     constexpr size_t kChunk = 4 * 1024;
-    File f = LittleFS.open(path, "r");
+    File f = fs.open(path, "r");
     if (!f || f.isDirectory()) return false;
     const size_t expected = f.size();
 

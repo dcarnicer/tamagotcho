@@ -236,6 +236,7 @@ void loop() {
     // timer (the SRS day clock) with it.
     if (batteryCritical(t)) sleepNow(true);
     updateCheckTick(t);
+    deckReadTick(t);  // a deck on the microSD card that stopped reading (a pulled card)
     firmwareTick(t);  // a new image's first boot: valid after 10 s of this loop
     powerTick(t);
     delay(10);

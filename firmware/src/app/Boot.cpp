@@ -11,6 +11,7 @@
 #include "Credits.h"
 #include "Version.h"
 #include "app/App.h"
+#include "app/CardMove.h"
 #include "app/Clock.h"
 #include "app/DateScreens.h"
 #include "app/DeckUpdates.h"
@@ -28,6 +29,7 @@
 #include "board/Board.h"
 #include "platform/FsQuiet.h"
 #include "platform/NetFetch.h"
+#include "platform/Storage.h"
 #include "platform/WifiPortal.h"
 #include "power/BatteryGuard.h"
 #include "render/Widgets.h"
@@ -275,10 +277,16 @@ void boot() {
     if (!mountFilesystem()) askFormat();
     // A power cut in the middle of a download or an upload leaves its temp
     // behind (up to 5 MB), which would count against every later free-space
-    // check. Nothing can be in flight at boot.
-    for (const char* tmp : {tgc::kFetchTmp, tgc::WifiPortal::kUploadTmp,
-                            tgc::WifiPortal::kProgressTmp})
-        if (tgc::fsRemoveIfExists(tmp)) Serial.printf("fs: removed stale %s\n", tmp);
+    // check. Nothing can be in flight at boot. (The card's go whenever it
+    // mounts.)
+    tgc::storage::removeTemps(tgc::DeckPlace::Device);
+    if (tgc::fsRemoveIfExists(tgc::WifiPortal::kProgressTmp))
+        Serial.printf("fs: removed stale %s\n", tgc::WifiPortal::kProgressTmp);
+    // The microSD card, on a board with a slot (docs/microsd.md §3.1), before
+    // any deck opens: the decks on LittleFS move to it first (§3.6), and NVS
+    // `pack` follows the one it names.
+    tgc::storage::begin();
+    moveDecksToCard();
 #if defined(TGC_BATT_TEST)
     if (gBattWakePct != -2)
         battLog(gBattWakeUsb ? "boot after critical (usb)" : "boot after critical",
@@ -315,8 +323,14 @@ void boot() {
         return;
     }
 
-    String want = gPrefs.getString("pack", "");
-    if (std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end()) want = gPacks[0];
+    // The saved deck; if it is gone, the same deck in the other place (a card
+    // that is out, a deck the move could not take), else the first one.
+    const String saved = gPrefs.getString("pack", "");
+    String want = saved;
+    if (std::find(gPacks.begin(), gPacks.end(), want) == gPacks.end()) {
+        const String same = sameDeckIn(gPacks, want);
+        want = same.length() ? same : gPacks[0];
+    }
     // The saved deck, else the first other one that opens. None opening at all
     // most likely means decks of a newer pack format than this firmware reads.
     bool opened = loadPack(want);
@@ -327,7 +341,10 @@ void boot() {
         showError(ui().errOpenPack, ui().errOpenPackHint);
         halt();
     }
-    gPrefs.putString("pack", gCurrentPack);
+    // A saved deck on a card that is not in stays saved: with the card back,
+    // the next boot opens it again.
+    if (!(tgc::storage::onCard(saved) && !tgc::storage::cardMounted()))
+        gPrefs.putString("pack", gCurrentPack);
 
     const bool srsLoaded = gSrs.begin(gSrsIo);
     gSrsLoaded = srsLoaded;

@@ -192,6 +192,18 @@ void update() {
 bool fixedLandscape() { return true; }
 bool hasKeyboard() { return true; }
 
+// The microSD slot: SCK G40, MISO G39, MOSI G14, CS G12, no card-detect pin.
+// M5GFX puts the panel on SPI3_HOST (MOSI G35, SCLK G36: its autodetect for
+// board_M5CardputerADV), so the card takes SPI2, Arduino's `SPI`, and the two
+// never share a bus or its lock.
+bool sdPins(SdPins* out) {
+    out->sck = 40;
+    out->miso = 39;
+    out->mosi = 14;
+    out->cs = 12;
+    return true;
+}
+
 bool nextKeyEvent(KeyEvent* out) {
     if (gQueueCount == 0) return false;
     *out = gQueue[gQueueHead];

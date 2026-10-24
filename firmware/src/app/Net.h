@@ -2,8 +2,8 @@
 // What Get decks, the portal's home mode, the network test, the boot-time date,
 // the deck update check and the firmware install share over the home Wi-Fi:
 // the station (gHome) and the radio off, why a join failed, a catalog deck's
-// state against /packs, why a catalog read failed, the progress of a blocking
-// transfer, and the checked deck download.
+// state against the installed decks, why a catalog read failed, the progress of
+// a blocking transfer, and the checked deck download.
 #include <Arduino.h>
 
 #include <cstddef>
@@ -31,7 +31,8 @@ extern char gNetErrDetail[96];
 void netRadioOff();
 const char* joinFailureText();
 void formatMb(size_t bytes, bool unit, char* out, size_t n);
-String catalogPath(const tgc::CatalogEntry& e);
+String catalogFile(const tgc::CatalogEntry& e);  // "<name>.tgc"
+String catalogPath(const tgc::CatalogEntry& e);  // its installed copy, "" when none
 // Hashing cost of one comparison pass, logged once per pass rather than per deck.
 struct HashStats {
     uint32_t ms = 0;

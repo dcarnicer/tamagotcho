@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "app/App.h"
+#include "app/CardMove.h"
 #include "app/Clock.h"
 #include "app/DeckUpdates.h"
 #include "app/Decks.h"
@@ -18,6 +19,7 @@
 #include "app/Wifi.h"
 #include "platform/HomeWifi.h"
 #include "platform/NetFetch.h"
+#include "platform/Storage.h"
 #include "render/Widgets.h"
 #include "ui/Icons.h"
 #include "ui/Theme.h"
@@ -46,9 +48,11 @@ uint16_t gNetNoteColor = 0;
 // catalog's size, then one row per catalog deck -- its title, "EN · 79 kanji"
 // and the size; a deck already here is muted with a check, one here in
 // another build has a download mark and "update" -- and a note line over the
-// hint bar (what the last download did). While a deck downloads, its row shows
-// the percentage and a bar, and the side button cancels. Error: a title and a
-// wrapped detail. The UI fonts need no pack, so it works before one is open.
+// hint bar (what the last download did; with a card mounted, until then, the
+// card's free space: downloads go there). While a deck downloads, its row
+// shows the percentage and a bar, and the side button cancels. Error: a title
+// and a wrapped detail. The UI fonts need no pack, so it works before one is
+// open.
 tgc::ListView gNetList;  // the catalog's window; gNetSel is its focus
 
 }  // namespace
@@ -156,7 +160,15 @@ void drawGetDecks() {
             wg::drawRow(d, gRender, x, y, w, h, row);
         });
     }
-    menuNote(d, gNetNote, gNetNoteColor);
+    if (gNetNote[0]) {
+        menuNote(d, gNetNote, gNetNoteColor);
+    } else if (tgc::storage::cardMounted()) {
+        char gb[16], note[40];
+        snprintf(note, sizeof note, ui().netCardFreeFmt,
+                 tgc::formatGb(tgc::storage::cardFreeBytes(), ui().decimalPoint[0], gb,
+                               sizeof gb));
+        menuNote(d, note, kTextDim);
+    }
 
     wg::Hints h;
     h.side = &tgc::kIconBack;
@@ -191,8 +203,8 @@ void netNote(const char* text, uint16_t color) {
     gNetNoteColor = color;
 }
 
-// Compares the catalog with /packs (existence, size and, when the size matches,
-// SHA-256: catalog/catalogDeckState()).
+// Compares the catalog with the installed decks (existence, size and, when the
+// size matches, SHA-256: catalog/catalogDeckState()).
 void netRefreshStates() {
     listPacks(gPacks);
     gCatalogState.assign(gCatalog.size(), tgc::DeckState::New);
@@ -207,8 +219,10 @@ void netRefreshStates() {
 }  // namespace
 
 // Opens the Get decks screen and starts joining the home Wi-Fi. `fromBoot`: from
-// the boot-time upload screen (whose portal the caller already stopped).
+// the boot-time upload screen (whose portal the caller already stopped). A card
+// put in since is mounted first, and the device's decks move to it.
 void openGetDecks(bool fromBoot, bool updatesOnly) {
+    mountCardOnOpen();
     gNetFromBoot = fromBoot;
     gNetUpdatesOnly = updatesOnly;
     gScreen = Screen::GetDecks;
@@ -257,7 +271,7 @@ void closeGetDecks() {
         return;
     }
     listPacks(gPacks);
-    openDecks();
+    openDecks(false);  // the card was tried when Get decks opened
 }
 
 }  // namespace

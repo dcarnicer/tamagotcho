@@ -10,6 +10,7 @@
                                                                                   Board HAL (StickS3 / T-Display-S3 / Cardputer ADV)
         phone/laptop ──(setup mode: open AP 192.168.4.1 | home mode: home Wi-Fi, http://<ip>/)──► Wi-Fi portal (HTTP) ──► /packs
         decks-v<format> release: catalog-v2.txt + packs ──(home Wi-Fi, HTTPS: Get decks, portal, boot check)──► Get decks / portal page ──► /packs
+        microSD card (Cardputer ADV, FAT32): /tamagotcho/decks/*.tgc ──► PackReader; new decks go there, /packs decks move there; /tamagotcho/progress.bin (a copy)
  * later phases
 ```
 
@@ -45,19 +46,21 @@ from Settings › Device › Firmware, into the second app slot.
 | `render/`     | Draw 4bpp glyphs, 1bpp stroke masks and UTF-8 text onto a GFX canvas (decoded small glyphs cached: without a limit in PSRAM, within a byte budget otherwise): pack glyphs, the built-in Font0 (captions) and the UI font (`Renderer::kTextUi` / `kTextUiNumeral` / `kTextUiKana`, no pack needed), with `drawLabel` (one line, cap-height centred, ellipsis). `Widgets`: the flat UX components (header, hint bar, option tile with a label or a kanji, list row, pill, progress bar, a scrolling list drawer), the press fill of hold progress, and `presentRegion` (a partial push: `setClipRect` + `pushSprite`) |
 | `quiz/`       | Build a question (prompt + 4 options) from a card and its distractors, on'yomi options in katakana or hiragana (`restyleReadings()` rewrites the one on screen when the setting changes); `ReadingTurn`, the on/kun turn of reading questions. Pure C++ |
 | `catalog/`    | Parse the line-oriented deck catalog (`tamagotcho-pack catalog`, format v2 only, `catalog-v2.txt`): version check, per-record validation (safe file name, deck title as UTF-8, numbers, SHA-256, URL), bare-file-name URLs resolved against the catalog URL, entry cap; own-language ordering and a deck's state against `/packs` (new / on device / update). Pure C++, unit tested natively |
+| `storage/`    | Where decks live (docs/microsd.md), the pure part: the deck paths of the two places (`/packs/<file>` on LittleFS, `/sd/tamagotcho/decks/<file>` on the microSD card; the path says the place), the listing filter, the merge of both places' decks by file name (LittleFS's copy wins), whether a deck moving to the card fits (`moveFit()`, the reserves of each place) and the card's GB for About. Pure C++, unit tested natively |
 | `ota/`        | Firmware updates over the air, the pure part (docs/ota.md): the release manifest's parser (`tamagotcho-firmware.txt`, format v1: header and version checks, ignored lines and record types, a malformed `version` or `app` line or a second row for an environment refusing the whole manifest, the 8 KiB cap, bare file names resolved against the manifest URL with the catalog's `resolveCatalogUrl()`), the `vX.Y.Z` release versions and their order, and the update rule (`offerFor()`: a release build takes only a newer release, a development build only an overridden manifest and then any other version, never a version it rolled back from, no row or an image larger than the update slot offering nothing). Pure C++, unit tested natively |
 | `portal/`     | The Wi-Fi portal's pure helpers: the `WIFI:` QR text for the open access point (escaping), the QR version for a text, the page language (device UI language, else the browser's Accept-Language) and the deck-list language, RSSI quality words; and every page string in English and Spanish (`PortalText`). Pure C++, unit tested natively |
 | `srs/`        | Scheduling (FSRS, phase 2) and persisted review state, and which records go when a deck is deleted or its progress reset (`DeckProgress`, docs/srs.md §2.1); the day clock and the real date (`WallClock`: the 04:00 study day); time zones (`TimeZone`: POSIX TZ rules with daylight saving time, the curated zone list), so study days are 23/25 h on a change day. Pure C++, unit tested natively |
 | `imu/`        | `OrientationFilter`: accelerometer samples to a stable display rotation for the Auto orientation (hysteresis, settle time, flat and motion rejection). Pure C++, unit tested natively |
 | `power/`      | Critical-battery guard (`BatteryGuard.h`, header-only). Pure C++, unit tested natively |
-| `platform/`   | LittleFS-backed pack source and SRS state file; the on-device **Wi-Fi portal** (`WifiPortal`: an HTTP server in *setup mode* on its own open access point, or in *home mode* on the home network the app joined) with one task-oriented page: the deck catalog and its downloads (home mode, through the app), the decks on the device (deleting one deletes its progress too, through the app: `Hooks::onDeleteDeck`), and under Advanced uploading, URL downloads (either one of the loaded deck's file name has the app close that deck first, `Hooks::onBeforeReplace`, since LittleFS neither removes nor renames over an open file), the catalog URL, the home Wi-Fi and the statistics (the page also posts the phone's clock and time zone as a POSIX rule, `POST /time`, which anchors the SRS date); `HomeWifi` (home network in NVS, station mode on demand, link/IP/RSSI, SNTP time for the SRS date); `NetFetch` (atomic HTTP(S) pack download with size/SHA-256 checks and the catalog read, shared by the portal, Get decks and the network test; its body loop, `fetchToSink()`, writes into a sink: the pack temp file or the firmware update slot) with the embedded root CAs in `RootCerts.h`; `Ota` (firmware updates over the air, docs/ota.md: the build environment `TGC_ENV`, the check that the flash has our two-slot layout, the update slot, the install of a manifest row through Arduino's `Update`, `verifyRollbackLater()` and marking a new image valid). Arduino only |
+| `platform/`   | `Storage` (docs/microsd.md): the microSD card on a board with a slot (`board::sdPins()`; FAT16/FAT32 only, mounted at boot and when the deck list or Get decks opens, its states: none, unreadable, mounted, removed), every deck's path mapped to its filesystem (LittleFS or the card), the listings of both places, the copy, the hash and the free space of either, and the progress copy on the card; the file-backed pack source (it can stop at its first read error, for the card's decks) and the SRS state file (LittleFS); the on-device **Wi-Fi portal** (`WifiPortal`: an HTTP server in *setup mode* on its own open access point, or in *home mode* on the home network the app joined) with one task-oriented page: the deck catalog and its downloads (home mode, through the app), the decks on the device (deleting one deletes its progress too, through the app: `Hooks::onDeleteDeck`), and under Advanced uploading, URL downloads (either one of the loaded deck's file name has the app close that deck first, `Hooks::onBeforeReplace`, since LittleFS neither removes nor renames over an open file), the catalog URL, the home Wi-Fi and the statistics (the page also posts the phone's clock and time zone as a POSIX rule, `POST /time`, which anchors the SRS date); `HomeWifi` (home network in NVS, station mode on demand, link/IP/RSSI, SNTP time for the SRS date); `NetFetch` (atomic HTTP(S) pack download with size/SHA-256 checks and the catalog read, shared by the portal, Get decks and the network test; its body loop, `fetchToSink()`, writes into a sink: the pack temp file or the firmware update slot) with the embedded root CAs in `RootCerts.h`; `Ota` (firmware updates over the air, docs/ota.md: the build environment `TGC_ENV`, the check that the flash has our two-slot layout, the update slot, the install of a manifest row through Arduino's `Update`, `verifyRollbackLater()` and marking a new image valid). Arduino only |
 | `ui/`         | The screens' pure logic (the screens themselves are in `app/`, below). Header-only pure helpers, unit tested natively: `UiLang.h` (the UI language, and when the first boot asks for it), `TextLayout.h` (line wrapping and paging for the built-in font, used by Settings › Device › About and the captions), `Theme.h` (the UX refresh's RGB565 colour tokens, spacing and per-panel layout grid), `Icons.h` (1bpp icons, art strings packed at compile time), `ListView.h` (a scrolling list's focus, window, markers and scroll thumb), `HintBar.h` (the hint bar's layout: caption widths, the front and side groups, and the second row a screen with a side tap and a side hold needs when they do not fit one; on a keyboard board the marks are keycaps), `KeyInput.h` (keyboard input: the Cardputer ADV's TCA8418 key numbers on its key grid, the keys the app tells apart, their five actions and the arrows' auto-repeat), `QuizUi.h` (the quiz screens' logic: session progress, option navigation, the hint bar policy, hold-progress and auto-advance timing, the result pill within its pixel budget, the detail card's reading rows, and the intro card's layout: meanings, reading rows with `+N`, example words, page 1 and page 2 per panel), `UiFace.h` + the generated `UiFont.h` (the firmware's UI font: Noto Sans JP glyph tables in the pack 4bpp format, from `tools/ui-font/gen_ui_font.py`), `SettingsTree.h` (the settings home's five groups and the Study / Device pages, Study › Introduce among them as item tables, chevrons, icons and row values; a landscape-only board's Device page has no Orientation row), `ScreenLayout.h` (where the summary card, the stats ring and tiles, the calendar tile and the done screen go on each panel), `DeckSummary.h` (the loaded deck's total / new / due today and tomorrow), `InputPrefs.h` (auto-advance and hold-time choices) |
 | `app/`        | The app: every screen, the quiz loop, the settings, Get decks and the deck updates, the Wi-Fi screen and the portal's hooks, the clock, the boot and the power handling, one file pair per screen or area ("The app layer" below). Arduino only |
 | `main.cpp`    | The Arduino entry points: `setup()` (runs `app::boot()`), `loop()` (the buttons' tap and hold events) and the two screen dispatchers, `drawScreen()` and `handleInput()` |
 | `Version.*`, `Credits.h` | `tgc::firmwareVersion()`: the release tag, `git describe` or `"dev"`, defined for `Version.cpp` only by `scripts/version.py`; the attribution strings Settings › Device › About and the portal footer share (docs/data-sources.md), and the app's name (`kAppName` たまごっちょ on screen, `kAppNameLatin` Tamagotcho for the serial log, SSID and mDNS host) |
 
-Pure-logic modules (`pack`, `quiz`, `srs`, `imu`, `power`, `catalog`, `portal`, `ota`, and
-the helpers in `ui`) must build in the `native` PlatformIO env with no Arduino headers.
+Pure-logic modules (`pack`, `quiz`, `srs`, `imu`, `power`, `catalog`, `portal`, `ota`,
+`storage`, and the helpers in `ui`) must build in the `native` PlatformIO env with no
+Arduino headers.
 
 ### The app layer (`firmware/src/app/`)
 
@@ -81,7 +84,8 @@ an anonymous namespace.
 | `Choice`      | The pickers (`Screen::Choice`) and applying a choice |
 | `Stats`, `About` | Statistics; Settings › Device › About |
 | `Firmware`    | Settings › Device › Firmware (docs/ota.md): the running version against the one the last manifest read found, Install and Check now, the install and the restart; the manifest read the deck-catalog sessions add and its badge; a new image's first boot (marked valid after 10 s of the loop or before a deep sleep) and the notice after a rollback |
-| `Decks`       | `/packs` and the loaded deck (`loadPack()`, `portalPacksChanged()`), its counts (`deckCounts()`), the deck list |
+| `Decks`       | The decks of both places (`listPacks()`: LittleFS and the microSD card) and the loaded deck (`loadPack()`, `portalPacksChanged()`, and losing it to a pulled card: `deckReadTick()`), its counts (`deckCounts()`), the deck list (an "SD" pill on the card's decks, the card's trouble on top) |
+| `CardMove`    | The decks on LittleFS moving to a microSD card that mounts (docs/microsd.md §3.6) and its screen; the card mounted again when the deck list or Get decks opens (`mountCardOnOpen()`) |
 | `GetDecks`    | Get decks and the updates list |
 | `DeckUpdates` | The update count, the automatic check's policy and its boot screen |
 | `Net`         | What the Wi-Fi sessions share: the station (`gHome`), the radio off, why a join failed, a catalog deck's state on disk, why a catalog read failed, the checked deck download and its progress |
@@ -93,7 +97,7 @@ an anonymous namespace.
 | `Power`       | The dim, the idle and explicit sleep, the wake, the critical-battery guard, the time slept, the CPU clocks, the battery test log |
 | `Input`       | The hold progress and the keyboard (`keyAction()`, `keyTurn()`) |
 | `Remote`      | The serial remote of the `-shots` envs (`TGC_REMOTE`) |
-| `Boot`        | `boot()` (what `setup()` runs), the filesystem mount and format, the first-boot language picker, the boot-time upload screen |
+| `Boot`        | `boot()` (what `setup()` runs), the filesystem mount and format, the microSD card's mount and the move of the decks to it, the first-boot language picker, the boot-time upload screen |
 
 **Where new code goes.** A new screen is a `Screen` value in `App.h`, its own
 `app/X.h` / `app/X.cpp` with its state, its draw function and its loop function
@@ -171,6 +175,13 @@ Cardputer ADV and the `m5stack` image):
   size plus a 96 KB reserve free (`kPackFsReserveBytes`,
   `platform/NetFetch.h`); 4.44 MiB holds N5 to N1 in one language, or the
   Jōyō deck with N5 and N4, but not the Jōyō deck with N1.
+- **The microSD card** (Cardputer ADV, docs/microsd.md): a FAT16/FAT32 card
+  holds the decks in `/tamagotcho/decks/`. New decks go there while a card is
+  mounted (256 KB kept free), the decks on LittleFS move there by themselves
+  whenever a card mounts, and LittleFS then holds only the progress; the card
+  gets a copy of it, `/tamagotcho/progress.bin`, at every sleep. A deck path
+  names its place (`/packs/...` or `/sd/tamagotcho/decks/...`), so NVS `pack`
+  works for both.
 - **Which slot boots** is in `otadata`, written by `pio run -t upload` and the
   merged images as the framework's `boot_app0.bin` (boot `app0`). An update
   over the air writes the other slot and switches `otadata` to it, so a USB
@@ -243,8 +254,14 @@ estimate until the device logs them):
   without PSRAM always opens packs streamed (`platform/FsPackSource.h`
   `packMemory()`, also for that probe); a board with PSRAM keeps them in
   memory and streams only if they ever do not fit.
+- **The microSD card** takes about 13 KB of internal heap while mounted:
+  this framework's FatFs has 4 KB sector buffers (sized for the flash's wear
+  levelling), one for the volume and one per open file, and the card allows
+  two open files (the loaded deck and one more). A deck read from the card
+  has a 512-byte stdio buffer instead of the core's 4 KB.
 
 What to watch on the device: the `pack ...: tables streamed (N bytes);
-internal heap F free, L largest` line after a deck loads and the
+internal heap F free, L largest` line after a deck loads, the
 `[net] before TLS` / `after TLS connect` / `home portal up` lines (free,
-largest block, minimum since boot).
+largest block, minimum since boot) and the `[sd] boot: mounted ...` line
+(the heap before and after the card's mount).

@@ -392,6 +392,29 @@ struct UiStrings {
     const char* fwBatteryHint;    // detail: the battery is too low to install
     const char* fwFailedTitle;    // the boot notice after a rollback
     const char* fwFailedFmt;      // %s = the version that failed, %s = the running one
+    // --- The microSD card (docs/microsd.md §4) --------------------------------
+    // Only boards with a slot show these (the Cardputer ADV, 240 x 135), but
+    // they fit the 135 px portrait too; test_settings copies them. The deck
+    // list: the pill of a deck on the card (Font0, like "EN") and its top line
+    // (captions, one line of 38 cells in landscape, two of 21 in portrait).
+    const char* deckCardTag;
+    const char* cardUnreadable;   // a card that did not mount (exFAT, unformatted), or kept failing
+    const char* cardRemoved;      // the card went away while a deck on it was open
+    // Settings > Device > About: the heading (label face, its colon dropped)
+    // and its value (captions, wrapped): "29.7 GB, 28.1 free", or no card.
+    const char* aboutCard;
+    const char* aboutCardFmt;     // %s = GB in all, %s = GB free
+    const char* aboutNoCard;
+    // The move of the device's decks to a card that mounted (§3.6): the
+    // header (Font0, ASCII; "2/5" right of it) and the status (label face, two
+    // lines of 127 px).
+    const char* moveTitle;
+    const char* moveStatus;
+    // Get decks' note (a caption, 21 cells) and the Wi-Fi screen's free-space
+    // line (20 cells next to the QR code in landscape) while a card is
+    // mounted: new decks go there.
+    const char* netCardFreeFmt;   // %s = GB free on the card
+    const char* wifiCardFreeFmt;  // %s = GB free, %s = GB in all
 };
 
 extern const UiStrings kUiEn;
