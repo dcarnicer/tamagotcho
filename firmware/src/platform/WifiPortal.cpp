@@ -1781,12 +1781,18 @@ void WifiPortal::handleUploadChunk() {
                               (unsigned)uploadWritten_);
                 break;
             }
+            // Replacing the loaded deck: the app closes its file first, or
+            // neither the remove nor the rename could touch it.
             const String dst = String(kPacksDir) + "/" + uploadName_;
-            fsRemoveIfExists(dst);
+            const bool closed = hooks_.onBeforeReplace && hooks_.onBeforeReplace(dst.c_str());
+            const bool hadDst = fsRemoveIfExists(dst);
             if (!LittleFS.rename(kUploadTmp, dst)) {
                 LittleFS.remove(kUploadTmp);
                 uploadError_ = UploadError::CannotStore;
                 Serial.printf("[wifi] upload rename failed %s\n", uploadName_.c_str());
+                // The old pack is gone, or the app closed it: let it rescan
+                // rather than keep a reader on a missing file or no deck.
+                if ((hadDst || closed) && hooks_.onPacksChanged) hooks_.onPacksChanged();
                 break;
             }
             ++uploaded_;
@@ -2023,17 +2029,22 @@ bool WifiPortal::doFetch(const String& url) {
     req.maxBytes = kMaxPackBytes;
     req.idleTimeoutMs = kFetchIdleMs;
     req.totalTimeoutMs = kFetchTotalMs;
+    // Replacing the loaded deck: the app closes its file first, as Get decks
+    // does. The download has no progress callback, so nothing on the device
+    // draws from the closed deck before the rescan below reopens it.
+    const String dst = String(kPacksDir) + "/" + name;
+    const bool closed = hooks_.onBeforeReplace && hooks_.onBeforeReplace(dst.c_str());
     const FetchResult r = fetchPackFile(req);
+    // /packs changed (on success, or a failed rename after the old pack was
+    // removed), or the app closed the loaded deck: let it rescan, which reopens
+    // the deck rather than keep a reader on a file that is gone, or none.
+    if ((r.packsChanged || closed) && hooks_.onPacksChanged) hooks_.onPacksChanged();
     switch (r.status) {
         case FetchStatus::Ok:
             setMsg("downloaded %s (%u KB)", name.c_str(), (unsigned)(r.bytes / 1024));
             Serial.printf("[wifi] fetch ok %s %u bytes\n", name.c_str(), (unsigned)r.bytes);
-            if (hooks_.onPacksChanged) hooks_.onPacksChanged();
             return true;
         case FetchStatus::RenameFailed:
-            // The old pack was already removed, so /packs did change: let the app
-            // rescan rather than keep a handle to a file that is gone.
-            if (r.packsChanged && hooks_.onPacksChanged) hooks_.onPacksChanged();
             setMsg("rename failed");
             return false;
         case FetchStatus::InvalidPack:

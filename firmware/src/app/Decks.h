@@ -19,6 +19,7 @@ void listPacks(std::vector<String>& out);
 tgc::DeckSummary deckCounts();
 String packFileStem(const String& path);
 bool loadPack(const String& path);
+bool closePackIfLoaded(const String& path);
 bool portalPacksChanged();
 
 void drawDecks();

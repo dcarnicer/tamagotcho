@@ -191,6 +191,21 @@ bool loadPack(const String& path) {
     return true;
 }
 
+// Before pack `path` is replaced (Get decks, a portal upload or URL download)
+// or deleted (the portal): when it is the loaded deck, closes the renderer,
+// the reader and the file, since LittleFS neither removes nor renames over an
+// open file. gCurrentPack stays, so the portalPacksChanged() that must follow
+// reopens the same path (the new file, or the old one when the swap or the
+// delete failed), or falls back to another deck when it is gone. True when it
+// closed the loaded deck.
+bool closePackIfLoaded(const String& path) {
+    if (!gPack->isOpen() || path != gCurrentPack) return false;
+    gRender.end();
+    gPack->close();
+    gSource.reset();
+    return true;
+}
+
 // Called by the portal after /packs changed, and by Get decks after a download.
 // Rescans the folder and keeps the live pack usable: reload the loaded pack (its
 // contents may have changed), else fall back to the first remaining one, else
