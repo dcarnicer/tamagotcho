@@ -507,6 +507,23 @@ Scope for now: **kanji only** (no vocabulary decks).
       decks copied there from a computer, beside or instead of the 5.9 MB
       LittleFS; maybe the SRS state too. Kept out of the first port on
       purpose (simple first); the streamed pack tables already read on demand.
+- [ ] **A watch: Waveshare ESP32-S3-Touch-AMOLED-2.06** (idea, 2026-10-24;
+      after OTA). ESP32-S3R8 (8 MB PSRAM), 32 MB flash, 2.06" AMOLED
+      410×502 (CO5300 over QSPI, which LovyanGFX 1.2.34 drives:
+      `Panel_CO5300`), FT3168 touch (`Touch_FT5x06`), QMI8658 IMU, PCF85063
+      RTC on a backup battery, AXP2101 PMU, microSD, speaker and microphones,
+      BOOT (GPIO0) and PWR (read on GPIO10) buttons. Its own environment and
+      image, not the shared `m5stack` one: the maintainer is fine with a
+      separate firmware. Steps: a bring-up with today's UI drawn at 205×251
+      and doubled (every screen works at once; the 4bpp glyphs stay legible),
+      then native layouts at 410×502 (about 315 ppi, so 18 px text is too
+      small: decks built with larger `--large-px`/`--text-px`, a larger UI
+      font) and a touch-first answer (tap the option); **watch functions**
+      (a clock face when idle, with the RTC's time and date, the battery and
+      the day's due count; raise to wake with the IMU; maybe a timer or an
+      alarm on the speaker); decks on its microSD, shared with the Cardputer
+      item above. Its factory flash is backed up in
+      `~/Downloads/tangocho-backups/` (2026-10-24).
 
 ## Before publishing
 
