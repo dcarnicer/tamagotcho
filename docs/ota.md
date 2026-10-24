@@ -1,0 +1,363 @@
+# OTA firmware updates: design and open decisions
+
+> **Status: proposal (2026-10-24), decisions open (§8).** Nothing here is
+> built yet. Roadmap: "OTA firmware updates" (`docs/roadmap.md`, idea of
+> 2026-10-21).
+
+The device should update its own firmware over the home Wi-Fi: it finds out
+that a newer release exists, says so, and installs it when the user holds a
+button. Settings, decks and progress stay. A bad image must never leave the
+device unable to boot.
+
+Non-goals: installing without the user asking; updating devices that run
+under M5Launcher (they keep the launcher's own path); signing images (the
+trust is the same as Get decks': GitHub over HTTPS, §3.7).
+
+This document covers: the facts that constrain the design (§1), the flash
+layout and the one-time move to it (§2), the design (§3), what the screens
+show (§4), the code (§5), a phased plan (§6), what only hardware can answer
+(§7), and the decisions to take (§8).
+
+## 1. Today
+
+**Flash layout** (`firmware/partitions/*.csv`): one app slot and no OTA data,
+so nearly all flash is LittleFS.
+
+| | 8 MB (StickS3, Cardputer ADV, `m5stack`) | 16 MB (T-Display-S3) |
+|---|---|---|
+| `nvs` | `0x9000`, 20 KB | same |
+| `phy_init` (unused) | `0xE000`, 4 KB | same |
+| `app0` (factory) | `0x10000`, 2 MiB | same |
+| `spiffs` (LittleFS) | `0x210000`, 5.94 MiB | `0x210000`, 13.94 MiB |
+
+**App sizes** (v0.6.0): `m5stack` 1,508,720 B, `sticks3` 1,503,216,
+`cardputer-adv` 1,451,184, `tdisplay-s3` 1,344,128. The 2 MiB slot has
+about 0.5 MiB free.
+
+**What is where.** Settings and the home Wi-Fi are in NVS (namespace
+`tangocho`); decks (`/packs`) and progress (`/state/srs.bin`) are on
+LittleFS. Writing a merged image at `0x0` erases NVS too: `esptool merge_bin`
+fills the gap between the partition table and the app with `0xFF` (hence
+M5Burner's "Burning erases the settings"). Writing the parts at their own
+offsets, as `pio run -t upload` does, keeps NVS.
+
+**The framework already has what OTA needs.** Arduino-ESP32 2.0.17 (IDF 4.4,
+`espressif32@6.12.0`):
+- Its precompiled bootloader has `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`: a
+  new image boots in the `PENDING_VERIFY` state and, if it is not marked
+  valid before the next reset, the bootloader goes back to the previous one.
+- `initArduino()` marks a pending image valid at once, unless the app
+  defines `verifyRollbackLater()` to return true; then the app decides when
+  (`esp_ota_mark_app_valid_cancel_rollback()`).
+- The `Update` library writes the next OTA slot sector by sector (erasing as
+  it goes), writes the image's first 16 bytes last so a half-written image
+  can never boot, checks the size and the image's magic byte and calls
+  `esp_ota_set_boot_partition()`. The bootloader then checks the image's own
+  checksum and SHA-256 (every build carries both) before running it.
+  `Update.canRollBack()` / `rollBack()` switch back to the other slot.
+- `esp_ota_get_last_invalid_partition()` tells, after a rollback, that one
+  happened.
+
+**The network side exists too.** `platform/NetFetch` downloads over HTTPS
+against the root CAs of `RootCerts.h`, follows GitHub's redirects, checks
+size and SHA-256 while streaming, reports progress and can be cancelled; it
+writes into a temp file only. Measured on the Cardputer ADV (no PSRAM),
+v0.6.0: 278 KB in 9.6 s including the TLS handshake (about 30 KB/s), so a
+1.5 MB image would take about a minute there.
+
+**GitHub gives a fixed URL for the latest release:**
+`https://github.com/dcarnicer/tamagotcho/releases/latest/download/<asset>`
+answers `302` to `/releases/download/<tag>/<asset>`, which answers `302` to
+`release-assets.githubusercontent.com`, the same host Get decks already
+downloads from (checked 2026-10-24 with the v0.6.0 assets). The decks
+releases are never marked latest, so "latest" is always a firmware release.
+
+**Updating today** is USB only: `pio run -t upload` (all parts), `esptool
+write_flash 0x10000 tamagotcho-<board>.bin` (app only; keeps everything),
+the merged image from the install page or M5Burner (erases settings). PIO's
+upload already writes `boot_app0.bin` (the OTA data record) at `0xE000`, over
+the unused `phy_init`.
+
+## 2. Flash layout with two app slots
+
+OTA needs two app slots (one runs, the other receives) and an `otadata`
+partition (which slot boots). The space comes from LittleFS; the app slots
+stay together at the start, so the data partition moves.
+
+**Proposed 8 MB table** (StickS3, Cardputer ADV, `m5stack`):
+
+| name | type | offset | size |
+|---|---|---|---|
+| `nvs` | data, nvs | `0x9000` | `0x5000` (20 KB, unchanged) |
+| `otadata` | data, ota | `0xE000` | `0x2000` |
+| `app0` | app, ota_0 | `0x10000` | `0x1C0000` (1.75 MiB) |
+| `app1` | app, ota_1 | `0x1D0000` | `0x1C0000` (1.75 MiB) |
+| `spiffs` | data, spiffs | `0x390000` | `0x470000` (4.44 MiB) |
+
+**Proposed 16 MB table** (T-Display-S3): `app0` and `app1` of 2 MiB at
+`0x10000` and `0x210000`, `spiffs` at `0x410000` with `0xBF0000`
+(11.94 MiB).
+
+`nvs` keeps its offset and size, so settings and the home Wi-Fi survive the
+change. `app0` keeps its offset, so an app-only image written at `0x10000`
+is still slot 0. `phy_init` goes: the framework builds the PHY init data into
+the app (`CONFIG_ESP_PHY_INIT_DATA_IN_PARTITION` is off) and keeps the
+calibration in NVS.
+
+**Slot size** (decision D1). 1.75 MiB leaves 326 KB over today's largest
+app, before the OTA code (an estimated 20-40 KB: `Update` and the screen).
+The slot size can only change with another USB flash, so it errs on the
+large side. The alternatives:
+
+| slot | LittleFS (8 MB) | headroom over 1.51 MB | lost vs today |
+|---|---|---|---|
+| 1.625 MiB | 4.69 MiB | 195 KB | 1.25 MiB |
+| **1.75 MiB** | **4.44 MiB** | **326 KB** | **1.50 MiB** |
+| 1.875 MiB | 4.19 MiB | 457 KB | 1.75 MiB |
+
+**What still fits on an 8 MB board** with 4.44 MiB (`decks-v3` sizes; the
+96 KB write reserve and the state file aside): N5 to N1 in one language
+(3.59 MiB); the Jōyō deck (3.27 MiB) with N5 and N4; N5 to N3 in both
+languages. What no longer fits: the Jōyō deck with N1 (5.27 MiB), which fits
+today. The T-Display-S3 keeps room for every deck of one language.
+
+### 2.1 Moving to the new layout (once, over USB)
+
+The first release with the new table (call it v0.7.0) cannot arrive over
+the air: the partition table, the bootloader's view of the slots and
+LittleFS's position all change. It is flashed over USB once; every later
+release can come over the air.
+
+LittleFS records its size in its superblock, and the partition now starts
+elsewhere, so the old filesystem does not mount in the new partition: the
+firmware formats it (as on a blank device). **Decks and progress are lost
+unless saved first; settings and Wi-Fi stay** when the parts are written at
+their offsets (`pio run -t upload`, or `esptool write_flash` with the
+bootloader, partition table, `boot_app0.bin` and app), and are lost with a
+merged image.
+
+Two ways to keep them (decision D2):
+- **(a) By hand, with what exists.** Before flashing: the portal's
+  **Advanced → Progress backup**. After: Get decks again, then restore the
+  backup on the portal. No code; a few minutes for the maintainer, the only
+  user (docs/decisions.md, no backward compatibility).
+- **(b) A host tool** (`tools/ota-migrate`): reads the old filesystem over
+  USB (`esptool read_flash`), copies its files into a new LittleFS image of
+  the new size with `littlefs-python` (dropping decks that no longer fit,
+  never the state), and writes table, `boot_app0.bin`, app and filesystem.
+  Keeps everything, but needs `esp_littlefs`'s exact geometry and a careful
+  hardware test; worth it only if there are other users to migrate.
+
+M5Burner and the install page carry the merged image, which erases
+everything anyway; their first OTA-capable version is a fresh install.
+
+## 3. Design
+
+### 3.1 The release side
+
+Each firmware release gets one more asset, **`tamagotcho-firmware.txt`**, a
+line-oriented manifest in the spirit of the deck catalog (UTF-8, tab
+separated, `#` comments):
+
+```
+#tamagotcho-firmware	1
+version	v0.7.0
+app	sticks3	tamagotcho-sticks3.bin	1503216	<sha256 hex>
+app	tdisplay-s3	tamagotcho-tdisplay-s3.bin	1344128	<sha256 hex>
+app	cardputer-adv	tamagotcho-cardputer-adv.bin	1451184	<sha256 hex>
+app	m5stack	tamagotcho-m5stack.bin	1508720	<sha256 hex>
+```
+
+File names are relative to the manifest's own URL, as in the catalog, so a
+test manifest elsewhere (§3.8) points at its own images. The device reads it
+at `releases/latest/download/tamagotcho-firmware.txt`. `release.yml` writes
+it from the app-only images it already builds, and fails if an image is
+larger than its slot (read from the partition CSV, as `decks.yml` reads the
+per-pack cap from `Catalog.h`). The format goes into its own spec section,
+spec first (CLAUDE.md).
+
+### 3.2 Which image a device installs
+
+The one its own build came from: every environment compiles in its name
+(`TGC_ENV`, e.g. `"m5stack"`), and the device takes that row. A StickS3
+installed from M5Burner runs `m5stack` and stays on it; one flashed with
+`pio run -e sticks3` stays on `sticks3`. Development builds (`-dev`,
+`-shots`, `-batt`, and any version with a `-<n>-g<hash>` suffix) do not
+offer updates: their image would drop the serial remote or the test code.
+
+### 3.3 When the device looks
+
+Decision D3. Recommended: **with the deck update checks**
+(docs/deck-updates.md): every home-Wi-Fi session that reads the deck catalog
+(the boot-time check by its battery policy, Get decks, the portal page, the
+network test, the date sync) also reads the firmware manifest, one more
+small HTTPS request in the same Wi-Fi session (a few seconds, most of it the
+TLS handshake). The result is a badge, as for
+decks: **Device** and its **Firmware** row show "v0.7.0". A manual **Check
+now** on the Firmware screen covers the rest. Alternative: only the manual
+check (simpler, but nobody would ever notice an update).
+
+Version order: `vMAJOR.MINOR.PATCH` compared numerically; a manifest version
+that does not parse is ignored. Only a newer version is offered; no
+downgrades (the other slot's rollback, §3.6, is the way back).
+
+### 3.4 Installing
+
+On **Settings › Device › Firmware**:
+1. The screen shows the running version, the available one and its size
+   (or "up to date", or the last check's error).
+2. **Preconditions**, checked before anything is written: the home Wi-Fi is
+   saved; the battery is at least at the level the deck downloads require
+   (`BatteryGuard::canResume`) or the device is on USB; the partition table
+   is ours (§3.7). The download is refused otherwise, with the reason.
+3. **Hold to install.** The screen keeps the panel on and shows a progress
+   bar; the side button (Esc on the Cardputer) cancels until the last
+   moment; a click of the power button cancels and sleeps, as a deck
+   download does.
+4. The body streams from NetFetch into `Update` (no file on LittleFS, so no
+   free space is needed); size and SHA-256 are checked against the manifest
+   while it streams; `Update.end()` checks the image and switches the boot
+   slot only when everything matched.
+5. "Restarting into v0.7.0..." and a restart. Any failure before the switch
+   leaves the running slot as the boot slot and shows the reason; the
+   half-written slot is simply overwritten next time.
+
+The quiz is never interrupted: the install starts only from this screen, by
+hand.
+
+### 3.5 The first boot of a new image
+
+The image defines `verifyRollbackLater()` to return true, so it boots
+pending. It marks itself valid once it has shown it works (decision D5,
+recommended): `setup()` finished, LittleFS mounted, and either a deck opened
+or the device reached its no-deck screens, then a few seconds of the loop
+running. A crash or a watchdog reset before that sends the next boot back to
+the previous image (the bootloader's rollback).
+
+The previous image, booted again, sees `esp_ota_get_last_invalid_partition()`
+and says once: "The update to v0.7.0 failed; back on v0.6.x". It then stops
+offering that version (it remembers it in NVS), so a broken release does not
+loop.
+
+### 3.6 Going back by hand
+
+After a good update the other slot still holds the previous version.
+**Firmware › Previous version** (only when `Update.canRollBack()`) switches
+back to it and restarts, for a release that boots but misbehaves (decision
+D6; optional). Progress is not an obstacle while the SRS file format stays
+the same; a release that changes it must say so, and the rollback row then
+warns or is hidden.
+
+### 3.7 Trust and safety
+
+- **Integrity and origin**: the manifest comes over HTTPS from GitHub (the
+  root CAs of Get decks); the image's size and SHA-256 come from the
+  manifest and are checked before the slot switches. No signing: anyone who
+  can publish a release on the repository can already publish decks.
+- **Only our layout**: OTA is offered only when the running partition is
+  `app0` or `app1` of our table (labels and sizes) and the next update slot
+  is the other one. Under M5Launcher, or with any other table, the Firmware
+  screen says to update the way the device was installed.
+- **Power**: the battery precondition, the panel kept on, the power-button
+  cancel. A power cut while writing leaves the running slot bootable.
+- **Memory**: TLS without PSRAM already works for Get decks on the
+  Cardputer ADV; `Update` needs one 4 KB sector buffer.
+- **The USB paths keep working**, with one change to the instructions: after
+  an OTA the device may boot `app1`, so an app-only `write_flash 0x10000`
+  must also write `boot_app0.bin` at `0xE000` (or erase `otadata`), or the
+  new image is not the one that boots. `pio run -t upload` and the merged
+  images already do.
+
+### 3.8 The portal and development
+
+- The portal page shows the firmware version and, when known, the available
+  one, with "install it from the device" (decision D7: the page does not
+  start the install; the device's screen and buttons do).
+- **For development** (decision D8, recommended as a later phase): the
+  portal accepts an app image upload (`POST /firmware`, the same `Update`
+  path, with the page's size and an optional SHA-256), so a build can be
+  installed over the Wi-Fi without a cable, e.g. `curl -F
+  firmware=@.pio/build/sticks3/firmware.bin http://<device>/firmware`; and a
+  firmware manifest URL can be overridden like the catalog URL, to test
+  updates from a manifest served on the computer before publishing.
+
+## 4. Screens
+
+Settings › Device gains one row, **Firmware**, before About, with the
+running version as its value and an "update" badge like the Decks row's.
+The Firmware screen (StickS3 portrait, 135 px wide; sketches, not mockups):
+
+```
+FIRMWARE                       FIRMWARE          v0.7.0
+                               Downloading...
+v0.6.0  ->  v0.7.0             [##########......] 61 %
+1.5 MB, from GitHub            0.9 / 1.5 MB
+                               
+Install                        
+Check now                      
+Previous version (v0.5.1)      
+                               
+o move  = install  < back      < cancel
+```
+
+Spanish texts and the Cardputer's keycaps follow the existing tables.
+
+## 5. Code
+
+Following CLAUDE.md's split:
+- **Pure, native-tested** (`firmware/src/ota/`): the manifest parser
+  (format errors, unknown lines, the row for an environment, URLs relative
+  to the manifest), the version comparison, the "offer this?" rule (newer,
+  not a dev build, not remembered as failed), the slot-size check the
+  workflow also does.
+- **Platform**: NetFetch's body loop takes a sink, a file (today's packs) or
+  an OTA slot (`Update`), so redirects, TLS, timeouts, size, SHA-256 and
+  progress stay in one place; `platform/Ota` wraps `Update`, the partition
+  checks, `verifyRollbackLater()`, marking valid and the rollback queries.
+- **App**: `app/Firmware.{h,cpp}` (the screen, the install), the Device row,
+  the manifest read added to the deck update sessions (`app/DeckUpdates`,
+  `app/Net`), the mark-valid step in `app/Boot` and the main loop.
+- **Release**: `release.yml` writes the manifest and checks the slot sizes;
+  `tools/release/merge_image.py` already writes `boot_app0.bin` when the
+  table has `otadata`.
+- **Docs**: the manifest format, the layout (architecture.md), the update
+  paths (user-guide.md, firmware/README.md, the release notes template),
+  m5burner.md (the merged image is a fresh install).
+
+## 6. Plan
+
+1. **Layout and release side** (S): the two partition tables, the manifest
+   in `release.yml` with the size check, docs. Flash it over USB on the
+   three boards (the move of §2.1) and check that everything still works,
+   including `pio run -t upload` and an app-only write after `boot_app0.bin`.
+2. **The device side** (M-L): the pure module and its tests, the NetFetch
+   sink, `platform/Ota`, the Firmware screen, the checks with the deck
+   updates, mark-valid and the rollback notice. Tested with a manifest
+   override pointing at the computer, and with an image built to crash in
+   `setup()` to see the rollback.
+3. **The first OTA release**: v0.7.0 is installed over USB; v0.7.1, even a
+   tiny one, is the first to arrive over the air on all three boards.
+4. **Optional**: the portal upload for development (§3.8), Previous version
+   (§3.6).
+
+## 7. What only the hardware will tell
+
+- Download and write time on each board, and whether `Update`'s erases slow
+  the stream enough to hit NetFetch's idle timeout.
+- Heap during TLS plus `Update` on the Cardputer ADV.
+- That the precompiled bootloader really rolls back (a crashing test image).
+- That LittleFS formats cleanly in its new place and that the first boot
+  after the move behaves as a fresh device with settings kept.
+
+## 8. Decisions
+
+| # | question | recommended | alternatives |
+|---|---|---|---|
+| D1 | App slot size on 8 MB boards | 1.75 MiB (LittleFS 4.44 MiB; Jōyō + N1 no longer fit) | 1.625 MiB (4.69 MiB, tight), 1.875 MiB (4.19 MiB) |
+| D2 | Moving to the new layout | (a) by hand: progress backup, USB flash, Get decks, restore | (b) a host migration tool |
+| D3 | When to look for an update | with the deck update checks, plus Check now | only Check now |
+| D4 | Which image | the running build's environment; dev builds never update | always `m5stack` on M5 boards |
+| D5 | When a new image counts as good | after setup, the filesystem and a deck (or the no-deck screens), plus a few seconds | at once (no rollback protection after `setup()`) |
+| D6 | Previous version row | later, optional | in the first version; never |
+| D7 | Install from the portal page | no: the page shows, the device installs | a portal button that starts it |
+| D8 | Development upload over Wi-Fi | later phase | with phase 2; never |
