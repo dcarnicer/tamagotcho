@@ -1,8 +1,10 @@
-# OTA firmware updates: design and open decisions
+# OTA firmware updates: design and decisions
 
-> **Status: proposal (2026-10-24), decisions open (§8).** Nothing here is
-> built yet. Roadmap: "OTA firmware updates" (`docs/roadmap.md`, idea of
-> 2026-10-21).
+> **Status: approved (2026-10-24), being built.** The maintainer took the
+> recommendation of every decision of §8 (D1, D2, D3 and D6/D8 asked
+> explicitly; D4, D5 and D7 as recommended). §3.1 is the manifest's spec, the
+> contract between `release.yml` and the firmware. Roadmap: "OTA firmware
+> updates" (`docs/roadmap.md`, idea of 2026-10-21).
 
 The device should update its own firmware over the home Wi-Fi: it finds out
 that a newer release exists, says so, and installs it when the user holds a
@@ -156,8 +158,12 @@ everything anyway; their first OTA-capable version is a fresh install.
 ### 3.1 The release side
 
 Each firmware release gets one more asset, **`tamagotcho-firmware.txt`**, a
-line-oriented manifest in the spirit of the deck catalog (UTF-8, tab
-separated, `#` comments):
+line-oriented manifest in the spirit of the deck catalog. The device reads it
+at `https://github.com/dcarnicer/tamagotcho/releases/latest/download/tamagotcho-firmware.txt`
+(the default; §3.8 for the override). `release.yml` writes it from the
+app-only images it already builds, and fails if an image is larger than its
+slot (read from the partition CSV, as `decks.yml` reads the per-pack cap from
+`Catalog.h`).
 
 ```
 #tamagotcho-firmware	1
@@ -168,22 +174,45 @@ app	cardputer-adv	tamagotcho-cardputer-adv.bin	1451184	<sha256 hex>
 app	m5stack	tamagotcho-m5stack.bin	1508720	<sha256 hex>
 ```
 
-File names are relative to the manifest's own URL, as in the catalog, so a
-test manifest elsewhere (§3.8) points at its own images. The device reads it
-at `releases/latest/download/tamagotcho-firmware.txt`. `release.yml` writes
-it from the app-only images it already builds, and fails if an image is
-larger than its slot (read from the partition CSV, as `decks.yml` reads the
-per-pack cap from `Catalog.h`). The format goes into its own spec section,
-spec first (CLAUDE.md).
+**Manifest format, version 1** (spec):
+- UTF-8, lines end in LF (a CR before it is ignored), fields separated by one
+  TAB. At most 8 KiB; a longer body is not a manifest.
+- **Line 1** is the header: `#tamagotcho-firmware`, TAB, the format version.
+  A reader of version 1 refuses any other version ("unsupported manifest
+  version") and anything without the header ("not a firmware manifest").
+- After it, blank lines and lines starting with `#` are ignored.
+- **`version`**, exactly once, before any `app` line: the release tag,
+  `v<major>.<minor>.<patch>` with three non-negative decimal integers and
+  nothing else. A manifest whose version does not parse that way is refused.
+- **`app`**, one per build environment: `app`, the environment name
+  (`[a-z0-9-]{1,31}`, the PlatformIO env, e.g. `m5stack`), the image's file
+  name or URL, its exact size in bytes (decimal, greater than 0), and its
+  SHA-256 as 64 hexadecimal characters (either case). A file name without a
+  scheme is resolved against the manifest's own URL, as the catalog's `url`
+  field is (`.../download/v0.7.0/tamagotcho-firmware.txt` gives
+  `.../download/v0.7.0/<file>`); an `http://` or `https://` URL is used as it
+  is. A second `app` line for the same environment makes the manifest
+  invalid.
+- Any other first field is ignored, so later versions of the format can add
+  record types without a version bump; a malformed `version` or `app` line
+  makes the whole manifest invalid (no partial reads).
+- The image a row names is the app-only image (`firmware.bin` of that
+  environment, ESP image magic `0xE9`), the same file the release publishes
+  as `tamagotcho-<env>.bin`.
 
 ### 3.2 Which image a device installs
 
 The one its own build came from: every environment compiles in its name
-(`TGC_ENV`, e.g. `"m5stack"`), and the device takes that row. A StickS3
-installed from M5Burner runs `m5stack` and stays on it; one flashed with
-`pio run -e sticks3` stays on `sticks3`. Development builds (`-dev`,
-`-shots`, `-batt`, and any version with a `-<n>-g<hash>` suffix) do not
-offer updates: their image would drop the serial remote or the test code.
+(`TGC_ENV`, e.g. `"m5stack"`), and the device takes that row; no row for it
+means no update. A StickS3 installed from M5Burner runs `m5stack` and stays
+on it; one flashed with `pio run -e sticks3` stays on `sticks3`.
+
+Development builds (a version that is not a plain `vX.Y.Z`, e.g.
+`v0.6.0-12-gabc1234`, or `dev`) never read the default manifest: their image
+would drop the serial remote or the test code. They read a manifest only
+when its URL has been overridden (§3.8), which is how updates are tested;
+then any manifest version different from the running one is offered, since a
+dev build has no order to compare.
 
 ### 3.3 When the device looks
 
@@ -228,11 +257,12 @@ hand.
 ### 3.5 The first boot of a new image
 
 The image defines `verifyRollbackLater()` to return true, so it boots
-pending. It marks itself valid once it has shown it works (decision D5,
-recommended): `setup()` finished, LittleFS mounted, and either a deck opened
-or the device reached its no-deck screens, then a few seconds of the loop
-running. A crash or a watchdog reset before that sends the next boot back to
-the previous image (the bootloader's rollback).
+pending. It marks itself valid once it has shown it works (decision D5):
+`setup()` returned (LittleFS mounted, a deck opened or the no-deck screens
+reached) and then the loop has run for 10 s. A crash or a watchdog reset
+before that sends the next boot back to the previous image (the bootloader's
+rollback). A deep sleep before the 10 s (a click of the power button) is not
+a failure: the image stays pending and the 10 s start again at the wake.
 
 The previous image, booted again, sees `esp_ota_get_last_invalid_partition()`
 and says once: "The update to v0.7.0 failed; back on v0.6.x". It then stops
@@ -273,13 +303,16 @@ warns or is hidden.
 - The portal page shows the firmware version and, when known, the available
   one, with "install it from the device" (decision D7: the page does not
   start the install; the device's screen and buttons do).
-- **For development** (decision D8, recommended as a later phase): the
-  portal accepts an app image upload (`POST /firmware`, the same `Update`
-  path, with the page's size and an optional SHA-256), so a build can be
-  installed over the Wi-Fi without a cable, e.g. `curl -F
-  firmware=@.pio/build/sticks3/firmware.bin http://<device>/firmware`; and a
-  firmware manifest URL can be overridden like the catalog URL, to test
-  updates from a manifest served on the computer before publishing.
+- **The manifest URL can be overridden** on the portal's Advanced section,
+  like the catalog URL (NVS `fwurl`; empty = the default), with `http://`
+  allowed there, so updates can be tested from a manifest and images served
+  on the computer before anything is published. This is part of the first
+  version: phase 2's hardware tests need it.
+- **For development** (decision D8, a later phase): the portal accepts an app
+  image upload (`POST /firmware`, the same `Update` path, with the page's
+  size and an optional SHA-256), so a build can be installed over the Wi-Fi
+  without a cable, e.g. `curl -F firmware=@.pio/build/sticks3/firmware.bin
+  http://<device>/firmware`.
 
 ## 4. Screens
 
@@ -350,6 +383,9 @@ Following CLAUDE.md's split:
   after the move behaves as a fresh device with settings kept.
 
 ## 8. Decisions
+
+All taken on 2026-10-24 as recommended (the "recommended" column is the
+decision).
 
 | # | question | recommended | alternatives |
 |---|---|---|---|

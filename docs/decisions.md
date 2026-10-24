@@ -3434,3 +3434,29 @@ changed").
   starts, as Get decks does: `fetchPackFile()` validates inside, and a callback
   into NetFetch for one rarely used form was not worth it; a failed download
   then reopens the deck, with a fresh question (`portalPacksChanged()`).
+
+## 2026-10-24 – OTA firmware updates
+
+Design in docs/ota.md; every decision of its §8 taken as recommended.
+
+- **Two app slots, the space from LittleFS.** 8 MB boards: `app0`/`app1` of
+  1.75 MiB and LittleFS 5.94 → 4.44 MiB (the Jōyō deck and N1 no longer fit
+  together); the T-Display-S3: 2 MiB slots, LittleFS 11.94 MiB. `nvs` and
+  `app0` keep their offsets; `phy_init` goes.
+- **The move is by hand, once, over USB**: progress backup on the portal,
+  flash, Get decks, restore. LittleFS starts elsewhere and is formatted;
+  settings and Wi-Fi stay in NVS when the parts are written at their offsets.
+  No migration tool (one user, no backward compatibility).
+- **A release manifest**, `tamagotcho-firmware.txt` (docs/ota.md §3.1), read
+  from `releases/latest/download/`; each device takes the row of its own
+  build environment. Development builds only read an overridden manifest URL.
+- **Looked for with the deck update checks** (the same Wi-Fi sessions and
+  battery policy) plus Check now; installed only by hand from Settings ›
+  Device › Firmware, through Arduino's `Update` (streamed, size and SHA-256
+  checked before the slot switches).
+- **Rollback**: the framework's bootloader has it; the image defers the
+  verdict (`verifyRollbackLater()`) and marks itself valid after `setup()`
+  and 10 s of the loop. A rolled-back version is remembered and not offered
+  again.
+- **Later**: Previous version (switch back by hand) and a firmware upload on
+  the portal for development.
