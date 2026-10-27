@@ -1,14 +1,17 @@
 # OTA firmware updates: design and decisions
 
-> **Status: released in v0.7.0 (2026-10-24).** Checked on the StickS3 and
-> the T-Display-S3 (docs/releases/v0.7.0.md); not yet on the Cardputer ADV.
-> The maintainer took the
-> recommendation of every decision of §8 (D1, D2, D3 and D6/D8 asked
-> explicitly; D4, D5 and D7 as recommended). §3.1 is the manifest's spec, the
-> contract between `release.yml` and the firmware. Phases 1 (the tables,
-> `TGC_ENV`, the manifest in `release.yml`, the docs) and 2 (the device side,
-> §9 "As built") of §6 are built and integrated; the first update over the
-> air will be v0.7.1 (§6 item 3).
+> **Status: released in v0.7.0 (2026-10-24); v0.7.1 (2026-10-27) is the
+> first release that arrives over the air.** The install path was checked on
+> a Cardputer ADV with a temporary release: manifest and image over HTTPS,
+> install into `app1`, the image marked valid after 10 s, and decks and
+> progress intact. The v0.7.1 assets and manifest were verified, and the
+> install page serves v0.7.1; installing from the published release on a
+> device is the remaining check. The maintainer took the recommendation of
+> every decision of §8 (D1, D2, D3 and D6/D8 asked explicitly; D4, D5 and D7
+> as recommended). §3.1 is the manifest's spec, the contract between
+> `release.yml` and the firmware. Phases 1 (the tables, `TGC_ENV`, the
+> manifest in `release.yml`, the docs) and 2 (the device side, §9 "As built")
+> of §6 are built and integrated.
 > §1 describes the layout before phase 1. Roadmap: "OTA firmware updates"
 > (`docs/roadmap.md`, idea of 2026-10-21).
 

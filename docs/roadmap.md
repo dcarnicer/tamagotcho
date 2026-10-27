@@ -498,10 +498,13 @@ Scope for now: **kanji only** (no vocabulary decks).
         PSRAM on the Cardputer ADV), the bootloader's rollback if the new
         image does not boot, never in the middle of a review.
       - M5Launcher installs keep their own update path.
-      - Status: phase 1 (docs/ota.md §6) built 2026-10-24: the two tables,
-        `TGC_ENV`, the manifest and its slot-size check in `release.yml`,
-        `boot_app0.bin` as a release asset for app-only USB updates, the
-        docs. Not yet flashed on the boards.
+      - Status: phases 1 and 2 (docs/ota.md §6) built; v0.7.0 released
+        2026-10-24, and v0.7.1 (2026-10-27) is the first release that arrives
+        over the air. The HTTPS path was checked on a Cardputer ADV with a
+        temporary release (manifest and image over HTTPS, install into
+        `app1`, marked valid, decks and progress intact); the v0.7.1 assets,
+        manifest and install page were verified. Installing v0.7.1 from the
+        published release on a device is the remaining check.
 - [x] **One image for the StickS3 and the Cardputer ADV** (2026-10-21).
       The `m5stack` env compiles both boards and picks one at boot (PSRAM or
       not), so one M5Burner entry lists both devices; checked on both, and as
