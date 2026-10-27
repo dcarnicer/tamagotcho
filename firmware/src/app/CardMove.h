@@ -15,7 +15,12 @@ namespace app {
 // among them: it is closed before its LittleFS file goes and gCurrentPack
 // names its new path, as NVS `pack` does when it named the old one. True when
 // a deck moved or was closed: the caller rescans (portalPacksChanged()).
-bool moveDecksToCard();
+// `showFullNotice`: the blocking "Card full" notice after the move (boot);
+// false when the deck list retries the move and its own top line says it.
+bool moveDecksToCard(bool showFullNotice = true);
+// How many decks the last move left on LittleFS because the card was full;
+// 0 when it did not stop for room. Cleared when a move runs again.
+int cardMoveFullCount();
 // The deck list and Get decks, on opening: a card put in since (none was
 // mounted) is mounted, the device's decks move to it and the decks are
 // rescanned. A mounted card that no longer answers (pulled out while no deck

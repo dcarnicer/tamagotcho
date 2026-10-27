@@ -400,6 +400,8 @@ struct UiStrings {
     const char* deckCardTag;
     const char* cardUnreadable;   // a card that did not mount (exFAT, unformatted), or kept failing
     const char* cardRemoved;      // the card went away while a deck on it was open
+    const char* cardFullOne;      // one deck left on the device by a full card
+    const char* cardFullFmt;      // %u = decks the full card left on the device (deck list's top line)
     // Settings > Device > About: the heading (label face, its colon dropped)
     // and its value (captions, wrapped): "29.7 GB, 28.1 free", or no card.
     const char* aboutCard;
@@ -410,6 +412,11 @@ struct UiStrings {
     // lines of 127 px).
     const char* moveTitle;
     const char* moveStatus;
+    // The boot notice when the move stops because the card is full: a title
+    // and a hint with %u = decks left on the device.
+    const char* moveFullTitle;
+    const char* moveFullOne;
+    const char* moveFullFmt;
     // Get decks' note (a caption, 21 cells) and the Wi-Fi screen's free-space
     // line (20 cells next to the QR code in landscape) while a card is
     // mounted: new decks go there.

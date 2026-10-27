@@ -141,8 +141,11 @@ const UiStrings kUiEn = {
     "Charge it or plug in USB first.",
     "Update failed", "%s did not start: back on %s.",
     "SD", "Card not readable: format it as FAT32", "Card removed",
+    "Card full: 1 deck on the device", "Card full: %u decks on the device",
     "Card:", "%s GB, %s free", "No card",
     "SD CARD", "Moving decks to the card...",
+    "Card full", "1 deck stays on the device. Free space and reopen Decks.",
+    "%u decks stay on the device. Free space and reopen Decks.",
     "SD: %s GB free", "SD %s / %s GB",
 };
 
@@ -280,8 +283,11 @@ const UiStrings kUiEs = {
     "Cárgalo o conecta el USB antes.",
     "Actualización fallida", "%s no arrancó: de vuelta a %s.",
     "SD", "Tarjeta ilegible: formatéala en FAT32", "Tarjeta retirada",
+    "Tarjeta llena: 1 mazo en el dispositivo", "Tarjeta llena: %u mazos en el dispositivo",
     "Tarjeta:", "%s GB, %s libres", "Sin tarjeta",
     "TARJETA SD", "Mazos a la tarjeta...",
+    "Tarjeta llena", "1 mazo sigue en el dispositivo. Libera espacio y abre Mazos.",
+    "%u mazos siguen en el dispositivo. Libera espacio y abre Mazos.",
     "SD: %s GB libres", "SD %s / %s GB",
 };
 

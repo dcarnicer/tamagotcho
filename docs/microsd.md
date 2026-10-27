@@ -1,7 +1,9 @@
 # Decks on the microSD card: design and decisions
 
 > **Status: released in v0.7.0 (2026-10-24), checked on a Cardputer ADV
-> (docs/releases/v0.7.0.md, §8).** The maintainer chose D2, D3
+> (docs/releases/v0.7.0.md, §8).** On 2026-10-27 a 64 MB FAT32 card with
+> 471 KB free checked the card-full notice and its retry, and an exFAT
+> partition showed the "format it as FAT32" message. The maintainer chose D2, D3
 > as recommended and, for D4, that decks on LittleFS **move to the card by
 > themselves** (§3.6); D1, D5 and D6 as recommended. Roadmap: "Decks on the Cardputer ADV's microSD card" (idea of
 > 2026-10-21). The maintainer's brief (2026-10-24): on the Cardputer ADV, use
@@ -148,6 +150,12 @@ runs (about 1 MB/s; a full 4.4 MiB LittleFS takes a few seconds); the side
 button does not cancel it (each deck is atomic, and the next boot finishes the
 rest anyway). The serial log lists each deck moved or kept and why.
 
+When a deck does not fit, the boot move ends with a **"Card full"** notice
+("N decks stay on the device") instead of leaving the progress screen behind.
+The deck list also keeps a top line, "Card full: N decks on the device", until
+a later attempt fits them: opening the list retries the move, so freeing space
+on the card is enough (no reboot or reinsert).
+
 Progress records are keyed by kanji, not by file (docs/srs.md §2), so a moved
 deck keeps its progress.
 
@@ -160,7 +168,8 @@ backup link stays; the page says that the card holds a copy.
 ## 4. Screens
 
 - **Decks**: an `SD` pill on the card's decks; a top line "Card not readable:
-  format it as FAT32" or "Card removed" when that is the case.
+  format it as FAT32", "Card removed" or "Card full: N decks on the device"
+  when that is the case.
 - **Settings › Device › About**: "Card: 29.7 GB, 28.1 free" (or "No card").
 - **Get decks**: "on the card" next to the free space.
 
@@ -184,8 +193,9 @@ backup link stays; the page says that the card holds a copy.
    LittleFS (`TGC_QUIZ_LOG`), and the heap with the card mounted, during TLS.
 2. Writes: Get decks, the portal upload and URL download to the card; the
    loaded deck replaced on the card; delete. The move of §3.6 with the loaded
-   deck among the moved ones, with a card that fills up half-way, and with a
-   deck of the same name already on the card.
+   deck among the moved ones, with a card that fills up half-way (the boot
+   notice and the deck list's top line, then the retry after freeing space),
+   and with a deck of the same name already on the card.
 3. The progress copy on the card; a pulled card (reading, writing); an exFAT
    card (the message); no card (as today).
 4. The `m5stack` image on the StickS3 (no slot) and on the Cardputer.
@@ -206,8 +216,10 @@ Taken on 2026-10-24: the "recommended" column, except D4 (marked).
 ## 8. As built (2026-10-24)
 
 What the code does, where it differs from §1-§6 or fills a gap they left
-(docs/decisions.md, "microSD: as built"). Not yet run on a Cardputer ADV:
-the checks of §6 are the hardware test.
+(docs/decisions.md, "microSD: as built"). Run on a Cardputer ADV (v0.7.0,
+2026-10-24); the 2026-10-27 checks added the card-full notice and its retry
+(a 64 MB FAT32 card with 471 KB free) and the exFAT message. The draw-time
+and heap figures of §6 remain open.
 
 **Code.**
 - `storage/DeckFiles` (pure, `test_storage`): the deck paths of the two

@@ -34,6 +34,11 @@ struct MoveView {
     const char* name = "";
 };
 MoveView gMove;
+int gFullKept = 0;  // decks left on LittleFS by the last move for lack of room
+
+// The "Card full" notice after the boot move: long enough to read, short
+// enough not to hold a normal boot (only a full card reaches it).
+constexpr uint32_t kMoveFullNoticeMs = 3000;
 
 // The move's screen: the header with "2/5", the status in the label face, a
 // bar of the bytes moved and the deck's file name under it. No hint bar:
@@ -117,10 +122,13 @@ Moved moveOne(const tgc::DeckFile& deck) {
 
 }  // namespace
 
-bool moveDecksToCard() {
+int cardMoveFullCount() { return gFullKept; }
+
+bool moveDecksToCard(bool showFullNotice) {
     if (!tgc::storage::cardMounted()) return false;
     std::vector<tgc::DeckFile> decks;
     tgc::storage::listFiles(tgc::DeckPlace::Device, decks);
+    gFullKept = 0;
     if (decks.empty()) return false;
     gMove = MoveView{};
     gMove.count = static_cast<int>(decks.size());
@@ -139,19 +147,41 @@ bool moveDecksToCard() {
         if (m == Moved::Yes) ++moved;
         // A deck that does not fit stops the move: the card is full, so the
         // later decks stay too.
-        if (m == Moved::NoRoom) break;
+        if (m == Moved::NoRoom) {
+            gFullKept = gMove.count - gMove.index + 1;
+            break;
+        }
         gMove.done += d.bytes;
     }
     Serial.printf("[sd] moved %d of %d decks to the card in %u ms\n", moved, gMove.count,
                   (unsigned)(millis() - t0));
+    if (gFullKept > 0) Serial.printf("[sd] card full: %d deck(s) stay on the device\n", gFullKept);
     gSwallowInput = true;  // presses made meanwhile must not act now
+    if (gFullKept > 0 && showFullNotice) {
+        char line[96];
+        if (gFullKept == 1)
+            snprintf(line, sizeof line, "%s", ui().moveFullOne);
+        else
+            snprintf(line, sizeof line, ui().moveFullFmt, (unsigned)gFullKept);
+        showNotice(ui().moveFullTitle, line, tgc::theme::kWarn);
+        delay(kMoveFullNoticeMs);
+    }
     return moved > 0 || (wasOpen && !gPack->isOpen());
 }
 
 bool mountCardOnOpen() {
     using tgc::storage::CardState;
     if (tgc::storage::cardMounted()) {
-        if (tgc::storage::cardAnswers()) return false;
+        if (tgc::storage::cardAnswers()) {
+            // A full card left decks on LittleFS. Opening the deck list tries
+            // again: space may have been freed since the boot move, and the
+            // list's top line shows what still does not fit (no boot notice).
+            if (cardMoveFullCount() > 0 && moveDecksToCard(false)) {
+                portalPacksChanged();
+                return true;
+            }
+            return false;
+        }
         // It went away since (no deck of it was being read): the loaded deck,
         // if it is on the card, closes before the card is unmounted and tried
         // again. Another card in its place mounts like a new one.

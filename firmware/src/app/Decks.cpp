@@ -79,8 +79,19 @@ const char* cardNote() {
     switch (tgc::storage::cardState()) {
         case tgc::storage::CardState::Unreadable: return ui().cardUnreadable;
         case tgc::storage::CardState::Removed: return ui().cardRemoved;
-        default: return nullptr;
+        default: break;
     }
+    // The boot move stopped for room: what stayed, until the next move fits
+    // it (opening this list retries) or the card goes.
+    if (tgc::storage::cardMounted() && cardMoveFullCount() > 0) {
+        static char full[64];
+        if (cardMoveFullCount() == 1)
+            snprintf(full, sizeof full, "%s", ui().cardFullOne);
+        else
+            snprintf(full, sizeof full, ui().cardFullFmt, (unsigned)cardMoveFullCount());
+        return full;
+    }
+    return nullptr;
 }
 
 // A deck on the card whose reads failed (deckReadTick()): the times in a row,

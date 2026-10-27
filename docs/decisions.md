@@ -3612,3 +3612,25 @@ docs/microsd.md §8 describes it; the choices the design left open:
   1,582,272 B (+47,776), sticks3 1,528,384 → 1,576,096 B, tdisplay-s3
   1,369,696 → 1,417,408 B; all within the 1,835,008-byte slots (2 MiB on
   the T-Display-S3).
+
+## 2026-10-27 – A card-full notice, and the move retried from the deck list
+
+A card that fills up during the boot move used to stop the move and leave the
+"Moving decks to the card..." screen behind; only the serial log said why.
+The state is not a download error (nothing is lost; the decks stay on
+LittleFS), so it gets a notice rather than an error screen:
+
+- After the move, if a deck did not fit, the boot shows **"Card full"** with
+  "N decks stay on the device. Free space and reopen Decks." for 3 s. N is the
+  blocked deck and the ones after it, not earlier copy failures.
+- The deck list keeps a top line, "Card full: N decks on the device", next to
+  its "Card removed"/"Card not readable" lines. Opening the list retries the
+  move when the last one stopped for room, so freeing space is enough; no
+  reboot or card reinsert. A successful retry clears the line.
+- The move still stops at the first deck that does not fit: later decks are
+  not tried (the card is full), and the loaded deck is left where it was.
+- Checked on a Cardputer ADV (2026-10-27): a 64 MB FAT32 card with 471 KB
+  free kept 2 decks then 1 ("2 mazos"/"1 mazo"), showed the boot notice and
+  the deck list's line, moved the deck and cleared the line after the fillers
+  were deleted and Decks reopened, and an exFAT partition showed "Tarjeta
+  ilegible: formatéala en FAT32".

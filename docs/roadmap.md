@@ -518,8 +518,11 @@ Scope for now: **kanji only** (no vocabulary decks).
       stays on LittleFS with a copy on the card at every sleep.
       - Status: built 2026-10-24 on `feature/microsd` (docs/microsd.md §8:
         the board's pins, `platform/Storage`, the move and its screen, a
-        pulled card, the deck list's SD pill, About, the portal); not yet
-        checked on a Cardputer ADV (the checks of docs/microsd.md §6).
+        pulled card, the deck list's SD pill, About, the portal); checked on
+        a Cardputer ADV (v0.7.0, 2026-10-24). The 2026-10-27 checks added the
+        card-full notice and its retry (64 MB FAT32 card with 471 KB free)
+        and the exFAT message; the draw-time and heap figures of §6 are still
+        open.
 - [ ] **A watch: Waveshare ESP32-S3-Touch-AMOLED-2.06** (idea, 2026-10-24;
       after OTA). ESP32-S3R8 (8 MB PSRAM), 32 MB flash, 2.06" AMOLED
       410×502 (CO5300 over QSPI, which LovyanGFX 1.2.34 drives:
