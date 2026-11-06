@@ -115,6 +115,7 @@ namespace {
 void finishUpdateCheck() {
     netRadioOff();
     gSwallowInput = true;
+    firmwareUpdateNotice();
     showNextItem();
 }
 

@@ -10,6 +10,7 @@
 #include "ui/Icons.h"
 #include "ui/InputPrefs.h"
 #include "ui/ListView.h"
+#include "ui/TextLayout.h"
 #include "ui/Theme.h"
 #include "ui/UiFace.h"
 #include "ui/UiFont.h"
@@ -411,6 +412,11 @@ void test_update_text_fits() {
     // English line was 205 px (the device cut it to "updates avail...").
     TEST_ASSERT_TRUE(uiTextWidth(f, "actualizaciones", 0) > kResultW);
     TEST_ASSERT_TRUE(uiTextWidth(f, "6 deck updates available", 0) > kResultW);
+
+    // The newer-firmware notice's path, in the caption face: showNotice()
+    // wraps it into at most four lines of 127 px on the narrowest screen.
+    for (const char* where : {"Settings > Device > Firmware", "Ajustes > Dispositivo > Firmware"})
+        TEST_ASSERT_TRUE_MESSAGE(wrapText(where, 127 / 6).size() <= 4, where);
 
     // The home row: 135 - 2 * gutter - 2 * row pad - icon - chevron.
     constexpr int kHomeLabelPx = 135 - 2 * theme::kGutter - 2 * theme::kRowPadX -

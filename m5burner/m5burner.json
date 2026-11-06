@@ -1,0 +1,14 @@
+{
+  "name": "Tamagotcho",
+  "description": "Kanji multiple-choice reviews with spaced repetition for the M5Stack StickS3 and Cardputer ADV. Offline, two buttons, decks over Wi-Fi.",
+  "keywords": "kanji, Japanese, flashcards, spaced repetition, SRS, M5Stack, StickS3, Cardputer ADV",
+  "author": "dcarnicer",
+  "repository": "https://github.com/dcarnicer/tamagotcho",
+  "firmware_category": {
+    "path": "firmware",
+    "device": ["StickS3", "Cardputer ADV"],
+    "default_baud": 921600
+  },
+  "version": "0.7.2",
+  "framework": "Arduino"
+}

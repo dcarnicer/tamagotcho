@@ -42,6 +42,7 @@ constexpr const char* kPrefFwBytes = "fwsize";
 constexpr const char* kPrefOtaNew = "otanew";
 constexpr const char* kPrefOtaSlot = "otaslot";
 constexpr const char* kPrefOtaBad = "otabad";
+constexpr const char* kPrefFwNotified = "fwnotified";
 
 // docs/ota.md §3.5: a new image is good once setup() returned and the loop
 // ran this long.
@@ -506,14 +507,9 @@ void firmwareBoot() {
         saveBadge("", 0);
 }
 
-void firmwareRollbackNotice() {
-    if (!gRolledBack[0]) return;
-    char text[96];
-    snprintf(text, sizeof text, ui().fwFailedFmt, gRolledBack, tgc::firmwareVersion());
-    gRolledBack[0] = 0;
-    showNotice(ui().fwFailedTitle, text, tgc::theme::kWarn);
-    // A few seconds, or until a new press (a button down from before must be
-    // released first); that press does not act on the next screen.
+// A notice stays for kNoticeMs or until a new press (a button down from before
+// must be released first); that press does not act on the next screen.
+static void waitNotice() {
     bool released = !tgc::board::isHeld(Button::Select) && !tgc::board::isHeld(Button::Next);
     const uint32_t start = millis();
     while (millis() - start < kNoticeMs) {
@@ -527,6 +523,30 @@ void firmwareRollbackNotice() {
         delay(20);
     }
     gSwallowInput = true;
+}
+
+void firmwareRollbackNotice() {
+    if (!gRolledBack[0]) return;
+    char text[96];
+    snprintf(text, sizeof text, ui().fwFailedFmt, gRolledBack, tgc::firmwareVersion());
+    gRolledBack[0] = 0;
+    showNotice(ui().fwFailedTitle, text, tgc::theme::kWarn);
+    waitNotice();
+}
+
+// A newer firmware the badge knows and this build has not announced yet: say
+// so once per version (NVS `fwnotified`), with the path to the Firmware screen.
+// The existing gear/arrow stays until the device runs it or the offer clears.
+void firmwareUpdateNotice() {
+    if (!gFwBadge[0] || !newerThanRunning(gFwBadge)) return;
+    char notified[kFwVersionMax + 1] = "";
+    prefString(kPrefFwNotified, notified, sizeof notified);
+    if (std::strcmp(notified, gFwBadge) == 0) return;
+    char text[96];
+    snprintf(text, sizeof text, ui().fwAvailableFmt, gFwBadge);
+    showNotice(text, ui().fwUpdateWhere, tgc::theme::kWarn);
+    waitNotice();
+    gPrefs.putString(kPrefFwNotified, gFwBadge);
 }
 
 void firmwareTick(uint32_t now) {

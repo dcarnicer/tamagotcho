@@ -382,6 +382,9 @@ void boot() {
         openUpdateCheck();
         return;
     }
+    // A newer firmware a previous session found; the update check above shows
+    // it when it finds one.
+    firmwareUpdateNotice();
     showNextItem();
 }
 

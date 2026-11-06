@@ -225,9 +225,10 @@ Upload a `.tgc` from the portal page (**Advanced**). More:
 |-----------------------|-----------------------------------------|
 | `firmware/`           | PlatformIO firmware (StickS3, T-Display-S3, Cardputer ADV) |
 | `tools/pack-builder/` | Python CLI that builds `.tgc` packs     |
-| `tools/release/`      | release helper: merge a build into one flashable image |
+| `tools/release/`      | release helper: merge a build into one flashable image, the OTA manifest, and the local `dist/` + M5Burner package |
 | `tools/ui-font/`      | generator of the firmware's UI font (`firmware/src/ui/UiFont.h`) |
 | `tools/screenshots/`  | serial remote: press a device's buttons and save its screen over USB (`-shots` builds) |
+| `m5burner/`           | M5Burner package template (`m5burner.json`) and publishing checklist |
 | `.github/workflows/`  | CI, firmware release and decks release automation |
 | `docs/`               | user guide, architecture, pack format, decisions, roadmap |
 

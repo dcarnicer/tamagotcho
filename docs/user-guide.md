@@ -266,6 +266,9 @@ the home Wi-Fi ([docs/ota.md](ota.md)); settings, decks and progress stay.
   offers a newer version for this build, the settings home's **Device** row
   shows the update arrow and **Settings › Device › Firmware** reads "v0.7.0
   available"; the portal page says so too (at the top, and under Advanced).
+  Once per version, the boot check ends with a full-screen notice ("v0.7.0
+  available" and the path to **Settings › Device › Firmware**) for a few
+  seconds or until a press, so a subtle row is not the only sign.
 - **Settings › Device › Firmware** shows the running version and build, then
   the newer version and its size, "Up to date", why a release is not offered
   (no image for this build, too large for the slot, failed before), or the last
@@ -581,7 +584,30 @@ build by hand: `TGC_VERSION=v0.1.0-rc1 pio run -e sticks3`.
    notes.
 2. Merge into `main`, push, then tag `vX.Y.Z` and push the tag; `release.yml`
    builds and publishes the images.
-3. **Publish it on M5Burner**: add version `vX.Y.Z` to the Tamagotcho entry
+3. **Test the merged image on hardware**: write the release's
+   `tamagotcho-m5stack-merged.bin` at `0x0` on a StickS3 and/or a Cardputer ADV
+   and confirm it boots. M5Stack rejects an image that does not (v0.7.0 was
+   rejected for this on 2026-11-06).
+4. **Publish it on M5Burner**: add version `vX.Y.Z` to the Tamagotcho entry
    with the release's `tamagotcho-m5stack-merged.bin` (StickS3 and Cardputer
    ADV), as [docs/m5burner.md](m5burner.md) describes. M5Burner does not
    follow GitHub: without this step it keeps offering the previous version.
+   The release also carries `Tamagotcho-<version>.bin` (the merged `m5stack`
+   image, ready for the Publish dialog) and
+   `tamagotcho-m5burner-<version>.zip` (the M5Stack-Firmware package), built
+   by the release job.
+
+For a **local dry run**, `make dist VERSION=vX.Y.Z` builds the four release
+environments and writes the same artifacts as the workflow to `dist/`:
+app-only and merged images, the ESP Web Tools manifests, `boot_app0.bin`,
+`tamagotcho-firmware.txt`, `SHA256SUMS.txt` and the M5Burner package under
+`dist/m5burner/` (`Tamagotcho-X.Y.Z.bin`, a `.zip` for the M5Stack-Firmware
+route, and the unpacked package with `m5burner.json`, cover, README and
+licence). To package an existing merged image without rebuilding, for example
+the asset of a release already published:
+
+```sh
+make m5burner VERSION=vX.Y.Z MERGED=~/Downloads/tamagotcho-m5stack-merged.bin
+```
+
+The M5Burner details are in [m5burner/README.md](../m5burner/README.md).

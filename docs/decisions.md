@@ -3634,3 +3634,94 @@ LittleFS), so it gets a notice rather than an error screen:
   the deck list's line, moved the deck and cleared the line after the fillers
   were deleted and Decks reopened, and an exFAT partition showed "Tarjeta
   ilegible: formatéala en FAT32".
+
+## 2026-11-06 – M5Burner rejected v0.7.0; the merged image boots
+
+M5Stack rejected v0.7.0 with "after multiple tests on actual devices, the
+firmware you uploaded failed to boot the device". The release's merged image
+does boot; the rejection is not reproducible:
+
+- **Cardputer ADV** (8 MB, no PSRAM): `write_flash --erase-all 0x0
+  tamagotcho-m5stack-merged.bin` (v0.7.1) boots, mounts the 29.7 GB FAT32 card
+  and opens JLPT N2.
+- **Cardputer ADV over M5Launcher, no erase**: the same image boots and
+  formats the new LittleFS at `0x390000` (the old data there is not a
+  LittleFS).
+- **StickS3 over v0.6.0, no erase**: v0.7.1 boots, detects that the new
+  spiffs offset has no LittleFS and formats it (first-boot language picker).
+- **StickS3 over the new layout, no erase**: v0.7.1 boots; v0.7.0's merged
+  image also boots.
+- The image itself: the bootloader is byte-identical to v0.6.0's, the
+  partition table is the new one, the app region equals the app-only image,
+  and `boot_app0.bin` at `0xe000` has the expected seq 1/CRC. Full backups
+  were taken before each test and restored afterwards.
+
+So the likely cause is the file attached to the M5Burner version: the entry
+needs `tamagotcho-m5stack-merged.bin` at `0x0` (1,647,968 B for v0.7.0,
+1,648,672 B for v0.7.1), not `tamagotcho-m5stack.bin` (1,582,432 B /
+1,583,136 B), which is an app image for `0x10000`. Check the version's
+`binFileName` and size first; if it was the merged image, re-upload it (a
+truncated upload is the other possibility). v0.7.1 can be resubmitted with
+the merged image; the v0.7.0 attachment explains the rejection. v0.7.1 also
+fixes v0.7.0's full-card boot screen, so a reviewer with a full card could
+have seen v0.7.0 stay on "Moving decks to the card..." and taken it for a
+failed boot.
+
+## 2026-11-06 – v0.7.1 arrives over the air from the published release
+
+The last open OTA check was done on a StickS3 running v0.7.0, with the home
+Wi-Fi `Shimokitazawa` saved and the N5 deck open (51 records):
+
+- Settings > Device > Firmware read the published manifest, offered v0.7.1,
+  downloaded `tamagotcho-sticks3.bin` (1,577,440 B) into `app1` in 23.2 s over
+  HTTPS, and restarted into it.
+- The new image booted as `v0.7.1 (sticks3) in app1`, was pending, and marked
+  itself valid after 10 s of the loop.
+- The time zone, the N5 deck and all 51 records survived. No rollback, no
+  settings or deck changes were needed.
+
+This closes the last "only hardware can tell" item of docs/ota.md §7.
+
+## 2026-11-06 – A notice when a newer firmware is found
+
+The badge alone (an amber gear or arrow on the home's Device row, and the
+Firmware row's "v0.7.1 available") was too easy to miss; the maintainer asked
+for a notification. Released in v0.7.2:
+
+- After the boot deck check, `finishUpdateCheck()` calls
+  `firmwareUpdateNotice()`. When no check is due, boot calls it before the
+  first question instead; a badge left by Get decks, the portal or the network
+  test is announced then.
+- The notice is `fwAvailableFmt` ("v0.7.1 available") in the label face and
+  `fwUpdateWhere` ("Settings > Device > Firmware") in captions, for 4 s or
+  until a press; the press that dismisses it is swallowed. It never interrupts
+  a quiz.
+- Once per version: NVS `fwnotified` keeps the version announced. The badge
+  stays until the device runs it or the offer clears. A new version announces
+  again; the same one never twice.
+- It reuses `showNotice()` and the rollback notice's wait loop (now
+  `waitNotice()`), so no new screen machinery. The native tests still pass and
+  `sticks3`/`m5stack` build; the notice itself has not been seen on hardware
+  yet.
+
+## 2026-11-06 – A local dist builder and the M5Burner package
+
+The release workflow built `dist/` only in CI. A local `make dist
+VERSION=vX.Y.Z` now mirrors it (`tools/release/build_dist.py`): the four
+release envs, app-only and merged images, ESP Web Tools manifests,
+`boot_app0.bin`, `tamagotcho-firmware.txt` and `SHA256SUMS.txt`.
+
+- It also writes the M5Burner package from the template in `m5burner/`:
+  `Tamagotcho-<version>.bin` (the merged `m5stack` image at `0x0`, for the
+  Publish dialog), `tamagotcho-<version>.zip` (for the M5Stack-Firmware PR
+  route) and the unpacked package with `m5burner.json`, cover, README, licence
+  and, when `docs/releases/<version>.md` exists, the version description.
+- The merged image is the one M5Burner takes; the app-only image goes at
+  `0x10000` and cannot boot from `0x0`. The package script states that.
+- `make m5burner VERSION=... MERGED=path` packages an existing merged image
+  without rebuilding, for the released assets.
+- `dist/` is git-ignored. The M5Burner device names in the template are
+  `StickS3` and `Cardputer ADV`, one entry for both.
+- Tests (`tools/release/test_build_dist.py`) cover the version normalizer, the
+  app-image check and the package layout; CI already runs the `tools/release`
+  unittest discovery.

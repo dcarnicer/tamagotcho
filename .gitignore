@@ -2,6 +2,8 @@
 # PlatformIO
 firmware/.pio/
 firmware/.vscode/
+# Release artifacts
+dist/
 # Python
 __pycache__/
 *.pyc

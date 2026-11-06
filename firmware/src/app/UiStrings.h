@@ -392,6 +392,7 @@ struct UiStrings {
     const char* fwBatteryHint;    // detail: the battery is too low to install
     const char* fwFailedTitle;    // the boot notice after a rollback
     const char* fwFailedFmt;      // %s = the version that failed, %s = the running one
+    const char* fwUpdateWhere;    // the notice: where the Firmware screen is
     // --- The microSD card (docs/microsd.md §4) --------------------------------
     // Only boards with a slot show these (the Cardputer ADV, 240 x 135), but
     // they fit the 135 px portrait too; test_settings copies them. The deck

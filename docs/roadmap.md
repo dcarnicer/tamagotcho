@@ -332,7 +332,15 @@ Scope for now: **kanji only** (no vocabulary decks).
       steps, example words from the new `decks-v3` release) and lets the
       portal replace and delete the loaded deck; checked on the StickS3, the
       T-Display-S3 and the Cardputer ADV; its notes are
-      `docs/releases/v0.6.0.md` (M5Burner: submitted, pending review).
+      `docs/releases/v0.6.0.md` (M5Burner: published 2026-10-26).
+      **v0.7.1** (2026-10-27) adds the card-full notice and retry and is the
+      first release that arrives over the air; it was installed from the
+      published release on a StickS3 on 2026-11-06. Its notes are
+      `docs/releases/v0.7.1.md`. **v0.7.2** (2026-11-06) adds the full-screen
+      notice when a newer firmware is found and publishes the M5Burner
+      package (`Tamagotcho-<version>.bin`, `tamagotcho-m5burner-<version>.zip`
+      and `SHA256SUMS.txt`) as release assets; its notes are
+      `docs/releases/v0.7.2.md`.
       The **README** is a landing page since 2026-10-21: a cover and a
       gallery of real screens (`tools/screenshots/readme_images.py`, shots
       from a StickS3 through the serial remote), with the long manual moved
@@ -341,7 +349,13 @@ Scope for now: **kanji only** (no vocabulary decks).
       The Cardputer ADV's v0.3.0 merged image booted on hardware the same
       day. **Published on M5Burner** on 2026-10-22, when v0.4.1 passed
       M5Stack's review: one entry for both M5 boards with the `m5stack` image
-      (docs/m5burner.md).
+      (docs/m5burner.md). The public listing on 2026-11-06 shows v0.6.0 as
+      current; M5Stack rejected v0.7.0 (submitted 2026-10-24) because its
+      image failed to boot on their test devices. The v0.7.1 merged image
+      was then tested on hardware and boots on both boards, with and without
+      erase (2026-11-06), so the rejection is not reproducible; v0.7.1 can be
+      resubmitted, but the v0.7.0 attachment should be checked first
+      (app-only vs merged) to explain the rejection (docs/m5burner.md).
       - [x] `release.yml` puts `docs/releases/<tag>.md` in the notes as the
         "What's new" (from v0.3.0; before, it was added by hand).
       - [x] CI: also build `sticks3-shots` and `cardputer-adv-shots` (the
@@ -503,8 +517,13 @@ Scope for now: **kanji only** (no vocabulary decks).
         over the air. The HTTPS path was checked on a Cardputer ADV with a
         temporary release (manifest and image over HTTPS, install into
         `app1`, marked valid, decks and progress intact); the v0.7.1 assets,
-        manifest and install page were verified. Installing v0.7.1 from the
-        published release on a device is the remaining check.
+        manifest and install page were verified. The published v0.7.1 was
+        installed over the air on a StickS3 (2026-11-06): joined
+        "Shimokitazawa", 1,577,440 B into `app1` in 23.2 s, marked valid after
+        10 s, with the settings, the N5 deck and 51 records intact. v0.7.2
+        (2026-11-06) adds a full-screen notice when a newer firmware is found,
+        once per version (NVS `fwnotified`), so the Device row's gear is not
+        the only sign (docs/ota.md §4).
 - [x] **One image for the StickS3 and the Cardputer ADV** (2026-10-21).
       The `m5stack` env compiles both boards and picks one at boot (PSRAM or
       not), so one M5Burner entry lists both devices; checked on both, and as

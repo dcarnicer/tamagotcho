@@ -4,9 +4,13 @@
 > first release that arrives over the air.** The install path was checked on
 > a Cardputer ADV with a temporary release: manifest and image over HTTPS,
 > install into `app1`, the image marked valid after 10 s, and decks and
-> progress intact. The v0.7.1 assets and manifest were verified, and the
-> install page serves v0.7.1; installing from the published release on a
-> device is the remaining check. The maintainer took the recommendation of
+> progress intact. The published v0.7.1 was then installed over the air on a
+> StickS3 (2026-11-06): joined "Shimokitazawa", read the manifest,
+> downloaded 1,577,440 B into `app1` in 23.2 s, restarted, and marked itself
+> valid after 10 s; the settings, the N5 deck and 51 records stayed. The
+> v0.7.1 assets, manifest and install page were verified. §4's badge gained a
+> full-screen notice for a newer version (released in v0.7.2, 2026-11-06). The
+> maintainer took the recommendation of
 > every decision of §8 (D1, D2, D3 and D6/D8 asked explicitly; D4, D5 and D7
 > as recommended). §3.1 is the manifest's spec, the contract between
 > `release.yml` and the firmware. Phases 1 (the tables, `TGC_ENV`, the
@@ -450,7 +454,12 @@ checks, the first boot). What differs from the design above:
   shows the update arrow Get decks uses in place of its chevron; the
   **Firmware** row reads "v0.7.0 available" (else the running version). A read
   that parsed sets or clears it, a failed one leaves it; it goes once the
-  device runs that version.
+  device runs that version. A newer version the badge knows and this build has
+  not announced yet gets a full-screen notice at the end of the boot update
+  check (or before the first question when no check is due): "v0.7.1
+  available" and "Settings > Device > Firmware", 4 s or until a press, once
+  per version (NVS `fwnotified`). The gear/arrow stays until the device runs
+  it.
 - **Install reads the manifest again** in its own Wi-Fi session, so the row is
   fresh (the badge may be from an earlier boot); then the download, "Checking
   the image..." while `Update.end()` reads it back, "Restarting into v0.7.0...".

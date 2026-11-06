@@ -221,9 +221,12 @@ jobs:
         with:
           sparse-checkout: |
             docs/releases
-            tools/release
+            docs/images
             firmware/platformio.ini
             firmware/partitions
+            LICENSE
+            m5burner
+            tools/release
           sparse-checkout-cone-mode: false
           path: repo
 
@@ -244,6 +247,28 @@ jobs:
           python3 repo/tools/release/firmware_manifest.py --version "$TAG" \
             --project repo/firmware --dist dist --out dist/tamagotcho-firmware.txt
           cat dist/tamagotcho-firmware.txt
+
+      # The M5Burner entry takes the merged m5stack image at 0x0. Keep the
+      # package's .bin and .zip as release assets; the unpacked package
+      # directory is not one.
+      - name: M5Burner package
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          version="${TAG#v}"
+          python3 repo/tools/release/build_dist.py \
+            --version "$TAG" \
+            --m5burner-only \
+            --dist dist \
+            --repository "$REPOSITORY"
+          cp "dist/m5burner/Tamagotcho-${version}.bin" "dist/Tamagotcho-${version}.bin"
+          cp "dist/m5burner/tamagotcho-${version}.zip" \
+             "dist/tamagotcho-m5burner-${version}.zip"
+          rm -rf dist/m5burner
+          rm -f dist/SHA256SUMS.txt
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          ls -l dist
 
       - name: Write release notes
         env:
@@ -277,6 +302,9 @@ jobs:
           | \`boot_app0.bin\` | the OTA data record that boots the first app slot: written at 0xe000 with an app-only image over USB (the same for every board) |
           | \`tamagotcho-firmware.txt\` | the update manifest the devices read: per build, its app-only image, size and SHA-256 |
           | \`tamagotcho-*-manifest.json\` | ESP Web Tools manifests (for an install page) |
+          | \`Tamagotcho-<version>.bin\` | the M5Burner package image: the merged \`m5stack\` image at \`0x0\` (same bytes as \`tamagotcho-m5stack-merged.bin\`) |
+          | \`tamagotcho-m5burner-<version>.zip\` | the M5Burner package (\`m5burner.json\`, firmware, cover, README and licence) for the M5Stack-Firmware route |
+          | \`SHA256SUMS.txt\` | SHA-256 of every release file |
 
           ## Flash it
 

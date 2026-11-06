@@ -29,6 +29,10 @@ void firmwareBoot();
 // boot(), once the deck (and so the UI language) is known: the notice after a
 // rollback, once, for a few seconds or until a press.
 void firmwareRollbackNotice();
+// The boot flow (after the deck update check, or before the first item when
+// no check is due): a newer firmware the badge knows and has not announced
+// yet, for a few seconds or until a press (NVS `fwnotified`).
+void firmwareUpdateNotice();
 // loop(), every turn: a pending image is marked valid after 10 s of the loop.
 void firmwareTick(uint32_t now);
 // Before every deep sleep of the running app: a pending image that reached the
