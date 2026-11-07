@@ -545,23 +545,32 @@ Scope for now: **kanji only** (no vocabulary decks).
         card-full notice and its retry (64 MB FAT32 card with 471 KB free)
         and the exFAT message; the draw-time and heap figures of §6 are still
         open.
-- [ ] **A watch: Waveshare ESP32-S3-Touch-AMOLED-2.06** (idea, 2026-10-24;
-      after OTA). ESP32-S3R8 (8 MB PSRAM), 32 MB flash, 2.06" AMOLED
-      410×502 (CO5300 over QSPI, which LovyanGFX 1.2.34 drives:
+- [~] **A watch: Waveshare ESP32-S3-Touch-AMOLED-2.06** (idea, 2026-10-24;
+      bring-up started 2026-11-07 on `feature/amoled206`). ESP32-S3R8
+      (8 MB PSRAM), 32 MB flash, 2.06" AMOLED 410×502 (CO5300 over QSPI,
       `Panel_CO5300`), FT3168 touch (`Touch_FT5x06`), QMI8658 IMU, PCF85063
       RTC on a backup battery, AXP2101 PMU, microSD, speaker and microphones,
       BOOT (GPIO0) and PWR (read on GPIO10) buttons. Its own environment and
       image, not the shared `m5stack` one: the maintainer is fine with a
-      separate firmware. Steps: a bring-up with today's UI drawn at 205×251
-      and doubled (every screen works at once; the 4bpp glyphs stay legible),
-      then native layouts at 410×502 (about 315 ppi, so 18 px text is too
-      small: decks built with larger `--large-px`/`--text-px`, a larger UI
-      font) and a touch-first answer (tap the option); **watch functions**
-      (a clock face when idle, with the RTC's time and date, the battery and
-      the day's due count; raise to wake with the IMU; maybe a timer or an
-      alarm on the speaker); decks on its microSD, shared with the Cardputer
-      item above. Its factory flash is backed up in
-      `~/Downloads/tangocho-backups/` (2026-10-24).
+      separate firmware.
+      - **Done 2026-11-07:** the `amoled206` env and board HAL; the panel
+        (Waveshare init list, 20 MHz QSPI), AXP2101 battery/VBUS, BOOT, FT3168
+        touch (tap/hold/left/down gestures mapped to the two buttons) and the
+        16 MB layout. The UI is drawn at 177×223 and doubled inside a 28 px
+        black border for the rounded corners (`board::uiScale()`/
+        `uiInset()`); the quiz, settings and stats fit. Verified on hardware.
+        PWR only powers on/off: GPIO10 does not follow a short press on this
+        unit and the PMIC does not report it. See `docs/amoled206.md`.
+      - **Next:** a UI laid out natively for 410×502 to use the whole panel
+        (about 315 ppi, so 18 px text is too small: decks built with larger
+        `--large-px`/`--text-px`, a larger UI font), a touch-first answer
+        (tap the option), the QMI8658 (Auto orientation), the PCF85063 (real
+        date across a power-off) and the SDMMC card; then a release env.
+      - **Watch functions** (still future): a clock face when idle, with the
+        RTC's time and date, the battery and the day's due count; raise to
+        wake with the IMU; maybe a timer or an alarm on the speaker.
+      - Its factory flash was backed up in `~/Downloads/tangocho-backups/`
+        (2026-10-24).
 
 ## Before publishing
 

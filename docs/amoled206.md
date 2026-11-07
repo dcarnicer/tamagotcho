@@ -41,7 +41,7 @@ and [the wiki](https://docs.waveshare.com/ESP32-S3-Touch-AMOLED-2.06).
   the panel come up all yellow now and then), portrait 410x502 with the 22 px
   column offset. `begin()` also holds the panel reset low for 20 ms and waits
   120 ms after releasing it before the init list.
-- The UI is drawn at **193x239 logical pixels and pushed at 2x**, with a 12 px
+- The UI is drawn at **177x223 logical pixels and pushed at 2x**, with a 28 px
   physical black border for the watch's rounded corners
   (`board::uiScale()` / `uiInset()`).
 - BOOT = `Select` (front); it works. PWR = the AXP2101's power key: a 6 s hold

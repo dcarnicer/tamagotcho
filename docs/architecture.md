@@ -137,7 +137,7 @@ flat answer tiles, hold progress, auto-advance).
   ESP32-S3R8, 8 MB PSRAM, 32 MB flash (16 MB used), 2.06" 410×502 CO5300
   AMOLED over QSPI, AXP2101 PMIC, BOOT and PWR side buttons, FT3168 touch,
   QMI8658C IMU, PCF85063 RTC and a 1-bit SDMMC card. The UI is drawn at
-  193×239 and pushed at 2× inside a 12 px border for the rounded corners;
+  177×223 and pushed at 2× inside a 28 px border for the rounded corners;
   BOOT works, PWR only powers on/off so far. See `docs/amoled206.md`.
 
 UI layout is computed from the panel size (`W` x `H`), so every screen has a

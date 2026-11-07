@@ -3739,7 +3739,7 @@ notes, pinout and next steps are in [amoled206.md](amoled206.md).
   delay), the panel's 22 px column offset, a 20/120 ms manual reset, and QSPI
   at 20 MHz: at 40 MHz with M5GFX's own list the panel came up all yellow after
   some resets.
-- The UI is drawn at 193x239 logical pixels and pushed at 2x, inside a 12 px
+- The UI is drawn at 177x223 logical pixels and pushed at 2x, inside a 28 px
   physical black border for the rounded corners (`board::uiScale()` /
   `board::uiInset()`). `render/Widgets` scales the canvas; a raw `uint16_t*`
   push must use the `pixelcopy_t` constructor or the AMOLED shows garbage.

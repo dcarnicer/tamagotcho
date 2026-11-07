@@ -370,10 +370,10 @@ void update() {
 lgfx::LGFX_Device& display() { return gDisplay; }
 
 // The panel is twice the UI's design size and has rounded corners: draw at
-// 193x239 logical pixels (2x) inside a 12 px physical border. The black border
+// 177x223 logical pixels (2x) inside a 28 px physical border. The black border
 // also covers the panel's corners.
 int uiScale() { return 2; }
-int uiInset() { return 12; }
+int uiInset() { return 28; }
 int width() { return (gDisplay.width() - 2 * uiInset()) / uiScale(); }
 int height() { return (gDisplay.height() - 2 * uiInset()) / uiScale(); }
 

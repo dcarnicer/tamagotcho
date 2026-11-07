@@ -80,7 +80,7 @@ int height();  // height of the current rotation, in logical UI pixels
 // than the UI's design size returns uiScale() > 1 (the canvas is pushed scaled
 // up by that factor), and uiInset() is the physical border kept free around
 // the logical area (a watch's rounded corners). 1 and 0 on the existing
-// boards; the 410x502 AMOLED uses 2 and 12.
+// boards; the 410x502 AMOLED uses 2 and 28.
 #if defined(TGC_BOARD_AMOLED206)
 int uiScale();
 int uiInset();
