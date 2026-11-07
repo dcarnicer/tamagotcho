@@ -42,13 +42,39 @@ constexpr int kPanelW = 410;
 constexpr int kPanelH = 502;
 constexpr int kColumnOffset = 22;  // the panel's visible columns start at 0x16
 
+// M5GFX's Panel_CO5300 list is the LilyGO T-Watch Ultra's. Use Waveshare's BSP
+// list instead: the same controller, but the 0x44 tear line and the sleep-out
+// delay the CO5300 needs before display-on. Without the delay the panel
+// sometimes comes up all yellow after a reset.
+class WaveshareCO5300 : public lgfx::Panel_CO5300 {
+public:
+    const uint8_t* getInitCommands(uint8_t listno) const override {
+        static constexpr uint8_t list0[] = {
+            0xFE, 1, 0x00,                    // page 0
+            0x11, 0x80, 120,                  // sleep out, 120 ms
+            0xC4, 1, 0x80,
+            0x44, 2, 0x01, 0xD1,              // tear effect line 465
+            0x35, 1, 0x00,                    // TE off
+            0x53, 1, 0x20,
+            0x63, 1, 0xFF,
+            0x51, 1, 0x00,                    // brightness 0 until the app sets it
+            0x3A, 1, 0x55,                    // RGB565
+            0x2A, 4, 0x00, 0x16, 0x01, 0xAF,  // columns 22..431
+            0x2B, 4, 0x00, 0x00, 0x01, 0xF5,  // rows 0..501
+            0x29, 0x80, 10,                   // display on, 10 ms
+            0xFF, 0xFF,
+        };
+        return listno == 0 ? list0 : nullptr;
+    }
+};
+
 class Amoled206Panel : public lgfx::LGFX_Device {
 public:
     Amoled206Panel() {
         {
             auto cfg = _bus.config();
-            cfg.freq_write = 40000000;  // Waveshare's BSP (the CO5300 handles 80 MHz)
-            cfg.freq_read = 40000000;
+            cfg.freq_write = 20000000;  // Waveshare's BSP uses 40 MHz; 20 is safer here
+            cfg.freq_read = 20000000;
             cfg.spi_mode = 0;
             cfg.pin_sclk = kPinSclk;
             cfg.pin_io0 = kPinD0;
@@ -85,7 +111,7 @@ public:
     }
 
 private:
-    lgfx::Panel_CO5300 _panel;
+    WaveshareCO5300 _panel;
     lgfx::Bus_SPI _bus;
 };
 
@@ -191,6 +217,14 @@ void begin() {
                   digitalRead(gNext.gpio), gSelect.gpio, gNext.gpio);
 #endif
     initPmic();
+
+    // A longer reset than M5GFX's own: the CO5300 can otherwise come up all
+    // yellow after a reset, before its sleep-out delay has run.
+    pinMode(kPinRst, OUTPUT);
+    digitalWrite(kPinRst, LOW);
+    delay(20);
+    digitalWrite(kPinRst, HIGH);
+    delay(120);
 
     Serial.println("display: init");
     const bool displayOk = gDisplay.init();

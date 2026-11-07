@@ -36,9 +36,11 @@ and [the wiki](https://docs.waveshare.com/ESP32-S3-Touch-AMOLED-2.06).
 
 `firmware/src/board/BoardAmoled206.cpp`:
 
-- M5GFX's `Panel_CO5300` (the same init list as Waveshare's BSP, plus the
-  CO5300's sleep-out delay) on a `Bus_SPI` in QSPI mode, SPI2, 40 MHz,
-  portrait 410x502 with the 22 px column offset.
+- M5GFX's `Panel_CO5300` (Waveshare's init list, including the 120 ms
+  sleep-out delay) on a `Bus_SPI` in QSPI mode, SPI2, **20 MHz** (40 MHz made
+  the panel come up all yellow now and then), portrait 410x502 with the 22 px
+  column offset. `begin()` also holds the panel reset low for 20 ms and waits
+  120 ms after releasing it before the init list.
 - The UI is drawn at **193x239 logical pixels and pushed at 2x**, with a 12 px
   physical black border for the watch's rounded corners
   (`board::uiScale()` / `uiInset()`).

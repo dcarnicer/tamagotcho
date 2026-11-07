@@ -3735,8 +3735,10 @@ notes, pinout and next steps are in [amoled206.md](amoled206.md).
 
 - `amoled206` reuses the T-Display-S3's 16 MB layout (2 MiB OTA slots), even
   though the board has 32 MB: the other half is left for later. The display is
-  M5GFX's `Panel_CO5300` (Waveshare's init list, with the sleep-out delay) with
-  the panel's 22 px column offset, portrait 410x502, QSPI at 40 MHz.
+  M5GFX's `Panel_CO5300` with Waveshare's init list (incl. the 120 ms sleep-out
+  delay), the panel's 22 px column offset, a 20/120 ms manual reset, and QSPI
+  at 20 MHz: at 40 MHz with M5GFX's own list the panel came up all yellow after
+  some resets.
 - The UI is drawn at 193x239 logical pixels and pushed at 2x, inside a 12 px
   physical black border for the rounded corners (`board::uiScale()` /
   `board::uiInset()`). `render/Widgets` scales the canvas; a raw `uint16_t*`
