@@ -179,6 +179,19 @@ void loop() {
     const uint32_t holdMs = tgc::holdMsFor(gHoldPref);
     int a = keyA.poll(downA, t, holdMs);
     int b = keyB.poll(downB, t, holdMs);
+    // A touch panel's gestures arrive as the two buttons' tap/hold events,
+    // with the gesture's start for the quiz's timing. A physical event in the
+    // same turn wins.
+    uint32_t pressedAt = keyA.downAt;
+    int ta = 0, tb = 0;
+    uint32_t taAt = 0, tbAt = 0;
+    if (a == 0 && tgc::board::takeButtonEvent(Button::Select, &ta, &taAt)) {
+        a = ta;
+        pressedAt = taAt;
+    }
+    if (b == 0 && tgc::board::takeButtonEvent(Button::Next, &tb, &tbAt)) {
+        b = tb;
+    }
 #if defined(TGC_REMOTE)
     remoteKeyEvent(0, a, t);
     remoteKeyEvent(1, b, t);
@@ -207,7 +220,7 @@ void loop() {
     // a redraw when the press did nothing.
     const bool fillEnded = holdTick(t, keyA.down, keyA.longFired, keyA.downAt, a, holdMs);
     const uint32_t framesBefore = gFrames;
-    handleInput(a, b, keyA.downAt, t, downA || downB);
+    handleInput(a, b, pressedAt, t, downA || downB);
     if (fillEnded) {
         if (gFrames == framesBefore)
             drawScreen();

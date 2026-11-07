@@ -116,6 +116,17 @@ bool isHeld(Button b);
 // True once when the button has been down for kHoldMs (long press).
 bool wasHeld(Button b);
 
+// A board with a touch panel can turn gestures into the two buttons' tap and
+// hold events. takeButtonEvent() returns one queued event for `b` (1 tap,
+// 2 hold) and the gesture's start time; false when there is none. The board
+// does not report a touch as isHeld(), so the app's hold fill stays a physical
+// button's. Boards without touch always return false.
+#if defined(TGC_BOARD_AMOLED206)
+bool takeButtonEvent(Button b, int* event, uint32_t* pressedAt);
+#else
+inline bool takeButtonEvent(Button, int*, uint32_t*) { return false; }
+#endif
+
 // Battery charge 0..100, or -1 if the board cannot report it.
 int batteryPercent();
 // Whether external power / charging is detected; false if unknown.

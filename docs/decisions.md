@@ -3746,7 +3746,11 @@ notes, pinout and next steps are in [amoled206.md](amoled206.md).
 - BOOT is the front button and works. PWR is the power button (a 6 s hold
   powers off) but its GPIO10/SYS_OUT line does not follow a short press on
   this unit, and the AXP2101 does not report short presses either: it is not a
-  navigation button yet. Touch is the next input step.
+  navigation button. The FT3168 touch panel is: tap = front tap, hold = front
+  hold, swipe left = side tap, swipe down = side hold. The gestures are queued
+  as button events (`board::takeButtonEvent()`) and consumed by `main.cpp`;
+  touch does not show the hold fill. Verified on hardware (tap, hold and both
+  swipes).
 - The IMU, touch, RTC and the 1-bit SDMMC card are deliberately not wired yet;
   each is a separate step after the first boot.
 - Partial pushes round their start column and width up to even pixels: the

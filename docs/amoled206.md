@@ -1,10 +1,10 @@
 # Waveshare ESP32-S3-Touch-AMOLED-2.06
 
 Port notes for the watch-shaped Waveshare board. **Status (2026-11-07): it
-boots on hardware, shows the UI and runs the quiz; the BOOT button works.**
+boots on hardware, shows the UI, runs the quiz, and touch + BOOT drive it.**
 The StickS3 remains the primary target; nothing here changes the other boards.
-Still missing: PWR as a navigation button (it only powers on/off), touch, IMU,
-RTC and the SD card. The release tooling does not carry this env yet.
+Still missing: the IMU, RTC and SD card. The release tooling does not carry
+this env yet.
 
 ## Hardware
 
@@ -44,13 +44,19 @@ and [the wiki](https://docs.waveshare.com/ESP32-S3-Touch-AMOLED-2.06).
 - The UI is drawn at **193x239 logical pixels and pushed at 2x**, with a 12 px
   physical black border for the watch's rounded corners
   (`board::uiScale()` / `uiInset()`).
-- BOOT = `Select` (front); it works. PWR = `Next` (side) on paper, but on this
-  unit GPIO10 stays low for a short press (the AXP2101 only powers off on the
-  6 s hold), so PWR is not a navigation button yet. A touch gesture layer is
-  the next input step.
+- BOOT = `Select` (front); it works. PWR = the AXP2101's power key: a 6 s hold
+  powers off, a short press only powers the board on from off. Its GPIO10
+  SYS_OUT line does not follow short presses on this unit and the PMIC does not
+  report them either, so PWR is not a navigation button.
+- **Touch (FT3168)** drives every screen: a tap is the front tap (next /
+  advance), a ~0.6 s hold is the front hold (answer / open), a left swipe is
+  the side tap (back / cancel) and a down swipe is the side hold (the settings
+  home). The gestures are queued as button events (`board::takeButtonEvent()`,
+  consumed by `main.cpp`); touch does not show the hold fill, which stays a
+  physical button's. The I2C bus runs at 100 kHz for the FT3168.
 - AXP2101 battery voltage and VBUS/charging, so the percentage, the critical
   guard and "on USB power" work.
-- No IMU, touch, RTC or SD yet: `hasAccel()` is false, `sdPins()` false.
+- No IMU, RTC or SD yet: `hasAccel()` is false, `sdPins()` false.
 
 `render/Widgets.cpp` does the scaled push. The canvas keeps the panel's 16-bit
 byte order; a raw `uint16_t*` push must go through the `pixelcopy_t` constructor
@@ -62,11 +68,10 @@ the CO5300 rejects an odd partial window.
 
 1. ~~Flash the full image and confirm the panel~~ (done 2026-11-07: portrait,
    colors right, 2x UI with the black border).
-2. ~~Take a `remote.py shot` at 410x502~~ (done: the remote now dumps the
-   physical scaled screen).
-3. **Input:** the FT3168 touch layer, mapping tap = front tap, hold = front
-   hold, swipe left = side tap (back) and swipe down = side hold (settings).
-   PWR stays the power button.
+2. ~~Take a `remote.py shot` at 410x502~~ (done: the remote dumps the physical
+   scaled screen).
+3. ~~Input: the FT3168 touch layer~~ (done: tap/hold/swipe left/swipe down
+   verified on hardware; BOOT works too).
 4. QMI8658C for Auto orientation (`hasAccel()`/`readAccel()`; axes still need
    measuring), then the PCF85063 RTC (a real date across a power-off), then the
    1-bit SDMMC card behind `platform/Storage`.

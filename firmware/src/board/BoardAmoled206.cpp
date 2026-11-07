@@ -17,6 +17,7 @@
 #include <Arduino.h>
 #include <HWCDC.h>
 #include <Wire.h>
+#include <cstdlib>
 #include <driver/rtc_io.h>
 #include <esp_random.h>
 #include <esp_sleep.h>
@@ -195,13 +196,134 @@ bool pmicRead14(uint8_t reg, uint16_t* out) {
 }
 
 void initPmic() {
-    Wire.begin(15, 14, 400000);  // SDA, SCL; Waveshare's internal bus
+    // 100 kHz: the FT3168 touch controller on the same bus does not like the
+    // 400 kHz the PMIC and IMU tolerate, and the traffic here is tiny.
+    Wire.begin(15, 14, 100000);  // SDA, SCL; Waveshare's internal bus
     uint8_t id = 0;
     if (pmicRead(kPmicChipIdReg, &id) && id == kPmicChipId) {
         gPmic = true;
         Serial.println("pmic: AXP2101 ready");
     } else {
         Serial.println("pmic: AXP2101 not found");
+    }
+}
+
+// --- Touch (FT3168) ----------------------------------------------------------
+// The FT3168 sits at 0x38 on the same bus. Gestures become the app's two
+// buttons: tap/hold anywhere is Select (front), a left swipe is Next (the side
+// button's back) and a down swipe is a Next hold (the settings home). The app
+// consumes the queued events from loop(); the touch never shows the hold fill,
+// which stays a physical button's.
+constexpr uint8_t kTouchAddr = 0x38;
+constexpr int kTouchRst = 9;
+constexpr int kTouchInt = 38;
+constexpr int kSwipePx = 40;  // physical pixels before a move is a swipe
+
+bool gTouch = false;
+bool gTouchDown = false;
+uint32_t gTouchDownAt = 0;
+int gTouchStartX = 0, gTouchStartY = 0, gTouchLastX = 0, gTouchLastY = 0;
+bool gTouchMoved = false;
+bool gTouchHoldFired = false;
+struct TouchEvent {
+    int event = 0;  // 0 none, 1 tap, 2 hold
+    uint32_t at = 0;
+};
+TouchEvent gTouchEvents[2];  // Select, Next
+
+bool i2cWrite(uint8_t addr, uint8_t reg, uint8_t v) {
+    Wire.beginTransmission(addr);
+    Wire.write(reg);
+    Wire.write(v);
+    return Wire.endTransmission() == 0;
+}
+
+bool i2cRead(uint8_t addr, uint8_t reg, uint8_t* data, uint8_t n) {
+    Wire.beginTransmission(addr);
+    Wire.write(reg);
+    if (Wire.endTransmission(false) != 0) return false;
+    if (Wire.requestFrom(addr, n) != n) return false;
+    for (uint8_t i = 0; i < n; ++i) data[i] = Wire.read();
+    return true;
+}
+
+bool initTouch() {
+    pinMode(kTouchRst, OUTPUT);
+    digitalWrite(kTouchRst, LOW);
+    delay(10);
+    digitalWrite(kTouchRst, HIGH);
+    delay(50);
+    pinMode(kTouchInt, INPUT_PULLUP);
+    // The threshold set of esp_lcd_touch_ft5x06 (Espressif, Apache-2.0).
+    static constexpr uint8_t kInit[][2] = {
+        {0x80, 70}, {0x81, 60}, {0x82, 16}, {0x83, 60}, {0x84, 10},
+        {0x85, 20}, {0x87, 2},  {0x88, 12}, {0x89, 40},
+    };
+    bool ok = true;
+    for (const auto& p : kInit) ok = i2cWrite(kTouchAddr, p[0], p[1]) && ok;
+    Serial.printf("touch: FT3168 %s\n", ok ? "ready" : "not found");
+    return ok;
+}
+
+// A touch point, if one is down. The FT5x06 family reports up to five; the
+// first is enough for a gesture.
+bool readTouch(int* x, int* y) {
+    uint8_t n = 0;
+    if (!i2cRead(kTouchAddr, 0x02, &n, 1)) return false;
+    n &= 0x0F;
+    if (n == 0) return false;
+    uint8_t d[6] = {};
+    if (!i2cRead(kTouchAddr, 0x03, d, 6)) return false;
+    *x = ((d[0] & 0x0F) << 8) | d[1];
+    *y = ((d[2] & 0x0F) << 8) | d[3];
+    return true;
+}
+
+void queueTouch(Button b, int event, uint32_t at) {
+    TouchEvent& q = gTouchEvents[b == Button::Next ? 1 : 0];
+    if (q.event == 0) {
+        q.event = event;
+        q.at = at;
+    }
+}
+
+void touchTick(uint32_t now) {
+    if (!gTouch) return;
+    int x = 0, y = 0;
+    const bool down = readTouch(&x, &y);
+    if (down) {
+        if (!gTouchDown) {
+            gTouchDown = true;
+            gTouchDownAt = now;
+            gTouchStartX = gTouchLastX = x;
+            gTouchStartY = gTouchLastY = y;
+            gTouchMoved = false;
+            gTouchHoldFired = false;
+        } else {
+            gTouchLastX = x;
+            gTouchLastY = y;
+            if (std::abs(x - gTouchStartX) >= kSwipePx ||
+                std::abs(y - gTouchStartY) >= kSwipePx)
+                gTouchMoved = true;
+            if (!gTouchMoved && !gTouchHoldFired && now - gTouchDownAt >= kHoldMs) {
+                gTouchHoldFired = true;
+                queueTouch(Button::Select, 2, gTouchDownAt);
+            }
+        }
+    } else if (gTouchDown) {
+        gTouchDown = false;
+        if (gTouchHoldFired) return;
+        const int dx = gTouchLastX - gTouchStartX;
+        const int dy = gTouchLastY - gTouchStartY;
+        if (gTouchMoved) {
+            if (std::abs(dx) > std::abs(dy)) {
+                if (dx <= -kSwipePx) queueTouch(Button::Next, 1, gTouchDownAt);
+            } else if (dy >= kSwipePx) {
+                queueTouch(Button::Next, 2, gTouchDownAt);
+            }
+        } else {
+            queueTouch(Button::Select, 1, gTouchDownAt);
+        }
     }
 }
 
@@ -232,6 +354,7 @@ void begin() {
                   gDisplay.height());
     gDisplay.setRotation(0);  // native 410x502 portrait
     gDisplay.setBrightness(gBrightness);
+    gTouch = initTouch();
     Serial.printf("board: %s, panel %dx%d, ui %dx%d at %dx, psram %u KB\n", name(),
                   gDisplay.width(), gDisplay.height(), width(), height(), uiScale(),
                   static_cast<unsigned>(ESP.getPsramSize() / 1024));
@@ -241,6 +364,7 @@ void update() {
     const uint32_t now = millis();
     poll(gSelect, now);
     poll(gNext, now);
+    touchTick(now);
 }
 
 lgfx::LGFX_Device& display() { return gDisplay; }
@@ -266,6 +390,15 @@ bool readAccel(float*, float*, float*) { return false; }
 bool wasPressed(Button b) { return pin(b).pressedEdge; }
 bool isHeld(Button b) { return pin(b).down; }
 bool wasHeld(Button b) { return pin(b).holdEdge; }
+
+bool takeButtonEvent(Button b, int* event, uint32_t* pressedAt) {
+    TouchEvent& q = gTouchEvents[b == Button::Next ? 1 : 0];
+    if (q.event == 0) return false;
+    *event = q.event;
+    *pressedAt = q.at;
+    q.event = 0;
+    return true;
+}
 
 // AXP2101 battery voltage, mapped like the other boards (3.3 V = 0 %,
 // 4.15 V = 100 %). The gauge register (0xA4) needs its own enable sequence and
