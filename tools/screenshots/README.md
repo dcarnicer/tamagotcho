@@ -6,11 +6,11 @@ prints the serial log. It is for checking UI flows and taking the README
 screenshots without anyone at the buttons, by hand or by an agent.
 
 It needs a firmware with the serial remote, the **`sticks3-shots`**,
-**`tdisplay-s3-shots`** or **`cardputer-adv-shots`** env (the normal env plus
-`-DTGC_REMOTE=1`; with two boards on USB, name the port with `--port`).
-**Never flash it as a release or leave it on someone else's device**: anything
-on the USB cable can press its buttons. The release workflow builds the normal
-envs only, which carry none of this code.
+**`tdisplay-s3-shots`**, **`cardputer-adv-shots`** or **`amoled206-shots`** env
+(the normal env plus `-DTGC_REMOTE=1`; with two boards on USB, name the port
+with `--port`). **Never flash it as a release or leave it on someone else's
+device**: anything on the USB cable can press its buttons. The release workflow
+builds the normal envs only, which carry none of this code.
 
 ```sh
 cd firmware && pio run -e sticks3-shots -t upload   # the remote build (app only)
@@ -100,7 +100,8 @@ flow should use the keys.
 
 The dump is what the panel shows, in the UI's orientation (135x240 portrait,
 240x135 landscape whichever way it is turned; the Cardputer ADV is always
-240x135):
+240x135; the Waveshare AMOLED is 410x502, its 193x239 canvas scaled 2x with the
+black border):
 
 ```
 #shot W H on|dim|dark

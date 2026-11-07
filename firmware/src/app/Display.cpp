@@ -49,7 +49,7 @@ void present() {
     }
     noteFrame(false);
     const uint32_t t0 = micros();
-    gCanvas->pushSprite(&tgc::board::display(), 0, 0);
+    tgc::widgets::presentRegion(*gCanvas, tgc::board::display(), 0, 0, W, H);
     gPushUs = micros() - t0;
     gPushRows = H;
 }

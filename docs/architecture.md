@@ -133,6 +133,12 @@ flat answer tiles, hold progress, auto-advance).
   behind a TCA8418 on the internal I2C bus (INT on G11), the G0 button,
   battery on G10, a power switch. Via M5Unified/M5GFX (autodetected) and a
   small TCA8418 driver in `board/BoardCardputerAdv.cpp`.
+- **Waveshare ESP32-S3-Touch-AMOLED-2.06** (port in progress, 2026-11-07):
+  ESP32-S3R8, 8 MB PSRAM, 32 MB flash (16 MB used), 2.06" 410×502 CO5300
+  AMOLED over QSPI, AXP2101 PMIC, BOOT and PWR side buttons, FT3168 touch,
+  QMI8658C IMU, PCF85063 RTC and a 1-bit SDMMC card. The UI is drawn at
+  193×239 and pushed at 2× inside a 12 px border for the rounded corners;
+  BOOT works, PWR only powers on/off so far. See `docs/amoled206.md`.
 
 UI layout is computed from the panel size (`W` x `H`), so every screen has a
 portrait and a landscape form. The Orientation setting is Portrait (rotation

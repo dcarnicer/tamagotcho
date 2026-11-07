@@ -16,6 +16,7 @@ pio run -e sticks3            # build for StickS3
 pio run -e tdisplay-s3        # build for T-Display-S3
 pio run -e cardputer-adv      # build for Cardputer ADV
 pio run -e m5stack            # one image for the StickS3 and the Cardputer ADV
+pio run -e amoled206          # Waveshare AMOLED 2.06 (port in progress, docs/amoled206.md)
 ```
 
 Each build prints `Tamagotcho version: ...`: `scripts/version.py` takes

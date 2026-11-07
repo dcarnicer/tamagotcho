@@ -1,19 +1,20 @@
 #pragma once
 // Board HAL: one implementation per target, selected by build flag
-// (TGC_BOARD_STICKS3 / TGC_BOARD_TDISPLAY_S3 / TGC_BOARD_CARDPUTER_ADV), or
-// TGC_BOARD_M5: the StickS3 and the Cardputer ADV in one image, the board
-// chosen at boot (board/BoardM5.cpp). UI code is written against the
-// LovyanGFX API only, so it is identical on every board.
+// (TGC_BOARD_STICKS3 / TGC_BOARD_TDISPLAY_S3 / TGC_BOARD_CARDPUTER_ADV /
+// TGC_BOARD_AMOLED206), or TGC_BOARD_M5: the StickS3 and the Cardputer ADV in
+// one image, the board chosen at boot (board/BoardM5.cpp). UI code is written
+// against the LovyanGFX API only, so it is identical on every board.
 #include <cstdint>
 
 #include "ui/KeyInput.h"
 
-#if defined(TGC_BOARD_STICKS3) || defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5)
+#if defined(TGC_BOARD_STICKS3) || defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5) || \
+    defined(TGC_BOARD_AMOLED206)
 #include <M5GFX.h>
 #elif defined(TGC_BOARD_TDISPLAY_S3)
 #include <LovyanGFX.hpp>
 #else
-#error "Define TGC_BOARD_STICKS3, TGC_BOARD_TDISPLAY_S3, TGC_BOARD_CARDPUTER_ADV or TGC_BOARD_M5"
+#error "Define TGC_BOARD_STICKS3, TGC_BOARD_TDISPLAY_S3, TGC_BOARD_CARDPUTER_ADV, TGC_BOARD_AMOLED206 or TGC_BOARD_M5"
 #endif
 
 namespace tgc {
@@ -72,8 +73,21 @@ void begin();
 void update();
 
 lgfx::LGFX_Device& display();
-int width();   // width of the current rotation
-int height();  // height of the current rotation
+int width();   // width of the current rotation, in logical UI pixels
+int height();  // height of the current rotation, in logical UI pixels
+
+// The app draws and lays out in logical pixels. A board whose panel is larger
+// than the UI's design size returns uiScale() > 1 (the canvas is pushed scaled
+// up by that factor), and uiInset() is the physical border kept free around
+// the logical area (a watch's rounded corners). 1 and 0 on the existing
+// boards; the 410x502 AMOLED uses 2 and 12.
+#if defined(TGC_BOARD_AMOLED206)
+int uiScale();
+int uiInset();
+#else
+inline int uiScale() { return 1; }
+inline int uiInset() { return 0; }
+#endif
 
 // Display rotation. Portrait is the default (begin() sets it); landscape swaps
 // the panel's width and height (e.g. 135x240 -> 240x135). width()/height()

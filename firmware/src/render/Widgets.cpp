@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <esp_heap_caps.h>
 
 #include "pack/Utf8.h"
 #include "ui/HintBar.h"
@@ -457,11 +459,77 @@ void drawList(lgfx::LovyanGFX& d, const ListView& list, int x, int w, const RowD
 
 // ---------------------------------------------------------------- frame
 
+namespace {
+
+// Scratch buffer for a scaled push, in PSRAM when there is some. Grown once
+// per board (the full logical canvas at uiScale()).
+uint16_t* gScaled = nullptr;
+size_t gScaledPixels = 0;
+
+uint16_t* scaledBuffer(size_t pixels) {
+    if (gScaledPixels >= pixels) return gScaled;
+    if (gScaled) heap_caps_free(gScaled);
+    gScaled = static_cast<uint16_t*>(
+        heap_caps_malloc(pixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!gScaled)
+        gScaled = static_cast<uint16_t*>(
+            heap_caps_malloc(pixels * sizeof(uint16_t), MALLOC_CAP_8BIT));
+    gScaledPixels = gScaled ? pixels : 0;
+    return gScaled;
+}
+
+}  // namespace
+
 void presentRegion(lgfx::LGFX_Sprite& canvas, lgfx::LovyanGFX& display, int x, int y, int w,
                    int h) {
-    display.setClipRect(x, y, w, h);
-    canvas.pushSprite(&display, 0, 0);
-    display.clearClipRect();
+    const int scale = board::uiScale();
+    const int inset = board::uiInset();
+    if (scale <= 1 && inset == 0) {
+        // AMOLED panels (CO5300) only accept a partial window whose start
+        // column and width are even; round the region out by at most one pixel
+        // each side. Odd-width canvases keep their region as it is (their last
+        // column could not be padded without exceeding the canvas).
+        if ((canvas.width() & 1) == 0) {
+            const int x0 = x & ~1;
+            const int x1 = (x + w + 1) & ~1;
+            x = x0;
+            w = x1 - x0;
+        }
+        display.setClipRect(x, y, w, h);
+        canvas.pushSprite(&display, 0, 0);
+        display.clearClipRect();
+        return;
+    }
+
+    // Logical pixels -> panel pixels: each source pixel becomes a scale x scale
+    // block, and the logical area sits inset from the physical edges.
+    const int w2 = w * scale, h2 = h * scale;
+    uint16_t* out = scaledBuffer(static_cast<size_t>(w2) * h2);
+    if (!out) {  // no memory: fall back to the unscaled push
+        display.setClipRect(x, y, w, h);
+        canvas.pushSprite(&display, 0, 0);
+        display.clearClipRect();
+        return;
+    }
+    const uint8_t* src = static_cast<const uint8_t*>(canvas.getBuffer());
+    const size_t stride = static_cast<size_t>(canvas.width()) * sizeof(uint16_t);
+    for (int sy = 0; sy < h; ++sy) {
+        const uint16_t* row =
+            reinterpret_cast<const uint16_t*>(src + static_cast<size_t>(y + sy) * stride) + x;
+        for (int dy = 0; dy < scale; ++dy) {
+            uint16_t* dst = out + static_cast<size_t>(sy * scale + dy) * w2;
+            for (int sx = 0; sx < w; ++sx) {
+                const uint16_t p = row[sx];
+                for (int dx = 0; dx < scale; ++dx) dst[sx * scale + dx] = p;
+            }
+        }
+    }
+    // The canvas keeps its pixels in the panel's 16-bit byte order; pass them
+    // through as they are (a bare uint16_t* would be treated as non-swapped
+    // rgb565 and converted again, which the AMOLED renders as garbage).
+    lgfx::pixelcopy_t pc(out, display.getColorDepth(), lgfx::color_depth_t::rgb565_2Byte,
+                         display.hasPalette());
+    display.pushImage(inset + x * scale, inset + y * scale, w2, h2, &pc, false);
 }
 
 }  // namespace widgets

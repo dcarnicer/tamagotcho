@@ -3725,3 +3725,28 @@ release envs, app-only and merged images, ESP Web Tools manifests,
 - Tests (`tools/release/test_build_dist.py`) cover the version normalizer, the
   app-image check and the package layout; CI already runs the `tools/release`
   unittest discovery.
+
+## 2026-11-07 – Starting the Waveshare AMOLED 2.06 port
+
+The watch-shaped **ESP32-S3-Touch-AMOLED-2.06** (410x502 CO5300 AMOLED,
+ESP32-S3R8) joins as a development target, not a release board yet. It boots on
+hardware, shows the UI and runs the quiz; the BOOT button works. The port
+notes, pinout and next steps are in [amoled206.md](amoled206.md).
+
+- `amoled206` reuses the T-Display-S3's 16 MB layout (2 MiB OTA slots), even
+  though the board has 32 MB: the other half is left for later. The display is
+  M5GFX's `Panel_CO5300` (Waveshare's init list, with the sleep-out delay) with
+  the panel's 22 px column offset, portrait 410x502, QSPI at 40 MHz.
+- The UI is drawn at 193x239 logical pixels and pushed at 2x, inside a 12 px
+  physical black border for the rounded corners (`board::uiScale()` /
+  `board::uiInset()`). `render/Widgets` scales the canvas; a raw `uint16_t*`
+  push must use the `pixelcopy_t` constructor or the AMOLED shows garbage.
+- BOOT is the front button and works. PWR is the power button (a 6 s hold
+  powers off) but its GPIO10/SYS_OUT line does not follow a short press on
+  this unit, and the AXP2101 does not report short presses either: it is not a
+  navigation button yet. Touch is the next input step.
+- The IMU, touch, RTC and the 1-bit SDMMC card are deliberately not wired yet;
+  each is a separate step after the first boot.
+- Partial pushes round their start column and width up to even pixels: the
+  CO5300 requires an even partial window, and every existing panel tolerates
+  the one extra column.

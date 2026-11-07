@@ -108,13 +108,24 @@ constexpr Stats statsFor(int w, int h) {
                               tileH);
         }
     } else {
-        const int r = imin((w - 63) / 2, kRingMaxR);  // 36 of 135: the hole fits "87" + "%"
+        int r = imin((w - 63) / 2, kRingMaxR);  // 36 of 135: the hole fits "87" + "%"
+        const int tileH = h >= 300 ? 40 : h >= 240 ? 34 : 32;
+        // A short panel (the AMOLED's 193x239 logical) cannot take the largest
+        // ring with the six tiles and the seen line under it: shrink the ring
+        // until they fit, but keep the test's 30 px minimum. The 240 px panels
+        // keep their known-good ring.
+        if (h < 240) {
+            for (; r > 30; --r) {
+                const int tilesTop = (kHeaderH + 4 + r) + r + 3 + 8 + 4;
+                const int seenBottom = tilesTop + 3 * tileH + 2 * kGap + 4 + 8;
+                if (seenBottom + 4 <= hintY) break;
+            }
+        }
         s.rOuter = static_cast<int16_t>(r);
         s.cx = static_cast<int16_t>(w / 2);
         s.cy = static_cast<int16_t>(kHeaderH + 4 + r);
         s.captionY = static_cast<int16_t>(s.cy + r + 3);
         const int tilesTop = s.captionY + 8 + 4;
-        const int tileH = h >= 300 ? 40 : 34;
         const int tw = w - 2 * kGutter;
         const int colW = (tw - kGap) / 2;
         for (int i = 0; i < 6; ++i) {

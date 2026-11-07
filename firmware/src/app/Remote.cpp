@@ -128,16 +128,30 @@ namespace {
 
 void remoteShot() {
     static const char kHex[] = "0123456789abcdef";
-    static char line[16 + 4 * 320 + 2];  // up to 320 pixels a row (T-Display-S3)
-    const int w = gCanvas->width(), h = gCanvas->height();
+    static char line[16 + 4 * 512 + 2];  // up to 512 pixels a row
+    // The canvas is logical (uiScale() smaller than the panel); dump it as the
+    // panel shows it, scaled and inset, so a shot is the physical screen.
+    const int scale = tgc::board::uiScale();
+    const int inset = tgc::board::uiInset();
+    const int lw = gCanvas->width(), lh = gCanvas->height();
+    const int w = lw * scale + 2 * inset, h = lh * scale + 2 * inset;
     const uint8_t* px = static_cast<const uint8_t*>(gCanvas->getBuffer());
     Serial.printf("\n#shot %d %d %s\n", w, h, gScreenOff ? "dark" : gDimmed ? "dim" : "on");
-    for (int y = 0; y < h && w <= 320 && px; ++y) {
+    for (int y = 0; y < h && w <= 512 && px; ++y) {
         int n = snprintf(line, sizeof line, "#r %d ", y);
-        const uint8_t* row = px + static_cast<size_t>(y) * w * 2;
-        for (int i = 0; i < w * 2; ++i) {
-            line[n++] = kHex[row[i] >> 4];
-            line[n++] = kHex[row[i] & 15];
+        const bool inRow = y >= inset && y < inset + lh * scale;
+        const int ly = (y - inset) / scale;
+        const uint8_t* row = inRow ? px + static_cast<size_t>(ly) * lw * 2 : nullptr;
+        for (int x = 0; x < w; ++x) {
+            uint16_t p = 0;
+            if (inRow && x >= inset && x < inset + lw * scale) {
+                const uint8_t* src = row + ((x - inset) / scale) * 2;
+                p = static_cast<uint16_t>((src[0] << 8) | src[1]);
+            }
+            line[n++] = kHex[p >> 12];
+            line[n++] = kHex[(p >> 8) & 15];
+            line[n++] = kHex[(p >> 4) & 15];
+            line[n++] = kHex[p & 15];
         }
         line[n++] = '\n';
         Serial.write(reinterpret_cast<const uint8_t*>(line), n);
