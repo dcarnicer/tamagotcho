@@ -23,6 +23,7 @@
 #include "pack/PackReader.h"
 #include "pack/Utf8.h"
 #include "quiz/Quiz.h"   // ReadingKind, readingsDisplay()
+#include "render/Blend565.h"  // the kanji prompt's fade-in
 #include "ui/HintBar.h"  // captionChars(), kCaptionCharW, hintFrontEnd()
 #include "ui/Theme.h"
 
@@ -142,6 +143,18 @@ inline float holdFill(uint32_t heldMs, uint32_t holdMs) {
     if (heldMs < kHoldShowMs) return -1.0f;
     if (holdMs <= kHoldShowMs || heldMs >= holdMs) return 1.0f;
     return static_cast<float>(heldMs - kHoldShowMs) / static_cast<float>(holdMs - kHoldShowMs);
+}
+
+// ---------------------------------------------------------------- kanji fade-in
+// §2.6: a new question's kanji comes in three steps over ~100 ms, its ink
+// blended from the black prompt at 5/15, 10/15 and 15/15. The first frame is
+// already step 1, so the kanji never flashes at full ink; any press ends it.
+constexpr uint32_t kPromptFadeFrameMs = 50;
+
+inline uint16_t promptFadeInk(uint8_t step) {
+    static constexpr uint8_t kAlpha[3] = {5, 10, 15};
+    const uint8_t a = step == 0 ? kAlpha[0] : step >= 3 ? 15 : kAlpha[step - 1];
+    return blend565(0xFFFF, 0x0000, a);
 }
 
 // ---------------------------------------------------------------- auto-advance

@@ -470,7 +470,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       pickers), the deck list from pack headers, and the date, stats, done,
       Get decks, Wi-Fi portal, About and error screens in the flat style.
       Phases 1-3 are on `main`, checked on the StickS3 (2026-10-18). Left:
-      phase 5 polish (kanji fade-in, maybe slides). The two values cut short
+      phase 5 polish (the kanji fade-in is done, 2026-11-18; the slides are
+      not). The two values cut short
       in portrait seen on 2026-10-20 are fixed (2026-10-21): narrow screens
       show the Date page's values under their labels, and the Spanish Wi-Fi
       menu's "Modo configuración" row is "Configurar"; the English "Forget

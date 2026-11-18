@@ -3755,3 +3755,16 @@ cuidado de" are deliberately left. The report now changes 523 English and 702
 Spanish first meanings (N5: 14 and 14), with 21 English and 27 Spanish
 overrides. N1 remains unchecked. The committed-table test's cap moved from 40
 to 60 lines, still for clear errors only.
+
+## 2026-11-18 – The quiz prompt's kanji fades in
+
+Phase 5's kanji fade-in (`docs/ux-refresh.md` §2.6) is built for the quiz
+prompt only. A new question's kanji comes in three frames 50 ms apart, its ink
+blended from the black prompt at 5/15, 10/15 and 15/15 (`promptFadeInk()` in
+`ui/QuizUi.h`, tested in `test_quizui`). Only the prompt box is cleared,
+redrawn and pushed, so the header and tiles are untouched. The first frame is
+already step 1 (no full-ink flash), the reveal goes straight to full ink, and
+any press ends the fade at once before it is handled. The intro and the detail
+card keep the stroke-order animation; a fade on top of it would fight it. No
+"Animations" setting: the fade is 100 ms and never blocks input. The slides
+behind an optional setting remain unbuilt.

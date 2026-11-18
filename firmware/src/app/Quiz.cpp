@@ -45,6 +45,10 @@ namespace {
 
 bool gLastCorrect = false;  // outcome of the last answer (drives the detail card)
 tgc::ReadingTurn gReadingTurn;  // on'yomi and kun'yomi questions take turns
+// The kanji prompt's fade-in (ui/QuizUi.h, docs/ux-refresh.md §2.6): 1..3,
+// 3 = full ink. Set on a new question and ended by the first press.
+uint8_t gPromptFade = 3;
+uint32_t gPromptFadeAt = 0;
 // The last answer's grade and the days to the card's next review (record
 // dueDay - today), for the result pill.
 tgc::Grade gLastGrade = tgc::Grade::Good;
@@ -100,6 +104,8 @@ Screen nextItem() {
             gSel = 0;
             gRevealed = false;
             gShownAt = millis();
+            gPromptFade = gQ.mode == tgc::QuizMode::MeaningToKanji ? 3 : 1;
+            gPromptFadeAt = gShownAt;
             gNavTaps = 0;
             gQuizHints.question(gShownAt);
             gAdvance.cancel();
@@ -159,11 +165,11 @@ namespace {
 // The quiz prompt's set-0 kanji. With TGC_QUIZ_LOG it also traces the draw
 // cost: the whole call and the bitmap fetch inside it (file read plus the v2
 // decode; 0 when the renderer still held this glyph from the last redraw).
-void drawPromptKanji(lgfx::LovyanGFX& d, uint32_t cp, int x, int y, int w, int h) {
+void drawPromptKanji(lgfx::LovyanGFX& d, uint32_t cp, int x, int y, int w, int h, uint16_t fg) {
 #if defined(TGC_QUIZ_LOG)
     const uint32_t t0 = micros();
 #endif
-    gRender.drawKanji(d, tgc::kGlyphSetLarge, cp, x, y, w, h, kWhite, kBlack);
+    gRender.drawKanji(d, tgc::kGlyphSetLarge, cp, x, y, w, h, fg, kBlack);
 #if defined(TGC_QUIZ_LOG)
     const uint32_t us = micros() - t0;
     const tgc::Glyph* g = gPack->findGlyph(tgc::kGlyphSetLarge, cp);
@@ -362,7 +368,7 @@ void drawQuizHeader(lgfx::LovyanGFX& d) {
 void drawQuizPrompt(lgfx::LovyanGFX& d, const tgc::Card& card) {
     const QuizGeom& g = gQuizG;
     if (gQ.mode != tgc::QuizMode::MeaningToKanji) {
-        drawPromptKanji(d, card.codepoint, g.px, g.py, g.pw, g.ph);
+        drawPromptKanji(d, card.codepoint, g.px, g.py, g.pw, g.ph, tgc::promptFadeInk(gPromptFade));
         return;
     }
     constexpr uint8_t kCap = tgc::Renderer::kTextBuiltinSmall;
@@ -381,6 +387,34 @@ void drawQuizPrompt(lgfx::LovyanGFX& d, const tgc::Card& card) {
     gRender.drawCentred(d, cap, bx, top, bw, capH, capLines, tgc::theme::kTextDim, kBlack, kCap);
     gRender.drawCentred(d, prompt, bx, top + capH + kGapY, bw, lines * lh, lines, kWhite, kBlack,
                         kLabel);
+}
+
+// One fade step: only the prompt box is cleared and redrawn, then pushed.
+void drawPromptFrame(const tgc::Card& card) {
+    auto& d = *gCanvas;
+    const QuizGeom& g = gQuizG;
+    d.fillRect(g.px, g.py, g.pw, g.ph, kBlack);
+    drawQuizPrompt(d, card);
+    presentRegion(g.px, g.py, g.pw, g.ph);
+}
+
+// The next step of the kanji prompt's fade-in, if its frame is due. A press
+// ends it at once (finishPromptFade()).
+bool promptFadeTick(uint32_t now) {
+    if (gPromptFade >= 3 || gRevealed || gQ.mode == tgc::QuizMode::MeaningToKanji) return false;
+    if (now - gPromptFadeAt < tgc::kPromptFadeFrameMs) return false;
+    ++gPromptFade;
+    gPromptFadeAt = now;
+    tgc::Card card;
+    if (questionCard(&card)) drawPromptFrame(card);
+    return true;
+}
+
+void finishPromptFade() {
+    if (gPromptFade >= 3) return;
+    gPromptFade = 3;
+    tgc::Card card;
+    if (questionCard(&card)) drawPromptFrame(card);
 }
 
 }  // namespace
@@ -518,6 +552,7 @@ void holdAction(uint32_t pressedAt) {
     tgc::Card card;
     if (!questionCard(&card)) return;
     gRevealed = true;
+    gPromptFade = 3;  // the reveal is not a fade frame
 
     const bool correct = gSel == gQ.correct;
     gLastCorrect = correct;
@@ -563,6 +598,12 @@ void holdAction(uint32_t pressedAt) {
 
 // loop() on the quiz screen (see above). `down`: a button is down now.
 void quizLoop(int a, int b, uint32_t pressedAt, uint32_t now, bool down) {
+    // A press ends the prompt's fade-in at once; otherwise the next step is
+    // drawn when due (only the prompt box is pushed).
+    if (gPromptFade < 3 && (a || b || down))
+        finishPromptFade();
+    else
+        promptFadeTick(now);
     if (!gRevealed) {
         if (down || a || b) gQuizHints.input(now);
         if (a == 1)

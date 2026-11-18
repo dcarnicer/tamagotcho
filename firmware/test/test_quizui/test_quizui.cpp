@@ -151,6 +151,21 @@ void test_hold_fill_timing() {
     TEST_ASSERT_TRUE((hold - kHoldShowMs) / kHoldFrameMs >= 10);
 }
 
+// ---------------------------------------------------------------- kanji fade-in
+
+void test_prompt_fade_steps_are_monotonic() {
+    const uint16_t a = promptFadeInk(1);
+    const uint16_t b = promptFadeInk(2);
+    const uint16_t c = promptFadeInk(3);
+    TEST_ASSERT_TRUE(a < b);
+    TEST_ASSERT_TRUE(b < c);
+    TEST_ASSERT_EQUAL_HEX16(0xFFFF, c);  // full ink: the normal prompt colour
+    TEST_ASSERT_EQUAL_HEX16(a, promptFadeInk(0));  // the first frame is step 1
+    TEST_ASSERT_EQUAL_HEX16(c, promptFadeInk(4));
+    // Three steps over ~100 ms, as §2.6 plans.
+    TEST_ASSERT_TRUE(kPromptFadeFrameMs >= 40 && kPromptFadeFrameMs <= 60);
+}
+
 // ---------------------------------------------------------------- auto-advance
 
 void test_auto_advance_fires_once_after_the_wait() {
@@ -882,6 +897,7 @@ int main(int, char**) {
     RUN_TEST(test_hints_after_idle_on_open_question);
     RUN_TEST(test_hints_never_idle_on_a_revealed_answer);
     RUN_TEST(test_hold_fill_timing);
+    RUN_TEST(test_prompt_fade_steps_are_monotonic);
     RUN_TEST(test_auto_advance_fires_once_after_the_wait);
     RUN_TEST(test_auto_advance_waits_for_buttons_and_off);
     RUN_TEST(test_header_pill_room_matches_the_widget);
