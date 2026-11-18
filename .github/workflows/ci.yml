@@ -57,6 +57,12 @@ jobs:
         working-directory: .
         run: python3 -m unittest discover -s tools/release -v
 
+      # tools/quiz-log: the TGC_QUIZ_LOG parser and the Hard-after
+      # recommendation (stdlib only, no firmware build needed).
+      - name: Quiz-log tools tests
+        working-directory: .
+        run: python3 -m unittest discover -s tools/quiz-log -v
+
       - name: Build StickS3
         run: pio run -e sticks3
 

@@ -26,7 +26,7 @@
 # rows reach a pack; a level with unreviewed rows shows those words without a
 # gloss. Notes on ok rows keep the reason a row was checked.
 #
-# Reviewed: N5 (2026-10-23).
+# Reviewed: N5 (2026-10-23), N4 (2026-11-18).
 level	kanji	word	reading	en	es	status	note
 N5	日,毎	毎日	まいにち	every day; daily	todos los días	ok	FreeDict said "diario" (also "newspaper")
 N5	日	日	ひ	day; days	día	ok	
@@ -127,13 +127,13 @@ N5	時,間	時間	じかん	time	tiempo	ok	FreeDict said "estación"
 N5	時	時々	ときどき	sometimes; occasionally; at times	a veces	ok	
 N5	行	銀行	ぎんこう	bank; banking institution	banco	ok	FreeDict said "orilla"
 N5	行	行く	いく	to go; to move (towards); to head (towards)	ir	ok	FreeDict said "para llevar"
-N5	後,午	午後	ごご	afternoon; p.m.	la tarde (p. m.)	ok	"tarde" alone also reads as "late"; FreeDict said "tarde"
+N5	後,午	午後	ごご	afternoon; p.m.	la tarde (p. m.)	ok	tarde alone also reads as "late"; FreeDict said "tarde"
 N5	後	後	あと	behind; rear	después, detrás	ok	JMdict_e sense 1 is "behind"; everyday あと is "después"; FreeDict said "detrás"
-N5	前	午前	ごぜん	morning; a.m.	la mañana (a. m.)	ok	"mañana" alone also reads as "tomorrow"; FreeDict said "mañana"
+N5	前	午前	ごぜん	morning; a.m.	la mañana (a. m.)	ok	mañana alone also reads as "tomorrow"; FreeDict said "mañana"
 N5	前	前	まえ	in front (of); before (e.g. a building)	delante, antes	ok	FreeDict said "antes" (en sense 1 is "in front of")
 N5	間	間	あいだ	space (between); gap; interval	intervalo, espacio	ok	あいだ is also "between, during"; FreeDict said "espacio"
 N5	東	東京	とうきょう	Tokyo	Tokio	ok	
-N5	東	東	ひがし	east	este (punto cardinal)	ok	"este" alone also reads as "this"; FreeDict said "este"
+N5	東	東	ひがし	east	este (punto cardinal)	ok	este alone also reads as "this"; FreeDict said "este"
 N5	今	今週	こんしゅう	this week	esta semana	ok	
 N5	今	今	いま	now; the present time; just now	ahora	ok	
 N5	高	最高	さいこう	best; supreme; wonderful	lo mejor, genial	ok	FreeDict said "mejor"
@@ -179,3 +179,277 @@ N5	川	河川敷	かせんじき	flood plain; river terrace; riverside area		ski
 N5	本	本	もと	origin; source; beginning		skip	another candidate for 本 もと: the maintainer keeps this kanji to one example word
 N5	川	山川	さんせん	mountains and rivers		skip	another candidate for 川 セン: the maintainer keeps this kanji to one example word
 N5	川	四川	しせん	Sichuan (China); Szechuan; Szechwan		skip	another candidate for 川 セン: the maintainer keeps this kanji to one example word
+N4	立	独立	どくりつ	independence; self-reliance; supporting oneself	independencia	ok	
+N4	立	立つ	たつ	to stand (up); to rise; to get to one's feet	estar de pie	ok	
+N4	手,運	運転手	うんてんしゅ	driver; chauffeur	conductor	ok	
+N4	手	手	て	hand; arm	mano	ok	FreeDict said "manecilla"
+N4	力	協力	きょうりょく	cooperation; collaboration; help	cooperación	ok	
+N4	力	力	ちから	force; strength; might	fuerza	ok	
+N4	目	目的	もくてき	purpose; goal; aim	propósito	ok	
+N4	目	目	め	eye; eyeball	ojo	ok	
+N4	田	上田	じょうでん	high rice field; very fertile rice field		skip	rare reading (surname/place); 上 has common words
+N4	田	稲田	いなだ	paddy field; rice field		skip	surname; the reading いなだ is not a general word
+N4	正	修正	しゅうせい	amendment; correction; revision	corrección	ok	FreeDict said "enmienda"
+N4	正	正しい	ただしい	right; correct	correcto	ok	
+N4	文	文化	ぶんか	culture; civilization; civilisation	cultura	ok	
+N4	文	文	ふみ	letter; note; mail	carta	ok	FreeDict said "letra"
+N4	口	人口	じんこう	population	población	ok	
+N4	口	口	くち	mouth	boca	ok	
+N4	町	市町村	しちょうそん	cities, towns and villages; municipalities	municipios	ok	
+N4	町	町	まち	town; block; neighbourhood	pueblo; barrio	ok	FreeDict said "ciudad"
+N4	空	空気	くうき	air; atmosphere	aire	ok	
+N4	空	空	そら	sky; the air; the heavens	cielo	ok	
+N4	足	満足	まんぞく	satisfaction; contentment; gratification	satisfacción	ok	
+N4	足	足	あし	foot; paw; arm (of an octopus, squid, etc.)	pie; pierna	ok	FreeDict said "pata"
+N4	早	早期	そうき	early stage	etapa temprana	ok	
+N4	早	早い	はやい	fast; quick; rapid	temprano	ok	FreeDict said "rápido"
+N4	字	字	じ	character (esp. kanji); letter; written text	carácter; letra	ok	FreeDict said "personaje"
+N4	字	字	あざ	section of village		skip	rare reading (あざ); 字 is じ
+N4	音,楽	音楽	おんがく	music	música	ok	
+N4	音	音	おと	sound; noise	sonido	ok	
+N4	花	花瓶	かびん	(flower) vase	florero	ok	FreeDict said "jarrón"
+N4	花	花	はな	flower; blossom; bloom	flor	ok	
+N4	赤	赤外線	せきがいせん	infrared rays; infrared radiation	rayos infrarrojos	ok	
+N4	赤	赤い	あかい	red; crimson; scarlet	rojo	ok	
+N4	青	青年	せいねん	youth; young man	joven	ok	FreeDict said "juventud"
+N4	青	青い	あおい	blue; azure	azul	ok	FreeDict said "deprimido"
+N4	夕	一朝一夕	いっちょういっせき	in a day; in a brief space of time		skip	four-character idiom with a rare 夕 reading
+N4	夕	夕方	ゆうがた	early evening (usu. from 3pm to 6pm); dusk	atardecer	ok	FreeDict said "crepúsculo"
+N4	犬	愛犬	あいけん	pet dog; beloved dog	perro de compañía	ok	
+N4	犬	犬	いぬ	dog (Canis (lupus) familiaris); canine	perro	ok	FreeDict said "canino"
+N4	会,社	会社	かいしゃ	company; corporation; firm	empresa	ok	FreeDict said "compañía de bomberos"
+N4	会	会う	あう	to meet; to encounter; to see	encontrarse	ok	
+N4	同	同様	どうよう	same; similar; (just) like	igual	ok	FreeDict said "mismo"
+N4	同	同じ	おなじ	same; identical; equal	mismo	ok	
+N4	自	自分	じぶん	myself; yourself; oneself	uno mismo	ok	FreeDict said "mismo"
+N4	自	自ら	みずから	oneself	sí mismo	ok	
+N4	社	社	やしろ	(Shinto) shrine	santuario	ok	
+N4	地,図	地図	ちず	map; atlas; chart	mapa	ok	
+N4	方	両方	りょうほう	both; both sides; both parties	ambos	ok	FreeDict said "tanto... como..."
+N4	方	方	かた	direction; way	manera	ok	FreeDict said "dirección"
+N4	新	新しい	あたらしい	new; novel; fresh	nuevo	ok	
+N4	場	会場	かいじょう	assembly hall; meeting place; venue	sede	ok	FreeDict said "lugar"
+N4	場	場合	ばあい	case; occasion; situation	caso	ok	
+N4	明	説明	せつめい	explanation; exposition; description	explicación	ok	
+N4	明	明るい	あかるい	light; bright; well-lit	claro	ok	
+N4	通	普通	ふつう	normal; ordinary; regular	normal	ok	
+N4	通	通る	とおる	to go by; to go past; to go along	pasar	ok	FreeDict said "me llaman ..."
+N4	言	言語	げんご	language	idioma	ok	FreeDict said "lengua"
+N4	言	言う	いう	to say; to utter; to declare	decir	ok	
+N4	理	理由	りゆう	reason; grounds; pretext	razón	ok	
+N4	体	全体	ぜんたい	whole; entirety	totalidad	ok	
+N4	体	体	からだ	body	cuerpo	ok	FreeDict said "carrocería"
+N4	作	作文	さくぶん	writing (an essay, prose, etc.); composition	redacción	ok	FreeDict said "escritura"
+N4	作	作る	つくる	to make; to produce; to manufacture	hacer	ok	
+N4	用	用	よう	business; task; errand	asunto; tarea	ok	FreeDict said "negocio"
+N4	用	用いる	もちいる	to use; to make use of; to utilize	usar	ok	
+N4	強,勉	勉強	べんきょう	study	estudio	ok	
+N4	強	強い	つよい	strong; potent; competent	fuerte	ok	
+N4	公	公園	こうえん	(public) park	parque	ok	FreeDict said "coto"
+N4	公	公	おおやけ	official; governmental; formal	oficial	ok	
+N4	野	野菜	やさい	vegetable	verdura	ok	FreeDict said "vegetal"
+N4	野	野	の	field; plain	campo	ok	
+N4	思	不思議	ふしぎ	wonderful; marvelous; strange	misterioso	ok	FreeDict said "maravilloso"
+N4	思	思う	おもう	to think; to consider; to believe	pensar	ok	
+N4	家,族	家族	かぞく	family	familia	ok	
+N4	家	家	いえ	house; residence; dwelling	casa	ok	FreeDict said "casalicio"
+N4	多	多分	たぶん	probably; likely; perhaps	probablemente	ok	
+N4	多	多い	おおい	many; numerous; a lot	muchos	ok	FreeDict said "muchas"
+N4	心	安心	あんしん	peace of mind; relief; (sense of) security	tranquilidad	ok	FreeDict said "paz del espíritu"
+N4	心	心	こころ	mind; heart; spirit	corazón	ok	FreeDict said "mente"
+N4	教	教育	きょういく	education; schooling; training	educación	ok	
+N4	教	教える	おしえる	to teach; to instruct	enseñar	ok	
+N4	元	地元	じもと	home area; home town	zona natal	ok	
+N4	近	最近	さいきん	recently; lately; these days	recientemente	ok	
+N4	近	近い	ちかい	near; close; short (distance)	cerca	ok	FreeDict said "próximo"
+N4	考	参考	さんこう	reference; consultation	referencia	ok	
+N4	考	考える	かんがえる	to think (about, of); to think over; to ponder	pensar	ok	
+N4	画,映	映画	えいが	movie; film; motion picture	película	ok	
+N4	海	海岸	かいがん	seashore; coast; seaside	costa	ok	
+N4	海	海	うみ	sea; ocean; waters	mar	ok	
+N4	売	販売	はんばい	sale; sales; selling	venta	ok	
+N4	売	売る	うる	to sell	vender	ok	
+N4	知	知識	ちしき	knowledge; information	conocimiento	ok	
+N4	知	知る	しる	to know; to be aware (of); to be conscious (of)	saber	ok	
+N4	道	道具	どうぐ	tool; implement; instrument	herramienta	ok	
+N4	道	道	みち	road; path; street	camino	ok	FreeDict said "carretera"
+N4	計	計画	けいかく	plan; project; schedule	plan	ok	FreeDict said "plano"
+N4	計	計る	はかる	to measure; to weigh; to survey	medir	ok	
+N4	朝	北朝鮮	きたちょうせん	North Korea	Corea del Norte	ok	
+N4	朝	朝	あさ	morning	mañana	ok	
+N4	台	台所	だいどころ	kitchen	cocina	ok	
+N4	広	広告	こうこく	advertisement; advertising	anuncio	ok	
+N4	広	広い	ひろい	spacious; vast; wide	amplio	ok	FreeDict said "espacioso"
+N4	少	少女	しょうじょ	girl (usu. between 7 and 17); young lady	chica	ok	FreeDict said "mujer"
+N4	少	少し	すこし	a little; a bit; a small amount	un poco	ok	
+N4	工	工場	こうじょう	factory; plant; mill	fábrica	ok	
+N4	止	禁止	きんし	prohibition; inhibition; ban	prohibición	ok	
+N4	止	止まる	とまる	to stop (moving); to come to a stop	detenerse	ok	FreeDict said "dejar de"
+N4	切	大切	たいせつ	important; significant; serious	importante	ok	
+N4	切	切る	きる	to cut; to cut through; to perform (surgery)	cortar	ok	
+N4	楽	楽しい	たのしい	enjoyable; fun; pleasant	divertido	ok	FreeDict said "agradable"
+N4	店,員	店員	てんいん	employee (of a store); shop assistant; clerk	empleado	ok	
+N4	店	店	みせ	store; shop; establishment	tienda	ok	FreeDict said "depósito"
+N4	親	両親	りょうしん	parents; both parents	padres	ok	
+N4	親	親	おや	parent; parents; mother and father	padres	ok	FreeDict said "origen"
+N4	答	回答	かいとう	reply; answer	respuesta	ok	
+N4	答	答える	こたえる	to answer; to reply	responder	ok	FreeDict said "servir"
+N4	夜	今夜	こんや	this evening; tonight	esta noche	ok	
+N4	夜	夜	よる	night; evening	noche	ok	
+N4	帰	帰宅	きたく	returning home; going home; coming home	volver a casa	ok	
+N4	帰	帰る	かえる	to return; to come home; to go home	volver	ok	FreeDict said "retornar"
+N4	古	中古	ちゅうこ	used; second-hand; old	usado	ok	
+N4	古	古い	ふるい	old; aged; ancient	viejo	ok	FreeDict said "gastado"
+N4	歌	歌手	かしゅ	singer	cantante	ok	
+N4	歌	歌う	うたう	to sing	cantar	ok	
+N4	買	売買	ばいばい	trade; buying and selling; trafficking (e.g. of humans, arms, drugs)	compraventa	ok	FreeDict said "comercio"
+N4	買	買う	かう	to buy; to purchase	comprar	ok	
+N4	図	図る	はかる	to plan; to attempt; to devise	planear	ok	
+N4	室	教室	きょうしつ	classroom; lecture room	aula	ok	
+N4	室	室町	むろまち	Muromachi period (1336-1573)	período Muromachi	ok	
+N4	歩	散歩	さんぽ	walk; stroll	paseo	ok	
+N4	歩	歩く	あるく	to walk	caminar	ok	
+N4	風	台風	たいふう	typhoon; hurricane	tifón	ok	
+N4	風	風	かぜ	wind; breeze; draught	viento	ok	
+N4	紙	表紙	ひょうし	cover (of a book, magazine, etc.); binding	portada	ok	FreeDict said "abrigadero"
+N4	紙	紙	かみ	paper	papel	ok	
+N4	黒	黒人	こくじん	black person	persona negra	ok	
+N4	黒	黒い	くろい	black	negro	ok	
+N4	春	青春	せいしゅん	youth; adolescence; springtime of life	juventud	ok	
+N4	春	春	はる	spring; springtime	primavera	ok	FreeDict said "fuente"
+N4	色	特色	とくしょく	characteristic; (distinctive) feature; peculiarity	característica	ok	
+N4	色	色	いろ	colour; color; hue	color	ok	
+N4	走	走行	そうこう	running (of a car, bus, etc.); traveling; travelling	circulación	ok	FreeDict said "administración"
+N4	走	走る	はしる	to run	correr	ok	FreeDict said "marchar"
+N4	秋	千秋	せんしゅう	thousand years; many years		skip	rare, poetic word
+N4	秋	秋	あき	autumn; fall	otoño	ok	
+N4	夏	夏季	かき	summer season; summer; summertime	verano	ok	
+N4	夏	夏	なつ	summer	verano	ok	
+N4	曜	日曜日	にちようび	Sunday	domingo	ok	
+N4	肉	肉	にく	flesh	carne	ok	
+N4	鳥	白鳥	はくちょう	swan (Cygnus spp.)	cisne	ok	
+N4	鳥	鳥	とり	bird	pájaro	ok	FreeDict said "chica"
+N4	冬	冬季	とうき	winter season; winter	invierno	ok	
+N4	冬	冬	ふゆ	winter	invierno	ok	
+N4	昼	昼食	ちゅうしょく	lunch; midday meal	almuerzo	ok	
+N4	昼	昼	ひる	noon; midday	mediodía	ok	
+N4	茶	お茶	おちゃ	tea (esp. green or barley)	té	ok	
+N4	弟	義弟	ぎてい	brother-in-law (spouse's younger brother or younger sister's husband)	cuñado	ok	
+N4	弟	弟	おとうと	younger brother; little brother; kid brother	hermano menor	ok	
+N4	牛	牛乳	ぎゅうにゅう	(cow's) milk	leche	ok	
+N4	牛	牛	うし	cattle (Bos taurus); cow; bull	vaca; toro	ok	FreeDict said "ganado bovino"
+N4	魚	金魚	きんぎょ	goldfish (Carassius auratus)	carpa dorada	ok	
+N4	魚	魚	さかな	fish	pez	ok	FreeDict said "pescado"
+N4	兄	義兄	ぎけい	brother-in-law (spouse's older brother or older sister's husband)	cuñado	ok	
+N4	兄	兄	あに	older brother; elder brother	hermano mayor	ok	
+N4	妹,姉	姉妹	しまい	sisters	hermanas	ok	
+N4	妹	妹	いもうと	younger sister	hermana menor	ok	
+N4	姉	姉	あね	older sister; elder sister	hermana mayor	ok	
+N4	事	大事	だいじ	important; serious; crucial	importante	ok	
+N4	事,仕	仕事	しごと	work; job; labor	trabajo	ok	
+N4	発	発音	はつおん	pronunciation	pronunciación	ok	
+N4	者,医	医者	いしゃ	doctor; physician	doctor	ok	
+N4	者	者	もの	person	persona	ok	FreeDict said "chero"
+N4	業	授業	じゅぎょう	lesson; class; teaching	clase	ok	FreeDict said "lección"
+N4	業	仕業	しわざ	deed (esp. negative); act; action	acción	ok	FreeDict said "acto"
+N4	開,始	開始	かいし	start; commencement; beginning	comienzo	ok	
+N4	開	開く	あく	to open (e.g. doors)	abrirse	ok	FreeDict said "descorrer"
+N4	問,題	問題	もんだい	question (e.g. on a test); problem	problema	ok	FreeDict said "incógnita"
+N4	問	問い合わせ	といあわせ	inquiry; query; enquiry	consulta	ok	FreeDict said "indagación"
+N4	代	時代	じだい	period; epoch; era	período	ok	
+N4	代	代える	かえる	to replace; to convert; to change	reemplazar	ok	
+N4	動,物	動物	どうぶつ	animal	animal	ok	
+N4	動	動く	うごく	to move; to stir; to shift	moverse	ok	FreeDict said "mudar"
+N4	主	御主人	ごしゅじん	your husband; her husband	su marido	ok	
+N4	主	主	おも	chief; main; principal	principal	ok	
+N4	意,味	意味	いみ	meaning; significance; sense	significado	ok	
+N4	度	今度	こんど	this time; now	esta vez	ok	FreeDict said "a esta hora"
+N4	度	度	たび	time (three times, each time, etc.); times	vez	ok	FreeDict said "estación"
+N4	持	維持	いじ	maintenance; preservation; improvement	mantenimiento	ok	
+N4	持	持つ	もつ	to hold (in one's hand); to take; to carry	sostener	ok	FreeDict said "celebrar"
+N4	世,界	世界	せかい	the world; society; the universe	mundo	ok	
+N4	世	世の中	よのなか	society; the world; the times	sociedad	ok	
+N4	安	安全	あんぜん	safety; security	seguridad	ok	
+N4	安	安い	やすい	cheap; inexpensive	barato	ok	
+N4	院,病	病院	びょういん	hospital; clinic; doctor's office	hospital	ok	
+N4	重	重要	じゅうよう	important; essential; significant	importante	ok	
+N4	重	重い	おもい	heavy; weighty	pesado	ok	
+N4	集	集中	しゅうちゅう	concentration (on a task); focusing one's attention	concentración	ok	
+N4	集	集める	あつめる	to collect; to assemble; to gather	reunir	ok	
+N4	物	物	もの	thing; object; article	cosa	ok	
+N4	使	大使館	たいしかん	embassy	embajada	ok	
+N4	使	使う	つかう	to use (a tool, method, etc.); to make use of; to put to use	usar	ok	
+N4	品	食料品	しょくりょうひん	foodstuff; groceries	comestibles	ok	FreeDict said "alimento"
+N4	品	品物	しなもの	article; item; thing	artículo	ok	
+N4	死	死亡	しぼう	death; dying; mortality	muerte	ok	FreeDict said "el arcano de la muerte"
+N4	死	死ぬ	しぬ	to die; to pass away	morir	ok	
+N4	始	始め	はじめ	beginning; start; outset	principio	ok	
+N4	運	運ぶ	はこぶ	to carry; to transport; to move	llevar	ok	
+N4	終	最終	さいしゅう	last; final; closing	último	ok	
+N4	終	終る	おわる	to end; to come to an end; to finish	finalizar	ok	
+N4	住	住所	じゅうしょ	address (of a home, business, etc.); residence; domicile	dirección	ok	
+N4	住	住む	すむ	to live (of humans); to reside; to inhabit	vivir	ok	
+N4	真,写	写真	しゃしん	photograph; photo; picture	fotografía	ok	
+N4	真	真ん中	まんなか	middle; centre; center	centro	ok	FreeDict said "medio"
+N4	有	有り様	ありさま	state; condition; circumstances	estado	ok	
+N4	急	急	きゅう	sudden; abrupt; unexpected	repentino	ok	
+N4	急	急ぐ	いそぐ	to hurry; to rush; to hasten	apresurarse	ok	
+N4	送	放送	ほうそう	broadcasting; broadcast; program	emisión	ok	
+N4	送	送る	おくる	to send; to dispatch; to forward	enviar	ok	
+N4	転	自転車	じてんしゃ	bicycle; bike	bicicleta	ok	
+N4	転	転ぶ	ころぶ	to fall down; to fall over	caerse	ok	
+N4	研,究	研究	けんきゅう	research; study; investigation	investigación	ok	
+N4	研	研ぐ	とぐ	to sharpen; to hone; to whet	afilar	ok	
+N4	起	起動	きどう	startup; booting up; activation	arranque	ok	
+N4	起	起きる	おきる	to get up; to rise; to blaze up (fire)	levantarse	ok	
+N4	着	到着	とうちゃく	arrival	llegada	ok	
+N4	着	着る	きる	to wear (from the shoulders down); to put on	llevar puesto	ok	FreeDict said "llevar"
+N4	病	病	やまい	illness; disease	enfermedad	ok	
+N4	待	期待	きたい	expectation; anticipation; hope	expectativa	ok	FreeDict said "expectación"
+N4	待	待つ	まつ	to wait	esperar	ok	
+N4	仕	仕える	つかえる	to serve; to work for; to attend	servir	ok	
+N4	去	去る	さる	to leave; to go away	marcharse	ok	FreeDict said "dejar"
+N4	味	味わう	あじわう	to taste; to savor; to savour	saborear	ok	FreeDict said "al gusto"
+N4	写	写す	うつす	to copy; to duplicate; to reproduce	copiar	ok	
+N4	注	注意	ちゅうい	attention; notice; heed	atención	ok	
+N4	注	注ぐ	そそぐ	to pour (into)	verter	ok	
+N4	悪	悪魔	あくま	devil; demon; fiend	diablo	ok	
+N4	悪	悪い	わるい	bad; poor; undesirable	malo	ok	
+N4	屋	屋上	おくじょう	rooftop	azotea	ok	FreeDict said "tejado"
+N4	屋	屋根	やね	roof	tejado	ok	FreeDict said "techo"
+N4	習	習慣	しゅうかん	habit	costumbre	ok	
+N4	習	習う	ならう	to take lessons in; to be taught; to learn (from a teacher)	aprender	ok	
+N4	駅	駅	えき	railway station; train station	estación	ok	FreeDict said "estación de ferrocarril"
+N4	洋	洋服	ようふく	Western-style clothes (cf. traditional Japanese clothes)	ropa occidental	ok	
+N4	旅	旅行	りょこう	travel; trip; journey	viaje	ok	
+N4	旅	旅	たび	travel; trip; journey	viaje	ok	
+N4	服	服	ふく	clothes (esp. Western clothes); clothing; dress	ropa	ok	
+N4	飲	飲食	いんしょく	food and drink; eating and drinking	comida y bebida	ok	
+N4	飲	飲む	のむ	to drink; to swallow; to take (medicine)	beber	ok	
+N4	漢	漢字	かんじ	kanji; Chinese character	kanji	ok	
+N4	不	不便	ふべん	inconvenience; inexpediency; unhandiness	inconveniente	ok	FreeDict said "desconveniencia"
+N4	別	別	べつ	distinction; difference; discrimination	diferencia	ok	FreeDict said "distinción"
+N4	別	別れる	わかれる	to part (usu. of people); to part from; to part with	separarse	ok	FreeDict said "raya"
+N4	特	特に	とくに	particularly; especially; in particular	particularmente	ok	
+N4	料	料理	りょうり	cooking; cookery; cuisine	cocina	ok	FreeDict said "cocción"
+N4	建	建設	けんせつ	construction; establishment	construcción	ok	
+N4	建	建物	たてもの	building	edificio	ok	FreeDict said "construcción"
+N4	試	試合	しあい	match; game; bout	partido	ok	
+N4	試	試す	ためす	to try (out); to have a try (at); to test	probar	ok	
+N4	験	試験	しけん	examination; exam; test	examen	ok	
+N4	借	借金	しゃっきん	debt; loan; liabilities	deuda	ok	
+N4	借	借りる	かりる	to borrow	tomar prestado	ok	
+N4	飯	夕飯	ゆうはん	evening meal; dinner; supper	cena	ok	
+N4	飯	昼飯	ひるめし	lunch; midday meal	almuerzo	ok	
+N4	質	質問	しつもん	question; inquiry; enquiry	pregunta	ok	FreeDict said "incógnita"
+N4	貸	賃貸	ちんたい	leasing (out); renting out; hiring out	alquiler	ok	
+N4	貸	貸す	かす	to lend; to loan	prestar	ok	
+N4	私	私立	しりつ	private (establishment)	privado	ok	FreeDict said "soldado raso"
+N4	私	私	わたくし	I; me	yo	ok	
+N4	映	映る	うつる	to be reflected; to harmonize with (harmonise); to come out (photo)	reflejarse	ok	FreeDict said "revelarse"
+N4	田	新田	しんでん	new rice field; newly developed rice field	arrozal nuevo	ok	
+N4	田	半田	はんだ	solder; pewter		skip	surname/ateji: 田 does not mean solder
+N4	字	大字	おおあざ	larger section (of village)		skip	rare administrative reading (あざ)
+N4	夕	今夕	こんせき	this evening; tonight	esta noche	ok	
+N4	秋	千秋楽	せんしゅうらく	final day of a performance; closing date; final show	último día	ok	
+N4	田	田んぼ	たんぼ	rice field; rice paddy; paddy field	arrozal	ok	

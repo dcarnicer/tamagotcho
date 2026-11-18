@@ -136,15 +136,19 @@ Scope for now: **kanji only** (no vocabulary decks).
         orders the English meanings by the JLPT vocabulary words that use the
         kanji (their JMdict glosses), the Spanish ones by the English ones they
         translate (FreeDict's English-Spanish dictionary, CC BY-SA 3.0), then
-        applies a 39-line project-authored override table; 524 English and 707
+        applies a 71-line project-authored override table; 523 English and 687
         Spanish first meanings change (N5: 14 and 14), English decks included,
         and in every language meaning distractors also avoid the meanings a
-        pack leaves out. The maintainer reviewed the N5-N3 doubtful cases
-        (2026-10-20). On `main` and in the published decks since 2026-10-20.
-      - [ ] Follow-up: French and Portuguese meanings in the English order too
-        (about as many changes as Spanish), once a pinned English-French /
-        English-Portuguese dictionary under a compatible licence exists.
-      - [ ] Follow-up: hand-check the N2-N1 meaning changes the report flags.
+        pack leaves out. The maintainer reviewed the N5-N4 doubtful cases
+        (2026-10-20), the N2 ones (2026-11-18) and the N1 ones (2026-11-18).
+        On `main` and in the published decks since 2026-10-20.
+      - [x] Follow-up: French and Portuguese meanings in the English order too
+        (2026-11-18): WikDict's en-fr/en-pt SQLite exports (CC BY-SA 4.0,
+        `2_2026-06`) are pinned and used; FreeDict's GPL eng-fra/eng-por are
+        not. The dictionaries are smaller than the Spanish one, so fewer
+        glosses match (docs/meaning-order.md).
+      - [x] Hand-check the N1 meaning changes the report flags (2026-11-18;
+        15 overrides, the rest defensible).
       Invariant enforced: **no option may be another valid reading or meaning of
       the target** (otherwise two options are correct); checked in `Quiz.cpp`
       and in the builder's distractor lists.
@@ -284,10 +288,12 @@ Scope for now: **kanji only** (no vocabulary decks).
       native-tested against the builder's output; used by Get decks).
       **Prebuilt decks** have their own workflow, `.github/workflows/decks.yml`
       (manual dispatch): JLPT N5-N1 and the full Jōyō deck (school order), in
-      es and en, with stroke order, published with the catalog to the fixed
-      release `decks-v<pack format>` (never "latest", replaced in place), which
-      is the firmware's default Get decks catalog; firmware releases no longer
-      carry packs (docs/decisions.md, 2026-10-18 "Decks release").
+      es, en, fr and pt, with stroke order, published with the catalog to the
+      fixed release `decks-v<pack format>` (never "latest", replaced in place),
+      which is the firmware's default Get decks catalog; firmware releases no
+      longer carry packs (docs/decisions.md, 2026-10-18 "Decks release").
+      French and Portuguese were added on 2026-11-18 (24 packs; not yet
+      published at the time of writing).
       The **first decks run** published `decks-v2` on 2026-10-18 (12 packs,
       105 KB to 3.0 MB in pack format v2; Get decks and the portal download them
       on a real StickS3). The **first firmware release, v0.1.0**, followed on
@@ -387,9 +393,12 @@ Scope for now: **kanji only** (no vocabulary decks).
       the pack, the default), English or Español, persisted in NVS (`ui`) and
       applied as a pure `uiLangCodeFor` helper. The first boot of a device
       with no decks and no stored preference asks once (English / Español)
-      and stores an explicit choice. Pending: more languages (the
-      meaning language is a property of the pack, so switching packs already
-      switches the meanings).
+      and stores an explicit choice. **French and Portuguese decks** are built
+      since 2026-11-18 (KANJIDIC2 meanings, WikDict order, eight fr/pt
+      overrides); their UI still falls back to English and their example words
+      have no gloss yet. Pending: French/Portuguese UI strings and the example
+      glosses (the meaning language is a property of the pack, so switching
+      packs already switches the meanings).
 - [x] **Menu and settings redesign.** The settings home (Seguir / Mazos / Fecha /
       Nuevas/día / Velocidad) replaces the single deck list, with a shared
       four-row choice screen for the new/day cap and the Hard threshold. The deck
@@ -469,13 +478,15 @@ Scope for now: **kanji only** (no vocabulary decks).
       pickers), the deck list from pack headers, and the date, stats, done,
       Get decks, Wi-Fi portal, About and error screens in the flat style.
       Phases 1-3 are on `main`, checked on the StickS3 (2026-10-18). Left:
-      phase 5 polish (kanji fade-in, maybe slides). The two values cut short
+      phase 5 polish (the kanji fade-in is done, 2026-11-18; the slides are
+      not). The two values cut short
       in portrait seen on 2026-10-20 are fixed (2026-10-21): narrow screens
       show the Date page's values under their labels, and the Spanish Wi-Fi
       menu's "Modo configuración" row is "Configurar"; the English "Forget
       network" (cut to "Forget net...") is "Forget Wi-Fi".
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
-      (picking an option on the device takes longer than in Anki).
+      (`tools/quiz-log/analyze.py` proposes a threshold from a capture;
+      picking an option on the device takes longer than in Anki).
 - [x] **Learning mode** (idea, 2026-10-18; approved 2026-10-23; released in
       v0.6.0, 2026-10-24). A mode for
       learning kanji, not only reviewing them: for example, introducing a new
@@ -490,8 +501,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       card (Settings › Study › Introduce), and example words (pack format v3)
       with English glosses from JMdict_e and Spanish ones from a reviewed
       project table (docs/example-words.md), published in `decks-v3`.
-      Later, on hold: the Spanish glosses beyond N5 (reviewed level by level,
-      then `decks-v3` rebuilt in place) and the long-run checks of
+      Later, on hold: the Spanish glosses beyond N4 (N5 and N4 are reviewed;
+      N4 on 2026-11-18; the remaining levels are reviewed one at a time, then
+      `decks-v3` is rebuilt in place) and the long-run checks of
       docs/learning-mode.md §5.
 - [x] **OTA firmware updates** (idea, 2026-10-21; design approved 2026-10-24
       in `docs/ota.md`; released in v0.7.0, 2026-10-24). Update the firmware over

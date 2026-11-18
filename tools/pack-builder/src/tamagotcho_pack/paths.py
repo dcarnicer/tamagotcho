@@ -32,6 +32,12 @@ JOYO_PDF = READINGS_DIR / "joyokanjihyo_20101130.pdf"
 # `fetch --meanings` gets it. FreeDict's English-Spanish dictionary (WikDict).
 MEANINGS_DIR = CACHE / "meanings"
 FREEDICT_ENG_SPA = MEANINGS_DIR / "freedict-eng-spa-2025.11.23.src.tar.xz"
+WIKDICT_ENG_FRA = MEANINGS_DIR / "en-fr.sqlite3"
+WIKDICT_ENG_POR = MEANINGS_DIR / "en-pt.sqlite3"
+# One dictionary per deck language that `--meaning-order` can reorder. Spanish
+# is FreeDict's TEI of WikDict; French/Portuguese are WikDict's SQLite exports
+# (the FreeDict eng-fra/eng-por are GPL, not usable in CC BY-SA packs).
+MEANING_DICTS = {"es": FREEDICT_ENG_SPA, "fr": WIKDICT_ENG_FRA, "pt": WIKDICT_ENG_POR}
 # Project-authored data, committed (not downloaded): the hand-checked meaning
 # overrides of `build --meaning-order`, and the reviewed Spanish glosses of
 # `build --example-words` (filled by `sync-glosses`).

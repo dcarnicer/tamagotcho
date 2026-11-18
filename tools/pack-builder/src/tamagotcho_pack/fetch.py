@@ -87,19 +87,30 @@ READINGS_SOURCES: list[tuple[str, Path]] = [
 ]
 
 
-# The English-Spanish dictionary for `build --meaning-order`
-# (docs/meaning-order.md), opt-in with `fetch --meanings`: FreeDict's release of
-# WikDict's eng-spa (from Wiktionary via DBnary, CC BY-SA 3.0), pinned to a
-# dated release and checked against SHA256 (FreeDict publishes a SHA512 in
-# https://freedict.org/freedict-database.json; the archive holds the TEI and
-# the licence, COPYING).
+# The meaning-order dictionaries, opt-in with `fetch --meanings`: FreeDict's
+# source release of WikDict's eng-spa (TEI, from Wiktionary via DBnary, CC
+# BY-SA 3.0), and WikDict's own SQLite exports of en-fr/en-pt (CC BY-SA 4.0).
+# Pinned to a dated release and checked against SHA256 (FreeDict publishes a
+# SHA512 in https://freedict.org/freedict-database.json; WikDict's SQLite
+# directory is dated 2_2026-06).
 FREEDICT_ENG_SPA_RELEASE = "2025.11.23"
+WIKDICT_RELEASE = "2_2026-06"
 SHA256[paths.FREEDICT_ENG_SPA] = "dd724fb48c5701395c15d7d648a9e6f6b75d6ff4269e465dce6d3a292700198d"
+SHA256[paths.WIKDICT_ENG_FRA] = "3908275d1c0fea866e681d5e065c25e4fd2c39a6d3d3dd23b48f351eb0e286a2"
+SHA256[paths.WIKDICT_ENG_POR] = "c37ed57201284cf187e17516fe9c6b4b6c1b9c166909a76e9c81cbdc19b961fd"
 MEANINGS_SOURCES: list[tuple[str, Path]] = [
     (
         f"https://download.freedict.org/dictionaries/eng-spa/{FREEDICT_ENG_SPA_RELEASE}/"
         f"freedict-eng-spa-{FREEDICT_ENG_SPA_RELEASE}.src.tar.xz",
         paths.FREEDICT_ENG_SPA,
+    ),
+    (
+        f"https://download.wikdict.com/dictionaries/sqlite/{WIKDICT_RELEASE}/en-fr.sqlite3",
+        paths.WIKDICT_ENG_FRA,
+    ),
+    (
+        f"https://download.wikdict.com/dictionaries/sqlite/{WIKDICT_RELEASE}/en-pt.sqlite3",
+        paths.WIKDICT_ENG_POR,
     ),
 ]
 

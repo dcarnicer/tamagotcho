@@ -716,6 +716,15 @@ phase 3: settings tree and secondary screens".
 - Kanji fade-in, the auto-advance setting, and (maybe) slides behind an
   "Animations" setting.
 
+*Status (2026-11-18).* The kanji fade-in is done for the quiz prompt: three
+frames 50 ms apart, the ink blended from black at 5/15, 10/15 and 15/15
+(`promptFadeInk()` in `ui/QuizUi.h`, native-tested), only the prompt box
+redrawn and pushed each time. The first frame is already step 1, so there is
+no full-ink flash; any press ends the fade at once, and the reveal is always
+full ink. The intro and the detail card keep their stroke-order animation
+instead. The auto-advance setting was done in phase 3; slides are still not
+done.
+
 **Measure on hardware** (StickS3 first, then the T-Display-S3):
 
 - **Frame time.** Render + push per screen. Targets: hold-fill frame ≤ 20 ms,
@@ -785,7 +794,8 @@ The maintainer's answers. Where they differ from §2–§4, these win.
    Device › (Orientation, Brightness, Language, Hold time, Date ›, Sleep,
    About). "Continue" goes; "Speed" becomes "Hard after" / "Difícil tras"
    with today's values for now (to be calibrated from `TGC_QUIZ_LOG` logs:
-   picking an option on the device is slower than in Anki).
+   `tools/quiz-log/analyze.py` picks the threshold from a capture; picking an
+   option on the device is slower than in Anki).
 7. **Hold time: yes; side tap: previous option.** Device › Hold time: Short
    400 / Normal 600 (default) / Long 900 ms; grading still uses the press
    time. In the quiz the side tap moves the focus **up** (previous option)

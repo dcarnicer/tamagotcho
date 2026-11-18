@@ -141,6 +141,12 @@ rare or usually-kana words): N5 1 (天 あめ), N4 2, N3 12, N2 7, N1 325, Jōy�
   temporally)"), so English ≤ 24 is 88-97 % per deck. 333 words have a short
   English gloss and no short Spanish one.
 
+**Review status.** The project table (docs/data-sources.md) is the source of
+the Spanish glosses actually shown. N5 was reviewed on 2026-10-23 and N4 on
+2026-11-18: 274 N4 rows, 267 `ok` and 7 `skip`, after 78 FreeDict suggestions
+were rewritten. The N4 Spanish pack then carries 297 example words, all with a
+gloss; N3-N1 are not in the table yet.
+
 ## Spot check
 
 30 random N5-N3 words that have a Spanish gloss (`--seed 9`), with the shown

@@ -3725,3 +3725,114 @@ release envs, app-only and merged images, ESP Web Tools manifests,
 - Tests (`tools/release/test_build_dist.py`) cover the version normalizer, the
   app-image check and the package layout; CI already runs the `tools/release`
   unittest discovery.
+
+## 2026-11-18 – Spanish example glosses: N4 reviewed
+
+The N4 rows of `data/example_glosses_es.tsv` were reviewed level by level, as
+N5 was on 2026-10-23. `sync-glosses --jlpt 4` appended the 268 words the deck
+picked; 78 FreeDict suggestions were clearly wrong for the word (手
+"manecilla", 会社 "compañía de bomberos", 春 "fuente", 者 "chero", 死亡 "el
+arcano de la muerte") and were rewritten, and seven words were skipped as bad
+examples: rare readings or surnames (上田, 稲田, 字 あざ, 一朝一夕, 千秋),
+the ateji 半田 ("solder") and the rare 大字. The builder then picked the next
+candidate (田んぼ, 新田, 今夕, 千秋楽). The table now has 274 N4 rows (267 `ok`,
+7 `skip`); three asked readings still have no usable word. The N4 Spanish pack
+builds with 297 example words and a gloss for all 297, where before the review
+only the 11 words shared with N5 had one. Glosses stay within the table's
+24-character budget; the review changed no builder code.
+
+## 2026-11-18 – N2 meanings hand-checked
+
+The N2 changes flagged by `scripts/meaning_order_report.py` were reviewed. Nine
+overrides were added for clear errors, each using one of KANJIDIC2's own
+meanings: 額 amount / cantidad de dinero (金額, and the forehead; the framed
+picture is 額縁), 灯 lamp / lámpara, 泊 alojarse (the intransitive 泊まる;
+"hospedar" is transitive), 版 edición (出版, 初版; "impresión" is the printing),
+営 negocio (営業, 経営; the camp sense is rare), 貨 dinero (貨幣, 貨物) and 訓
+lección (the long 訓読み sense goes second). The rest of the N2 flags are
+defensible; 枚's 41-character counter gloss, 宇 "cielo" and 預 "dejar al
+cuidado de" are deliberately left. The report now changes 523 English and 702
+Spanish first meanings (N5: 14 and 14), with 21 English and 27 Spanish
+overrides. N1 remains unchecked. The committed-table test's cap moved from 40
+to 60 lines, still for clear errors only.
+
+## 2026-11-18 – The quiz prompt's kanji fades in
+
+Phase 5's kanji fade-in (`docs/ux-refresh.md` §2.6) is built for the quiz
+prompt only. A new question's kanji comes in three frames 50 ms apart, its ink
+blended from the black prompt at 5/15, 10/15 and 15/15 (`promptFadeInk()` in
+`ui/QuizUi.h`, tested in `test_quizui`). Only the prompt box is cleared,
+redrawn and pushed, so the header and tiles are untouched. The first frame is
+already step 1 (no full-ink flash), the reveal goes straight to full ink, and
+any press ends the fade at once before it is handled. The intro and the detail
+card keep the stroke-order animation; a fade on top of it would fight it. No
+"Animations" setting: the fade is 100 ms and never blocks input. The slides
+behind an optional setting remain unbuilt.
+
+## 2026-11-18 – A reader for the quiz trace and a Hard-after recommendation
+
+The "Hard after" default (3 s) has never been calibrated; the roadmap asked
+for it from `TGC_QUIZ_LOG` logs, and there were no logs in the repository. A
+small stdlib tool, `tools/quiz-log/`, now reads a capture:
+
+- It pairs each `A ... rt=...ms grade=...` line with the preceding `Q ...` line,
+  so answers carry their mode (meaning, reading, meaning-to-kanji) and kanji.
+- It reports the correct answers' response-time percentiles, the logged
+  Good/Hard split, the threshold the device was using (inferred from the
+  grades; "unclear" when the capture mixes settings), and what each of the
+  device's choices (1.5 s, 3 s, 5 s, off) would have done.
+- It recommends the smallest choice at or above the `1 - --target-hard`
+  quantile (default 15 % Hard), so the recommendation keeps the Hard share at
+  or below the target. `--max-rt` drops interruptions; `--tsv` writes the
+  parsed answers.
+- Nine stdlib tests cover parsing, percentiles, the threshold inference and
+  the report; CI runs them next to the release tools. The tool only
+  recommends: the setting stays Settings › Study › Hard after, and a capture
+  needs the `sticks3-dev` build and a few days of normal use.
+
+## 2026-11-18 – N1 meanings hand-checked
+
+The 121 N1 entries flagged by the Spanish "to double-check" report were
+reviewed. Fifteen overrides were added, all with KANJIDIC2's own meanings:
+霞 neblina (the noun; 霞む is the verb), 施 distribuir (not only "dar
+limosnas"), 趣 significado ("proceder" is a related form), 慎 prudencia,
+坪 unidad de superficie (the two-tatami gloss overflows), 豆 legumbres, 概
+aproximadamente (概ね), 脚 pie ("pata" is an animal leg), 甚 tremendamente,
+隊 grupo ("partido" is a political party), 椎 roble (the mallet is 槌), 洞
+cavidad, 篤 sincero, 票 voto and 繁 exuberante. The rest are defensible and
+left as they are (e.g. 堕 "cometer un desliz", 聡 "que aprende rápido", 惨
+"desastroso", 密 "en secreto", 廉 "sincero"). The English N1 changes were
+reviewed too; the eleven that also moved the English first meaning are all
+fine (隔, 驚, 厳, 慎, 酔, 騒, 跳, 劣, 訴, 飽, 履). The report now changes 523
+English and 687 Spanish first meanings, with 21 English and 42 Spanish
+overrides in 63 lines; the committed-table test's cap moved to 80.
+
+## 2026-11-18 – French and Portuguese decks, and their meaning order
+
+KANJIDIC2 carries 7,643 French and 6,963 Portuguese meanings, so both can join
+the published deck set without a new base dictionary. `decks.yml` now defaults
+to `es en fr pt` (24 packs from N5 to N1 plus Jōyō). The on-device UI still
+falls back to English for a `fr`/`pt` pack (the language picker stays
+English/Español), and the intro card's example words have no French/Portuguese
+gloss: the pack builder writes no gloss for those languages, and the card
+shows the word and reading alone.
+
+- **Meaning order.** The first usage of the GPL FreeDict eng-fra/eng-por
+  dictionaries was stopped: their TEI headers and `COPYING` are GPL-2+, which
+  cannot be mixed into the CC BY-SA packs. WikDict publishes en-fr/en-pt SQLite
+  exports under CC BY-SA 4.0 (release `2_2026-06`); those are pinned in
+  `fetch.py` and read from `simple_translation` by
+  `load_wikdict_sqlite()`. `load_dictionary()` still reads the Spanish FreeDict
+  TEI. The dictionaries are smaller than eng-spa (168,195 and 67,413 rows), so
+  fewer glosses match; in the N5-N4-N3 builds the first meaning changes for
+  9, 47 and 140 French cards and 11, 46 and 154 Portuguese ones.
+- **Overrides.** Eight fr/pt lines cover the same clear errors as Spanish:
+  安 pas cher, 計 mesure / medida, 帰 retour à la maison / Retôrno a casa, 私
+  je / Eu and 失 perda. All are KANJIDIC2's own meanings; the table stays at
+  71 lines.
+- **German and Italian** remain unsupported: KANJIDIC2 has no meanings in
+  those languages and WikDict only translates English, so there is no base
+  list to reorder. They would need a licensed, reviewed meaning table.
+- **Checks.** N5, N4 and N3 French/Portuguese packs build and validate; the
+  N4 pack is 277,832 B (fr) / 278,012 B (pt), with 297 example words and no
+  gloss. The full four-language deck run is a manual `decks.yml` dispatch.

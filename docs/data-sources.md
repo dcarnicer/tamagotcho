@@ -52,8 +52,8 @@ or stroke data.
   none for a kanji, the first 3 English meanings are used and card flag bit0 is
   set. KANJIDIC2 has no meanings at all for some kanji; cards with neither
   meanings nor readings are dropped. With `--meaning-order` the English list
-  is first ordered by a learner signal, the Spanish list by the new English
-  one, and a few overrides apply (see
+  is first ordered by a learner signal, the Spanish, French and Portuguese
+  lists by the new English one, and a few overrides apply (see
   [Meaning order](#meaning-order-optional-fetch---readings---meanings-build---meaning-order)),
   so the caps keep the most useful meanings.
 - On'yomi: katakana as in KANJIDIC2. Kun'yomi: hiragana as in KANJIDIC2.
@@ -338,15 +338,14 @@ handful of words). They are not copied from the files above.
 `build --meaning-order` puts each card's most useful meaning first, the one the
 device shows (docs/meaning-order.md): the English meanings by a learner signal
 (the JLPT vocabulary words that use the kanji, through their JMdict glosses:
-both inputs of `--common-readings` above), the Spanish ones in the order of
-the English ones they translate (the dictionary below), then a short
-project-authored override table. The dictionary is downloaded only by
-`tamagotcho-pack fetch --meanings`, into `cache/meanings/`, and read only with
-that flag. A pack built with it contains no word or dictionary data, only
-KANJIDIC2's own meanings in another order (the caps then keep the first ones),
-but the order is derived from these sources, so the pack carries their
-attribution (below). `decks.yml` is prepared to build the published decks with
-it; the decks published so far use none of it.
+both inputs of `--common-readings` above), the Spanish, French and Portuguese
+ones in the order of the English ones they translate (the dictionaries below),
+then a short project-authored override table. The dictionaries are downloaded
+only by `tamagotcho-pack fetch --meanings`, into `cache/meanings/`, and read
+only with that flag. A pack built with it contains no word or dictionary data,
+only KANJIDIC2's own meanings in another order (the caps then keep the first
+ones), but the order is derived from these sources, so the pack carries their
+attribution (below). `decks.yml` builds the published decks with it.
 
 ### FreeDict English-Spanish dictionary (WikDict)
 
@@ -379,6 +378,26 @@ it; the decks published so far use none of it.
   `scripts/example_words_report.py --fetch` downloads `JMdict.gz` into the
   cache only to measure how many example words have a Spanish gloss
   (docs/example-words.md); no pack contains them.
+
+### WikDict English-French and English-Portuguese (SQLite)
+
+- URLs: https://download.wikdict.com/dictionaries/sqlite/2_2026-06/en-fr.sqlite3
+  and `.../en-pt.sqlite3` (WikDict's `2_2026-06` release, pinned in `fetch.py`
+  by SHA256; the files are 23 MB and 12 MB).
+- Owner: WikDict (Karl Bartel), from Wiktionary via DBnary.
+- Licence: Creative Commons Attribution-ShareAlike 4.0 International
+  (https://www.wikdict.com/page/download: "you can download the dictionaries
+  in different formats and use them according to the Creative Commons BY-SA
+  license"; https://creativecommons.org/licenses/by-sa/4.0/legalcode). The
+  same licence as the packs, so no change to their CC BY-SA 4.0 terms.
+- Required attribution: "French and Portuguese meaning order from WikDict
+  (WikDict, from Wiktionary via DBnary), CC BY-SA 4.0."
+- Used for: which English gloss each French/Portuguese gloss translates, read
+  from the `simple_translation` table (`written_rep` -> `trans_list`).
+- Not used: FreeDict's own eng-fra (0.1.6) and eng-por (0.3). Their TEI
+  headers and `COPYING` are GPL-2+, which cannot be mixed into the CC BY-SA
+  packs. The FreeDict database also lists them, but the project does not fetch
+  them.
 
 ### Meaning overrides (project-authored)
 
@@ -440,7 +459,7 @@ shown, in every language.
   `skip` rows are never an example (in any language). `sync-glosses` appends
   the words a deck picks and the table lacks as `draft` rows, pre-filled with
   FreeDict's translation of the JMdict_e gloss, for review. Reviewed so far:
-  N5 (2026-10-23).
+  N5 (2026-10-23) and N4 (2026-11-18).
 - Authored by the Tamagotcho project, distributed with the packs under CC BY-SA
   4.0. Derived from JMdict_e's English glosses (EDRDG, CC BY-SA 4.0) and, where
   a draft kept its suggestion, FreeDict eng-spa (CC BY-SA 3.0, above). No text

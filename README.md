@@ -71,8 +71,9 @@ cards Japanese students carry around, which the M5Stack StickS3 resembles.
   answer counts as Good, a slow one as Hard, a wrong one as Again.
 - **A card for every mistake**: all meanings and readings, your accuracy on
   that kanji, and its stroke order animated from KanjiVG.
-- **12 ready-made decks**: JLPT N5 to N1 and all 2,136 Jōyō kanji, in English
-  and Spanish, downloaded over Wi-Fi from the device itself or from your phone.
+- **24 ready-made decks**: JLPT N5 to N1 and all 2,136 Jōyō kanji, in
+  English, Spanish, French and Portuguese, downloaded over Wi-Fi from the
+  device itself or from your phone.
 - **Deck updates on their own**: with a home Wi-Fi saved, the device checks the
   catalog at boot (daily on USB power, weekly on battery) and shows "N
   updates"; a hold replaces a deck and keeps its progress, comparing SHA-256
@@ -180,18 +181,18 @@ control: [firmware/README.md](firmware/README.md#controls).
 The prebuilt decks are in the [`decks-v3`](https://github.com/dcarnicer/tamagotcho/releases/tag/decks-v3)
 release, which the device's **Get decks** and the portal page read:
 
-| Deck | Kanji | English | Spanish |
-|---|---:|---|---|
-| JLPT N5 | 79 | `n5-en` | `n5-es` |
-| JLPT N4 | 166 | `n4-en` | `n4-es` |
-| JLPT N3 | 367 | `n3-en` | `n3-es` |
-| JLPT N2 | 367 | `n2-en` | `n2-es` |
-| JLPT N1 | 1,232 | `n1-en` | `n1-es` |
-| Jōyō kanji (school order) | 2,136 | `joyo-en` | `joyo-es` |
+| Deck | Kanji | English | Spanish | French | Portuguese |
+|---|---:|---|---|---|---|
+| JLPT N5 | 79 | `n5-en` | `n5-es` | `n5-fr` | `n5-pt` |
+| JLPT N4 | 166 | `n4-en` | `n4-es` | `n4-fr` | `n4-pt` |
+| JLPT N3 | 367 | `n3-en` | `n3-es` | `n3-fr` | `n3-pt` |
+| JLPT N2 | 367 | `n2-en` | `n2-es` | `n2-fr` | `n2-pt` |
+| JLPT N1 | 1,232 | `n1-en` | `n1-es` | `n1-fr` | `n1-pt` |
+| Jōyō kanji (school order) | 2,136 | `joyo-en` | `joyo-es` | `joyo-fr` | `joyo-pt` |
 
 Progress belongs to each kanji, so decks that share one share its progress.
-The decks contain KANJIDIC2, KanjiVG and JMdict data and are licensed **CC BY-SA**
-([data sources](docs/data-sources.md)).
+The decks contain KANJIDIC2, KanjiVG, JMdict and FreeDict data and are licensed
+**CC BY-SA** ([data sources](docs/data-sources.md)).
 
 ## Build it yourself
 
