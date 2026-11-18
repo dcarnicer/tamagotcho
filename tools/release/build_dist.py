@@ -9,10 +9,12 @@ Release artifacts (``dist/``):
 - ``tamagotcho-latest.bin``: the merged ``m5stack`` image at ``0x0`` for
   M5Burner, M5Launcher and esptool (the board is found at boot).
 - ``tamagotcho-<version>-ota.bin``: the app-only ``m5stack`` image the update
-  manifest points at.
-- ``tamagotcho-<env>.bin``: app-only image for the other boards (USB/OTA).
-- ``tamagotcho-<env>-merged.bin``: one image at ``0x0`` for the other boards.
-- ``tamagotcho-<env>-manifest.json``: ESP Web Tools manifest.
+  manifest points at, with alias rows for the older ``sticks3`` and
+  ``cardputer-adv`` builds.
+- ``tamagotcho-<env>.bin``: app-only image for the T-Display-S3.
+- ``tamagotcho-<env>-merged.bin``: one image at ``0x0`` for the T-Display-S3.
+- ``tamagotcho-<env>-manifest.json``: ESP Web Tools manifest (m5stack and
+  tdisplay-s3).
 - ``boot_app0.bin``: the OTA boot record for app-only USB updates.
 - ``tamagotcho-firmware.txt``: the OTA manifest devices read.
 - ``SHA256SUMS.txt``: every top-level artifact.
@@ -41,11 +43,12 @@ REPO = Path(__file__).resolve().parents[2]
 DEFAULT_PROJECT = REPO / "firmware"
 DEFAULT_DIST = REPO / "dist"
 
-# One row per release environment; keep in step with release.yml.
+# One row per release environment; keep in step with release.yml. The
+# StickS3 and Cardputer ADV share `m5stack` (the board is found at boot).
 RELEASE_ENVS = (
     {
-        "env": "sticks3",
-        "name": "StickS3",
+        "env": "m5stack",
+        "name": "M5 (StickS3 + Cardputer ADV)",
         "partitions": "sticks3_8MB.csv",
         "flash_size": "8MB",
         "publish_boot_app0": True,
@@ -57,21 +60,11 @@ RELEASE_ENVS = (
         "flash_size": "16MB",
         "publish_boot_app0": False,
     },
-    {
-        "env": "cardputer-adv",
-        "name": "Cardputer ADV",
-        "partitions": "sticks3_8MB.csv",
-        "flash_size": "8MB",
-        "publish_boot_app0": False,
-    },
-    {
-        "env": "m5stack",
-        "name": "M5 (StickS3 + Cardputer ADV)",
-        "partitions": "sticks3_8MB.csv",
-        "flash_size": "8MB",
-        "publish_boot_app0": False,
-    },
 )
+
+# Devices still running the old single-board M5 builds update to the combined
+# image through these manifest rows; they do not get release assets.
+LEGACY_M5_ENVS = ("sticks3", "cardputer-adv")
 
 VERSION_RE = re.compile(r"v?([0-9]+\.[0-9]+\.[0-9]+)")
 
@@ -203,7 +196,8 @@ def write_esp_manifest(dist: Path, env: str, name: str, version: str) -> Path:
 
 def write_firmware_manifest(project: Path, dist: Path, version: str) -> Path:
     text, report = fm.build(version, project, dist,
-                            m5stack_ota=dist / app_name("m5stack", version))
+                            m5stack_ota=dist / app_name("m5stack", version),
+                            aliases=LEGACY_M5_ENVS)
     for line in report:
         print(line)
     out = dist / fm.MANIFEST_NAME

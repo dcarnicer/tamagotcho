@@ -36,7 +36,16 @@ build_flags =
 extends = common
 board_build.partitions = partitions/sixteen.csv
 
+[env:tdisplay-s3]
+board_build.partitions = partitions/sixteen.csv
+
 [env:m5stack]
+board_build.partitions = partitions/eight.csv
+
+[env:sticks3]
+board_build.partitions = partitions/eight.csv
+
+[env:cardputer-adv]
 board_build.partitions = partitions/eight.csv
 
 [env:single]
@@ -134,6 +143,32 @@ class ManifestTest(unittest.TestCase):
         self.assertIn(f"\tm5stack\ttamagotcho-0.7.0-ota.bin\t4096\t"
                       f"{hashlib.sha256(ota.read_bytes()).hexdigest()}\n", text)
         self.assertIn("m5stack", report[1])
+
+    def test_legacy_envs_alias_the_m5stack_ota(self):
+        self.put("tamagotcho-tdisplay-s3.bin", app_image(16))
+        ota = self.dist / "tamagotcho-0.8.0-ota.bin"
+        ota.write_bytes(app_image(0x1000))
+        text, report = fm.build("v0.8.0", self.project, self.dist, m5stack_ota=ota,
+                                aliases=["sticks3", "cardputer-adv"])
+        sha = hashlib.sha256(ota.read_bytes()).hexdigest()
+        for env in ("m5stack", "sticks3", "cardputer-adv"):
+            self.assertIn(f"\t{env}\ttamagotcho-0.8.0-ota.bin\t4096\t{sha}\n", text)
+        self.assertEqual(sum(1 for line in text.splitlines() if "sticks3" in line), 1)
+        self.assertIn("alias of m5stack", report[2])
+
+    def test_alias_without_the_ota_fails(self):
+        self.put("tamagotcho-tdisplay-s3.bin", app_image(16))
+        with self.assertRaisesRegex(fm.ManifestError, "needs the m5stack OTA"):
+            fm.build("v0.8.0", self.project, self.dist, aliases=["sticks3"])
+
+    def test_alias_duplicates_an_existing_image_fails(self):
+        self.put("tamagotcho-tdisplay-s3.bin", app_image(16))
+        self.put("tamagotcho-sticks3.bin", app_image(0x1000))
+        ota = self.dist / "tamagotcho-0.8.0-ota.bin"
+        ota.write_bytes(app_image(0x1000))
+        with self.assertRaisesRegex(fm.ManifestError, "already has an app image row"):
+            fm.build("v0.8.0", self.project, self.dist, m5stack_ota=ota,
+                     aliases=["sticks3"])
 
     def test_out_path(self):
         self.put("tamagotcho-base.bin", app_image(16))

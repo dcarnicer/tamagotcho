@@ -99,18 +99,18 @@ cards Japanese students carry around, which the M5Stack StickS3 resembles.
 
 | | Board | Screen | Input | Firmware files |
 |---|---|---|---|---|
-| <img src="docs/images/board-sticks3.png" width="90" alt="StickS3 screen"> | [M5Stack StickS3](https://docs.m5stack.com/en/core/StickS3) | 1.14″, 135×240 | two buttons, auto-rotate | `tamagotcho-latest.bin` or `tamagotcho-sticks3-*.bin` |
-| <img src="docs/images/board-cardputer.png" width="120" alt="Cardputer ADV screen"> | [M5Stack Cardputer ADV](https://docs.m5stack.com/en/core/Cardputer-Adv) | 1.14″, 240×135 | keyboard | `tamagotcho-latest.bin` or `tamagotcho-cardputer-adv-*.bin` |
-| <img src="docs/images/board-tdisplay.png" width="90" alt="T-Display-S3 screen"> | [LilyGO T-Display-S3](https://lilygo.cc/products/t-display-s3) | 1.9″, 170×320 | two buttons | `tamagotcho-tdisplay-s3-*.bin` |
+| <img src="docs/images/board-sticks3.png" width="90" alt="StickS3 screen"> | [M5Stack StickS3](https://docs.m5stack.com/en/core/StickS3) | 1.14″, 135×240 | two buttons, auto-rotate | `tamagotcho-latest.bin` / `tamagotcho-<version>-ota.bin` |
+| <img src="docs/images/board-cardputer.png" width="120" alt="Cardputer ADV screen"> | [M5Stack Cardputer ADV](https://docs.m5stack.com/en/core/Cardputer-Adv) | 1.14″, 240×135 | keyboard | `tamagotcho-latest.bin` / `tamagotcho-<version>-ota.bin` |
+| <img src="docs/images/board-tdisplay.png" width="90" alt="T-Display-S3 screen"> | [LilyGO T-Display-S3](https://lilygo.cc/products/t-display-s3) | 1.9″, 170×320 | two buttons | `tamagotcho-tdisplay-s3-merged.bin` / `tamagotcho-tdisplay-s3.bin` |
 
 ## Install
 
 Every [release](https://github.com/dcarnicer/tamagotcho/releases/latest) has
 two images: a **merged** one for a first install (`0x0`) and an **app-only**
-one for updates. The combined StickS3/Cardputer ADV build always keeps the
-same names, `tamagotcho-latest.bin` (`0x0`: M5Burner, M5Launcher, esptool) and
-`tamagotcho-<version>-ota.bin` (updates). The per-board files are
-`tamagotcho-<board>-merged.bin` and `tamagotcho-<board>.bin`.
+one for updates. The StickS3/Cardputer ADV build always keeps the same names,
+`tamagotcho-latest.bin` (`0x0`: M5Burner, M5Launcher, esptool) and
+`tamagotcho-<version>-ota.bin` (updates). The T-Display-S3 keeps its own
+`tamagotcho-tdisplay-s3-merged.bin` and `tamagotcho-tdisplay-s3.bin`.
 
 **M5Burner** (StickS3 and Cardputer ADV). In [M5Burner](https://burner.m5stack.com/)
 (on the web in Chrome or Edge, or the desktop app), search for **Tamagotcho**,
@@ -127,18 +127,19 @@ app-only image below or the release page. The page is published by
 
 **With Espressif's web flasher** (Chrome or Edge on a computer). Open
 [esptool-js](https://espressif.github.io/esptool-js/), press **Connect** and
-pick the device's port, add the board's `tamagotcho-<board>-merged.bin` at
-address `0x0` and press **Program**.
+pick the device's port, add the board's merged image (`tamagotcho-latest.bin`
+for the StickS3/Cardputer ADV, `tamagotcho-tdisplay-s3-merged.bin` for the
+T-Display-S3) at address `0x0` and press **Program**.
 
 **With esptool**:
 
 ```sh
-esptool --chip esp32s3 write_flash 0x0 tamagotcho-sticks3-merged.bin     # a new device
-esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-sticks3.bin  # update, keep the settings
+esptool --chip esp32s3 write_flash 0x0 tamagotcho-latest.bin     # a new M5Stack device
+esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-<version>-ota.bin  # update, keep the settings
 ```
 
-For the combined StickS3/Cardputer ADV build, use `tamagotcho-latest.bin` at
-`0x0` and `tamagotcho-<version>-ota.bin` for the update.
+For the T-Display-S3, use `tamagotcho-tdisplay-s3-merged.bin` at `0x0` and
+`tamagotcho-tdisplay-s3.bin` for the update.
 
 A merged image erases the settings (home Wi-Fi, preferences); the decks and
 the study progress live in their own partition and stay, unless the flash was

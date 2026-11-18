@@ -42,7 +42,6 @@ class AssetNameTest(unittest.TestCase):
         self.assertEqual(bd.app_name("m5stack", "v0.8.0"), "tamagotcho-0.8.0-ota.bin")
 
     def test_other_boards_keep_their_env_name(self):
-        self.assertEqual(bd.app_name("sticks3", "v0.8.0"), "tamagotcho-sticks3.bin")
         self.assertEqual(bd.app_name("tdisplay-s3", "v0.8.0"),
                          "tamagotcho-tdisplay-s3.bin")
 
@@ -50,8 +49,13 @@ class AssetNameTest(unittest.TestCase):
         self.assertEqual(bd.merged_name("m5stack"), "tamagotcho-latest.bin")
 
     def test_other_boards_keep_their_merged_name(self):
-        self.assertEqual(bd.merged_name("cardputer-adv"),
-                         "tamagotcho-cardputer-adv-merged.bin")
+        self.assertEqual(bd.merged_name("tdisplay-s3"),
+                         "tamagotcho-tdisplay-s3-merged.bin")
+
+    def test_release_builds_the_two_platforms_and_aliases_the_old_m5_envs(self):
+        self.assertEqual([row["env"] for row in bd.RELEASE_ENVS],
+                         ["m5stack", "tdisplay-s3"])
+        self.assertEqual(bd.LEGACY_M5_ENVS, ("sticks3", "cardputer-adv"))
 
 
 if __name__ == "__main__":

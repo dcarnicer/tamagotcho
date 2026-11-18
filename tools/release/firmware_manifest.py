@@ -14,9 +14,13 @@ One ``app`` row per app-only image ``tamagotcho-<env>.bin`` in the dist
 directory (the ``-merged`` and ``tamagotcho-latest.bin`` images are not app
 images, and ``*-ota.bin`` is skipped unless ``--m5stack-ota`` names the
 m5stack one); sorted by file name, with m5stack last. The m5stack row names
-the release's ``tamagotcho-<version>-ota.bin`` asset. The file name is
-resolved by the device against the manifest's own URL, so the row names the
-asset of the same release. The size is decimal, the SHA-256 lowercase hex.
+the release's ``tamagotcho-<version>-ota.bin`` asset. ``--alias ENV`` adds a
+row for an older build environment that must keep updating (``sticks3`` and
+``cardputer-adv``): it names the same m5stack image, so a device still on that
+build installs the combined one once and then follows the m5stack row. The
+file name is resolved by the device against the manifest's own URL, so the
+row names the asset of the same release. The size is decimal, the SHA-256
+lowercase hex.
 
 The script fails, before anything is published, when:
 
@@ -34,6 +38,7 @@ Usage (release.yml):
     python3 tools/release/firmware_manifest.py --version v0.8.0 \\
         --project firmware --dist dist \\
         --m5stack-ota dist/tamagotcho-0.8.0-ota.bin \\
+        --alias sticks3 --alias cardputer-adv \\
         --out dist/tamagotcho-firmware.txt
 """
 
@@ -165,27 +170,48 @@ def manifest_text(version: str, rows: list[tuple[str, str, int, str]]) -> str:
 
 
 def build(version: str, project: Path, dist: Path,
-          m5stack_ota: Path | None = None) -> tuple[str, list[str]]:
+          m5stack_ota: Path | None = None,
+          aliases: list[str] | tuple[str, ...] = ()) -> tuple[str, list[str]]:
     """The manifest text and a usage report; ManifestError for any image over
     its slot (all of them listed) or any other problem.
 
     ``m5stack_ota`` is the app-only m5stack image under its release asset name
     (``tamagotcho-<version>-ota.bin``): the m5stack row then names that file,
-    while the other envs keep ``tamagotcho-<env>.bin``."""
+    while the other envs keep ``tamagotcho-<env>.bin``. ``aliases`` are older
+    environment names that get a row with the same image, for devices that
+    still run that build; each alias's own partition table is checked."""
     check_version(version)
+    aliases = list(aliases)
+    if aliases and m5stack_ota is None:
+        raise ManifestError("an alias needs the m5stack OTA image (--m5stack-ota)")
     rows, report, over = [], [], []
     images = find_images(dist, m5stack_ota)
+    seen = {env for env, _ in images}
     if m5stack_ota is not None:
         if not m5stack_ota.is_file():
             raise ManifestError(f"missing m5stack OTA image: {m5stack_ota}")
+        if "m5stack" in seen:
+            raise ManifestError("dist has a tamagotcho-m5stack.bin and --m5stack-ota: "
+                                "the m5stack row would be duplicated")
         images.append(("m5stack", m5stack_ota))
+        seen.add("m5stack")
+        for env in aliases:
+            if not ENV_RE.fullmatch(env):
+                raise ManifestError(f"alias {env!r} is not an environment name "
+                                    "([a-z0-9-]{1,31})")
+            if env in seen:
+                raise ManifestError(f"alias {env!r} already has an app image row")
+            images.append((env, m5stack_ota))
+            seen.add(env)
+    alias_set = set(aliases)
     for env, path in images:
         csv_path = env_partitions(project, env)
         slot = slot_size(csv_path)
         size, sha = image_digest(path)
         rows.append((env, path.name, size, sha))
+        note = " [alias of m5stack]" if env in alias_set else ""
         report.append(f"{env:16} {size:>10,} B of {slot:>10,} B ({100 * size / slot:5.1f} %, "
-                      f"{slot - size:,} B free) [{csv_path.name}]")
+                      f"{slot - size:,} B free) [{csv_path.name}]{note}")
         if size > slot:
             over.append(f"{path.name}: {size:,} B is larger than the {slot:,} B app slot "
                         f"of {csv_path.name} by {size - slot:,} B")
@@ -204,6 +230,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--m5stack-ota", metavar="PATH",
                     help="the m5stack app-only image under its release asset name "
                          "(tamagotcho-<version>-ota.bin); its manifest row names that file")
+    ap.add_argument("--alias", action="append", default=[], metavar="ENV",
+                    help="add a row for an older environment (e.g. sticks3) with the "
+                         "--m5stack-ota image, so that build migrates to m5stack")
     ap.add_argument("--out", help=f"manifest to write (default: <dist>/{MANIFEST_NAME})")
     a = ap.parse_args(argv)
 
@@ -211,7 +240,8 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(a.out) if a.out else dist / MANIFEST_NAME
     try:
         text, report = build(a.version, Path(a.project), dist,
-                             Path(a.m5stack_ota) if a.m5stack_ota else None)
+                             Path(a.m5stack_ota) if a.m5stack_ota else None,
+                             aliases=a.alias)
     except ManifestError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

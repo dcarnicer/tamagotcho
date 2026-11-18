@@ -3910,10 +3910,26 @@ the StickS3/Cardputer ADV build:
   `tamagotcho-firmware.txt` names for updates over the air (and the file for
   an app-only USB update with `boot_app0.bin`).
 
-The other boards keep `tamagotcho-<env>.bin` and
-`tamagotcho-<env>-merged.bin`. The separate M5Burner package
+The T-Display-S3 keeps `tamagotcho-tdisplay-s3.bin` and
+`tamagotcho-tdisplay-s3-merged.bin`; the StickS3/Cardputer per-board files
+went away the same day (next section). The separate M5Burner package
 (`Tamagotcho-<version>.bin` plus `tamagotcho-m5burner-<version>.zip`) is gone:
 both were copies of the merged image, and the M5Stack-Firmware route was
 never used. `paperdiy-reader` follows the same scheme and the reference for
 the workflow is its `release-paperdiy.yml`. Rebuilds delete the old assets
 before uploading so a release does not keep both schemes.
+
+## 2026-11-18 – Two release builds, with OTA aliases for the old M5 envs
+
+The release now builds only `m5stack` and `tdisplay-s3`. The StickS3 and
+Cardputer ADV share the combined image (the one M5Burner already served), so
+their six per-board assets (app-only, merged and ESP Web Tools manifest each)
+are gone: **9 assets** instead of 15, and two firmware builds instead of four.
+`tamagotcho-firmware.txt` keeps a `sticks3` and a `cardputer-adv` row that
+name the `m5stack` `*-ota.bin`, with the same size and SHA-256. A device still
+on either old build installs the combined image once and then follows the
+`m5stack` row, so no one needs a USB reflash. The Cardputer gets the combined
+image's octal-PSRAM framework (the PSRAM init fails and the boot goes on, as
+with M5Burner) instead of the dedicated no-PSRAM build; the tested heap
+margin is in the 2026-10-21 decision above. The local `sticks3-shots` and
+`cardputer-adv` environments stay for development and screenshots.

@@ -182,11 +182,17 @@ slot (read from the partition CSV, as `decks.yml` reads the per-pack cap from
 ```
 #tamagotcho-firmware	1
 version	v0.8.0
-app	sticks3	tamagotcho-sticks3.bin	1503216	<sha256 hex>
 app	tdisplay-s3	tamagotcho-tdisplay-s3.bin	1344128	<sha256 hex>
-app	cardputer-adv	tamagotcho-cardputer-adv.bin	1451184	<sha256 hex>
-app	m5stack	tamagotcho-0.8.0-ota.bin	1508720	<sha256 hex>
+app	m5stack	tamagotcho-0.8.0-ota.bin	1597440	<sha256 hex>
+app	sticks3	tamagotcho-0.8.0-ota.bin	1597440	<sha256 hex>
+app	cardputer-adv	tamagotcho-0.8.0-ota.bin	1597440	<sha256 hex>
 ```
+
+The `sticks3` and `cardputer-adv` rows are **aliases**: the release no longer
+publishes those builds, so a device still running one of them installs the
+combined `m5stack` image once and then follows the `m5stack` row. They name
+the same file, with the same size and SHA-256; only the environment field
+changes.
 
 **Manifest format, version 1** (spec):
 - UTF-8, lines end in LF (a CR before it is ignored), fields separated by one
@@ -206,20 +212,24 @@ app	m5stack	tamagotcho-0.8.0-ota.bin	1508720	<sha256 hex>
   field is (`.../download/v0.7.0/tamagotcho-firmware.txt` gives
   `.../download/v0.7.0/<file>`); an `http://` or `https://` URL is used as it
   is. A second `app` line for the same environment makes the manifest
-  invalid.
+  invalid. Different environments may name the same file: the release uses
+  that for `sticks3` and `cardputer-adv`, which now install the `m5stack`
+  image.
 - Any other first field is ignored, so later versions of the format can add
   record types without a version bump; a malformed `version` or `app` line
   makes the whole manifest invalid (no partial reads).
 - The image a row names is the app-only image (`firmware.bin` of that
-  environment, ESP image magic `0xE9`), the same file the release publishes
-  as `tamagotcho-<env>.bin`.
+  environment, ESP image magic `0xE9`). The T-Display-S3 row names the release
+  asset `tamagotcho-tdisplay-s3.bin`; the `m5stack` row names
+  `tamagotcho-<version>-ota.bin`, and the two aliases name that same file.
 
 ### 3.2 Which image a device installs
 
 The one its own build came from: every environment compiles in its name
 (`TGC_ENV`, e.g. `"m5stack"`), and the device takes that row; no row for it
 means no update. A StickS3 installed from M5Burner runs `m5stack` and stays
-on it; one flashed with `pio run -e sticks3` stays on `sticks3`.
+on it; one still running `sticks3` or `cardputer-adv` takes its alias row,
+installs the `m5stack` image and reports `m5stack` from then on.
 
 Development builds (a version that is not a plain `vX.Y.Z`, e.g.
 `v0.6.0-12-gabc1234`, or `dev`) never read the default manifest: their image

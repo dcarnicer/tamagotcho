@@ -315,26 +315,28 @@ filesystem.
 
 ### Flash a merged image (esptool or a browser)
 
-A release's `tamagotcho-sticks3-merged.bin` (and the `tdisplay-s3`,
-`cardputer-adv` and, from v0.4.0, `m5stack` ones; `m5stack` runs on the
-StickS3 and the Cardputer ADV alike and is the one on M5Burner) is one file
-flashed at offset 0, so it needs no offset list (releases up to v0.2.1 name
-their files `tangocho-…`):
+A release's `tamagotcho-latest.bin` (the merged `m5stack` image; from v0.4.0,
+it runs on the StickS3 and the Cardputer ADV alike and is the one on M5Burner)
+and `tamagotcho-tdisplay-s3-merged.bin` are one file flashed at offset 0, so
+they need no offset list (releases up to v0.2.1 name their files `tangocho-…`):
 
 ```sh
-esptool --chip esp32s3 write_flash 0x0 tamagotcho-sticks3-merged.bin
+esptool --chip esp32s3 write_flash 0x0 tamagotcho-latest.bin
 ```
 
-**What it overwrites:** everything from `0x0` to the end of the app, including
-the **settings** (the NVS partition: home Wi-Fi, preferences, time zone), which
-the merge pads with `0xFF`. The filesystem with the decks and the study
-progress starts after the two app slots and is not touched. To **update** a
-device and keep its settings, flash the app-only image at the app offset
+For the T-Display-S3, use `tamagotcho-tdisplay-s3-merged.bin` in the same
+command. **What it overwrites:** everything from `0x0` to the end of the app,
+including the **settings** (the NVS partition: home Wi-Fi, preferences, time
+zone), which the merge pads with `0xFF`. The filesystem with the decks and the
+study progress starts after the two app slots and is not touched. To **update**
+a device and keep its settings, flash the app-only image at the app offset
 instead, together with `boot_app0.bin` (both are in the release):
 
 ```sh
-esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-sticks3.bin
+esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-<version>-ota.bin
 ```
+
+For the T-Display-S3, use `tamagotcho-tdisplay-s3.bin` as the app-only image.
 
 `boot_app0.bin` is the framework's OTA data record that boots `app0`, the
 slot at `0x10000` (`framework-arduinoespressif32/tools/partitions/boot_app0.bin`,
@@ -345,7 +347,7 @@ record the bootloader boots `app0`:
 
 ```sh
 esptool --chip esp32s3 erase_region 0xe000 0x2000
-esptool --chip esp32s3 write_flash 0x10000 tamagotcho-sticks3.bin
+esptool --chip esp32s3 write_flash 0x10000 tamagotcho-<version>-ota.bin
 ```
 
 `pio run -t upload` and the merged images already write the record.
@@ -387,8 +389,9 @@ with its tag (<https://github.com/dcarnicer/tamagotcho/settings/pages>).
 
 Alternatively, Espressif's web flasher
 <https://espressif.github.io/esptool-js/>: press **Connect** and pick the
-StickS3's port, add `tamagotcho-sticks3-merged.bin` at address `0x0` and press
-**Program**. The release also carries the ESP Web Tools manifests
+board's port, add `tamagotcho-latest.bin` (or the T-Display-S3's
+`tamagotcho-tdisplay-s3-merged.bin`) at address `0x0` and press **Program**.
+The release also carries the ESP Web Tools manifests
 (`tamagotcho-*-manifest.json`) that the install page consumes. A merged image
 carries **no filesystem**: on the first boot the firmware finds no LittleFS on
 the data partition (erased, or left by another firmware), formats it
@@ -564,10 +567,11 @@ PlatformIO version) and a pack-builder job (`uv run pytest`).
 A newer push on the same ref cancels the superseded run.
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on tags
-`vX.Y.Z` and on manual dispatch (any other tag fails). It builds, per board,
-an **app-only** image and a **merged, single-file** image, writes an **ESP Web
-Tools** `manifest.json`, then the **firmware manifest**
-`tamagotcho-firmware.txt` the devices read for updates over the air
+`vX.Y.Z` and on manual dispatch (any other tag fails). It builds the two
+release environments (`m5stack` and `tdisplay-s3`), an **app-only** image and
+a **merged, single-file** image each, writes an **ESP Web Tools**
+`manifest.json`, then the **firmware manifest** `tamagotcho-firmware.txt` the
+devices read for updates over the air
 ([`tools/release/firmware_manifest.py`](../tools/release/firmware_manifest.py),
 format in [docs/ota.md](ota.md) §3.1), and publishes a GitHub release with
 those artifacts and `boot_app0.bin`. An image larger than its app slot fails
@@ -599,9 +603,10 @@ build by hand: `TGC_VERSION=v0.1.0-rc1 pio run -e sticks3`.
    [docs/m5burner.md](m5burner.md) describes. M5Burner does not follow GitHub:
    without this step it keeps offering the previous version.
 
-For a **local dry run**, `make dist VERSION=vX.Y.Z` builds the four release
-environments and writes the same artifacts as the workflow to `dist/`:
-`tamagotcho-latest.bin`, `tamagotcho-<version>-ota.bin`, the other boards'
-app-only and merged images, the ESP Web Tools manifests, `boot_app0.bin`,
-`tamagotcho-firmware.txt` and `SHA256SUMS.txt`. Use `--skip-build` to reuse
-the images already in `firmware/.pio/build/`.
+For a **local dry run**, `make dist VERSION=vX.Y.Z` builds the two release
+environments (`m5stack` and `tdisplay-s3`) and writes the same artifacts as
+the workflow to `dist/`: `tamagotcho-latest.bin`,
+`tamagotcho-<version>-ota.bin`, the T-Display-S3 app-only and merged images,
+the ESP Web Tools manifests, `boot_app0.bin`, `tamagotcho-firmware.txt` and
+`SHA256SUMS.txt`. Use `--skip-build` to reuse the images already in
+`firmware/.pio/build/`.

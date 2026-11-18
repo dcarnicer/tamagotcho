@@ -76,8 +76,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - env: sticks3
-            name: StickS3
+          # The StickS3 and the Cardputer ADV in one image: the board is found
+          # at boot, and this is the one M5Burner and M5Launcher install.
+          - env: m5stack
+            name: M5 (StickS3 + Cardputer ADV)
             partitions: sticks3_8MB.csv
             flash_size: 8MB
             # boot_app0.bin is the same file for every board: published once.
@@ -86,15 +88,6 @@ jobs:
             name: T-Display-S3
             partitions: tdisplay_s3_16MB.csv
             flash_size: 16MB
-          - env: cardputer-adv
-            name: Cardputer ADV
-            partitions: sticks3_8MB.csv
-            flash_size: 8MB
-          # The StickS3 and the Cardputer ADV in one image (M5Burner).
-          - env: m5stack
-            name: M5 (StickS3 + Cardputer ADV)
-            partitions: sticks3_8MB.csv
-            flash_size: 8MB
     defaults:
       run:
         working-directory: firmware
@@ -141,9 +134,10 @@ jobs:
           echo "firmware.bin carries version $TGC_VERSION"
 
       # App-only image (ESP image magic 0xE9, no bootloader/partition table):
-      # what M5Launcher installs, what `pio run -t upload` writes to the app
-      # slot and what an update over the air installs (its row in
-      # tamagotcho-firmware.txt, written by the release job).
+      # what an update over the air installs (its row in
+      # tamagotcho-firmware.txt, written by the release job), what
+      # `pio run -t upload` writes to the app slot and what an app-only USB
+      # update writes with boot_app0.bin.
       #
       # The release asset names. The m5stack build is the one M5Burner and
       # M5Launcher install: its 0x0 image is always `tamagotcho-latest.bin` and
@@ -260,12 +254,13 @@ jobs:
           merge-multiple: true
 
       # tamagotcho-firmware.txt, the manifest the devices read from
-      # releases/latest/download/ (docs/ota.md, "The release side"): one row
-      # per app-only image of the four builds. The m5stack row names the
-      # versioned `*-ota.bin` asset; the other boards keep their env name. It
-      # fails, before anything is published, when an image is larger than its
-      # env's app slot (read from the env's partition table), or the tag is not
-      # a plain vX.Y.Z.
+      # releases/latest/download/ (docs/ota.md, "The release side"): a row for
+      # the T-Display-S3, the m5stack row (the versioned `*-ota.bin` asset) and
+      # alias rows for the old single-board M5 builds, so those devices install
+      # the combined image once and then follow the m5stack row. It fails,
+      # before anything is published, when an image is larger than its env's
+      # app slot (read from the env's partition table), or the tag is not a
+      # plain vX.Y.Z.
       - name: Firmware manifest and app slot check
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
@@ -273,6 +268,7 @@ jobs:
           python3 repo/tools/release/firmware_manifest.py --version "$TAG" \
             --project repo/firmware --dist dist \
             --m5stack-ota "dist/tamagotcho-${TAG#v}-ota.bin" \
+            --alias sticks3 --alias cardputer-adv \
             --out dist/tamagotcho-firmware.txt
           cat dist/tamagotcho-firmware.txt
 
@@ -307,8 +303,7 @@ jobs:
           |---|---|
           | \`tamagotcho-latest.bin\` | the \`m5stack\` image at \`0x0\` for the StickS3 **and** the Cardputer ADV (the board is found at boot): M5Burner, M5Launcher and esptool |
           | \`tamagotcho-<version>-ota.bin\` | the app-only \`m5stack\` image the update manifest names (over the air, or USB with \`boot_app0.bin\` at \`0x10000\`); not for M5Burner or M5Launcher |
-          | \`tamagotcho-sticks3.bin\`, \`tamagotcho-tdisplay-s3.bin\`, \`tamagotcho-cardputer-adv.bin\` | app-only images (M5Launcher, \`pio run -t upload\`) |
-          | \`tamagotcho-<board>-merged.bin\` | single images for a first install (offset 0x0), one per board |
+          | \`tamagotcho-tdisplay-s3.bin\`, \`tamagotcho-tdisplay-s3-merged.bin\` | app-only and \`0x0\` images for the LilyGO T-Display-S3 |
           | \`boot_app0.bin\` | the OTA data record that boots the first app slot: written at 0xe000 with an app-only image over USB (the same for every board) |
           | \`tamagotcho-firmware.txt\` | the update manifest the devices read: per build, its app-only image, size and SHA-256 |
           | \`tamagotcho-*-manifest.json\` | ESP Web Tools manifests (for an install page) |
@@ -316,28 +311,29 @@ jobs:
 
           ## Flash it
 
-          - **First install, USB:** \`esptool --chip esp32s3 write_flash 0x0 tamagotcho-sticks3-merged.bin\`
           - **First install, M5Stack:** write \`tamagotcho-latest.bin\` at \`0x0\`
             (M5Burner, esptool, or M5Launcher), or use the browser installer.
+          - **First install, T-Display-S3:** write
+            \`tamagotcho-tdisplay-s3-merged.bin\` at \`0x0\`.
           - **First install, browser** (Chrome or Edge): open the
             [install page](https://dcarnicer.github.io/tamagotcho/), **Connect**,
             pick your board and **Install**.
           - **Update, over the air** (from v0.7.0): on the device, Settings >
             Device > Firmware, **Check now**, then hold **Install**. The device
             reads \`tamagotcho-firmware.txt\` from the latest release and installs
-            its own build's image; settings, decks and progress stay.
-          - **Update, USB:** \`esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-sticks3.bin\`
-            (for the M5Stack build, \`tamagotcho-<version>-ota.bin\`).
-            \`boot_app0.bin\` makes the first app slot, where the image goes, the
-            one that boots: after an update over the air the device may run from
-            the other. The merged image also erases the settings (home Wi-Fi,
-            preferences); the app-only image keeps them. Decks and study progress
-            survive both.
+            its own build's image; settings, decks and progress stay. Devices
+            still on the old \`sticks3\` or \`cardputer-adv\` build install the
+            combined image once and keep updating from it.
+          - **Update, USB:** \`esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-<version>-ota.bin\`
+            for the M5Stack build, or \`tamagotcho-tdisplay-s3.bin\` for the
+            T-Display-S3. \`boot_app0.bin\` makes the first app slot, where the
+            image goes, the one that boots: after an update over the air the
+            device may run from the other. The merged image also erases the
+            settings (home Wi-Fi, preferences); the app-only image keeps them.
+            Decks and study progress survive both.
           - **M5Launcher:** install \`tamagotcho-latest.bin\` for the StickS3 or the
             Cardputer ADV, then put a deck on the device over Wi-Fi (a device
             with no deck boots into the Wi-Fi upload screen).
-          - The other boards' files take the same commands with
-            \`tdisplay-s3\` or \`cardputer-adv\` in place of \`sticks3\`.
 
           ## Decks
 
@@ -381,7 +377,13 @@ jobs:
             for old in "Tamagotcho-${version}.bin" \
                        "tamagotcho-m5burner-${version}.zip" \
                        "tamagotcho-m5stack.bin" \
-                       "tamagotcho-m5stack-merged.bin"; do
+                       "tamagotcho-m5stack-merged.bin" \
+                       "tamagotcho-sticks3.bin" \
+                       "tamagotcho-sticks3-merged.bin" \
+                       "tamagotcho-sticks3-manifest.json" \
+                       "tamagotcho-cardputer-adv.bin" \
+                       "tamagotcho-cardputer-adv-merged.bin" \
+                       "tamagotcho-cardputer-adv-manifest.json"; do
               if gh release view "$TAG" --json assets \
                    --jq '.assets[].name' | grep -qxF "$old"; then
                 gh release delete-asset "$TAG" "$old" --yes
