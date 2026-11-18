@@ -387,6 +387,9 @@ jobs:
                 gh release delete-asset "$TAG" "$old" --yes
               fi
             done
+            # A rebuild replaces the notes too: the asset table and the install
+            # steps live in the workflow, not only in the tag's release file.
+            gh release edit "$TAG" --notes-file notes.md
             gh release upload "$TAG" dist/* --clobber
           else
             gh release create "$TAG" --title "Tamagotcho ${TAG}" --notes-file notes.md dist/*
