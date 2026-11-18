@@ -509,6 +509,16 @@ def test_cli_build_example_words_french(word_inputs, tmp_path, capsys):
     assert "glosses for 6 of 6" in out and "glosses_fr.tsv" in out
 
 
+def test_cli_build_example_words_english_has_no_table(word_inputs, tmp_path, capsys):
+    with pytest.raises(_Stop):
+        cli.main(["build", "--jlpt", "5", "--lang", "en", "--common-readings", "--example-words",
+                  "-o", str(tmp_path / "x.tgc")])
+    seen = word_inputs["seen"]
+    assert seen["words"] is not None and len(seen["words"]) == 3
+    out = capsys.readouterr().out
+    assert "from JMdict_e" in out
+
+
 def test_cli_build_without_flag_has_no_words(word_inputs, tmp_path):
     with pytest.raises(_Stop):
         cli.main(["build", "--jlpt", "5", "--common-readings", "-o", str(tmp_path / "x.tgc")])

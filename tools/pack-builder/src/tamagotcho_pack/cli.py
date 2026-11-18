@@ -145,9 +145,12 @@ def _example_words(cards: list, lang: str, word_data: tuple,
     n = sum(len(ws) for ws in words)
     on = sum(1 for ws in words for w in ws if w.kind == 0)
     glossed = sum(1 for ws in words for w in ws if w.gloss)
-    source = {"en": "JMdict_e", "es": f"the reviewed rows of {table_path.name}",
-              "fr": f"the reviewed rows of {table_path.name}",
-              "pt": f"the reviewed rows of {table_path.name}"}.get(lang)
+    if lang == "en":
+        source = "JMdict_e"
+    elif table_path is not None:
+        source = f"the reviewed rows of {table_path.name}"
+    else:
+        source = None
     print(f"example words: {n} for {len(cards)} cards (on'yomi {on}, kun'yomi {n - on}; "
           f"{kinds - n} asked readings without a usable word); glosses for {glossed} of {n}"
           + (f" from {source}" if source else f" (no gloss source for {lang!r})"))
