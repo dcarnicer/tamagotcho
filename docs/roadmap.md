@@ -388,17 +388,16 @@ Scope for now: **kanji only** (no vocabulary decks).
       en/es): this deck, everything, "Nothing to delete"; the portal's delete
       was not run on hardware (native-tested, same forget code).
 - [~] **Multilingual.** On-device strings are localised to the pack language
-      (`lang`: en/es today, anything else falls back to English). The on-device
-      language picker is done: a "Language"/"Idioma" setting chooses Auto (follow
-      the pack, the default), English or Español, persisted in NVS (`ui`) and
-      applied as a pure `uiLangCodeFor` helper. The first boot of a device
-      with no decks and no stored preference asks once (English / Español)
-      and stores an explicit choice. **French and Portuguese decks** are built
-      since 2026-11-18 (KANJIDIC2 meanings, WikDict order, eight fr/pt
-      overrides); their UI still falls back to English and their example words
-      have no gloss yet. Pending: French/Portuguese UI strings and the example
-      glosses (the meaning language is a property of the pack, so switching
-      packs already switches the meanings).
+      or the explicit choice: **English, Spanish, French and Portuguese**
+      (2026-11-18; `lang` es/fr/pt under Auto, anything else English). The
+      language picker offers Auto, English, Español, Français and Português,
+      persisted in NVS (`ui`) and applied as the pure `uiLangCodeFor` helper;
+      the first boot of a device with no decks and no stored preference asks
+      once (the same four languages) and stores an explicit choice. **French
+      and Portuguese decks** are built since 2026-11-18 (KANJIDIC2 meanings,
+      WikDict order, eight fr/pt overrides). Pending: the **portal page** is
+      still English/Spanish, and the **French/Portuguese example words** have
+      no gloss yet (the intro shows word and reading only).
 - [x] **Menu and settings redesign.** The settings home (Seguir / Mazos / Fecha /
       Nuevas/día / Velocidad) replaces the single deck list, with a shared
       four-row choice screen for the new/day cap and the Hard threshold. The deck

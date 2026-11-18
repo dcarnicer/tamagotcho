@@ -68,11 +68,12 @@ The portal has two modes:
 
 ### First setup
 
-1. A brand-new device first asks for its **language**: **English** or
-   **Español** (tap moves, hold chooses). The device screens and the portal
-   page then stay in that language, whatever the language of the decks you
-   download; **Settings → Device → Language** changes it later (Auto follows
-   the loaded deck).
+1. A brand-new device first asks for its **language**: **English**,
+   **Español**, **Français** or **Português** (tap moves, hold chooses). The
+   device screens then stay in that language, whatever the language of the
+   decks you download; **Settings → Device → Language** changes it later (Auto
+   follows the loaded deck). The portal page is still English or Spanish; for
+   French and Portuguese it uses English for now.
 2. A device with no decks starts the portal by itself (later: hold the side
    button for **Settings → Wi-Fi → Setup mode**). Scan the QR code on the
    screen with the phone camera to join `Tamagotcho-XXXX`, then open
@@ -196,10 +197,10 @@ Restoring is refused while a deck download is running.
 - An uploaded file streams straight to the filesystem (a multi-MB pack never has
   to fit in RAM) and is kept only if it is a valid pack, with room to spare.
   The URL download is **plain `http://` only** (e.g. a server on your computer).
-- The page is in the device's language (the Language setting, chosen on the
-  first boot, or the loaded deck's under Auto); a device set to Auto with no
-  deck yet follows the browser's language, and the page offers English /
-  Español links.
+- The page is in English or Spanish (the device's language for those two;
+  English for French and Portuguese until the page is translated); a device
+  set to Auto with no deck yet follows the browser's language, and the page
+  offers English / Español links.
 - The default catalog is
   `https://github.com/dcarnicer/tamagotcho/releases/download/decks-v3/catalog-v2.txt`,
   in the dedicated **decks release** for the pack format this firmware reads (see

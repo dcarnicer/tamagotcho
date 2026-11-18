@@ -124,7 +124,7 @@ A new kanji is introduced first: its stroke order, meanings, readings and two ex
 - 24 free decks: JLPT N5 to N1 and the 2,136 Jōyō kanji, in English, Spanish, French and Portuguese, with example words (glosses in English and Spanish), downloaded over Wi-Fi
 - A web portal on your phone: decks, statistics, uploads
 - The real date from your phone or NTP; dims and sleeps to save the battery
-- Screens in English or Spanish; deck meanings in four languages
+- Screens in English, Spanish, French or Portuguese; deck meanings in four languages
 
 **First start**
 

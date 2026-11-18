@@ -91,7 +91,7 @@ cards Japanese students carry around, which the M5Stack StickS3 resembles.
 - **Kind to the battery**: dims after 30 s, deep-sleeps after 2 min and wakes
   where you left off.
 - **Portrait, landscape or auto-rotate** (the StickS3's accelerometer);
-  screens in English or Spanish.
+  screens in English, Spanish, French or Portuguese.
 - **Your own decks**: a Python pack builder for any JLPT level or school
   grade, your own kanji list, your WaniKani kanji, another font.
 

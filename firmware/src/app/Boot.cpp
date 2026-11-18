@@ -66,7 +66,7 @@ void drawFirstLang() {
     auto& d = *gCanvas;
     d.fillScreen(kBlack);
     char title[40];
-    snprintf(title, sizeof title, "%s / %s", kUiEn.langTitle, kUiEs.langTitle);
+    snprintf(title, sizeof title, "%s / %s", kUiEn.langTitle, kUiFr.langTitle);
     menuHeader(d, title);
     gFirstLangList.setCount(tgc::kFirstBootLangRows);
     layoutList(gFirstLangList, kHeaderH, H - kHintH, layout().row1H);
@@ -76,11 +76,10 @@ void drawFirstLang() {
         row.focused = f;
         wg::drawRow(d, gRender, x, y, w, h, row);
     });
-    const UiStrings& hl =
-        tgc::firstBootLangPref(gFirstLangList.focus()) == tgc::kUiLangSpanish ? kUiEs : kUiEn;
+    const UiStrings* hl = uiTableForPref(tgc::firstBootLangPref(gFirstLangList.focus()));
     wg::Hints hints;
-    hints.tap = hl.firstLangTap;
-    hints.hold = hl.firstLangHold;
+    hints.tap = hl->firstLangTap;
+    hints.hold = hl->firstLangHold;
     drawHints(d, hints);
     present();  // the hints follow the focus: the whole frame
 }

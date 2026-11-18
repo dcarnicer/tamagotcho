@@ -3836,3 +3836,25 @@ shows the word and reading alone.
 - **Checks.** N5, N4 and N3 French/Portuguese packs build and validate; the
   N4 pack is 277,832 B (fr) / 278,012 B (pt), with 297 example words and no
   gloss. The full four-language deck run is a manual `decks.yml` dispatch.
+
+## 2026-11-18 – French and Portuguese on-device UI
+
+The device UI now has French and Portuguese tables (`UiStringsFrPt.cpp`),
+alongside English and Spanish. The Language setting offers Auto, English,
+Español, Français and Português; Auto follows the pack (`es`/`fr`/`pt`, else
+English). The first-boot picker has the same four explicit rows (English
+preselected), so a French or Portuguese speaker can choose without a deck.
+`uiLangCodeFor()` maps the preference and pack code; NVS values 0-2 keep their
+meaning, 3/4 are new. `langRows` grew to five entries and `Choice`'s value
+array to five; the first-boot screen asks `uiTableForPref()` for the hint bar
+of the highlighted row and titles itself "LANGUAGE / LANGUE".
+
+- The tables keep every format placeholder in the same order, use the
+  Portuguese decimal comma and French "j" for days, and avoid characters
+  outside the UI font's Latin-1 coverage.
+- Three long row labels were shortened after a StickS3 screenshot: French
+  `Télécharger` -> `Obtenir` (Get decks), `Mettre à jour` -> `Actualiser`
+  (Updates) and `désactivé` -> `éteint` (Wi-Fi off). The rest fits or
+  ellipsises by design.
+- The **portal page** is still English/Spanish; a French/Portuguese device
+  sees the English page for now (`PortalText` is the next translation).

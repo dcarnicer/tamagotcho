@@ -314,7 +314,7 @@ const MenuItem& menuItem(st::Item id) {
          [] { openChoice(Choice::Brightness); }},
         {I::Language, [] { return ui().deviceRows[2]; },
          [](char* o, size_t n) {
-             const int pref = gUiLangPref >= 0 && gUiLangPref < 3 ? gUiLangPref : 0;
+             const int pref = gUiLangPref >= 0 && gUiLangPref < 5 ? gUiLangPref : 0;
              snprintf(o, n, "%s", ui().langRows[pref]);
          },
          [] { openChoice(Choice::UiLang); }},

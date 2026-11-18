@@ -9,16 +9,30 @@ namespace tgc {
 
 // NVS `tangocho`/`ui` values. Auto (the default) follows the pack language, so
 // the on-device behaviour is unchanged unless the user forces a language.
-enum UiLangPref : int { kUiLangAuto = 0, kUiLangEnglish = 1, kUiLangSpanish = 2 };
+enum UiLangPref : int {
+    kUiLangAuto = 0,
+    kUiLangEnglish = 1,
+    kUiLangSpanish = 2,
+    kUiLangFrench = 3,
+    kUiLangPortuguese = 4,
+};
 
-// Returns "en" or "es". In Auto mode the pack language decides (today's
-// behaviour: "es" selects Spanish, anything else English); English/Spanish force
-// the table, so an explicit choice survives a pack in another language. Any
-// other preference value behaves like Auto.
+// Returns "en", "es", "fr" or "pt". In Auto mode the pack language decides
+// ("es"/"fr"/"pt" select their table; anything else English). An explicit
+// choice survives a pack in another language. Any other preference value
+// behaves like Auto.
 inline const char* uiLangCodeFor(int pref, const char* packLang) {
-    if (pref == kUiLangEnglish) return "en";
-    if (pref == kUiLangSpanish) return "es";
-    return (packLang && std::strcmp(packLang, "es") == 0) ? "es" : "en";
+    switch (pref) {
+        case kUiLangEnglish: return "en";
+        case kUiLangSpanish: return "es";
+        case kUiLangFrench: return "fr";
+        case kUiLangPortuguese: return "pt";
+        default: break;
+    }
+    if (packLang && std::strcmp(packLang, "es") == 0) return "es";
+    if (packLang && std::strcmp(packLang, "fr") == 0) return "fr";
+    if (packLang && std::strcmp(packLang, "pt") == 0) return "pt";
+    return "en";
 }
 
 // The one-time first-boot language picker ("First-boot language picker" in
@@ -34,10 +48,17 @@ inline bool firstBootLangPicker(bool prefStored, bool hasDecks) {
 
 // The picker's rows, top to bottom, and the one highlighted at first: English,
 // the default that needs no browser to guess it. A row maps to an explicit
-// preference, never Auto, so a Spanish speaker who later downloads an English
-// deck keeps Spanish screens. A row outside the list gives English.
-constexpr int kFirstBootLangRows = 2;
+// preference, never Auto, so a speaker of another language who later downloads
+// an English deck keeps their screens. A row outside the list gives English.
+constexpr int kFirstBootLangRows = 4;
 constexpr int kFirstBootLangDefaultRow = 0;
-inline int firstBootLangPref(int row) { return row == 1 ? kUiLangSpanish : kUiLangEnglish; }
+inline int firstBootLangPref(int row) {
+    switch (row) {
+        case 1: return kUiLangSpanish;
+        case 2: return kUiLangFrench;
+        case 3: return kUiLangPortuguese;
+        default: return kUiLangEnglish;
+    }
+}
 
 }  // namespace tgc

@@ -29,7 +29,7 @@ const UiStrings kUiEn = {
     "ORIENTATION", {"Portrait", "Landscape", "Auto"},
     "DETAIL", "ON", "KUN", "strokes %u", "correct %u/%u",
     "%uh %um", "%um %us", "%us",
-    "LANGUAGE", {"Auto", "English", "Español"},
+    "LANGUAGE", {"Auto", "English", "Español", "Français", "Português"},
     "other", "OK",
     "WI-FI",
     "BRIGHTNESS",
@@ -170,7 +170,7 @@ const UiStrings kUiEs = {
     "ORIENTACION", {"Vertical", "Horizontal", "Auto"},
     "DETALLE", "ON", "KUN", "trazos %u", "aciertos %u/%u",
     "%uh %um", "%um %us", "%us",
-    "IDIOMA", {"Auto", "English", "Español"},
+    "IDIOMA", {"Auto", "English", "Español", "Français", "Português"},
     "otro", "OK",
     "WI-FI",
     "BRILLO",
@@ -295,19 +295,36 @@ const UiStrings kUiEs = {
 
 const UiStrings* gUi = &kUiEn;  // English until a pack says otherwise
 
-// NVS `tangocho`/`ui`: the UI-language preference (Auto/English/Spanish). Auto,
-// the default, follows the pack language exactly as before.
+// NVS `tangocho`/`ui`: the UI-language preference (Auto/English/Spanish/
+// French/Portuguese). Auto, the default, follows the pack language.
 int gUiLangPref = tgc::kUiLangAuto;
 
-// "es" selects the Spanish table; anything else (including no pack yet) is
-// English. The user preference (see UiLang.h) decides when Auto is not set.
-void setUiForLang(const char* lang) {
-    gUi = (std::strcmp(tgc::uiLangCodeFor(gUiLangPref, lang), "es") == 0) ? &kUiEs : &kUiEn;
+const UiStrings* uiTableForPref(int pref) {
+    switch (pref) {
+        case tgc::kUiLangSpanish: return &kUiEs;
+        case tgc::kUiLangFrench: return &kUiFr;
+        case tgc::kUiLangPortuguese: return &kUiPt;
+        default: return &kUiEn;
+    }
 }
 
-// The language the screens are in now ("en", "es"): the Language setting, or
-// the pack's language under Auto, as setUiForLang() last resolved it.
-const char* uiLangCode() { return gUi == &kUiEs ? "es" : "en"; }
+// The pack's language (or the explicit preference) selects the table; anything
+// else, including no pack yet, is English.
+void setUiForLang(const char* lang) {
+    const char* code = tgc::uiLangCodeFor(gUiLangPref, lang);
+    if (std::strcmp(code, "es") == 0) gUi = &kUiEs;
+    else if (std::strcmp(code, "fr") == 0) gUi = &kUiFr;
+    else if (std::strcmp(code, "pt") == 0) gUi = &kUiPt;
+    else gUi = &kUiEn;
+}
+
+// The language the screens are in now ("en", "es", "fr" or "pt").
+const char* uiLangCode() {
+    if (gUi == &kUiEs) return "es";
+    if (gUi == &kUiFr) return "fr";
+    if (gUi == &kUiPt) return "pt";
+    return "en";
+}
 
 }  // namespace app
 }  // namespace tgc

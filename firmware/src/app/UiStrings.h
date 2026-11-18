@@ -1,6 +1,7 @@
 #pragma once
 // The on-device UI strings: the table every screen reads through ui(), the
-// English and Spanish tables (UiStrings.cpp) and the UI-language preference.
+// English, Spanish, French and Portuguese tables (UiStrings.cpp,
+// UiStringsFrPt.cpp) and the UI-language preference.
 #include "board/Board.h"
 
 namespace tgc {
@@ -80,10 +81,10 @@ struct UiStrings {
     const char* statsTimeHM;     // "%uh %um"
     const char* statsTimeMS;     // "%um %us"
     const char* statsTimeS;      // "%us"
-    // UI-language picker: the title and the three rows (endonyms, same in every
+    // UI-language picker: the title and the rows (endonyms, same in every
     // table so a user can find their language whatever the current one is).
     const char* langTitle;
-    const char* langRows[3];
+    const char* langRows[5];
     // First-boot language picker (drawFirstLang()): the hint bar's words, which
     // the picker takes from the table of the highlighted row's language.
     const char* firstLangTap;
@@ -427,6 +428,11 @@ struct UiStrings {
 
 extern const UiStrings kUiEn;
 extern const UiStrings kUiEs;
+extern const UiStrings kUiFr;
+extern const UiStrings kUiPt;
+
+// The table for a stored preference (Auto/unknown -> English).
+const UiStrings* uiTableForPref(int pref);
 
 extern const UiStrings* gUi;  // English until a pack says otherwise
 inline const UiStrings& ui() { return *gUi; }

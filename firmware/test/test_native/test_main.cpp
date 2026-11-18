@@ -1985,30 +1985,36 @@ void test_streamed_string_cache_and_pool_end() {
 void setUp() {}
 void tearDown() {}
 
-// The UI-language preference: Auto follows the pack, English/Spanish force the
-// table, and anything unknown falls back to Auto. Pure (ui/UiLang.h).
+// The UI-language preference: Auto follows the pack, English/Spanish/French/
+// Portuguese force the table, and anything unknown falls back to Auto. Pure
+// (ui/UiLang.h).
 void test_ui_lang_code() {
     using tgc::uiLangCodeFor;
     using tgc::kUiLangAuto;
     using tgc::kUiLangEnglish;
     using tgc::kUiLangSpanish;
+    using tgc::kUiLangFrench;
+    using tgc::kUiLangPortuguese;
 
     // Auto reproduces today's pack-driven behaviour.
     TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(kUiLangAuto, "es"));
     TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(kUiLangAuto, "en"));
-    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(kUiLangAuto, "fr"));
+    TEST_ASSERT_EQUAL_STRING("fr", uiLangCodeFor(kUiLangAuto, "fr"));
+    TEST_ASSERT_EQUAL_STRING("pt", uiLangCodeFor(kUiLangAuto, "pt"));
     TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(kUiLangAuto, ""));
     TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(kUiLangAuto, nullptr));
 
     // Explicit choices ignore the pack.
     TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(kUiLangEnglish, "es"));
     TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(kUiLangSpanish, "en"));
+    TEST_ASSERT_EQUAL_STRING("fr", uiLangCodeFor(kUiLangFrench, "en"));
+    TEST_ASSERT_EQUAL_STRING("pt", uiLangCodeFor(kUiLangPortuguese, "en"));
     TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(kUiLangSpanish, ""));
-    TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(kUiLangSpanish, nullptr));
+    TEST_ASSERT_EQUAL_STRING("fr", uiLangCodeFor(kUiLangFrench, nullptr));
 
     // Unknown values behave like Auto.
     TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(99, "es"));
-    TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(-1, "fr"));
+    TEST_ASSERT_EQUAL_STRING("fr", uiLangCodeFor(-1, "fr"));
 }
 
 // The first-boot language picker: only with no stored preference and no deck;
@@ -2024,18 +2030,22 @@ void test_first_boot_lang_picker() {
     TEST_ASSERT_FALSE(firstBootLangPicker(true, false));   // chosen before (Auto too), decks gone
     TEST_ASSERT_FALSE(firstBootLangPicker(true, true));    // an ordinary boot
 
-    TEST_ASSERT_EQUAL(2, tgc::kFirstBootLangRows);
+    TEST_ASSERT_EQUAL(4, tgc::kFirstBootLangRows);
     TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(tgc::kFirstBootLangDefaultRow));
     TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(0));
     TEST_ASSERT_EQUAL(tgc::kUiLangSpanish, firstBootLangPref(1));
+    TEST_ASSERT_EQUAL(tgc::kUiLangFrench, firstBootLangPref(2));
+    TEST_ASSERT_EQUAL(tgc::kUiLangPortuguese, firstBootLangPref(3));
     TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(-1));
-    TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(2));
+    TEST_ASSERT_EQUAL(tgc::kUiLangEnglish, firstBootLangPref(4));
     for (int row = 0; row < tgc::kFirstBootLangRows; ++row)
         TEST_ASSERT_NOT_EQUAL(tgc::kUiLangAuto, firstBootLangPref(row));
 
     // Before any deck, and after a deck in the other language.
     TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(firstBootLangPref(1), nullptr));
     TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(firstBootLangPref(0), nullptr));
+    TEST_ASSERT_EQUAL_STRING("fr", uiLangCodeFor(firstBootLangPref(2), nullptr));
+    TEST_ASSERT_EQUAL_STRING("pt", uiLangCodeFor(firstBootLangPref(3), nullptr));
     TEST_ASSERT_EQUAL_STRING("es", uiLangCodeFor(firstBootLangPref(1), "en"));
     TEST_ASSERT_EQUAL_STRING("en", uiLangCodeFor(firstBootLangPref(0), "es"));
 }

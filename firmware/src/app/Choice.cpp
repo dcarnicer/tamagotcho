@@ -34,7 +34,7 @@ namespace {
 
 Choice gChoice = Choice::NewPerDay;
 int gChoiceCount = 0;
-uint16_t gChoiceValues[4] = {0, 0, 0, 0};
+uint16_t gChoiceValues[5] = {0, 0, 0, 0, 0};
 int gChoiceSaved = -1;  // row of the saved value, -1 when none (Forget Wi-Fi)
 
 }  // namespace
@@ -213,10 +213,12 @@ void openChoice(Choice which) {
         return;
     }
     if (which == Choice::UiLang) {
-        gChoiceCount = 3;
+        gChoiceCount = 5;
         gChoiceValues[0] = tgc::kUiLangAuto;
         gChoiceValues[1] = tgc::kUiLangEnglish;
         gChoiceValues[2] = tgc::kUiLangSpanish;
+        gChoiceValues[3] = tgc::kUiLangFrench;
+        gChoiceValues[4] = tgc::kUiLangPortuguese;
         saved = gUiLangPref;  // rows are in preference order
         if (saved < 0 || saved >= gChoiceCount) saved = -1;
         showChoice(saved);

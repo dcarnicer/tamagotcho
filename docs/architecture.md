@@ -72,7 +72,7 @@ an anonymous namespace.
 | file          | owns |
 |---------------|------|
 | `App`         | The shared context: the open deck (`gPack`, its file `gSource`, `gRender`), `gRng`, the SRS store, its file and the queue (`gSrs`, `gSrsIo`, `gQueue`, `gDirty`, `gSrsLoaded`), the `Screen` enum with `gScreen` and `gBeforeMenu`, the NVS namespace (`gPrefs`), `QLOG`, and the declarations of `drawScreen()` / `handleInput()` (defined in `main.cpp`) |
-| `UiStrings`   | `UiStrings` (every on-device string), the English and Spanish tables, `ui()`, `keysOr()`, the UI-language preference |
+| `UiStrings`   | `UiStrings` (every on-device string), the English, Spanish, French and Portuguese tables, `ui()`, `keysOr()`, the UI-language preference |
 | `Display`     | The back buffer (`gCanvas`, `W`, `H`), `present()` / `presentRegion()`, a list's focus move and partial push, the rotation and the Auto orientation |
 | `ScreenKit`   | What the screens are drawn from: the header, the hint bar in the board's terms (`boardHints()`), caption lines, a list's geometry and note line, the error and notice screens |
 | `Quiz`        | The next queue item (`nextItem()`: a question, an intro card or the done screen; `showNextItem()`, `refreshAfterRebuild()`), the quiz screen and its geometry and tiles, the answer and its grade, `quizLoop()`, the "study more" override |
