@@ -1,12 +1,12 @@
 # Meaning overrides for `tamagotcho-pack build --meaning-order` (docs/meaning-order.md).
 # Authored by the Tamagotcho project; distributed with the packs under CC BY-SA
 # (docs/data-sources.md). Only for clear errors in JLPT N5-N1 that the learner
-# signal and the English-Spanish matching leave; each line puts one of
-# KANJIDIC2's own meanings for that kanji and language first (never new text).
-# An English line also steers the Spanish order, which follows the English one.
+# signal and the dictionary matching leave; each line puts one of KANJIDIC2's
+# own meanings for that kanji and language first (never new text).
+# An English line also steers the translated order, which follows the English one.
 #
-# Columns (tab-separated): kanji, language (en/es), the meaning to put first,
-# more meanings to follow it ("; "-separated, may be empty), the reason.
+# Columns (tab-separated): kanji, language (en/es/fr/pt), the meaning to put
+# first, more meanings to follow it ("; "-separated, may be empty), the reason.
 中	es	dentro		JLPT words favour "middle" (centro); keep "inside" (中に), as in the English list
 学	es	estudiar		the verb, as 見 ver and 書 escribir (学ぶ); KANJIDIC2 has no "aprender"
 円	en	yen		"circle" and "round" come first; at N5 円 is the yen (百円)
