@@ -274,7 +274,10 @@ translates English, so there is no base list to reorder.
 
 `uv run python scripts/meaning_order_report.py` (after `fetch --readings
 --meanings`) prints all of this, and `--tsv` writes every change. 2,383 kanji
-(JLPT N5-N1 ∪ Jōyō).
+(JLPT N5-N1 ∪ Jōyō). The counts below are the 2026-10-20 Spanish run; the
+later N2/N1 reviews and the fr/pt decks are described above, and a fresh run
+gives the current totals (523 English and 687 Spanish first meanings, 71
+override lines).
 
 - **English**: first meaning changed for 524 kanji, stored meanings for 258;
   19 English overrides.
