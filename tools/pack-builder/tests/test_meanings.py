@@ -27,14 +27,19 @@ from tamagotcho_pack.meanings import (
     en_variants,
     es_heads,
     es_variants,
+    fr_variants,
     gloss_match,
     gloss_tokens,
     load_freedict,
     load_learner_vocab,
     load_overrides,
+    load_wikdict_sqlite,
     norm_en,
     norm_es,
+    norm_fr,
+    norm_pt,
     parse_jmdict_glosses,
+    pt_variants,
     reorder_raw,
     same_stem,
 )
@@ -60,12 +65,13 @@ ENTRIES = {
 }
 
 
-def tei(entries=ENTRIES) -> bytes:
+def tei(entries=ENTRIES, lang: str = "es") -> bytes:
     body = "".join(
         f'<entry><form><orth>{en}</orth></form><gramGrp><pos>v</pos></gramGrp>'
-        f'<sense><cit type="trans" xml:lang="es">{"".join(f"<quote>{q}</quote>" for q in es)}'
+        f'<sense><cit type="trans" xml:lang="{lang}">'
+        f'{"".join(f"<quote>{q}</quote>" for q in tr)}'
         f'</cit><sense><def>…</def></sense></sense></entry>'
-        for en, es in entries.items())
+        for en, tr in entries.items())
     return ('<?xml version="1.0" encoding="UTF-8"?>'
             '<TEI xmlns="http://www.tei-c.org/ns/1.0"><teiHeader/><text><body>'
             f'{body}</body></text></TEI>').encode()
@@ -79,6 +85,16 @@ def tar_xz(path, data: bytes):
         info = tarfile.TarInfo("eng-spa/COPYING")
         info.size = 2
         t.addfile(info, io.BytesIO(b"cc"))
+    return path
+
+
+def sqlite_dict(path, rows):
+    """A miniature WikDict SQLite export: simple_translation rows."""
+    con = sqlite3.connect(path)
+    con.execute("create table simple_translation (written_rep text, trans_list text)")
+    con.executemany("insert into simple_translation values (?, ?)", rows)
+    con.commit()
+    con.close()
     return path
 
 
@@ -97,6 +113,12 @@ def test_normalisation():
     assert norm_es("llevar (en coche") == "llevar"      # a gloss KANJIDIC2 split mid-parenthesis
     assert es_variants("levantarse") == ["levantarse", "levantar"]
     assert es_variants("debajo de") == ["debajo de", "debajo"]
+    assert norm_fr("L'école (bâtiment)") == "ecole"
+    assert fr_variants("se lever") == ["se lever", "lever"]
+    assert fr_variants("au bout de") == ["au bout de", "au bout"]
+    assert norm_pt("A escola (prédio)") == "escola"
+    assert pt_variants("se levantar") == ["se levantar", "levantar"]
+    assert pt_variants("em cima de") == ["em cima de", "em cima"]
     known = {"go", "place", "crown"}
     assert en_variants("going", known) == ["going", "go"]
     assert en_variants("places", known) == ["places", "place"]
@@ -136,6 +158,20 @@ def test_load_freedict_archive_without_tei(tmp_path):
         t.addfile(info, io.BytesIO(b""))
     with pytest.raises(ValueError):
         load_freedict(p)
+
+
+def test_load_wikdict_sqlite(tmp_path):
+    p = sqlite_dict(tmp_path / "en-fr.sqlite3", [
+        ("hold", "tenir | avoir"),
+        ("line", "ligne"),
+        ("se lever", "lever"),
+        ("", "ignored"),
+    ])
+    d = load_wikdict_sqlite(p, "fr")
+    assert d.get("hold") == {"tenir", "avoir"}
+    assert d.get("line") == {"ligne"}
+    assert d.get("se lever") == {"lever"}  # the English head is normalised
+    assert "" not in d.trans
 
 
 # --- ordering -----------------------------------------------------------------------
@@ -319,7 +355,7 @@ def test_check_overrides_only_kanjidic2_meanings():
 def test_committed_overrides_parse():
     ov = load_overrides(paths.MEANING_OVERRIDES)
     assert 0 < len(ov) <= 80  # clear errors only; keep the table small
-    assert {lang for _, lang in ov} <= {"en", "es"}
+    assert {lang for _, lang in ov} <= {"en", "es", "fr", "pt"}
 
 
 @pytest.mark.skipif(not paths.KANJIDIC_GZ.exists(), reason="run `tamagotcho-pack fetch`")
@@ -398,6 +434,7 @@ KD2 = """<?xml version="1.0" encoding="UTF-8"?><kanjidic2>
 <meaning m_lang="es">periodo</meaning><meaning m_lang="es">posesión</meaning>
 <meaning m_lang="es">sostener</meaning>
 <meaning m_lang="fr">porter</meaning><meaning m_lang="fr">tenir</meaning>
+<meaning m_lang="pt">carregar</meaning><meaning m_lang="pt">ter</meaning>
 </rmgroup></reading_meaning></character>
 <character><literal>私</literal><codepoint><cp_value cp_type="ucs">79c1</cp_value></codepoint>
 <misc><grade>6</grade><stroke_count>7</stroke_count></misc>
@@ -405,6 +442,7 @@ KD2 = """<?xml version="1.0" encoding="UTF-8"?><kanjidic2>
 <meaning>private</meaning><meaning>I</meaning><meaning>me</meaning>
 <meaning m_lang="es">privado</meaning><meaning m_lang="es">yo</meaning>
 <meaning m_lang="fr">privé</meaning><meaning m_lang="fr">je</meaning>
+<meaning m_lang="pt">particular</meaning><meaning m_lang="pt">eu</meaning>
 </rmgroup></reading_meaning></character>
 </kanjidic2>"""
 
@@ -425,6 +463,17 @@ def fake_inputs(monkeypatch, tmp_path):
     monkeypatch.setattr(paths, "JLPT_VOCAB", vocab_files(tmp_path))
     monkeypatch.setattr(paths, "MEANING_OVERRIDES", ov)
     monkeypatch.setattr(paths, "FREEDICT_ENG_SPA", tar_xz(tmp_path / "eng-spa.src.tar.xz", tei()))
+    fra = sqlite_dict(tmp_path / "en-fr.sqlite3", [
+        ("hold", "tenir"), ("have", "avoir | tenir"), ("private", "prive"),
+        ("I", "je"), ("me", "moi"),
+    ])
+    por = sqlite_dict(tmp_path / "en-pt.sqlite3", [
+        ("hold", "ter"), ("have", "ter | possuir"), ("private", "particular"),
+        ("I", "eu"), ("me", "me"),
+    ])
+    monkeypatch.setitem(paths.MEANING_DICTS, "es", paths.FREEDICT_ENG_SPA)
+    monkeypatch.setitem(paths.MEANING_DICTS, "fr", fra)
+    monkeypatch.setitem(paths.MEANING_DICTS, "pt", por)
     seen = {}
 
     def fake(cards, *a, **kw):
@@ -479,19 +528,24 @@ def test_cli_default_keeps_kanjidic2_order(fake_inputs, tmp_path):
     assert cards["私"].meanings == ["private", "I", "me"]
 
 
-def test_cli_meaning_order_french_keeps_its_order(fake_inputs, tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(paths, "FREEDICT_ENG_SPA", tmp_path / "missing.tar.xz")  # not read
+def test_cli_meaning_order_french(fake_inputs, tmp_path, capsys):
     cards = build_cards(fake_inputs, tmp_path, "--lang", "fr", "--meaning-order")
-    # Not reordered, but every meaning still keeps meaning distractors away.
-    assert cards["持"].meanings == ["porter", "tenir"]
-    assert cards["持"].valid_meanings == ["porter", "tenir"]
-    assert "no dictionary" in capsys.readouterr().err
+    assert cards["持"].meanings == ["tenir", "porter"]
+    assert cards["私"].meanings == ["je", "privé"]
+    assert "no dictionary" not in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("missing", ["FREEDICT_ENG_SPA", "JMDICT_GZ"])
-def test_cli_meaning_order_needs_fetch(fake_inputs, monkeypatch, tmp_path, capsys, missing):
-    monkeypatch.setattr(paths, missing, tmp_path / "missing")
-    rc = cli.main(["build", "--jlpt", "4", "--lang", "es", "--meaning-order",
+def test_cli_meaning_order_portuguese(fake_inputs, tmp_path, capsys):
+    cards = build_cards(fake_inputs, tmp_path, "--lang", "pt", "--meaning-order")
+    assert cards["持"].meanings == ["ter", "carregar"]
+    assert cards["私"].meanings == ["eu", "particular"]
+    assert "no dictionary" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("lang", ["es", "fr", "pt"])
+def test_cli_meaning_order_needs_fetch(fake_inputs, monkeypatch, tmp_path, capsys, lang):
+    monkeypatch.setitem(paths.MEANING_DICTS, lang, tmp_path / "missing")
+    rc = cli.main(["build", "--jlpt", "4", "--lang", lang, "--meaning-order",
                    "-o", str(tmp_path / "x.tgc")])
     assert rc == 2
     assert "fetch --readings --meanings" in capsys.readouterr().err
@@ -506,10 +560,12 @@ def test_cli_meaning_order_not_for_wanikani(tmp_path, capsys):
 
 
 def test_fetch_pins_the_dictionary():
-    (url, dest), = fetch.MEANINGS_SOURCES
-    assert dest == paths.FREEDICT_ENG_SPA
-    assert fetch.FREEDICT_ENG_SPA_RELEASE in url and url.endswith(dest.name)
-    assert len(fetch.SHA256[dest]) == 64
+    sources = dict(fetch.MEANINGS_SOURCES)
+    assert set(sources.values()) == {paths.MEANING_DICTS["es"], paths.MEANING_DICTS["fr"],
+                                     paths.MEANING_DICTS["pt"]}
+    for url, dest in fetch.MEANINGS_SOURCES:
+        assert url.endswith(dest.name)
+        assert len(fetch.SHA256[dest]) == 64
 
 
 # --- the real data (skipped without `fetch --readings --meanings`) ------------------------

@@ -162,13 +162,14 @@ it translates, now against the reordered English list:
 
 ### C. Overrides
 
-`tools/pack-builder/data/meaning_overrides.tsv`, 63 lines, written by the
-project for clear errors left in N5-N1: kanji, language, the meaning to put
-first, optionally more to follow it, and the reason. Every listed meaning must
-be one of KANJIDIC2's own meanings for that kanji and language (no new text):
-the builder checks it and refuses to build otherwise, and a test checks the
-committed file against KANJIDIC2. An English override comes before step B, so
-the Spanish order follows it (機 en "machine" gives es "máquina").
+`tools/pack-builder/data/meaning_overrides.tsv`, 71 lines, written by the
+project for clear errors left in N5-N1 (es, fr and pt): kanji, language, the
+meaning to put first, optionally more to follow it, and the reason. Every
+listed meaning must be one of KANJIDIC2's own meanings for that kanji and
+language (no new text): the builder checks it and refuses to build otherwise,
+and a test checks the committed file against KANJIDIC2. An English override
+comes before step B, so the Spanish order follows it (機 en "machine" gives es
+"máquina").
 
 The maintainer's review of the doubtful N5-N4 cases added 12 lines: 学
 estudiar (the verb; KANJIDIC2 has no "aprender"), 円 yen, 着 wear / vestir
@@ -194,9 +195,10 @@ is 槌), 洞 cavidad, 篤 sincero, 票 voto (not "etiqueta") and 繁 exuberante
 Then the builder's existing caps apply (as many as English has, at most
 three). Nothing is added, removed or rewritten.
 
-**Languages.** `en`: steps A and C. `es`: A, B and C (English is reordered
-too: fallback cards show it). `fr`/`pt`: no dictionary, their order is kept (a
-warning says so); English is reordered for their fallback cards.
+**Languages.** `en`: steps A and C. `es`, `fr` and `pt`: A, B and C (English
+is reordered too: fallback cards show it). German and Italian are not offered:
+KANJIDIC2 has no meanings in those languages, so there is no base list to
+reorder (the pinned dictionaries only translate English).
 
 **The invariant.** With the flag, `Card.valid_meanings` holds every KANJIDIC2
 meaning of the card in its language (before the caps), and
@@ -254,12 +256,19 @@ English list has no "say"), 計 (Spanish has no gloss for "plan" but "pensar"),
 
 ### French and Portuguese
 
-`decks.yml` accepts `fr` and `pt`. FreeDict has no WikDict English-French or
-English-Portuguese release, and JMdict has no Portuguese glosses (and French
-ones of unclear licence). So they keep KANJIDIC2's order. An estimate with
-WikDict's unversioned files (translations only, KANJIDIC2's English order)
-says they would change about as much as Spanish: 619 of 2,034 French and 471
-of 1,944 Portuguese first meanings.
+`decks.yml` accepts `fr` and `pt`. KANJIDIC2 has 7,643 French and 6,963
+Portuguese meanings; both are reordered by the same method with **WikDict's
+SQLite exports** en-fr and en-pt (release `2_2026-06`, CC BY-SA 4.0, pinned
+and checked against SHA256). They are smaller than the Spanish TEI's 64k
+headwords — 168,195 and 67,413 `simple_translation` rows — so fewer glosses
+match: in the N5-N4-N3 builds the first meaning changes for 9, 47 and 140
+French cards and 11, 46 and 154 Portuguese ones (Spanish: 14, 45 and 129).
+FreeDict's own eng-fra/eng-por were not used: they are GPL-2+, which cannot be
+mixed into the CC BY-SA packs. Eight fr/pt overrides cover the same clear
+errors as the Spanish ones: 安 pas cher, 計 mesure / medida, 帰 retour à la
+maison / Retôrno a casa, 私 je / Eu and 失 perda. German and Italian are not
+supported: KANJIDIC2 has no meanings in those languages, and WikDict only
+translates English, so there is no base list to reorder.
 
 ## Results
 
@@ -353,7 +362,7 @@ version's Spanish; the stored lists.
 **JLPT N4** (50 English, 45 Spanish) and **N3** (163 English, 130 Spanish):
 the report script lists every change.
 
-**The original override table and the N2/N1 additions** (what the first
+**The original override table and the N2/N1/fr/pt additions** (what the first
 meaning would be without it; the 12 N5-N4 lines are described above):
 
 | kanji | lang | first | without | reason |
@@ -409,13 +418,21 @@ meaning would be without it; the 12 N5-N4 lines are described above):
 | 篤 | es | sincero; serio; genuino; grave (enfermedad) | serio | 篤 is sincere/kind; "serio" is a derived sense |
 | 票 | es | voto; etiqueta; contador de papeletas | etiqueta | 票 is a ballot/vote; "etiqueta" is a minor sense |
 | 繁 | es | exuberante; próspero; sobrecrecido; complejo; problemático; confuso | complejo | 繁 is luxuriant/thick; "complejo" is the 繁雑 sense |
+| 安 | fr | pas cher; paisible; calme; tranquille | paisible | 安い is "cheap"; the reorder keeps "paisible" first |
+| 計 | fr | mesure; planifier; projeter; calcul | planifier | 計 is measure (時計, 計算); "planifier" is 計画 |
+| 帰 | fr | retour à la maison; arriver à; mener à; aboutir à | arriver à | 帰 is the return home (帰る); "arriver à" is a related form |
+| 私 | fr | je; privé; moi | moi | 私 is "I" (わたし); "privé" is the 私的 sense |
+| 計 | pt | medida; desenho; plano; esquema | plano | 計 is measure (時計, 計算); "plano" is 計画 |
+| 帰 | pt | Retôrno a casa; chegar em; conduzir-se; resultar | chegar em | 帰 is the return home (帰る); "chegar em" is a related form |
+| 私 | pt | Eu; particular; me | me | 私 is "I" (わたし); "particular" is the 私的 sense |
+| 失 | pt | perda; erro; falta; desvantagem | erro | 失 is loss (失う); "erro" is the 過失 sense |
 
 Of the original 27 rows, twenty put back KANJIDIC2's own first meaning where a
 step goes wrong (the English signal for 事, 意, 家, 早, 不, 転, 位, 刻, 息, 助,
 収; the Spanish matching for 図, 勉, 申, 過, 御, 構, 合, 組, 確); seven choose
 another of KANJIDIC2's meanings (中 dentro, 屋 shop, 計 medir, 機 machine, 突
 sudden, 説 explicar, 演 representar). The 12 N5-N4 lines are described above;
-the 9 N2 and 15 N1 lines are in the table.
+the 9 N2, 15 N1 and 8 fr/pt lines are in the table.
 
 **Still doubtful** (no override; most are defensible):
 
@@ -429,8 +446,8 @@ the 9 N2 and 15 N1 lines are in the table.
   are defensible (e.g. 堕 "cometer un desliz", 聡 "que aprende rápido", 惨
   "desastroso", 密 "en secreto", 廉 "sincero").
 
-**Built decks.** Every default deck (N5-N1 and Jōyō, es and en, with stroke
-order and `--common-readings`) builds with the flag, validates, and passes
+**Built decks.** Every default deck (N5-N1 and Jōyō, es, en, fr and pt, with
+stroke order and `--common-readings`) builds with the flag, validates, and passes
 `scripts/check_reading_distractors.py` and `scripts/check_meaning_distractors.py`
 (no precomputed meaning distractor shows a meaning of the target, or has the
 target's first among its meanings, checked against KANJIDIC2's full lists).
@@ -449,7 +466,7 @@ glosses and the dictionary).
   `--meaning-order` on every build line, the meaning check after the reading
   check, and the release notes' description and attribution.
 - **Credits**: docs/data-sources.md; `firmware/src/Credits.h` `kMeanings`
-  ("FreeDict/WikDict (Wiktionary), CC BY-SA 3.0"), shown on Settings › Device
+  ("FreeDict/WikDict (Wiktionary), CC BY-SA 3.0/4.0"), shown on Settings › Device
   › About as "Meanings:" / "Significados:" and as a sixth credit in the portal
   page footer. The learner signal's sources (JMdict, the JLPT lists) are
   already credited there.
@@ -457,9 +474,9 @@ glosses and the dictionary).
 
 ## Follow-ups
 
-- French and Portuguese, if those decks are published: needs a pinned
-  English-French/Portuguese dictionary under a compatible licence.
-- Hand-check the N2-N1 changes the report flags, and grow the override table
-  only for clear errors.
+- German and Italian: KANJIDIC2 has no meanings in those languages; a licensed,
+  reviewed base list is needed before decks can exist.
+- French and Portuguese example-word glosses: no reviewed table yet, so their
+  intro cards show the word and reading only (docs/example-words.md).
 - A reverse (Spanish-English) dictionary would close gaps such as 下 debajo
   directly; WikDict's `es-en` exists but is not versioned.

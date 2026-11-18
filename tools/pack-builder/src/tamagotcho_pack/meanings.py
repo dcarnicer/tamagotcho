@@ -15,22 +15,26 @@ A. **English, by a learner signal** (EnglishOrder): every KANJIDIC2 English
    私 "I; me" puts "I" first; 機: 飛行機 "airplane" and 機械 "machine". The
    list is sorted by score, KANJIDIC2's order breaking ties; a meaning with too
    little evidence scores 0.
-B. **Spanish, by the English order** (MeaningOrder), below: each Spanish gloss
-   is matched to the English gloss it translates.
+B. **The deck language, by the English order** (MeaningOrder), below: each
+   gloss is matched to the English gloss it translates. Spanish, French and
+   Portuguese have a pinned English dictionary (FreeDict for Spanish, WikDict
+   for French/Portuguese); German and Italian have no KANJIDIC2 meanings to
+   reorder.
 C. **Overrides**: a short project-authored table
    (`data/meaning_overrides.tsv`) puts one of KANJIDIC2's own meanings first
    where A and B still go wrong (機 máquina). Never new text.
 
-Matching Spanish to English (B):
+Matching the deck language to English (B):
 
 1. **Normalisation**, both languages: lower case, no parentheses, no leading
-   "to"/"to be" (English) or article (Spanish), accents ignored; a Spanish
-   gloss is also tried without a reflexive "-se" and without a trailing
-   preposition (debajo de -> debajo), an English one by its lemma (going ->
-   go) when the dictionary lacks the form.
-2. **Translation** (strong evidence): the Spanish gloss is the English one
-   (hospital, China) or one of its translations in FreeDict's English-Spanish
-   dictionary (WikDict, built from Wiktionary; CC BY-SA 3.0).
+   "to"/"to be" (English) or article; accents ignored; a gloss is also tried
+   without a reflexive ("levantarse" -> "levantar", "se lever" -> "lever") and
+   without a trailing preposition ("debajo de" -> "debajo"), an English one by
+   its lemma (going -> go) when the dictionary lacks the form.
+2. **Translation** (strong evidence): the gloss is the English one
+   (hospital, China) or one of its translations in the pinned dictionary
+   (WikDict, via FreeDict's TEI for Spanish and WikDict's SQLite for
+   French/Portuguese; CC BY-SA 3.0/4.0).
 3. **Related forms** (weak evidence), only for a gloss with no translation
    match against that English gloss: a word sharing a long stem with one of its
    translations (préstamo / prestar for "lend"), a cognate (matrimonio /
@@ -51,6 +55,7 @@ from __future__ import annotations
 
 import io
 import re
+import sqlite3
 import tarfile
 import unicodedata
 import xml.etree.ElementTree as ET
@@ -60,9 +65,10 @@ from pathlib import Path
 
 TEI = "{http://www.tei-c.org/ns/1.0}"
 
-# Languages with a dictionary. fr/pt: no pinned English-French/Portuguese
-# release (docs/meaning-order.md); they keep KANJIDIC2's order.
-LANGS = frozenset({"es"})
+# Languages with a pinned meaning-order dictionary: Spanish (FreeDict's TEI of
+# WikDict) and French/Portuguese (WikDict's SQLite). German and Italian have no
+# KANJIDIC2 meanings to reorder (docs/meaning-order.md).
+LANGS = frozenset({"es", "fr", "pt"})
 
 # Penalty, in English positions, of a match through a related form.
 WEAK = 1
@@ -74,12 +80,47 @@ EN_STOP = frozenset({"a", "an", "the", "of", "for", "to", "be", "in", "on", "at"
                      "something", "someone", "etc"})
 ES_STOP = frozenset({"de", "del", "la", "el", "los", "las", "un", "una", "y", "o", "a", "al", "en",
                      "con", "por", "para", "se", "lo", "su", "sus", "que"})
+FR_STOP = frozenset({"de", "du", "des", "le", "la", "les", "un", "une", "et", "ou", "a", "au",
+                     "aux", "en", "avec", "pour", "par", "se", "son", "sa", "ses", "que", "sur",
+                     "dans"})
+PT_STOP = frozenset({"de", "do", "da", "dos", "das", "o", "a", "os", "as", "um", "uma", "e",
+                     "ou", "em", "no", "na", "nos", "nas", "com", "por", "para", "se", "seu",
+                     "sua", "seus", "suas", "que"})
 _ES_ARTICLE = re.compile(r"^(el|la|los|las|un|una|lo|unos|unas) ")
+_FR_ARTICLE = re.compile(r"^(l'|le |la |les |un |une |des )")
+_PT_ARTICLE = re.compile(r"^(o |a |os |as |um |uma |uns |umas )")
 _EN_PREFIX = re.compile(r"^(to be |to |be )")
+_FR_REFLEXIVE = re.compile(r"^(se |s')")
+_PT_REFLEXIVE = re.compile(r"^(se )")
 _PARENS = re.compile(r"\([^)]*\)")
 _OPEN_PAREN = re.compile(r"\(.*$")   # KANJIDIC2 splits a few glosses inside parentheses
 _SPACES = re.compile(r"\s+")
 _WORD = re.compile(r"[\w'-]+")
+
+
+@dataclass(frozen=True)
+class LangProfile:
+    """How a deck language's glosses are normalised for the dictionary match."""
+    code: str
+    article: re.Pattern[str]
+    reflexive: re.Pattern[str] | None  # a leading se / s'
+    suffix_reflexive: bool             # Spanish -se at the end of an infinitive
+    trailing: re.Pattern[str]          # a trailing preposition to drop
+    stop: frozenset[str]
+    head_split: re.Pattern[str]        # "contador para casas": the head is before it
+
+
+PROFILES: dict[str, LangProfile] = {
+    "es": LangProfile("es", _ES_ARTICLE, None, True,
+                      re.compile(r"^(.*) (de|a|en|con|por)$"), ES_STOP,
+                      re.compile(r" (de|del|para) ")),
+    "fr": LangProfile("fr", _FR_ARTICLE, _FR_REFLEXIVE, False,
+                      re.compile(r"^(.*) (de|du|des|a|au|aux|en|avec|pour|par|sur|dans)$"),
+                      FR_STOP, re.compile(r" (de|du|des|pour) ")),
+    "pt": LangProfile("pt", _PT_ARTICLE, _PT_REFLEXIVE, False,
+                      re.compile(r"^(.*) (de|do|da|dos|das|em|no|na|nos|nas|com|por|para)$"),
+                      PT_STOP, re.compile(r" (de|do|da|para) ")),
+}
 
 
 # --- normalisation ----------------------------------------------------------------
@@ -98,22 +139,60 @@ def norm_en(s: str) -> str:
     return _EN_PREFIX.sub("", _clean(s))
 
 
+def norm_lang(s: str, profile: LangProfile) -> str:
+    """A gloss in `profile`'s language, lower case, without its article or
+    accents: `La línea (texto)` -> `linea`, `l'école` -> `ecole`."""
+    return strip_accents(profile.article.sub("", _clean(s)))
+
+
+def variants_lang(n: str, profile: LangProfile) -> list[str]:
+    """A normalised gloss, then without a reflexive (`levantarse` -> `levantar`,
+    `se lever` -> `lever`) and without a trailing preposition (`debajo de` ->
+    `debajo`, `au bout de` -> `au bout`)."""
+    out = [n]
+    if profile.reflexive is not None:
+        m = profile.reflexive.match(n)
+        if m:
+            out.append(n[m.end():].strip())
+    if profile.suffix_reflexive:
+        m = re.match(r"^(\w+(?:ar|er|ir))se\b(.*)$", n)
+        if m:
+            out.append((m.group(1) + m.group(2)).strip())
+    m = profile.trailing.match(n)
+    if m:
+        out.append(m.group(1))
+    return list(dict.fromkeys(out))
+
+
 def norm_es(s: str) -> str:
     """`La línea (texto)` -> `linea`: no article, no accents."""
-    return strip_accents(_ES_ARTICLE.sub("", _clean(s)))
+    return norm_lang(s, PROFILES["es"])
 
 
 def es_variants(n: str) -> list[str]:
     """A normalised Spanish gloss, then without a reflexive `-se` (levantarse
     -> levantar) and without a trailing preposition (debajo de -> debajo)."""
-    out = [n]
-    m = re.match(r"^(\w+(?:ar|er|ir))se\b(.*)$", n)
-    if m:
-        out.append((m.group(1) + m.group(2)).strip())
-    m = re.match(r"^(.*) (de|a|en|con|por)$", n)
-    if m:
-        out.append(m.group(1))
-    return list(dict.fromkeys(out))
+    return variants_lang(n, PROFILES["es"])
+
+
+def norm_fr(s: str) -> str:
+    """`L'école` -> `ecole`: no article, no accents."""
+    return norm_lang(s, PROFILES["fr"])
+
+
+def fr_variants(n: str) -> list[str]:
+    """A normalised French gloss, then without se/s' and a trailing preposition."""
+    return variants_lang(n, PROFILES["fr"])
+
+
+def norm_pt(s: str) -> str:
+    """`A escola` -> `escola`: no article, no accents."""
+    return norm_lang(s, PROFILES["pt"])
+
+
+def pt_variants(n: str) -> list[str]:
+    """A normalised Portuguese gloss, then without se and a trailing preposition."""
+    return variants_lang(n, PROFILES["pt"])
 
 
 def en_variants(n: str, known) -> list[str]:
@@ -151,13 +230,19 @@ def en_heads(n: str) -> set[str]:
     return {ws[0]} if re.search(r" (of|for) ", n) else {ws[0], ws[-1]}
 
 
+def heads_lang(n: str, profile: LangProfile) -> set[str]:
+    """Head-word candidates of a gloss: the first word before its `de` / `para`
+    split (contador para casas), else the first and last (oficial militar)."""
+    ws = _words(n, profile.stop)
+    if not ws:
+        return set()
+    return {ws[0]} if profile.head_split.search(n) else {ws[0], ws[-1]}
+
+
 def es_heads(n: str) -> set[str]:
     """Head-word candidates of a Spanish gloss: the first word before `de` /
     `para` (contador para casas), else the first and last (oficial militar)."""
-    ws = _words(n, ES_STOP)
-    if not ws:
-        return set()
-    return {ws[0]} if re.search(r" (de|del|para) ", n) else {ws[0], ws[-1]}
+    return heads_lang(n, PROFILES["es"])
 
 
 def _prefix(a: str, b: str) -> int:
@@ -201,8 +286,8 @@ def cognate(a: str, b: str) -> bool:
 
 @dataclass
 class Bilingual:
-    """English headword (normalised) -> its Spanish translations (normalised,
-    with their es_variants)."""
+    """English headword (normalised) -> its translations in the deck language
+    (normalised, with their variants)."""
     trans: dict[str, frozenset[str]]
     _rev: dict[str, frozenset[str]] | None = field(default=None, repr=False)
 
@@ -214,7 +299,7 @@ class Bilingual:
 
     @property
     def rev(self) -> dict[str, frozenset[str]]:
-        """Spanish translation -> the English headwords that list it."""
+        """A translation -> the English headwords that list it."""
         if self._rev is None:
             rev: dict[str, set[str]] = defaultdict(set)
             for e, tr in self.trans.items():
@@ -224,9 +309,13 @@ class Bilingual:
         return self._rev
 
 
-def parse_freedict_tei(source) -> Bilingual:
+def parse_freedict_tei(source, lang: str = "es") -> Bilingual:
     """Read a FreeDict TEI dictionary (a file object or path): each entry's
-    `form/orth` and the `quote`s of its `cit type="trans"` elements."""
+    `form/orth` and the `quote`s of its `cit type="trans"` elements, normalised
+    for `lang` (es, fr or pt)."""
+    if lang not in PROFILES:
+        raise ValueError(f"no FreeDict profile for {lang!r}")
+    profile = PROFILES[lang]
     trans: dict[str, set[str]] = defaultdict(set)
     for _, el in ET.iterparse(source, events=("end",)):
         if el.tag != TEI + "entry":
@@ -239,15 +328,16 @@ def parse_freedict_tei(source) -> Bilingual:
                     continue
                 for q in cit.iter(TEI + "quote"):
                     if q.text and q.text.strip():
-                        trans[k].update(es_variants(norm_es(q.text)))
+                        trans[k].update(variants_lang(norm_lang(q.text, profile), profile))
         el.clear()
     trans.pop("", None)
     return Bilingual({k: frozenset(v - {""}) for k, v in trans.items()})
 
 
-def load_freedict(source: str | Path | bytes) -> Bilingual:
-    """FreeDict's English-Spanish dictionary from its source release
-    (`freedict-eng-spa-<version>.src.tar.xz`, the TEI inside) or a bare TEI file."""
+def load_freedict(source: str | Path | bytes, lang: str = "es") -> Bilingual:
+    """A FreeDict English-`lang` dictionary from its source release
+    (`freedict-eng-<lang>-<version>.src.tar.xz`, the TEI inside) or a bare TEI
+    file. `lang` is es, fr or pt."""
     data = source if isinstance(source, bytes) else Path(source).read_bytes()
     if data[:6] == b"\xfd7zXZ\x00":
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as tar:
@@ -257,8 +347,46 @@ def load_freedict(source: str | Path | bytes) -> Bilingual:
                 raise ValueError("no .tei file in the FreeDict archive")
             f = tar.extractfile(member)
             assert f is not None
-            return parse_freedict_tei(f)
-    return parse_freedict_tei(io.BytesIO(data))
+            return parse_freedict_tei(f, lang)
+    return parse_freedict_tei(io.BytesIO(data), lang)
+
+
+def load_wikdict_sqlite(source: str | Path, lang: str) -> Bilingual:
+    """WikDict's SQLite export (`en-fr.sqlite3`, `en-pt.sqlite3`): its
+    `simple_translation` rows, English `written_rep` -> pipe-separated
+    translations in `lang`, normalised like the FreeDict TEI."""
+    if lang not in PROFILES:
+        raise ValueError(f"no WikDict profile for {lang!r}")
+    profile = PROFILES[lang]
+    trans: dict[str, set[str]] = defaultdict(set)
+    try:
+        con = sqlite3.connect(f"file:{Path(source).as_posix()}?mode=ro", uri=True)
+        try:
+            for english, translations in con.execute(
+                    "select written_rep, trans_list from simple_translation"):
+                if not english or not translations:
+                    continue
+                k = norm_en(english)
+                if not k:
+                    continue
+                for q in translations.split(" | "):
+                    q = q.strip()
+                    if q:
+                        trans[k].update(variants_lang(norm_lang(q, profile), profile))
+        finally:
+            con.close()
+    except sqlite3.Error as e:
+        raise ValueError(f"{source}: {e}") from e
+    trans.pop("", None)
+    return Bilingual({k: frozenset(v - {""}) for k, v in trans.items()})
+
+
+def load_dictionary(source: str | Path | bytes, lang: str = "es") -> Bilingual:
+    """A pinned meaning-order dictionary: a FreeDict TEI archive (Spanish) or a
+    WikDict SQLite file (French/Portuguese), by its extension."""
+    if not isinstance(source, bytes) and Path(source).name.endswith(".sqlite3"):
+        return load_wikdict_sqlite(source, lang)
+    return load_freedict(source, lang)
 
 
 # --- matching ---------------------------------------------------------------------
@@ -266,8 +394,12 @@ def load_freedict(source: str | Path | bytes) -> Bilingual:
 class MeaningOrder:
     """Orders a kanji's glosses in one language by its English glosses."""
 
-    def __init__(self, dic: Bilingual):
+    def __init__(self, dic: Bilingual, lang: str = "es"):
+        if lang not in PROFILES:
+            raise ValueError(f"no meaning-order profile for {lang!r}")
         self.dic = dic
+        self.lang = lang
+        self.profile = PROFILES[lang]
 
     def _keys(self, en: str) -> list[str]:
         return en_variants(norm_en(en), self.dic.trans)
@@ -287,7 +419,7 @@ class MeaningOrder:
         for k in keys:
             if any(" " not in t and any(same_stem(v, t) for v in single) for t in dic.get(k)):
                 return "stem"
-        sh = {w for v in vs for w in es_heads(v)}
+        sh = {w for v in vs for w in heads_lang(v, self.profile)}
         if any(cognate(a, b) for a in sh for k in keys for b in en_heads(k)):
             return "cognate"
         eh = {x for k in keys for w in en_heads(k) for x in en_variants(w, dic.trans)}
@@ -309,7 +441,7 @@ class MeaningOrder:
     def match(self, gloss: str, english: list[str]) -> tuple[int, str] | None:
         """(score, how) of the first English gloss `gloss` matches: its index for
         a translation, index + WEAK for a related form. None: no match."""
-        vs = [v for v in es_variants(norm_es(gloss)) if v]
+        vs = [v for v in variants_lang(norm_lang(gloss, self.profile), self.profile) if v]
         if not vs:
             return None
         best: tuple[int, str] | None = None
@@ -567,12 +699,12 @@ class MeaningStats:
 
 
 def reorder_raw(raw: list, lang: str, english: EnglishOrder | None = None,
-                spanish: MeaningOrder | None = None,
+                translated: MeaningOrder | None = None,
                 overrides: dict[tuple[str, str], Override] | None = None
                 ) -> tuple[list, MeaningStats]:
     """Copies of the RawKanji with their English meanings in the learner order
     (A, when `english` is given) and their `lang` meanings in the order of the
-    (new) English ones (B, when `spanish` is given), overrides applied (C)."""
+    (new) English ones (B, when `translated` is given), overrides applied (C)."""
     overrides = overrides or {}
     st = MeaningStats()
     out = []
@@ -592,8 +724,8 @@ def reorder_raw(raw: list, lang: str, english: EnglishOrder | None = None,
         if lang != "en" and xs:
             st.kanji += 1
             new = list(xs)
-            if spanish and ms.get("en"):
-                ranked = spanish.ranked(xs, ms["en"])
+            if translated and ms.get("en"):
+                ranked = translated.ranked(xs, ms["en"])
                 new = [g for g, _ in ranked]
                 st.glosses += len(xs)
                 st.matched += sum(1 for _, m in ranked if m)

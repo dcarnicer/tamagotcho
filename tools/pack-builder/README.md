@@ -47,9 +47,10 @@ uv run pytest
   list, Tatoeba's Japanese sentence indices, the official Jōyō kanji table
   (PDF) and the tanos.co.uk JLPT vocabulary lists (Internet Archive copies,
   pinned and checked against SHA256). `--meanings` also gets, into
-  `cache/meanings/` (3.7 MB), what `build --meaning-order` reads: FreeDict's
-  English-Spanish dictionary (WikDict, from Wiktionary; the `2025.11.23`
-  release, checked against SHA256). Licences in docs/data-sources.md.
+  `cache/meanings/` (~40 MB), what `build --meaning-order` reads: FreeDict's
+  English-Spanish TEI of WikDict (`2025.11.23`) and WikDict's en-fr/en-pt
+  SQLite exports (`2_2026-06`), all checked against SHA256. Licences in
+  docs/data-sources.md.
 - `build (--jlpt N [--jlpt M ...] [--grade G ... | --joyo] | --kanji-file PATH)
   [--order jlpt|grade|file]
   --lang en|es|fr|pt
@@ -111,24 +112,26 @@ uv run pytest
   (docs/meaning-order.md). English: each KANJIDIC2 meaning is scored by the
   JLPT vocabulary words that contain the kanji, through their JMdict glosses
   (easier levels and words that are more of the kanji count more), so 私
-  "private; I; me" becomes "I; me; private". Spanish: each gloss is matched to
-  the English gloss it translates (FreeDict's dictionary, then related forms: a
+  "private; I; me" becomes "I; me; private". Spanish, French and Portuguese:
+  each gloss is matched to
+  the English gloss it translates (WikDict's dictionaries, then related forms: a
   shared stem, a cognate, head words, a near-synonym) and follows the new
   English order, unmatched glosses last, ties in KANJIDIC2's order (持
   "duración; propiedad" becomes "sostener; mantener"). Last, the project's
   `data/meaning_overrides.tsv` puts a hand-checked KANJIDIC2 meaning first
   where both still go wrong (機 "machine"); the builder refuses an override that
   names a meaning KANJIDIC2 lacks. The caps (as many meanings as English, at
-  most three) apply afterwards. `fr`/`pt` have no dictionary: their order is
-  unchanged (a warning says so). In every language the flag also keeps meaning
+  most three) apply afterwards. German and Italian have no KANJIDIC2 meanings
+  to reorder (a warning says so). In every language the flag also keeps meaning
   distractors away from all of a card's KANJIDIC2 meanings, not only the stored
   ones. Without the flag the output is unchanged; it cannot be combined with
   `--wanikani-token`.
-  `scripts/meaning_order_report.py` prints what it changes for JLPT N5-N1 and
-  the Jōyō kanji (totals per language and level, a sanity table, every N5-N3
-  change, the overrides, the cases to double-check); `scripts/check_meaning_distractors.py out/*.tgc` checks built
-  packs (no meaning distractor shows a meaning of its card, or has the card's
-  first meaning among its own, against KANJIDIC2's full lists).
+  `scripts/meaning_order_report.py` prints the Spanish report for JLPT N5-N1
+  and the Jōyō kanji (totals, a sanity table, every N5-N3 change, the
+  overrides, the cases to double-check); the fr/pt builds print their own
+  first-meaning counts. `scripts/check_meaning_distractors.py out/*.tgc`
+  checks built packs (no meaning distractor shows a meaning of its card, or has
+  the card's first meaning among its own, against KANJIDIC2's full lists).
   `--example-words [--es-glosses PATH]` (needs `fetch --readings`, adds ~20 s)
   adds **example words** for the learning mode's intro card and writes the pack
   in format **v3** (docs/pack-format.md, "Example-words section"; firmware

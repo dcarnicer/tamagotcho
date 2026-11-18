@@ -3806,3 +3806,33 @@ reviewed too; the eleven that also moved the English first meaning are all
 fine (隔, 驚, 厳, 慎, 酔, 騒, 跳, 劣, 訴, 飽, 履). The report now changes 523
 English and 687 Spanish first meanings, with 21 English and 42 Spanish
 overrides in 63 lines; the committed-table test's cap moved to 80.
+
+## 2026-11-18 – French and Portuguese decks, and their meaning order
+
+KANJIDIC2 carries 7,643 French and 6,963 Portuguese meanings, so both can join
+the published deck set without a new base dictionary. `decks.yml` now defaults
+to `es en fr pt` (24 packs from N5 to N1 plus Jōyō). The on-device UI still
+falls back to English for a `fr`/`pt` pack (the language picker stays
+English/Español), and the intro card's example words have no French/Portuguese
+gloss: the pack builder writes no gloss for those languages, and the card
+shows the word and reading alone.
+
+- **Meaning order.** The first usage of the GPL FreeDict eng-fra/eng-por
+  dictionaries was stopped: their TEI headers and `COPYING` are GPL-2+, which
+  cannot be mixed into the CC BY-SA packs. WikDict publishes en-fr/en-pt SQLite
+  exports under CC BY-SA 4.0 (release `2_2026-06`); those are pinned in
+  `fetch.py` and read from `simple_translation` by
+  `load_wikdict_sqlite()`. `load_dictionary()` still reads the Spanish FreeDict
+  TEI. The dictionaries are smaller than eng-spa (168,195 and 67,413 rows), so
+  fewer glosses match; in the N5-N4-N3 builds the first meaning changes for
+  9, 47 and 140 French cards and 11, 46 and 154 Portuguese ones.
+- **Overrides.** Eight fr/pt lines cover the same clear errors as Spanish:
+  安 pas cher, 計 mesure / medida, 帰 retour à la maison / Retôrno a casa, 私
+  je / Eu and 失 perda. All are KANJIDIC2's own meanings; the table stays at
+  71 lines.
+- **German and Italian** remain unsupported: KANJIDIC2 has no meanings in
+  those languages and WikDict only translates English, so there is no base
+  list to reorder. They would need a licensed, reviewed meaning table.
+- **Checks.** N5, N4 and N3 French/Portuguese packs build and validate; the
+  N4 pack is 277,832 B (fr) / 278,012 B (pt), with 297 example words and no
+  gloss. The full four-language deck run is a manual `decks.yml` dispatch.

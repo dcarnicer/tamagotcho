@@ -522,10 +522,11 @@ Prebuilt decks live in their own GitHub release with a fixed tag,
 runs it (manual dispatch only). That release is **never marked "latest"**, so a
 firmware release never hides it, and a rebuild replaces its files in place. It
 holds `*.tgc` packs built with `--strokes` and `--example-words` (the
-intro card's words; Spanish glosses only where the table is reviewed, N5 so
-far) — by default JLPT N5 to N1 and the
-full **Jōyō** deck (2,136 kanji, in school order), each in Spanish and English
-(`n5-es.tgc` ... `n1-en.tgc`, `joyo-es.tgc`, `joyo-en.tgc`) — and the
+intro card's words; Spanish glosses only where the table is reviewed, N5 and
+N4 so far, and none yet for French or Portuguese) — by default JLPT N5 to N1
+and the full **Jōyō** deck (2,136 kanji, in school order), each in English,
+Spanish, French and Portuguese (`n5-en.tgc` ... `n1-pt.tgc`,
+`joyo-en.tgc` ... `joyo-pt.tgc`) — and the
 line-oriented `catalog-v2.txt` the device reads for **Get decks**, with each
 deck's title (format: `tools/pack-builder/README.md`), plus a `catalog-v2.json`
 for people. The `v2` in the catalog's name is the *catalog* format; the one in

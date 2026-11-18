@@ -21,20 +21,21 @@ def cmd_fetch(a) -> int:
 def _meaning_order(raw: list, lang: str, check_raw: list | None = None) -> list | None:
     """`build --meaning-order` (docs/meaning-order.md): English meanings in the
     learner order (JLPT vocabulary + JMdict glosses), Spanish ones in the order
-    of the new English ones (FreeDict's dictionary), then the project's
-    overrides; None after printing an error. fr/pt have no dictionary: they
-    keep KANJIDIC2's order (the flag still reorders the English meanings their
-    fallback cards show, and keeps meaning distractors away from the meanings
-    the pack leaves out: cmd_build). `check_raw` is the full KANJIDIC2 list
+    of the new English ones (FreeDict's dictionary for es/fr/pt), then the
+    project's overrides; None after printing an error. German/Italian have no
+    dictionary and no KANJIDIC2 meanings: they keep KANJIDIC2's order (the flag
+    still reorders the English meanings their fallback cards show, and keeps
+    meaning distractors away from the meanings the pack leaves out: cmd_build).
+    `check_raw` is the full KANJIDIC2 list
     when `raw` is a selection (`--kanji-file`): overrides name kanji that may
     not be in the selection but must still exist in KANJIDIC2."""
-    from .meanings import (LANGS, EnglishOrder, MeaningOrder, check_overrides, load_freedict,
+    from .meanings import (LANGS, EnglishOrder, MeaningOrder, check_overrides, load_dictionary,
                            load_learner_vocab, load_overrides, reorder_raw)
     from .readings import load_jlpt_vocab
 
     need = [paths.JMDICT_GZ, *paths.JLPT_VOCAB.values()]
     if lang in LANGS:
-        need.append(paths.FREEDICT_ENG_SPA)
+        need.append(paths.MEANING_DICTS[lang])
     missing = [p for p in need if not p.exists()]
     if missing:
         print("error: --meaning-order needs " + ", ".join(p.name for p in missing)
@@ -47,7 +48,8 @@ def _meaning_order(raw: list, lang: str, check_raw: list | None = None) -> list 
             raise ValueError(f"{paths.MEANING_OVERRIDES.name}: " + "; ".join(errors))
         english = EnglishOrder(load_learner_vocab(load_jlpt_vocab(paths.JLPT_VOCAB),
                                                   paths.JMDICT_GZ))
-        spanish = MeaningOrder(load_freedict(paths.FREEDICT_ENG_SPA)) if lang in LANGS else None
+        translated = (MeaningOrder(load_dictionary(paths.MEANING_DICTS[lang], lang), lang)
+                      if lang in LANGS else None)
     except (ValueError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return None
@@ -55,7 +57,7 @@ def _meaning_order(raw: list, lang: str, check_raw: list | None = None) -> list 
         print(f"warning: --meaning-order has no dictionary for {lang!r}: its meanings keep "
               "KANJIDIC2's order (meaning distractors avoid every meaning of a card)",
               file=sys.stderr)
-    return reorder_raw(raw, lang, english, spanish, overrides)[0]
+    return reorder_raw(raw, lang, english, translated, overrides)[0]
 
 
 def _common_readings(raw: list, word_data: tuple | None = None) -> tuple[list, object] | None:

@@ -325,8 +325,8 @@ word using it. `*` indented in the Jōyō table, `†` not in it, `ᵇ` bound fo
 - kun'yomi emptied (5; the device asks their on'yomi): 気 (いき, き), 午 (うま),
   百 (もも), 毎 (ごと, ごと.に), 万 (よろず).
 
-**Built decks.** Every default deck (N5-N1 and Jōyō, es and en, with stroke
-order) builds with the flag, validates, and passes
+**Built decks.** Every default deck (N5-N1 and Jōyō, es, en, fr and pt, with
+stroke order) builds with the flag, validates, and passes
 `scripts/check_reading_distractors.py`: no card's precomputed reading
 distractor shows a reading of the target, checked against KANJIDIC2's full
 lists (so the emptied kinds too). That list gives the device fewer than the 3
