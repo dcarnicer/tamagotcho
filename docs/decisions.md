@@ -3852,9 +3852,27 @@ of the highlighted row and titles itself "LANGUAGE / LANGUE".
 - The tables keep every format placeholder in the same order, use the
   Portuguese decimal comma and French "j" for days, and avoid characters
   outside the UI font's Latin-1 coverage.
-- Three long row labels were shortened after a StickS3 screenshot: French
+- Four long row values were shortened after a StickS3 screenshot: French
   `Télécharger` -> `Obtenir` (Get decks), `Mettre à jour` -> `Actualiser`
-  (Updates) and `désactivé` -> `éteint` (Wi-Fi off). The rest fits or
-  ellipsises by design.
+  (Updates) and `désactivé` -> `éteint` (Wi-Fi off), and Portuguese
+  `desligado` -> `off` (Wi-Fi off). The rest fits or ellipsises by design.
 - The **portal page** is still English/Spanish; a French/Portuguese device
   sees the English page for now (`PortalText` is the next translation).
+
+## 2026-11-18 – French and Portuguese N5 example glosses
+
+The builder now chooses the example-gloss table by deck language
+(`paths.EXAMPLE_GLOSSES`: es/fr/pt) and `--glosses` overrides it; the old
+`--es-glosses` stays as an alias. `example_words()` reads a table for any of
+the three languages (the column keeps its historical name `es`).
+`sync-glosses` gained `--lang es|fr|pt`: Spanish drafts still come from
+FreeDict eng-spa; French/Portuguese drafts come from WikDict's en-fr/en-pt
+SQLite `simple_translation` (`translate_wikdict()`).
+
+The N5 French and Portuguese tables were reviewed from the reviewed Spanish N5
+senses, so the three languages teach the same sense: 138 `ok` and 13 `skip`
+each, with the same skipped words. The N5 French/Portuguese packs now carry
+146 example words, all 146 with a gloss (the Spanish N5 review's 5 readings
+with no usable word included). N4-N1 are not in the French/Portuguese tables
+yet; their words show the reading alone. The tables are
+`data/example_glosses_fr.tsv` and `data/example_glosses_pt.tsv`.

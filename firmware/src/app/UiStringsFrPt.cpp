@@ -222,7 +222,7 @@ const UiStrings kUiPt = {
     {"Novos/dia", "Apresentar", "Difícil após", "Passar só", "Leituras on", "Apagar"},
     {"Orientação", "Brilho", "Idioma", "Pulsação", "Data", "Suspender", "Firmware", "Sobre"},
     "ESTUDO", "DISPOSITIVO", "PASSAR SÓ", "PULSAÇÃO", "LEITURAS ON",
-    "%u/dia", "desligado", ",",
+    "%u/dia", "off", ",",
     {"Não", "Rápido", "Normal"},
     {"Curta", "Normal", "Longa"},
     {"Katakana", "Hiragana"},
