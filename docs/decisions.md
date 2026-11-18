@@ -3886,3 +3886,15 @@ decks, so the N4 French and Portuguese packs now gloss all 297 example words
 (the N5 tables' shared words included). N3-N1 and Jōyō remain reading-only:
 the Spanish tables for those levels have not been reviewed yet, and the
 French/Portuguese tables are derived from the Spanish review.
+
+## 2026-11-18 – v0.8.0
+
+A minor release for the two new UI languages: French and Portuguese on-device
+strings and language picker, 24 prebuilt decks, and the reviewed N5/N4
+French/Portuguese example glosses. `docs/releases/v0.8.0.md` is the "What's
+new"; the decks release is `decks-v3` (rebuilt in place). The flash layout is
+unchanged from v0.7.x, so a device on v0.7.2 takes it over the air. M5Burner
+still needs the manual v0.8.0 submission with `Tamagotcho-0.8.0.bin` and
+`tamagotcho-m5burner-0.8.0.zip` (docs/m5burner.md). N3-N1/Jōyō example glosses
+are not in this release; the Spanish tables for those levels must be reviewed
+first.

@@ -65,14 +65,19 @@ card filled during the move, v0.7.0 could stay on "Moving decks to the
 card..." instead of reaching the next screen, which can look like a failed
 boot on a Cardputer with a full card.
 
-**v0.7.2 is the latest release** (2026-11-06): it adds the full-screen notice
-when a newer firmware is found. Submit **v0.7.2** instead of v0.7.1: the
-release carries `Tamagotcho-0.7.2.bin` (the merged image for the Publish
-dialog) and `tamagotcho-m5burner-0.7.2.zip` (the M5Stack-Firmware package).
-Its version description is the "since v0.6.0" block from v0.7.1 plus the
-notice bullet; the v0.7.1 assets remain on their release.
+**v0.7.2** (2026-11-06) adds the full-screen notice when a newer firmware is
+found.
 
-**v0.7.0's new layout** moves the deck storage, so Burning v0.7.0 or v0.7.1
+**v0.8.0 is the latest release** (2026-11-18): French and Portuguese join the
+UI, the language picker and the first-boot question, the deck set grows to 24
+packs, and the N5/N4 French/Portuguese example words get reviewed glosses.
+Submit **v0.8.0**: the release carries `Tamagotcho-0.8.0.bin` (the merged image
+for the Publish dialog) and `tamagotcho-m5burner-0.8.0.zip` (the
+M5Stack-Firmware package). Its version description is the first lines of
+`docs/releases/v0.8.0.md` plus the fresh-install paragraph below (M5Burner
+users come from v0.6.0 or older); the older assets remain on their releases.
+
+**v0.7.0's new layout** moves the deck storage, so Burning v0.7.0 or later
 over v0.6.0 or older loses the decks and the progress as well as the settings.
 The version description has to say so and link the move (docs/user-guide.md,
 "Moving to v0.7.0": the progress backup on the portal first). A device burned
@@ -82,12 +87,11 @@ install it, and to start again from scratch. v0.7.0's version description
 gives its news, the fresh-install warning with the progress backup, and one
 line for everything since v0.4.1.
 
-For v0.7.1 or v0.7.2 use the first lines of `docs/releases/v0.7.1.md` plus
-this paragraph (M5Burner users are coming from v0.6.0 or older); for v0.7.2
-add the notice bullet from `docs/releases/v0.7.2.md`:
+For v0.8.0 use the first lines of `docs/releases/v0.8.0.md` plus this
+paragraph (M5Burner users are coming from v0.6.0 or older):
 
 > **Coming from v0.6.0 or older?** v0.7.0 changed the flash layout, so burning
-> v0.7.1 or v0.7.2 is a fresh install: the settings, decks and progress in the
+> v0.8.0 is a fresh install: the settings, decks and progress in the
 > device's memory are erased. Before flashing, open the portal page ›
 > **Advanced › Progress backup** and download the file; after, download the
 > decks again and restore the progress. Guide:
@@ -96,14 +100,14 @@ add the notice bullet from `docs/releases/v0.7.2.md`:
 | field | value |
 |---|---|
 | Name | `Tamagotcho` |
-| Version | the release tag, e.g. `v0.7.1` |
+| Version | the release tag, e.g. `v0.8.0` |
 | Devices | StickS3, Cardputer ADV |
 | Categories | Development & Learning, Productivity |
 | Project link | `https://github.com/dcarnicer/tamagotcho` |
 | Firmware package | `tamagotcho-m5stack-merged.bin` |
 | Cover | `docs/images/cover.png` (1280x720); `cover-cardputer.png` is the Cardputer's |
 | Description | the text below (shared by all versions) |
-| Version description | the first lines of `docs/releases/<tag>.md`; for v0.7.1 add the fresh-install paragraph above |
+| Version description | the first lines of `docs/releases/<tag>.md`; for v0.8.0 add the fresh-install paragraph above |
 
 ## Description
 

@@ -346,7 +346,10 @@ Scope for now: **kanji only** (no vocabulary decks).
       notice when a newer firmware is found and publishes the M5Burner
       package (`Tamagotcho-<version>.bin`, `tamagotcho-m5burner-<version>.zip`
       and `SHA256SUMS.txt`) as release assets; its notes are
-      `docs/releases/v0.7.2.md`.
+      `docs/releases/v0.7.2.md`. **v0.8.0** (2026-11-18) adds French and
+      Portuguese to the UI and the prebuilt decks (24 packs) and the reviewed
+      N5/N4 French/Portuguese example glosses; its notes are
+      `docs/releases/v0.8.0.md`.
       The **README** is a landing page since 2026-10-21: a cover and a
       gallery of real screens (`tools/screenshots/readme_images.py`, shots
       from a StickS3 through the serial remote), with the long manual moved
