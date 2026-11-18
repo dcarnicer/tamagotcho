@@ -3768,3 +3768,24 @@ any press ends the fade at once before it is handled. The intro and the detail
 card keep the stroke-order animation; a fade on top of it would fight it. No
 "Animations" setting: the fade is 100 ms and never blocks input. The slides
 behind an optional setting remain unbuilt.
+
+## 2026-11-18 – A reader for the quiz trace and a Hard-after recommendation
+
+The "Hard after" default (3 s) has never been calibrated; the roadmap asked
+for it from `TGC_QUIZ_LOG` logs, and there were no logs in the repository. A
+small stdlib tool, `tools/quiz-log/`, now reads a capture:
+
+- It pairs each `A ... rt=...ms grade=...` line with the preceding `Q ...` line,
+  so answers carry their mode (meaning, reading, meaning-to-kanji) and kanji.
+- It reports the correct answers' response-time percentiles, the logged
+  Good/Hard split, the threshold the device was using (inferred from the
+  grades; "unclear" when the capture mixes settings), and what each of the
+  device's choices (1.5 s, 3 s, 5 s, off) would have done.
+- It recommends the smallest choice at or above the `1 - --target-hard`
+  quantile (default 15 % Hard), so the recommendation keeps the Hard share at
+  or below the target. `--max-rt` drops interruptions; `--tsv` writes the
+  parsed answers.
+- Nine stdlib tests cover parsing, percentiles, the threshold inference and
+  the report; CI runs them next to the release tools. The tool only
+  recommends: the setting stays Settings › Study › Hard after, and a capture
+  needs the `sticks3-dev` build and a few days of normal use.

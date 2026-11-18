@@ -859,8 +859,9 @@ changes *which* card the loop asks next and records the outcome.
    `LittleFS` box in its diagram with `state/srs.bin`, and add the sparsity note
    to `firmware/README.md` ("`uploadfs` also clears review progress").
 10. **Hardware pass** — verify flush-on-power-pull loses ≤ 8 answers, tune
-    `slow_ms` with `TGC_QUIZ_LOG` output, and check the flash-write pauses are
-    not visible.
+    `slow_ms` with `TGC_QUIZ_LOG` output (`tools/quiz-log/analyze.py` proposes a
+    threshold from a capture), and check the flash-write pauses are not
+    visible.
 
 ## 9. Open questions / risks
 

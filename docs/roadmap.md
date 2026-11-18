@@ -477,7 +477,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       menu's "Modo configuración" row is "Configurar"; the English "Forget
       network" (cut to "Forget net...") is "Forget Wi-Fi".
       Later: calibrate the "Hard after" thresholds from `TGC_QUIZ_LOG` logs
-      (picking an option on the device takes longer than in Anki).
+      (`tools/quiz-log/analyze.py` proposes a threshold from a capture;
+      picking an option on the device takes longer than in Anki).
 - [x] **Learning mode** (idea, 2026-10-18; approved 2026-10-23; released in
       v0.6.0, 2026-10-24). A mode for
       learning kanji, not only reviewing them: for example, introducing a new

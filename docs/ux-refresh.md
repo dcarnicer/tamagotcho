@@ -794,7 +794,8 @@ The maintainer's answers. Where they differ from §2–§4, these win.
    Device › (Orientation, Brightness, Language, Hold time, Date ›, Sleep,
    About). "Continue" goes; "Speed" becomes "Hard after" / "Difícil tras"
    with today's values for now (to be calibrated from `TGC_QUIZ_LOG` logs:
-   picking an option on the device is slower than in Anki).
+   `tools/quiz-log/analyze.py` picks the threshold from a capture; picking an
+   option on the device is slower than in Anki).
 7. **Hold time: yes; side tap: previous option.** Device › Hold time: Short
    400 / Normal 600 (default) / Long 900 ms; grading still uses the press
    time. In the quiz the side tap moves the focus **up** (previous option)
