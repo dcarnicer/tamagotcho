@@ -23,21 +23,23 @@ module):
 4. **Glosses.** English: the first gloss of the word's first JMdict_e sense
    that is not a transliteration of its reading, if it has at most MAX_GLOSS
    characters, after dropping its parenthesised notes when it is longer (not
-   in the measurement: it saves 水 "water (esp. cool or cold)"). Spanish: only reviewed (`ok`) rows of the project's table
-   `data/example_glosses_es.tsv`, never JMdict's own Spanish glosses (their
-   licence: docs/example-words.md). Other languages, and a word with no
-   gloss: an empty gloss (the device shows the word and its reading).
+   in the measurement: it saves 水 "water (esp. cool or cold)"). Spanish,
+   French and Portuguese: only reviewed (`ok`) rows of the language's table
+   (`data/example_glosses_<lang>.tsv`), never JMdict's own translated glosses
+   (their licence: docs/example-words.md). A word with no gloss: an empty
+   gloss (the device shows the word and its reading).
 
-The Spanish table is filled by `tamagotcho-pack sync-glosses`: picked words it
-lacks are appended as `draft` rows with a suggestion from FreeDict (the
-JMdict_e gloss translated by the dictionary `--meaning-order` pins; wrong for
-about one word in five, hence the review).
+The tables are filled by `tamagotcho-pack sync-glosses`: picked words they
+lack are appended as `draft` rows with a suggestion from FreeDict (Spanish) or
+WikDict (French/Portuguese; the JMdict_e gloss translated by the dictionary
+`--meaning-order` pins; wrong now and then, hence the review).
 """
 
 from __future__ import annotations
 
 import io
 import re
+import sqlite3
 import tarfile
 import unicodedata
 import xml.etree.ElementTree as ET
@@ -377,8 +379,8 @@ class ExampleWord:
 def example_words(picks: list[list[Pick]], info: dict[tuple[str, str], Info], lang: str,
                   table: dict | None = None) -> list[list[ExampleWord]]:
     """The packed words of each card, with the deck language's glosses:
-    English from JMdict_e (english_gloss), Spanish from the `ok` rows of the
-    table (load_gloss_table), none otherwise."""
+    English from JMdict_e (english_gloss), Spanish/French/Portuguese from the
+    `ok` rows of the language's table (load_gloss_table), none otherwise."""
     out = []
     for ps in picks:
         row = []
@@ -388,7 +390,7 @@ def example_words(picks: list[list[Pick]], info: dict[tuple[str, str], Info], la
                 continue
             if lang == "en":
                 gloss = english_gloss(info.get((w.text, w.reading)), w.reading)
-            elif lang == "es" and table:
+            elif table:
                 t = table.get((w.text, w.reading))
                 gloss = t.es if t is not None and t.status == "ok" else ""
             else:
@@ -467,16 +469,18 @@ def skip_words(table: dict[tuple[str, str], GlossRow]) -> frozenset[tuple[str, s
 
 
 TABLE_HEADER = """\
-# Spanish glosses for the example words on the new-kanji intro card
-# (docs/learning-mode.md, decision 9; docs/example-words.md).
+# Glosses for the example words on the new-kanji intro card, in the deck
+# language (docs/learning-mode.md, decision 9; docs/example-words.md).
 # Authored by the Tamagotcho project; distributed with the packs under CC BY-SA
 # 4.0 (docs/data-sources.md). Derived from JMdict_e's English glosses (JMdict,
 # EDRDG, CC BY-SA 4.0) and, where a draft kept its suggestion, from FreeDict's
-# eng-spa dictionary (WikDict, from Wiktionary via DBnary, CC BY-SA 3.0). No
-# text comes from JMdict's own Spanish glosses.
+# eng-spa (WikDict) or WikDict's en-fr/en-pt SQLite exports (CC BY-SA 3.0/4.0).
+# No text comes from JMdict's own translated glosses.
 #
 # Columns (tab-separated), one row per (word, reading): level, kanji, word,
-# reading, en, es, status (draft, ok or skip), note. Only ok rows reach a pack.
+# reading, en, es, status (draft, ok or skip), note. The `es` column holds the
+# deck language's gloss (it keeps the name of the original Spanish table).
+# Only ok rows reach a pack.
 """
 
 
@@ -578,4 +582,38 @@ def translate(glosses: list[str], jm_pos: tuple[str, ...], fd: dict[str, list[Fd
                 continue
             e = next((x for x in entries if x.pos == want), entries[0])
             return e.senses[0][0], g
+    return None
+
+
+def load_wikdict_ordered(source: str | Path) -> dict[str, list[str]]:
+    """WikDict's SQLite export: normalised English headword -> its translations
+    in the deck language, in the dictionary's order (the original text)."""
+    out: dict[str, list[str]] = defaultdict(list)
+    con = sqlite3.connect(f"file:{Path(source).as_posix()}?mode=ro", uri=True)
+    try:
+        for english, translations in con.execute(
+                "select written_rep, trans_list from simple_translation"):
+            if not english or not translations:
+                continue
+            key = norm_en(english)
+            if not key:
+                continue
+            for t in translations.split(" | "):
+                t = re.sub(r"\[\[|\]\]", "", t).strip()
+                if t:
+                    out[key].append(t)
+    finally:
+        con.close()
+    return dict(out)
+
+
+def translate_wikdict(glosses: list[str], table: dict[str, list[str]],
+                      max_len: int = MAX_GLOSS) -> tuple[str, str] | None:
+    """(deck-language gloss, the English gloss used): the first translation
+    WikDict has for one of the English glosses, short enough to show."""
+    for g in glosses:
+        for k in en_keys(g):
+            for t in table.get(norm_en(k), ()):
+                if 0 < len(t) <= max_len:
+                    return t, g
     return None

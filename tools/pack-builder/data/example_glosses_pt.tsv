@@ -1,0 +1,164 @@
+# Glosses for the example words on the new-kanji intro card, in the deck
+# language (docs/learning-mode.md, decision 9; docs/example-words.md).
+# Authored by the Tamagotcho project; distributed with the packs under CC BY-SA
+# 4.0 (docs/data-sources.md). Derived from JMdict_e's English glosses (JMdict,
+# EDRDG, CC BY-SA 4.0) and, where a draft kept its suggestion, from FreeDict's
+# eng-spa (WikDict) or WikDict's en-fr/en-pt SQLite exports (CC BY-SA 3.0/4.0).
+# No text comes from JMdict's own translated glosses.
+#
+# Columns (tab-separated), one row per (word, reading): level, kanji, word,
+# reading, en, es, status (draft, ok or skip), note. The `es` column holds the
+# deck language's gloss (it keeps the name of the original Spanish table).
+# Only ok rows reach a pack.
+level	kanji	word	reading	en	es	status	note
+N5	日,毎	毎日	まいにち	every day; daily	todos os dias	ok	
+N5	日	日	ひ	day; days	dia	ok	
+N5	一	一	いち	one; 1	um	ok	
+N5	一	一つ	ひとつ	one	um	ok	
+N5	人	外国人	がいこくじん	foreigner; foreign citizen; foreign national	estrangeiro	ok	
+N5	人	人	ひと	person; someone; somebody	pessoa	ok	
+N5	年	去年	きょねん	last year	o ano passado	ok	
+N5	年	年	とし	year	ano	ok	
+N5	大	大丈夫	だいじょうぶ	safe; secure; sound	bem, sem problemas	ok	
+N5	大	大きい	おおきい	big; large; great	grande	ok	
+N5	十	十	じゅう	ten; 10	dez	ok	
+N5	十	十	とお	ten; 10	dez	ok	
+N5	二	二	に	two; 2	dois	ok	
+N5	二	二つ	ふたつ	two	dois	ok	
+N5	本	本	ほん	book; volume; script	livro	ok	
+N5	本	本木	もとき	original stock		skip	same word skipped in the Spanish N5 review
+N5	中	中	ちゅう	medium (size); average (grade, level, etc.); middle		skip	same word skipped in the Spanish N5 review
+N5	中	中	なか	inside; interior	interior	ok	
+N5	出	出身	しゅっしん	one's origin (e.g. city, country, parentage, school)	local de origem	ok	
+N5	出	出る	でる	to leave; to exit; to go out	sair	ok	
+N5	三	三	さん	three; 3	três	ok	
+N5	三	三つ	みっつ	three	três	ok	
+N5	見	意見	いけん	opinion; view; comment	opinião	ok	
+N5	見	見る	みる	to see; to look; to watch	ver	ok	
+N5	月	今月	こんげつ	this month	este mês	ok	
+N5	月	毎月	まいつき	every month; each month; monthly	mensalmente	ok	
+N5	生,先	先生	せんせい	teacher; instructor; master	professor	ok	
+N5	生	生まれる	うまれる	to be born	nascer	ok	
+N5	五	五	ご	five; 5	cinco	ok	
+N5	五	五つ	いつつ	five	cinco	ok	
+N5	上	以上	いじょう	not less than ...; ... and over; ... and above	ou mais, a partir de	ok	
+N5	上	上	うえ	above; over; up	em cima	ok	
+N5	四	四	し	four; 4	quatro	ok	
+N5	四	四	よん	four; 4	quatro	ok	
+N5	金	金曜日	きんようび	Friday	sexta	ok	
+N5	金	お金	おかね	money	dinheiro	ok	
+N5	九	九	きゅう	nine; 9	nove	ok	
+N5	九	九つ	ここのつ	nine	nove	ok	
+N5	入	収入	しゅうにゅう	income; earnings; revenue	rendimentos	ok	
+N5	入	入る	はいる	to enter; to come in; to go in	entrar	ok	
+N5	学,校	学校	がっこう	school	escola	ok	
+N5	学	学ぶ	まなぶ	to learn; to study; to take lessons in	aprender	ok	
+N5	円	円	えん	yen (currency of Japan)	iene	ok	
+N5	円	円い	まるい	round; circular; spherical		skip	same word skipped in the Spanish N5 review
+N5	子	お菓子	おかし	confections; sweets; candy	doces	ok	
+N5	子	子供	こども	child; children	criança	ok	
+N5	八	八	はち	eight; 8	oito	ok	
+N5	八	八つ	やっつ	eight	oito	ok	
+N5	六	六	ろく	six; 6	seis	ok	
+N5	六	六つ	むっつ	six	seis	ok	
+N5	下	地下鉄	ちかてつ	subway; metro; underground (railway)	metro	ok	
+N5	下	下	した	below; down; under	embaixo	ok	
+N5	気	元気	げんき	lively; full of spirit; energetic	animado	ok	
+N5	小	小説	しょうせつ	novel; story; (work of) fiction	romance	ok	
+N5	小	小さい	ちいさい	small; little; tiny	pequeno	ok	
+N5	七	七	しち	seven	sete	ok	
+N5	七	七つ	ななつ	seven	sete	ok	
+N5	山	登山	とざん	mountain climbing; mountaineering; ascent of a mountain	alpinismo	ok	
+N5	山	山	やま	mountain; hill	montanha	ok	
+N5	女	女性	じょせい	woman; female	mulher	ok	
+N5	女	女	おんな	woman; female	mulher	ok	
+N5	百	百	ひゃく	hundred; 100	cem	ok	
+N5	先	先	さき	point; tip; end	ponta, à frente	ok	
+N5	名	有名	ゆうめい	famous; well-known	famoso	ok	
+N5	名	名前	なまえ	name	nome	ok	
+N5	川	河川	かせん	rivers		skip	same word skipped in the Spanish N5 review
+N5	川	川	かわ	river; stream	rio	ok	
+N5	千	千	せん	thousand; 1,000	mil	ok	
+N5	千	千葉	ちば	Chiba (city, prefecture)	Chiba	ok	
+N5	水	水曜日	すいようび	Wednesday	quarta	ok	
+N5	水	水	みず	water (esp. cool or cold)	água	ok	
+N5	男	男性	だんせい	man; male	homem	ok	
+N5	男	男	おとこ	man; male	homem	ok	
+N5	土	土曜日	どようび	Saturday	sábado	ok	
+N5	土	土	つち	earth; soil; dirt	terra	ok	
+N5	木	木曜日	もくようび	Thursday	quinta	ok	
+N5	木	木	き	tree; shrub; bush	árvore	ok	
+N5	車	電車	でんしゃ	train; electric train	comboio	ok	translated from the Spanish N5 review
+N5	車	車	くるま	car; automobile; vehicle	carro	ok	
+N5	白	告白	こくはく	confession (to a crime, wrongdoing, etc.); admission	confissão	ok	
+N5	白	白い	しろい	white	branco	ok	
+N5	天	天気	てんき	weather	tempo, clima	ok	
+N5	火	火曜日	かようび	Tuesday	terça	ok	
+N5	火	火	ひ	fire; flame; blaze	fogo	ok	
+N5	右,左	左右	さゆう	left and right; right and left	esquerda e direita	ok	
+N5	右	右	みぎ	right; right-hand side	direita	ok	
+N5	左	左	ひだり	left; left-hand side	esquerda	ok	
+N5	休	休憩	きゅうけい	rest; break; recess	descanso	ok	
+N5	休	休む	やすむ	to be absent; to take a day off	descansar	ok	
+N5	雨	豪雨	ごうう	torrential rain; heavy rain; cloudburst	aguaceiro	ok	
+N5	雨	雨	あめ	rain	chuva	ok	
+N5	国,外	外国	がいこく	foreign country	país estrangeiro	ok	
+N5	国	国	くに	country; state	país	ok	
+N5	長	社長	しゃちょう	company president; manager; director	presidente da empresa	ok	
+N5	長	長い	ながい	long (distance, length)	longo	ok	
+N5	時,間	時間	じかん	time	tempo	ok	
+N5	時	時々	ときどき	sometimes; occasionally; at times	às vezes	ok	
+N5	行	銀行	ぎんこう	bank; banking institution	banco	ok	
+N5	行	行く	いく	to go; to move (towards); to head (towards)	ir	ok	
+N5	後,午	午後	ごご	afternoon; p.m.	a tarde (p. m.)	ok	
+N5	後	後	あと	behind; rear	depois, atrás	ok	
+N5	前	午前	ごぜん	morning; a.m.	a manhã (a. m.)	ok	
+N5	前	前	まえ	in front (of); before (e.g. a building)	à frente, antes	ok	
+N5	間	間	あいだ	space (between); gap; interval	intervalo, espaço	ok	
+N5	東	東京	とうきょう	Tokyo	Tóquio	ok	
+N5	東	東	ひがし	east	este (ponto cardeal)	ok	
+N5	今	今週	こんしゅう	this week	esta semana	ok	
+N5	今	今	いま	now; the present time; just now	agora	ok	
+N5	高	最高	さいこう	best; supreme; wonderful	o melhor, ótimo	ok	
+N5	高	高い	たかい	high; tall	alto, caro	ok	
+N5	外	外	そと	outside; exterior	exterior	ok	
+N5	来	来年	らいねん	next year	o próximo ano	ok	
+N5	来	来る	くる	to come (spatially or temporally); to approach; to arrive	vir	ok	
+N5	話,電	電話	でんわ	telephone call; phone call	telefone	ok	
+N5	話	話	はなし	talk; speech; chat	conversa	ok	
+N5	北	北海道	ほっかいどう	Hokkaido (island, prefectural-level administrative unit)	Hokkaido	ok	
+N5	北	北	きた	north	norte	ok	
+N5	書	図書館	としょかん	library	biblioteca	ok	
+N5	書	書く	かく	to write; to compose; to pen	escrever	ok	
+N5	半	半	はん	half; semi-; partial	metade	ok	
+N5	半	半ば	なかば	middle; halfway; midway	metade, meados	ok	
+N5	西	西洋	せいよう	the West; the Occident; Western countries	Ocidente	ok	
+N5	西	西	にし	west	oeste	ok	
+N5	語	英語	えいご	English (language)	inglês (idioma)	ok	
+N5	語	語る	かたる	to talk about; to speak of; to tell	falar sobre	ok	
+N5	聞	新聞	しんぶん	newspaper	jornal	ok	
+N5	聞	聞く	きく	to hear	escutar, perguntar	ok	
+N5	食	食堂	しょくどう	dining room; dining hall; cafeteria	refeitório	ok	
+N5	食	食べる	たべる	to eat	comer	ok	
+N5	何	幾何	きか	geometry		skip	same word skipped in the Spanish N5 review
+N5	何	何	なに	what	quê	ok	
+N5	南	南部	なんぶ	southern part; the south (of a region)	zona sul	ok	
+N5	南	南	みなみ	south	sul	ok	
+N5	万	万	まん	10,000; ten thousand	dez mil	ok	
+N5	母	祖母	そぼ	grandmother	avó	ok	
+N5	母	母親	ははおや	mother	mãe	ok	
+N5	読	読書	どくしょ	reading (books)	leitura	ok	
+N5	読	読む	よむ	to read	ler	ok	
+N5	友	友人	ゆうじん	friend	amigo	ok	
+N5	友	友達	ともだち	friend; companion	amigo	ok	
+N5	父	祖父	そふ	grandfather	avô	ok	
+N5	父	父親	ちちおや	father	pai	ok	
+N5	本	旗本	はたもと	headquarters (on the battlefield)		skip	same word skipped in the Spanish N5 review
+N5	川	川柳	せんりゅう	senryū; comic haiku; humorous seventeen-mora poem		skip	same word skipped in the Spanish N5 review
+N5	何	幾何学	きかがく	geometry		skip	same word skipped in the Spanish N5 review
+N5	本	大本	おおもと	root; origin; source		skip	same word skipped in the Spanish N5 review
+N5	川	河川敷	かせんじき	flood plain; river terrace; riverside area		skip	same word skipped in the Spanish N5 review
+N5	本	本	もと	origin; source; beginning		skip	same word skipped in the Spanish N5 review
+N5	川	山川	さんせん	mountains and rivers		skip	same word skipped in the Spanish N5 review
+N5	川	四川	しせん	Sichuan (China); Szechuan; Szechwan		skip	same word skipped in the Spanish N5 review
+N5	中	途中	とちゅう	on the way; en route	a meio caminho	ok	

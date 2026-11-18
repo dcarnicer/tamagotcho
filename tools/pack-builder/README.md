@@ -143,21 +143,23 @@ uv run pytest
   docs/example-words.md), each with its reading, the part of the reading the
   kanji reads, and a gloss in the deck's language: English from JMdict_e (its
   first non-romaji gloss, when 24 characters or fewer, if need be without its
-  parenthesised notes), Spanish only from the
-  `ok` rows of `data/example_glosses_es.tsv` (never JMdict's own Spanish
-  glosses), none in French or Portuguese. A word without a gloss is shown with
-  its reading only. The table's `skip` rows apply in every language: the next
+  parenthesised notes), and Spanish, French or Portuguese only from the `ok`
+  rows of that language's table (`data/example_glosses_<lang>.tsv`; never
+  JMdict's own translated glosses). A word without a gloss is shown with its
+  reading only. The table's `skip` rows apply in every language: the next
   candidate is taken. The words' kanji, kana and letters join glyph set 2. It
   is meant with `--common-readings` (the readings the device asks) and cannot
   be combined with `--wanikani-token`. Without the flag the output is
   unchanged.
 - `sync-glosses (--jlpt N [--jlpt M ...] [--joyo] | --kanji-file PATH)
-  [--es-glosses PATH] [--dry-run] [--list] [--show N]` (needs `fetch --readings
-  --meanings`) fills the Spanish table for review: it picks the selection's
+  [--lang es|fr|pt] [--glosses PATH] [--dry-run] [--list] [--show N]` (needs
+  `fetch --readings --meanings`) fills the selected language's table for
+  review: it picks the selection's
   example words as `build --common-readings --example-words` does (honouring
   `skip` rows), appends every picked word the table lacks as a `draft` row at
   the end of the file (level, kanji, word, reading, JMdict_e's first English
-  glosses, a FreeDict suggestion as `es` and a `CHECK:` note; existing rows are
+  glosses, a FreeDict (es) or WikDict (fr/pt) suggestion as `es` and a
+  `CHECK:` note; existing rows are
   never touched), prints which skipped words were replaced by what, and
   reports per level the picked words with an `ok` row and those still lacking
   one (`--list` names them). Run it after a review sets rows to `skip`, and

@@ -125,16 +125,19 @@ def _candidates(cards: list, word_data: tuple) -> tuple[dict, dict]:
     return cands, load_word_info(paths.JMDICT_GZ)
 
 
-def _example_words(cards: list, lang: str, word_data: tuple, table_path: Path) -> list | None:
+def _example_words(cards: list, lang: str, word_data: tuple,
+                   table_path: Path | None) -> list | None:
     """`build --example-words`: each card's words with the deck language's
     glosses (words.py), or None after printing an error."""
     from .words import example_words, load_gloss_table, pick_words, skip_words
 
-    try:
-        table = load_gloss_table(table_path)
-    except ValueError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return None
+    table = {}
+    if table_path is not None and Path(table_path).exists():
+        try:
+            table = load_gloss_table(table_path)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return None
     cands, info = _candidates(cards, word_data)
     picks = pick_words(cards, cands, info, skip_words(table))
     words = example_words(picks, info, lang, table)
@@ -142,12 +145,14 @@ def _example_words(cards: list, lang: str, word_data: tuple, table_path: Path) -
     n = sum(len(ws) for ws in words)
     on = sum(1 for ws in words for w in ws if w.kind == 0)
     glossed = sum(1 for ws in words for w in ws if w.gloss)
-    source = {"en": "JMdict_e", "es": f"the reviewed rows of {table_path.name}"}.get(lang)
+    source = {"en": "JMdict_e", "es": f"the reviewed rows of {table_path.name}",
+              "fr": f"the reviewed rows of {table_path.name}",
+              "pt": f"the reviewed rows of {table_path.name}"}.get(lang)
     print(f"example words: {n} for {len(cards)} cards (on'yomi {on}, kun'yomi {n - on}; "
           f"{kinds - n} asked readings without a usable word); glosses for {glossed} of {n}"
           + (f" from {source}" if source else f" (no gloss source for {lang!r})"))
-    if lang == "es" and not table:
-        print(f"warning: {table_path} not found: Spanish example words have no gloss",
+    if lang in ("es", "fr", "pt") and (table_path is None or not Path(table_path).exists()):
+        print(f"warning: {table_path or lang} not found: {lang} example words have no gloss",
               file=sys.stderr)
     return words
 
@@ -294,7 +299,9 @@ def cmd_build(a) -> int:
         name = a.name or (default_deck_name_from_file(a.kanji_file) if a.kanji_file
                           else default_deck_name(jlpt, grades, joyo=a.joyo))
         if word_data is not None:
-            words = _example_words(cards, a.lang, word_data, Path(a.es_glosses))
+            table_path = (Path(a.glosses) if a.glosses
+                          else paths.EXAMPLE_GLOSSES.get(a.lang))
+            words = _example_words(cards, a.lang, word_data, table_path)
             if words is None:
                 return 2
     if not name.isascii():
@@ -337,20 +344,23 @@ def cmd_build(a) -> int:
 
 
 def cmd_sync_glosses(a) -> int:
-    """`sync-glosses`: append the picked words the Spanish table lacks as
-    draft rows (a FreeDict suggestion, never JMdict's Spanish), touching no
-    existing row, and report what still lacks a reviewed gloss per level."""
+    """`sync-glosses`: append the picked words the language's table lacks as
+    draft rows (a FreeDict or WikDict suggestion, never JMdict's own glosses),
+    touching no existing row, and report what still lacks a reviewed gloss per
+    level."""
     from .kanjidic import JOYO_GRADES, load_new_jlpt, make_cards, parse_kanji_file, parse_kanjidic
     from .words import (KIND_NAME, GlossRow, append_rows, load_freedict_ordered,
-                        load_gloss_table, pick_words, skip_words, translate)
+                        load_gloss_table, load_wikdict_ordered, pick_words, skip_words,
+                        translate, translate_wikdict)
 
     if bool(a.kanji_file) == bool(a.jlpt or a.joyo):
         print("error: give --jlpt N (repeatable) and/or --joyo, or --kanji-file", file=sys.stderr)
         return 2
-    need = [paths.KANJIDIC_GZ, paths.KANJI_JSON, paths.JOYO_PDF, *_word_inputs()]
-    if _missing(need + [paths.FREEDICT_ENG_SPA], "sync-glosses", "--readings --meanings"):
+    dictionary = paths.MEANING_DICTS[a.lang]
+    need = [paths.KANJIDIC_GZ, paths.KANJI_JSON, paths.JOYO_PDF, *_word_inputs(), dictionary]
+    if _missing(need, "sync-glosses", "--readings --meanings"):
         return 2
-    table_path = Path(a.es_glosses)
+    table_path = Path(a.glosses) if a.glosses else paths.EXAMPLE_GLOSSES[a.lang]
     try:
         table = load_gloss_table(table_path)
     except ValueError as e:
@@ -406,16 +416,23 @@ def cmd_sync_glosses(a) -> int:
                                   {"level": level_of(c), "kanji": []})
             if c.char not in e["kanji"]:
                 e["kanji"].append(c.char)
-    fd = load_freedict_ordered(paths.FREEDICT_ENG_SPA)
+    if a.lang == "es":
+        fd = load_freedict_ordered(paths.MEANING_DICTS[a.lang])
+        suggest = lambda eng, pos: translate(eng, pos, fd)  # noqa: E731
+        source = "FreeDict"
+    else:
+        wd = load_wikdict_ordered(paths.MEANING_DICTS[a.lang])
+        suggest = lambda eng, pos: translate_wikdict(eng, wd)  # noqa: E731
+        source = "WikDict"
     added: list[GlossRow] = []
     for key, e in picked.items():
         if key in table:
             continue
         i = info.get(key)
         eng = i.eng if i else []
-        t = translate(eng, i.pos if i else (), fd)
-        note = ("CHECK: FreeDict suggestion (sync-glosses), not reviewed" if t
-                else "CHECK: no FreeDict suggestion (sync-glosses)")
+        t = suggest(eng, i.pos if i else ())
+        note = (f"CHECK: {source} suggestion (sync-glosses), not reviewed" if t
+                else f"CHECK: no {source} suggestion (sync-glosses)")
         added.append(GlossRow(e["level"], ",".join(e["kanji"]), key[0], key[1],
                               "; ".join(eng[:3]), t[0] if t else "", "draft", note))
     if added and not a.dry_run:
@@ -669,36 +686,38 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--meaning-order", action="store_true",
                    help="put each kanji's most useful meaning first (the device shows the "
                         "first): English meanings by the JLPT vocabulary words that use the "
-                        "kanji (their JMdict glosses, easier levels first), Spanish ones in the "
-                        "order of the English ones they translate (an English-Spanish "
-                        "dictionary), then a short hand-checked override table. No meaning is "
-                        "added or removed; fr/pt keep KANJIDIC2's order. In every language, "
-                        "meaning distractors also avoid the meanings the pack leaves out. Needs "
-                        "`fetch --readings --meanings` (docs/meaning-order.md)")
+                        "kanji (their JMdict glosses, easier levels first), Spanish, French and "
+                        "Portuguese ones in the order of the English ones they translate (their "
+                        "pinned dictionaries), then a short hand-checked override table. No "
+                        "meaning is added or removed; German/Italian keep KANJIDIC2's order. In "
+                        "every language, meaning distractors also avoid the meanings the pack "
+                        "leaves out. Needs `fetch --readings --meanings` (docs/meaning-order.md)")
     s.add_argument("--example-words", action="store_true",
                    help="add example words (pack format v3): per card, a common word for its "
                         "asked on'yomi and one for its asked kun'yomi, with the reading and a "
-                        "gloss in the deck's language (English from JMdict_e, Spanish only from "
-                        "the reviewed rows of --es-glosses; none otherwise), and their kanji "
-                        "in glyph set 2. Firmware without v3 support refuses the pack. Needs "
-                        "`fetch --readings`; meant with --common-readings, which orders the "
-                        "readings the device asks")
-    s.add_argument("--es-glosses", default=str(paths.EXAMPLE_GLOSSES_ES), metavar="PATH",
-                   help="the Spanish example-gloss table (default: data/example_glosses_es.tsv); "
-                        "its skip rows apply in every language")
+                        "gloss in the deck's language (English from JMdict_e; Spanish, French "
+                        "and Portuguese from the reviewed rows of --glosses; none otherwise), "
+                        "and their kanji in glyph set 2. Firmware without v3 support refuses "
+                        "the pack. Needs `fetch --readings`; meant with --common-readings, "
+                        "which orders the readings the device asks")
+    s.add_argument("--glosses", "--es-glosses", dest="glosses", default=None, metavar="PATH",
+                   help="the example-gloss table to use (default: the deck language's table, "
+                        "data/example_glosses_<lang>.tsv); its skip rows apply in every language")
     s.add_argument("--name", help="deck name (default derived from filters)")
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(fn=cmd_build)
 
     s = sub.add_parser("sync-glosses",
-                       help="append the example words a deck picks and the Spanish gloss table "
-                            "lacks, as draft rows, and report what lacks a reviewed gloss")
+                       help="append the example words a deck picks and the language's gloss "
+                            "table lacks, as draft rows, and report what lacks a reviewed gloss")
     s.add_argument("--jlpt", type=int, action="append", choices=range(1, 6), metavar="N",
                    help="a JLPT level's deck (repeatable)")
     s.add_argument("--joyo", action="store_true", help="the Joyo deck")
     s.add_argument("--kanji-file", metavar="PATH", help="a deck from a kanji list (as `build`)")
-    s.add_argument("--es-glosses", default=str(paths.EXAMPLE_GLOSSES_ES), metavar="PATH",
-                   help="the table to fill (default: data/example_glosses_es.tsv; created "
+    s.add_argument("--lang", choices=("es", "fr", "pt"), default="es",
+                   help="the gloss language (default: es)")
+    s.add_argument("--glosses", "--es-glosses", dest="glosses", default=None, metavar="PATH",
+                   help="the table to fill (default: data/example_glosses_<lang>.tsv; created "
                         "when missing)")
     s.add_argument("--dry-run", action="store_true", help="report only; write nothing")
     s.add_argument("--list", action="store_true",

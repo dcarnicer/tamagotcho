@@ -144,11 +144,15 @@ def test_example_words_glosses_by_language():
                             parse_furigana(fixture.MINI_FURIGANA), fixture.MINI_VOCAB)
     picks = pick_words(cards, cands, info, skip_words(table))
     gl = {lang: [[w.gloss for w in ws] for ws in example_words(picks, info, lang, table)]
-          for lang in ("en", "es", "fr")}
+          for lang in ("en", "es")}
     assert gl["en"] == [["every day", "day"], ["this month", "moon"], ["volcano", "fire"]]
     # Spanish: ok rows only (今月 is a draft, 月 つき has no row).
     assert gl["es"] == [["todos los días", "día"], ["", ""], ["volcán", "fuego"]]
-    assert gl["fr"] == [["", ""], ["", ""], ["", ""]]
+    # French uses its own table; a missing row is an empty gloss.
+    fr = {("毎日", "まいにち"): GlossRow("N5", "日", "毎日", "まいにち", "every day",
+                                       "tous les jours", "ok", "")}
+    gl_fr = [[w.gloss for w in ws] for ws in example_words(picks, info, "fr", fr)]
+    assert gl_fr == [["tous les jours", ""], ["", ""], ["", ""]]
     ws = example_words(picks, info, "es", table)
     assert (ws[0][0].text, ws[0][0].reading, ws[0][0].span) == ("毎日", "まいにち", (6, 6))
 
@@ -417,6 +421,15 @@ def _freedict(path):
     return path
 
 
+def _wikdict(path, rows):
+    con = sqlite3.connect(path)
+    con.execute("create table simple_translation (written_rep text, trans_list text)")
+    con.executemany("insert into simple_translation values (?, ?)", rows)
+    con.commit()
+    con.close()
+    return path
+
+
 class _Stop(Exception):
     pass
 
@@ -436,6 +449,7 @@ def word_inputs(monkeypatch, tmp_path):
     files["JOYO_PDF"].write_bytes(b"%PDF")
     for name, v in files.items():
         monkeypatch.setattr(paths, name, v)
+    monkeypatch.setitem(paths.MEANING_DICTS, "es", files["FREEDICT_ENG_SPA"])
     vocab = {n: _anki_deck(tmp_path / f"n{n}.anki",
                            [(t, r) for (t, r) in fixture.MINI_VOCAB] if n == 5 else [])
              for n in (5, 4, 3, 2, 1)}
@@ -444,6 +458,23 @@ def word_inputs(monkeypatch, tmp_path):
     table = tmp_path / "glosses.tsv"
     table.write_bytes(fixture.MINI_GLOSSES_ES.read_bytes())
     monkeypatch.setattr(paths, "EXAMPLE_GLOSSES_ES", table)
+    monkeypatch.setitem(paths.EXAMPLE_GLOSSES, "es", table)
+    fr_table = tmp_path / "glosses_fr.tsv"
+    append_rows(fr_table, [
+        GlossRow("N5", "日", "毎日", "まいにち", "every day", "tous les jours", "ok", ""),
+        GlossRow("N5", "日", "日", "ひ", "day", "jour", "ok", ""),
+        GlossRow("N5", "月", "今月", "こんげつ", "this month", "ce mois", "ok", ""),
+        GlossRow("N5", "月", "月", "つき", "moon", "lune", "ok", ""),
+        GlossRow("N5", "火", "火山", "かざん", "volcano", "volcan", "ok", ""),
+        GlossRow("N5", "火", "火", "ひ", "fire", "feu", "ok", ""),
+        GlossRow("N5", "火", "火曜日", "かようび", "Tuesday", "mardi", "skip", "test"),
+    ])
+    monkeypatch.setitem(paths.EXAMPLE_GLOSSES, "fr", fr_table)
+    wik = _wikdict(tmp_path / "en-fr.sqlite3", [
+        ("every day", "tous les jours"), ("day", "jour"), ("this month", "ce mois"),
+        ("moon", "lune"), ("volcano", "volcan"), ("fire", "feu"), ("Tuesday", "mardi"),
+    ])
+    monkeypatch.setitem(paths.MEANING_DICTS, "fr", wik)
     seen = {}
 
     def fake(cards, *a, **kw):
@@ -451,7 +482,7 @@ def word_inputs(monkeypatch, tmp_path):
         raise _Stop()
 
     monkeypatch.setattr(build, "build_pack", fake)
-    return {"seen": seen, "table": table}
+    return {"seen": seen, "table": table, "fr_table": fr_table}
 
 
 def test_cli_build_example_words(word_inputs, tmp_path, capsys):
@@ -464,6 +495,18 @@ def test_cli_build_example_words(word_inputs, tmp_path, capsys):
     assert [(w.text, w.gloss) for w in by["月"]] == [("今月", ""), ("月", "")]
     out = capsys.readouterr().out
     assert "example words: 6 for 3 cards" in out and "glosses for 4 of 6" in out
+
+
+def test_cli_build_example_words_french(word_inputs, tmp_path, capsys):
+    with pytest.raises(_Stop):
+        cli.main(["build", "--jlpt", "5", "--lang", "fr", "--common-readings", "--example-words",
+                  "--glosses", str(word_inputs["fr_table"]), "-o", str(tmp_path / "x.tgc")])
+    seen = word_inputs["seen"]
+    by = {c.char: ws for c, ws in zip(seen["cards"], seen["words"])}
+    assert [(w.text, w.gloss) for w in by["火"]] == [("火山", "volcan"), ("火", "feu")]
+    assert [(w.text, w.gloss) for w in by["月"]] == [("今月", "ce mois"), ("月", "lune")]
+    out = capsys.readouterr().out
+    assert "glosses for 6 of 6" in out and "glosses_fr.tsv" in out
 
 
 def test_cli_build_without_flag_has_no_words(word_inputs, tmp_path):
@@ -510,3 +553,12 @@ def test_cli_sync_glosses(word_inputs, capsys):
 def test_cli_sync_glosses_needs_a_selection(capsys):
     assert cli.main(["sync-glosses"]) == 2
     assert "--jlpt" in capsys.readouterr().err
+
+
+def test_cli_sync_glosses_french(word_inputs, tmp_path, capsys):
+    fresh = tmp_path / "fresh-fr.tsv"
+    assert cli.main(["sync-glosses", "--jlpt", "5", "--lang", "fr",
+                     "--glosses", str(fresh), "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "would append 6 draft row(s)" in out
+    assert "tous les jours" in out or "jour" in out

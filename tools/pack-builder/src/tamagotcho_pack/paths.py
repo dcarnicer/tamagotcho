@@ -39,8 +39,13 @@ WIKDICT_ENG_POR = MEANINGS_DIR / "en-pt.sqlite3"
 # (the FreeDict eng-fra/eng-por are GPL, not usable in CC BY-SA packs).
 MEANING_DICTS = {"es": FREEDICT_ENG_SPA, "fr": WIKDICT_ENG_FRA, "pt": WIKDICT_ENG_POR}
 # Project-authored data, committed (not downloaded): the hand-checked meaning
-# overrides of `build --meaning-order`, and the reviewed Spanish glosses of
-# `build --example-words` (filled by `sync-glosses`).
+# overrides of `build --meaning-order`, and the reviewed example glosses of
+# `build --example-words` (filled by `sync-glosses`). The table holds the gloss
+# in its deck language; the column is named `es` for the original Spanish one.
 DATA = ROOT / "data"
 MEANING_OVERRIDES = DATA / "meaning_overrides.tsv"
 EXAMPLE_GLOSSES_ES = DATA / "example_glosses_es.tsv"
+EXAMPLE_GLOSSES_FR = DATA / "example_glosses_fr.tsv"
+EXAMPLE_GLOSSES_PT = DATA / "example_glosses_pt.tsv"
+EXAMPLE_GLOSSES = {"es": EXAMPLE_GLOSSES_ES, "fr": EXAMPLE_GLOSSES_FR,
+                   "pt": EXAMPLE_GLOSSES_PT}

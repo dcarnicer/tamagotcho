@@ -141,11 +141,13 @@ rare or usually-kana words): N5 1 (天 あめ), N4 2, N3 12, N2 7, N1 325, Jōy�
   temporally)"), so English ≤ 24 is 88-97 % per deck. 333 words have a short
   English gloss and no short Spanish one.
 
-**Review status.** The project table (docs/data-sources.md) is the source of
-the Spanish glosses actually shown. N5 was reviewed on 2026-10-23 and N4 on
-2026-11-18: 274 N4 rows, 267 `ok` and 7 `skip`, after 78 FreeDict suggestions
-were rewritten. The N4 Spanish pack then carries 297 example words, all with a
-gloss; N3-N1 are not in the table yet.
+**Review status.** The project tables (docs/data-sources.md) are the source of
+the glosses actually shown, one per deck language. Spanish N5 was reviewed on
+2026-10-23 and N4 on 2026-11-18: 274 N4 rows, 267 `ok` and 7 `skip`, after 78
+FreeDict suggestions were rewritten. French and Portuguese N5 were reviewed on
+2026-11-18 from the reviewed Spanish N5 senses (138 `ok`, 13 `skip` each); the
+N5 French/Portuguese packs gloss all 146 example words. N4-N1 are not in the
+French/Portuguese tables yet, so those words show their reading alone.
 
 ## Spot check
 

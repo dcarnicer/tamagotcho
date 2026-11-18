@@ -450,20 +450,24 @@ before. With it:
 Packs stay CC BY-SA 4.0. The table's `skip` rows choose which words are
 shown, in every language.
 
-### Spanish example glosses (project-authored)
+### Example gloss tables (project-authored)
 
-- File: `tools/pack-builder/data/example_glosses_es.tsv`, committed in this
-  repository: one row per example word (word, reading) with its Spanish
-  gloss and a review status (`draft`, `ok`, `skip`). `build --example-words
-  --lang es` uses only `ok` rows and leaves every other word without a gloss;
-  `skip` rows are never an example (in any language). `sync-glosses` appends
-  the words a deck picks and the table lacks as `draft` rows, pre-filled with
-  FreeDict's translation of the JMdict_e gloss, for review. Reviewed so far:
-  N5 (2026-10-23) and N4 (2026-11-18).
+- Files: `tools/pack-builder/data/example_glosses_es.tsv`,
+  `example_glosses_fr.tsv` and `example_glosses_pt.tsv`, committed in this
+  repository: one row per example word (word, reading) with the deck
+  language's gloss and a review status (`draft`, `ok`, `skip`). The column is
+  still named `es` (the original Spanish table). `build --example-words
+  --lang <lang>` uses only `ok` rows and leaves every other word without a
+  gloss; `skip` rows are never an example (in any language). `sync-glosses`
+  appends the words a deck picks and the language's table lacks as `draft`
+  rows, pre-filled with FreeDict's or WikDict's translation of the JMdict_e
+  gloss, for review. Reviewed so far: Spanish N5 (2026-10-23) and N4
+  (2026-11-18); French and Portuguese N5 (2026-11-18).
 - Authored by the Tamagotcho project, distributed with the packs under CC BY-SA
   4.0. Derived from JMdict_e's English glosses (EDRDG, CC BY-SA 4.0) and, where
-  a draft kept its suggestion, FreeDict eng-spa (CC BY-SA 3.0, above). No text
-  from JMdict's Spanish glosses (docs/example-words.md, "Alternatives").
+  a draft kept its suggestion, FreeDict eng-spa (CC BY-SA 3.0, above) or
+  WikDict's en-fr/en-pt SQLite exports (CC BY-SA 4.0, above). No text from
+  JMdict's translated glosses (docs/example-words.md, "Alternatives").
 
 Test fixtures: `tools/pack-builder/tests/data/mini_jmdict.xml`,
 `mini_furigana.txt` and `mini_glosses_es.tsv` are hand-written miniatures in
