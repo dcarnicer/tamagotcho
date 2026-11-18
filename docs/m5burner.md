@@ -121,7 +121,7 @@ A new kanji is introduced first: its stroke order, meanings, readings and two ex
 - Learning mode: each new kanji gets an intro card, then is asked again a few cards later
 - Spaced repetition on the device, a daily cap of new cards
 - Stroke order animated from KanjiVG on new kanji and after a mistake
-- 24 free decks: JLPT N5 to N1 and the 2,136 Jōyō kanji, in English, Spanish, French and Portuguese, with example words (glosses in English, Spanish and the French/Portuguese N5 decks), downloaded over Wi-Fi
+- 24 free decks: JLPT N5 to N1 and the 2,136 Jōyō kanji, in English, Spanish, French and Portuguese, with example words (glosses in English, Spanish and the French/Portuguese N5/N4 decks), downloaded over Wi-Fi
 - A web portal on your phone: decks, statistics, uploads
 - The real date from your phone or NTP; dims and sleeps to save the battery
 - Screens in English, Spanish, French or Portuguese; deck meanings in four languages

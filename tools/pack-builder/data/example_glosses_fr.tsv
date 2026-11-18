@@ -162,3 +162,277 @@ N5	本	本	もと	origin; source; beginning		skip	same word skipped in the Spani
 N5	川	山川	さんせん	mountains and rivers		skip	same word skipped in the Spanish N5 review
 N5	川	四川	しせん	Sichuan (China); Szechuan; Szechwan		skip	same word skipped in the Spanish N5 review
 N5	中	途中	とちゅう	on the way; en route	à mi-chemin	ok	
+N4	立	独立	どくりつ	independence; self-reliance; supporting oneself	indépendance	ok	
+N4	立	立つ	たつ	to stand (up); to rise; to get to one's feet	être debout	ok	
+N4	手,運	運転手	うんてんしゅ	driver; chauffeur	conducteur	ok	
+N4	手	手	て	hand; arm	main	ok	
+N4	力	協力	きょうりょく	cooperation; collaboration; help	coopération	ok	
+N4	力	力	ちから	force; strength; might	force	ok	
+N4	目	目的	もくてき	purpose; goal; aim	but	ok	
+N4	目	目	め	eye; eyeball	oeil	ok	
+N4	田	上田	じょうでん	high rice field; very fertile rice field		skip	same word skipped in the Spanish N4 review
+N4	田	稲田	いなだ	paddy field; rice field		skip	same word skipped in the Spanish N4 review
+N4	正	修正	しゅうせい	amendment; correction; revision	correction	ok	
+N4	正	正しい	ただしい	right; correct	correct	ok	
+N4	文	文化	ぶんか	culture; civilization; civilisation	culture	ok	
+N4	文	文	ふみ	letter; note; mail	lettre	ok	
+N4	口	人口	じんこう	population	population	ok	
+N4	口	口	くち	mouth	bouche	ok	
+N4	町	市町村	しちょうそん	cities, towns and villages; municipalities	municipalités	ok	
+N4	町	町	まち	town; block; neighbourhood	village; quartier	ok	
+N4	空	空気	くうき	air; atmosphere	air	ok	
+N4	空	空	そら	sky; the air; the heavens	ciel	ok	
+N4	足	満足	まんぞく	satisfaction; contentment; gratification	satisfaction	ok	
+N4	足	足	あし	foot; paw; arm (of an octopus, squid, etc.)	pied; jambe	ok	
+N4	早	早期	そうき	early stage	phase précoce	ok	
+N4	早	早い	はやい	fast; quick; rapid	tôt	ok	
+N4	字	字	じ	character (esp. kanji); letter; written text	caractère; lettre	ok	
+N4	字	字	あざ	section of village		skip	same word skipped in the Spanish N4 review
+N4	音,楽	音楽	おんがく	music	musique	ok	
+N4	音	音	おと	sound; noise	son	ok	
+N4	花	花瓶	かびん	(flower) vase	vase	ok	
+N4	花	花	はな	flower; blossom; bloom	fleur	ok	
+N4	赤	赤外線	せきがいせん	infrared rays; infrared radiation	rayons infrarouges	ok	
+N4	赤	赤い	あかい	red; crimson; scarlet	rouge	ok	
+N4	青	青年	せいねん	youth; young man	jeune	ok	
+N4	青	青い	あおい	blue; azure	bleu	ok	
+N4	夕	一朝一夕	いっちょういっせき	in a day; in a brief space of time		skip	same word skipped in the Spanish N4 review
+N4	夕	夕方	ゆうがた	early evening (usu. from 3pm to 6pm); dusk	crépuscule	ok	
+N4	犬	愛犬	あいけん	pet dog; beloved dog	chien de compagnie	ok	
+N4	犬	犬	いぬ	dog (Canis (lupus) familiaris); canine	chien	ok	
+N4	会,社	会社	かいしゃ	company; corporation; firm	entreprise	ok	
+N4	会	会う	あう	to meet; to encounter; to see	se rencontrer	ok	
+N4	同	同様	どうよう	same; similar; (just) like	égal	ok	
+N4	同	同じ	おなじ	same; identical; equal	même	ok	
+N4	自	自分	じぶん	myself; yourself; oneself	soi-même	ok	
+N4	自	自ら	みずから	oneself	soi-même	ok	
+N4	社	社	やしろ	(Shinto) shrine	sanctuaire	ok	
+N4	地,図	地図	ちず	map; atlas; chart	carte	ok	
+N4	方	両方	りょうほう	both; both sides; both parties	les deux	ok	
+N4	方	方	かた	direction; way	manière	ok	
+N4	新	新しい	あたらしい	new; novel; fresh	nouveau	ok	
+N4	場	会場	かいじょう	assembly hall; meeting place; venue	lieu	ok	translated from the Spanish N4 review
+N4	場	場合	ばあい	case; occasion; situation	cas	ok	
+N4	明	説明	せつめい	explanation; exposition; description	explication	ok	
+N4	明	明るい	あかるい	light; bright; well-lit	clair	ok	
+N4	通	普通	ふつう	normal; ordinary; regular	normal	ok	
+N4	通	通る	とおる	to go by; to go past; to go along	passer	ok	
+N4	言	言語	げんご	language	langue	ok	
+N4	言	言う	いう	to say; to utter; to declare	dire	ok	
+N4	理	理由	りゆう	reason; grounds; pretext	raison	ok	
+N4	体	全体	ぜんたい	whole; entirety	totalité	ok	
+N4	体	体	からだ	body	corps	ok	
+N4	作	作文	さくぶん	writing (an essay, prose, etc.); composition	rédaction	ok	
+N4	作	作る	つくる	to make; to produce; to manufacture	faire	ok	
+N4	用	用	よう	business; task; errand	affaire; tâche	ok	
+N4	用	用いる	もちいる	to use; to make use of; to utilize	utiliser	ok	
+N4	強,勉	勉強	べんきょう	study	étude	ok	
+N4	強	強い	つよい	strong; potent; competent	fort	ok	
+N4	公	公園	こうえん	(public) park	parc	ok	
+N4	公	公	おおやけ	official; governmental; formal	officiel	ok	
+N4	野	野菜	やさい	vegetable	légume	ok	
+N4	野	野	の	field; plain	champ	ok	
+N4	思	不思議	ふしぎ	wonderful; marvelous; strange	mystérieux	ok	
+N4	思	思う	おもう	to think; to consider; to believe	penser	ok	
+N4	家,族	家族	かぞく	family	famille	ok	
+N4	家	家	いえ	house; residence; dwelling	maison	ok	
+N4	多	多分	たぶん	probably; likely; perhaps	probablement	ok	
+N4	多	多い	おおい	many; numerous; a lot	beaucoup	ok	
+N4	心	安心	あんしん	peace of mind; relief; (sense of) security	tranquillité	ok	
+N4	心	心	こころ	mind; heart; spirit	coeur	ok	
+N4	教	教育	きょういく	education; schooling; training	éducation	ok	
+N4	教	教える	おしえる	to teach; to instruct	enseigner	ok	
+N4	元	地元	じもと	home area; home town	région natale	ok	
+N4	近	最近	さいきん	recently; lately; these days	récemment	ok	
+N4	近	近い	ちかい	near; close; short (distance)	près	ok	
+N4	考	参考	さんこう	reference; consultation	référence	ok	
+N4	考	考える	かんがえる	to think (about, of); to think over; to ponder	penser	ok	
+N4	画,映	映画	えいが	movie; film; motion picture	film	ok	
+N4	海	海岸	かいがん	seashore; coast; seaside	côte	ok	
+N4	海	海	うみ	sea; ocean; waters	mer	ok	
+N4	売	販売	はんばい	sale; sales; selling	vente	ok	
+N4	売	売る	うる	to sell	vendre	ok	
+N4	知	知識	ちしき	knowledge; information	connaissance	ok	
+N4	知	知る	しる	to know; to be aware (of); to be conscious (of)	savoir	ok	
+N4	道	道具	どうぐ	tool; implement; instrument	outil	ok	
+N4	道	道	みち	road; path; street	chemin	ok	
+N4	計	計画	けいかく	plan; project; schedule	plan	ok	
+N4	計	計る	はかる	to measure; to weigh; to survey	mesurer	ok	
+N4	朝	北朝鮮	きたちょうせん	North Korea	Corée du Nord	ok	
+N4	朝	朝	あさ	morning	matin	ok	
+N4	台	台所	だいどころ	kitchen	cuisine	ok	
+N4	広	広告	こうこく	advertisement; advertising	annonce	ok	
+N4	広	広い	ひろい	spacious; vast; wide	vaste	ok	
+N4	少	少女	しょうじょ	girl (usu. between 7 and 17); young lady	fille	ok	
+N4	少	少し	すこし	a little; a bit; a small amount	un peu	ok	
+N4	工	工場	こうじょう	factory; plant; mill	usine	ok	
+N4	止	禁止	きんし	prohibition; inhibition; ban	interdiction	ok	
+N4	止	止まる	とまる	to stop (moving); to come to a stop	s'arrêter	ok	
+N4	切	大切	たいせつ	important; significant; serious	important	ok	
+N4	切	切る	きる	to cut; to cut through; to perform (surgery)	couper	ok	
+N4	楽	楽しい	たのしい	enjoyable; fun; pleasant	amusant	ok	
+N4	店,員	店員	てんいん	employee (of a store); shop assistant; clerk	employé	ok	
+N4	店	店	みせ	store; shop; establishment	magasin	ok	
+N4	親	両親	りょうしん	parents; both parents	parents	ok	
+N4	親	親	おや	parent; parents; mother and father	parents	ok	
+N4	答	回答	かいとう	reply; answer	réponse	ok	
+N4	答	答える	こたえる	to answer; to reply	répondre	ok	
+N4	夜	今夜	こんや	this evening; tonight	ce soir	ok	
+N4	夜	夜	よる	night; evening	nuit	ok	
+N4	帰	帰宅	きたく	returning home; going home; coming home	rentrer	ok	
+N4	帰	帰る	かえる	to return; to come home; to go home	revenir	ok	
+N4	古	中古	ちゅうこ	used; second-hand; old	d'occasion	ok	translated from the Spanish N4 review
+N4	古	古い	ふるい	old; aged; ancient	vieux	ok	
+N4	歌	歌手	かしゅ	singer	chanteur	ok	
+N4	歌	歌う	うたう	to sing	chanter	ok	
+N4	買	売買	ばいばい	trade; buying and selling; trafficking (e.g. of humans, arms, drugs)	achat-vente	ok	
+N4	買	買う	かう	to buy; to purchase	acheter	ok	
+N4	図	図る	はかる	to plan; to attempt; to devise	planifier	ok	
+N4	室	教室	きょうしつ	classroom; lecture room	salle de classe	ok	
+N4	室	室町	むろまち	Muromachi period (1336-1573)	période Muromachi	ok	
+N4	歩	散歩	さんぽ	walk; stroll	promenade	ok	
+N4	歩	歩く	あるく	to walk	marcher	ok	
+N4	風	台風	たいふう	typhoon; hurricane	typhon	ok	
+N4	風	風	かぜ	wind; breeze; draught	vent	ok	
+N4	紙	表紙	ひょうし	cover (of a book, magazine, etc.); binding	couverture	ok	
+N4	紙	紙	かみ	paper	papier	ok	
+N4	黒	黒人	こくじん	black person	personne noire	ok	
+N4	黒	黒い	くろい	black	noir	ok	
+N4	春	青春	せいしゅん	youth; adolescence; springtime of life	jeunesse	ok	
+N4	春	春	はる	spring; springtime	printemps	ok	
+N4	色	特色	とくしょく	characteristic; (distinctive) feature; peculiarity	caractéristique	ok	
+N4	色	色	いろ	colour; color; hue	couleur	ok	
+N4	走	走行	そうこう	running (of a car, bus, etc.); traveling; travelling	circulation	ok	
+N4	走	走る	はしる	to run	courir	ok	
+N4	秋	千秋	せんしゅう	thousand years; many years		skip	same word skipped in the Spanish N4 review
+N4	秋	秋	あき	autumn; fall	automne	ok	
+N4	夏	夏季	かき	summer season; summer; summertime	été	ok	
+N4	夏	夏	なつ	summer	été	ok	
+N4	曜	日曜日	にちようび	Sunday	dimanche	ok	
+N4	肉	肉	にく	flesh	viande	ok	
+N4	鳥	白鳥	はくちょう	swan (Cygnus spp.)	cygne	ok	
+N4	鳥	鳥	とり	bird	oiseau	ok	
+N4	冬	冬季	とうき	winter season; winter	hiver	ok	
+N4	冬	冬	ふゆ	winter	hiver	ok	
+N4	昼	昼食	ちゅうしょく	lunch; midday meal	déjeuner	ok	
+N4	昼	昼	ひる	noon; midday	midi	ok	
+N4	茶	お茶	おちゃ	tea (esp. green or barley)	thé	ok	
+N4	弟	義弟	ぎてい	brother-in-law (spouse's younger brother or younger sister's husband)	beau-frère	ok	
+N4	弟	弟	おとうと	younger brother; little brother; kid brother	frère cadet	ok	
+N4	牛	牛乳	ぎゅうにゅう	(cow's) milk	lait	ok	
+N4	牛	牛	うし	cattle (Bos taurus); cow; bull	vache; taureau	ok	
+N4	魚	金魚	きんぎょ	goldfish (Carassius auratus)	carpe dorée	ok	
+N4	魚	魚	さかな	fish	poisson	ok	
+N4	兄	義兄	ぎけい	brother-in-law (spouse's older brother or older sister's husband)	beau-frère	ok	
+N4	兄	兄	あに	older brother; elder brother	frère aîné	ok	
+N4	妹,姉	姉妹	しまい	sisters	soeurs	ok	
+N4	妹	妹	いもうと	younger sister	soeur cadette	ok	
+N4	姉	姉	あね	older sister; elder sister	soeur aînée	ok	
+N4	事	大事	だいじ	important; serious; crucial	important	ok	
+N4	事,仕	仕事	しごと	work; job; labor	travail	ok	
+N4	発	発音	はつおん	pronunciation	prononciation	ok	
+N4	者,医	医者	いしゃ	doctor; physician	docteur	ok	
+N4	者	者	もの	person	personne	ok	
+N4	業	授業	じゅぎょう	lesson; class; teaching	classe	ok	
+N4	業	仕業	しわざ	deed (esp. negative); act; action	action	ok	
+N4	開,始	開始	かいし	start; commencement; beginning	début	ok	
+N4	開	開く	あく	to open (e.g. doors)	s'ouvrir	ok	
+N4	問,題	問題	もんだい	question (e.g. on a test); problem	problème	ok	
+N4	問	問い合わせ	といあわせ	inquiry; query; enquiry	consultation	ok	
+N4	代	時代	じだい	period; epoch; era	période	ok	
+N4	代	代える	かえる	to replace; to convert; to change	remplacer	ok	
+N4	動,物	動物	どうぶつ	animal	animal	ok	
+N4	動	動く	うごく	to move; to stir; to shift	se déplacer	ok	
+N4	主	御主人	ごしゅじん	your husband; her husband	son mari	ok	
+N4	主	主	おも	chief; main; principal	principal	ok	
+N4	意,味	意味	いみ	meaning; significance; sense	signification	ok	
+N4	度	今度	こんど	this time; now	cette fois	ok	
+N4	度	度	たび	time (three times, each time, etc.); times	fois	ok	
+N4	持	維持	いじ	maintenance; preservation; improvement	entretien	ok	
+N4	持	持つ	もつ	to hold (in one's hand); to take; to carry	tenir	ok	
+N4	世,界	世界	せかい	the world; society; the universe	monde	ok	
+N4	世	世の中	よのなか	society; the world; the times	société	ok	
+N4	安	安全	あんぜん	safety; security	sécurité	ok	
+N4	安	安い	やすい	cheap; inexpensive	bon marché	ok	
+N4	院,病	病院	びょういん	hospital; clinic; doctor's office	hôpital	ok	
+N4	重	重要	じゅうよう	important; essential; significant	important	ok	
+N4	重	重い	おもい	heavy; weighty	lourd	ok	
+N4	集	集中	しゅうちゅう	concentration (on a task); focusing one's attention	concentration	ok	
+N4	集	集める	あつめる	to collect; to assemble; to gather	rassembler	ok	
+N4	物	物	もの	thing; object; article	chose	ok	
+N4	使	大使館	たいしかん	embassy	ambassade	ok	
+N4	使	使う	つかう	to use (a tool, method, etc.); to make use of; to put to use	utiliser	ok	
+N4	品	食料品	しょくりょうひん	foodstuff; groceries	comestibles	ok	
+N4	品	品物	しなもの	article; item; thing	article	ok	
+N4	死	死亡	しぼう	death; dying; mortality	mort	ok	
+N4	死	死ぬ	しぬ	to die; to pass away	mourir	ok	
+N4	始	始め	はじめ	beginning; start; outset	début	ok	
+N4	運	運ぶ	はこぶ	to carry; to transport; to move	porter	ok	
+N4	終	最終	さいしゅう	last; final; closing	dernier	ok	
+N4	終	終る	おわる	to end; to come to an end; to finish	terminer	ok	
+N4	住	住所	じゅうしょ	address (of a home, business, etc.); residence; domicile	direction	ok	
+N4	住	住む	すむ	to live (of humans); to reside; to inhabit	vivre	ok	
+N4	真,写	写真	しゃしん	photograph; photo; picture	photographie	ok	
+N4	真	真ん中	まんなか	middle; centre; center	centre	ok	
+N4	有	有り様	ありさま	state; condition; circumstances	état	ok	
+N4	急	急	きゅう	sudden; abrupt; unexpected	soudain	ok	
+N4	急	急ぐ	いそぐ	to hurry; to rush; to hasten	se dépêcher	ok	
+N4	送	放送	ほうそう	broadcasting; broadcast; program	émission	ok	
+N4	送	送る	おくる	to send; to dispatch; to forward	envoyer	ok	
+N4	転	自転車	じてんしゃ	bicycle; bike	vélo	ok	
+N4	転	転ぶ	ころぶ	to fall down; to fall over	tomber	ok	
+N4	研,究	研究	けんきゅう	research; study; investigation	recherche	ok	
+N4	研	研ぐ	とぐ	to sharpen; to hone; to whet	aiguiser	ok	
+N4	起	起動	きどう	startup; booting up; activation	démarrage	ok	
+N4	起	起きる	おきる	to get up; to rise; to blaze up (fire)	se lever	ok	
+N4	着	到着	とうちゃく	arrival	arrivée	ok	
+N4	着	着る	きる	to wear (from the shoulders down); to put on	porter	ok	
+N4	病	病	やまい	illness; disease	maladie	ok	
+N4	待	期待	きたい	expectation; anticipation; hope	attente	ok	
+N4	待	待つ	まつ	to wait	attendre	ok	
+N4	仕	仕える	つかえる	to serve; to work for; to attend	servir	ok	
+N4	去	去る	さる	to leave; to go away	partir	ok	
+N4	味	味わう	あじわう	to taste; to savor; to savour	savourer	ok	
+N4	写	写す	うつす	to copy; to duplicate; to reproduce	copier	ok	
+N4	注	注意	ちゅうい	attention; notice; heed	attention	ok	
+N4	注	注ぐ	そそぐ	to pour (into)	verser	ok	
+N4	悪	悪魔	あくま	devil; demon; fiend	diable	ok	
+N4	悪	悪い	わるい	bad; poor; undesirable	mauvais	ok	
+N4	屋	屋上	おくじょう	rooftop	terrasse	ok	
+N4	屋	屋根	やね	roof	toit	ok	
+N4	習	習慣	しゅうかん	habit	habitude	ok	
+N4	習	習う	ならう	to take lessons in; to be taught; to learn (from a teacher)	apprendre	ok	
+N4	駅	駅	えき	railway station; train station	gare	ok	
+N4	洋	洋服	ようふく	Western-style clothes (cf. traditional Japanese clothes)	vêtements occidentaux	ok	
+N4	旅	旅行	りょこう	travel; trip; journey	voyage	ok	
+N4	旅	旅	たび	travel; trip; journey	voyage	ok	
+N4	服	服	ふく	clothes (esp. Western clothes); clothing; dress	vêtements	ok	
+N4	飲	飲食	いんしょく	food and drink; eating and drinking	nourriture et boisson	ok	
+N4	飲	飲む	のむ	to drink; to swallow; to take (medicine)	boire	ok	
+N4	漢	漢字	かんじ	kanji; Chinese character	kanji	ok	
+N4	不	不便	ふべん	inconvenience; inexpediency; unhandiness	inconvénient	ok	
+N4	別	別	べつ	distinction; difference; discrimination	différence	ok	
+N4	別	別れる	わかれる	to part (usu. of people); to part from; to part with	se séparer	ok	
+N4	特	特に	とくに	particularly; especially; in particular	particulièrement	ok	
+N4	料	料理	りょうり	cooking; cookery; cuisine	cuisine	ok	
+N4	建	建設	けんせつ	construction; establishment	construction	ok	
+N4	建	建物	たてもの	building	bâtiment	ok	
+N4	試	試合	しあい	match; game; bout	match	ok	
+N4	試	試す	ためす	to try (out); to have a try (at); to test	essayer	ok	
+N4	験	試験	しけん	examination; exam; test	examen	ok	
+N4	借	借金	しゃっきん	debt; loan; liabilities	dette	ok	
+N4	借	借りる	かりる	to borrow	emprunter	ok	
+N4	飯	夕飯	ゆうはん	evening meal; dinner; supper	dîner	ok	
+N4	飯	昼飯	ひるめし	lunch; midday meal	déjeuner	ok	
+N4	質	質問	しつもん	question; inquiry; enquiry	question	ok	
+N4	貸	賃貸	ちんたい	leasing (out); renting out; hiring out	location	ok	
+N4	貸	貸す	かす	to lend; to loan	prêter	ok	
+N4	私	私立	しりつ	private (establishment)	privé	ok	
+N4	私	私	わたくし	I; me	je	ok	
+N4	映	映る	うつる	to be reflected; to harmonize with (harmonise); to come out (photo)	se refléter	ok	
+N4	田	半田	はんだ	solder; pewter		skip	same word skipped in the Spanish N4 review
+N4	字	大字	おおあざ	larger section (of village)		skip	same word skipped in the Spanish N4 review
+N4	田	新田	しんでん	new rice field; newly developed rice field	nouvelle rizière	ok	
+N4	田	田んぼ	たんぼ	rice field; rice paddy; paddy field	rizière	ok	
+N4	夕	今夕	こんせき	this evening; tonight	ce soir	ok	
+N4	秋	千秋楽	せんしゅうらく	final day of a performance; closing date; final show	dernier jour	ok	

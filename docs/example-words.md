@@ -145,9 +145,12 @@ rare or usually-kana words): N5 1 (天 あめ), N4 2, N3 12, N2 7, N1 325, Jōy�
 the glosses actually shown, one per deck language. Spanish N5 was reviewed on
 2026-10-23 and N4 on 2026-11-18: 274 N4 rows, 267 `ok` and 7 `skip`, after 78
 FreeDict suggestions were rewritten. French and Portuguese N5 were reviewed on
-2026-11-18 from the reviewed Spanish N5 senses (138 `ok`, 13 `skip` each); the
-N5 French/Portuguese packs gloss all 146 example words. N4-N1 are not in the
-French/Portuguese tables yet, so those words show their reading alone.
+2026-11-18 from the reviewed Spanish N5 senses (138 `ok`, 13 `skip` each), and
+their N4 on the same day from the Spanish N4 review (267 `ok`, 7 `skip` each).
+The N5 packs gloss all 146 example words and the N4 packs all 297. Spanish and
+French/Portuguese N3-N1 and Jōyō are not in the tables yet, so those words show
+their reading alone; the Spanish N3-N1 review is the next step before the
+French/Portuguese one.
 
 ## Spot check
 

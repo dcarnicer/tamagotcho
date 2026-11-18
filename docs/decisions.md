@@ -3876,3 +3876,13 @@ each, with the same skipped words. The N5 French/Portuguese packs now carry
 with no usable word included). N4-N1 are not in the French/Portuguese tables
 yet; their words show the reading alone. The tables are
 `data/example_glosses_fr.tsv` and `data/example_glosses_pt.tsv`.
+
+## 2026-11-18 – French and Portuguese N4 example glosses
+
+The N4 French and Portuguese tables follow the reviewed Spanish N4 senses:
+267 `ok` and 7 `skip` each, the same seven skipped words (上田, 稲田, 字 あざ,
+一朝一夕, 千秋, 半田, 大字). The pack builder picks the N4 tables for the N4
+decks, so the N4 French and Portuguese packs now gloss all 297 example words
+(the N5 tables' shared words included). N3-N1 and Jōyō remain reading-only:
+the Spanish tables for those levels have not been reviewed yet, and the
+French/Portuguese tables are derived from the Spanish review.

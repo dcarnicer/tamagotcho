@@ -397,7 +397,8 @@ Scope for now: **kanji only** (no vocabulary decks).
       and Portuguese decks** are built since 2026-11-18 (KANJIDIC2 meanings,
       WikDict order, eight fr/pt overrides). Pending: the **portal page** is
       still English/Spanish, and the **French/Portuguese example words** have
-      glosses only for N5 (reviewed 2026-11-18); N4-N1 show the reading alone.
+      glosses for N5 and N4 (reviewed 2026-11-18); N3-N1/Jōyō show the reading
+      alone, and the Spanish N3-N1 tables need reviewing first.
 - [x] **Menu and settings redesign.** The settings home (Seguir / Mazos / Fecha /
       Nuevas/día / Velocidad) replaces the single deck list, with a shared
       four-row choice screen for the new/day cap and the Hard threshold. The deck

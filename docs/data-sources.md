@@ -462,7 +462,7 @@ shown, in every language.
   appends the words a deck picks and the language's table lacks as `draft`
   rows, pre-filled with FreeDict's or WikDict's translation of the JMdict_e
   gloss, for review. Reviewed so far: Spanish N5 (2026-10-23) and N4
-  (2026-11-18); French and Portuguese N5 (2026-11-18).
+  (2026-11-18); French and Portuguese N5 and N4 (2026-11-18).
 - Authored by the Tamagotcho project, distributed with the packs under CC BY-SA
   4.0. Derived from JMdict_e's English glosses (EDRDG, CC BY-SA 4.0) and, where
   a draft kept its suggestion, FreeDict eng-spa (CC BY-SA 3.0, above) or
