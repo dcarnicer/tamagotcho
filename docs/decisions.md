@@ -3740,3 +3740,18 @@ candidate (田んぼ, 新田, 今夕, 千秋楽). The table now has 274 N4 rows 
 builds with 297 example words and a gloss for all 297, where before the review
 only the 11 words shared with N5 had one. Glosses stay within the table's
 24-character budget; the review changed no builder code.
+
+## 2026-11-18 – N2 meanings hand-checked
+
+The N2 changes flagged by `scripts/meaning_order_report.py` were reviewed. Nine
+overrides were added for clear errors, each using one of KANJIDIC2's own
+meanings: 額 amount / cantidad de dinero (金額, and the forehead; the framed
+picture is 額縁), 灯 lamp / lámpara, 泊 alojarse (the intransitive 泊まる;
+"hospedar" is transitive), 版 edición (出版, 初版; "impresión" is the printing),
+営 negocio (営業, 経営; the camp sense is rare), 貨 dinero (貨幣, 貨物) and 訓
+lección (the long 訓読み sense goes second). The rest of the N2 flags are
+defensible; 枚's 41-character counter gloss, 宇 "cielo" and 預 "dejar al
+cuidado de" are deliberately left. The report now changes 523 English and 702
+Spanish first meanings (N5: 14 and 14), with 21 English and 27 Spanish
+overrides. N1 remains unchecked. The committed-table test's cap moved from 40
+to 60 lines, still for clear errors only.

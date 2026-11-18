@@ -162,19 +162,25 @@ it translates, now against the reordered English list:
 
 ### C. Overrides
 
-`tools/pack-builder/data/meaning_overrides.tsv`, 39 lines, written by the
-project for clear errors left in N5-N3: kanji, language, the meaning to put
+`tools/pack-builder/data/meaning_overrides.tsv`, 48 lines, written by the
+project for clear errors left in N5-N2: kanji, language, the meaning to put
 first, optionally more to follow it, and the reason. Every listed meaning must
 be one of KANJIDIC2's own meanings for that kanji and language (no new text):
 the builder checks it and refuses to build otherwise, and a test checks the
 committed file against KANJIDIC2. An English override comes before step B, so
 the Spanish order follows it (機 en "machine" gives es "máquina").
 
-The maintainer's review of the doubtful N5-N3 cases added 12 lines: 学
+The maintainer's review of the doubtful N5-N4 cases added 12 lines: 学
 estudiar (the verb; KANJIDIC2 has no "aprender"), 円 yen, 着 wear / vestir
 (N4: the clothing sense comes first), 去 past / pasado (去年), 料 fee / precio
 (料金), 好 gustar, 曲 melody / melodía (a tune; "music" is 楽's). 台 keeps
 "pedestal" (an N4 kanji here) and 主 "jefe".
+
+The N2 review (2026-11-18) added 9 lines: 額 amount / cantidad de dinero (金額,
+and the forehead; "framed picture" is the compound 額縁), 灯 lamp / lámpara,
+泊 alojarse (the intransitive 泊まる; "hospedar" is transitive), 版 edición
+(出版, 初版; "impresión" is the printing), 営 negocio (営業, 経営; the camp sense
+is rare), 貨 dinero (貨幣, 貨物), 訓 lección (the long 訓読み sense goes second).
 
 Then the builder's existing caps apply (as many as English has, at most
 three). Nothing is added, removed or rewritten.
@@ -338,7 +344,8 @@ version's Spanish; the stored lists.
 **JLPT N4** (50 English, 45 Spanish) and **N3** (163 English, 130 Spanish):
 the report script lists every change.
 
-**The override table** (what the first meaning would be without it):
+**The original override table and the N2 additions** (what the first meaning
+would be without it; the 12 N5-N4 lines are described above):
 
 | kanji | lang | first | without | reason |
 |---|---|---|---|---|
@@ -369,12 +376,22 @@ the report script lists every change.
 | 確 | es | seguro | afirmar | "afirmar" (affirm) is matched to "firm"; 確 is certain, sure (確か) |
 | 説 | es | explicar | teoría | "teoría" ties with "explicar" and comes first; 説 explains (説明) |
 | 演 | es | representar | realizar | "realizar" relates to "performance"; 演 performs, acts (演技, 演劇) |
+| 額 | en | amount; sum; forehead | framed picture | 額 is the amount of 金額 and the forehead; "framed picture" is 額縁 |
+| 額 | es | cantidad de dinero; frente | marco de un cuadro | as the English: 金額 and the forehead, not 額縁 |
+| 灯 | en | lamp; a light; light; counter for lights | a light | 灯 is a lamp; "a light" reads as a mass noun first |
+| 灯 | es | lámpara; luz; contador para luces | luz | as the English: the lamp itself, not light in general |
+| 泊 | es | alojarse; pasar la noche; hospedar | hospedar | 泊まる is "to stay overnight"; "alojarse" is the usual intransitive form |
+| 版 | es | edición; impresión | impresión | 版 is the edition/plate of 出版, 初版; "impresión" is the printing |
+| 営 | es | negocio; dirigir un negocio; campamento | campamento | 営 is business/management (営業, 経営); the camp sense is rare |
+| 貨 | es | dinero; moneda; bienes; artículos | bienes | 貨 is money/goods (貨幣, 貨物); "bienes" alone is less common |
+| 訓 | es | lección; lectura japonesa de un carácter | lectura japonesa de un carácter | "lección" is the kanji's basic meaning; the 訓読み sense is long and compound |
 
-Twenty of them put back KANJIDIC2's own first meaning where a step goes wrong
-(the English signal for 事, 意, 家, 早, 不, 転, 位, 刻, 息, 助, 収; the Spanish
-matching for 図, 勉, 申, 過, 御, 構, 合, 組, 確); seven choose another of
-KANJIDIC2's meanings (中 dentro, 屋 shop, 計 medir, 機 machine, 突 sudden, 説
-explicar, 演 representar).
+Of the original 27 rows, twenty put back KANJIDIC2's own first meaning where a
+step goes wrong (the English signal for 事, 意, 家, 早, 不, 転, 位, 刻, 息, 助,
+収; the Spanish matching for 図, 勉, 申, 過, 御, 構, 合, 組, 確); seven choose
+another of KANJIDIC2's meanings (中 dentro, 屋 shop, 計 medir, 機 machine, 突
+sudden, 説 explicar, 演 representar). The 12 N5-N4 lines and the 9 N2 lines are
+the later reviews.
 
 **Still doubtful** (no override; most are defensible):
 
@@ -382,9 +399,10 @@ explicar, 演 representar).
   "homecoming" (no "return" in KANJIDIC2's list), 暮 "livelihood", 様 "way",
   存 "be aware of", 居 "to be", 参 "going", 主 "chief", 料 "materials".
 - Spanish: 好 gustar algo, 着 llegar, 去 dejar, 台 pedestal, 主 jefe, 収
-  ingresar, 居 existir, 曲 curva, 学 aprendizaje; and the N2-N1 changes, which
-  are not hand-checked (the report lists those through a related form or a
-  later English gloss).
+  ingresar, 居 existir, 曲 curva, 学 aprendizaje; N2's 枚 (a 41-character
+  counter gloss), 宇 "cielo" and 預 "dejar al cuidado de" are left as they
+  are; the N1 changes are not hand-checked (the report lists those through a
+  related form or a later English gloss).
 
 **Built decks.** Every default deck (N5-N1 and Jōyō, es and en, with stroke
 order and `--common-readings`) builds with the flag, validates, and passes

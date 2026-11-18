@@ -318,7 +318,7 @@ def test_check_overrides_only_kanjidic2_meanings():
 
 def test_committed_overrides_parse():
     ov = load_overrides(paths.MEANING_OVERRIDES)
-    assert 0 < len(ov) <= 40
+    assert 0 < len(ov) <= 60  # clear errors only; keep the table small
     assert {lang for _, lang in ov} <= {"en", "es"}
 
 
