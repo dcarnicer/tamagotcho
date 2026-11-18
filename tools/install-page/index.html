@@ -337,7 +337,7 @@
         </div>
         <p class="files">
           <a href="tamagotcho-m5stack-manifest.json" data-asset download>manifest</a> ·
-          <a href="tamagotcho-m5stack-merged.bin" data-asset download>merged image</a>
+          <a href="tamagotcho-latest.bin" data-asset download>merged image</a>
         </p>
       </article>
     </div>
@@ -379,8 +379,9 @@
       Do not use this page to update an existing device: it always writes the
       merged image, so the Wi-Fi settings, preferences and time zone are
       erased. Get the board's <strong>app-only</strong> image
-      (<code>tamagotcho-&lt;board&gt;.bin</code>) and <code>boot_app0.bin</code>
-      from the
+      (<code>tamagotcho-&lt;board&gt;.bin</code>, or
+      <code>tamagotcho-&lt;version&gt;-ota.bin</code> for the M5Stack build)
+      and <code>boot_app0.bin</code> from the
       <a href="https://github.com/dcarnicer/tamagotcho/releases/tag/{{TAG}}">release page</a>
       and write them at their offsets instead:
     </p>
@@ -388,11 +389,14 @@
     <p>
       <code>boot_app0.bin</code> makes the slot the image goes to the one that
       boots: after an update over the air the device may be running from the
-      other. Use <code>tdisplay-s3</code>, <code>cardputer-adv</code> or
-      <code>m5stack</code> in place of <code>sticks3</code> for the other
-      images; <code>boot_app0.bin</code> is the same for every board.
-      M5Launcher can install the app-only image too. Decks and study
-      progress survive both paths unless the flash was erased first.
+      other. Use <code>tdisplay-s3</code> or <code>cardputer-adv</code> in place
+      of <code>sticks3</code> for those images; for the StickS3 or the
+      Cardputer ADV running the combined build, use
+      <code>tamagotcho-&lt;version&gt;-ota.bin</code>. <code>boot_app0.bin</code>
+      is the same for every board. M5Launcher installs the 0x0
+      <code>tamagotcho-latest.bin</code> (SD card, WebUI or Favorites), not this
+      app-only image. Decks and study progress survive both paths unless the
+      flash was erased first.
     </p>
   </section>
 

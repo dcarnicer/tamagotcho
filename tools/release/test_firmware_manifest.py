@@ -36,6 +36,9 @@ build_flags =
 extends = common
 board_build.partitions = partitions/sixteen.csv
 
+[env:m5stack]
+board_build.partitions = partitions/eight.csv
+
 [env:single]
 board_build.partitions = partitions/single.csv
 
@@ -104,6 +107,8 @@ class ManifestTest(unittest.TestCase):
         base = self.put("tamagotcho-base.bin", app_image(0x1000))
         big = self.put("tamagotcho-big.bin", app_image(300, 0x00))
         self.put("tamagotcho-base-merged.bin", b"\xE9merged")  # not an app image
+        self.put("tamagotcho-latest.bin", b"\xE9merged")       # the 0x0 image
+        self.put("tamagotcho-0.7.0-ota.bin", b"\xE9ota")       # named explicitly
         self.put("tamagotcho-base-manifest.json", b"{}")
         self.put("boot_app0.bin", b"\xff" * 16)
         code, _, err = self.run_main("--version", "v0.7.0", "--project", str(self.project),
@@ -116,6 +121,19 @@ class ManifestTest(unittest.TestCase):
             f"app\tbase\ttamagotcho-base.bin\t4096\t{hashlib.sha256(base).hexdigest()}\n"
             f"app\tbig\ttamagotcho-big.bin\t300\t{hashlib.sha256(big).hexdigest()}\n"))
         self.assertNotIn(b"\r", raw)
+
+    def test_m5stack_ota_is_named_by_its_asset(self):
+        self.put("tamagotcho-base.bin", app_image(16))
+        # A leftover env-named m5stack image must not add a second row.
+        self.put("tamagotcho-m5stack.bin", app_image(0x1000))
+        ota = self.dist / "tamagotcho-0.7.0-ota.bin"
+        ota.write_bytes(app_image(0x1000))
+        text, report = fm.build("v0.7.0", self.project, self.dist, m5stack_ota=ota)
+        self.assertIn("\tbase\ttamagotcho-base.bin\t", text)
+        self.assertNotIn("tamagotcho-m5stack.bin", text)
+        self.assertIn(f"\tm5stack\ttamagotcho-0.7.0-ota.bin\t4096\t"
+                      f"{hashlib.sha256(ota.read_bytes()).hexdigest()}\n", text)
+        self.assertIn("m5stack", report[1])
 
     def test_out_path(self):
         self.put("tamagotcho-base.bin", app_image(16))

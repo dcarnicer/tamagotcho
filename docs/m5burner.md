@@ -3,17 +3,19 @@
 Tamagotcho is listed on [M5Burner](https://burner.m5stack.com/) once, for
 the StickS3 and the Cardputer ADV (the T-Display-S3 is a LilyGO board, which
 M5Burner does not list). A version carries one `.bin`, written at `0x0`, so
-the entry takes the **merged `m5stack` image** of the GitHub release, the one
+the entry takes the **`m5stack` 0x0 image** of the GitHub release, the one
 build that runs on both boards (the board is found at boot; docs/decisions.md,
-"One image for the StickS3 and the Cardputer ADV"). This page keeps what the
-publish form asks for, to add a version with each release.
+"One image for the StickS3 and the Cardputer ADV"). That image is always
+called **`tamagotcho-latest.bin`** on the release: the same file M5Launcher
+and esptool write at `0x0`. This page keeps what the publish form asks for, to
+add a version with each release.
 
-The package helper lives in `m5burner/`: `make dist VERSION=vX.Y.Z` builds the
-full `dist/` and the M5Burner package, and `make m5burner VERSION=vX.Y.Z
-MERGED=path` packages an existing merged image without rebuilding. Both write
-`dist/m5burner/Tamagotcho-<version>.bin` (the Publish dialog), a `.zip` for the
-M5Stack-Firmware route, and the unpacked package with `m5burner.json`, cover,
-README and licence ([m5burner/README.md](../m5burner/README.md)).
+`make dist VERSION=vX.Y.Z` builds the full `dist/` locally, including
+`dist/tamagotcho-latest.bin`. The release workflow publishes the same file,
+so the Publish dialog takes the release asset directly; there is no separate
+M5Burner package to build or upload. The versioned `tamagotcho-<version>-ota.bin`
+is the app-only image for updates, not a file for M5Burner: it goes at
+`0x10000`, so follow the USB update steps instead.
 
 The entry: <https://burner.m5stack.com/firmware/2112925841991487490>, account
 `dabidesu`. v0.4.1 was submitted as Public on 2026-10-21 and approved on
@@ -28,10 +30,10 @@ rejected it**: "after multiple tests on actual devices, the firmware you
 uploaded failed to boot the device" (reported by the maintainer on
 2026-11-06). Because v0.7.1 shares the flash layout and most of the firmware,
 the merged images were tested on hardware on 2026-11-06: they boot (table
-below), so the rejection is not reproducible with
-`tamagotcho-m5stack-merged.bin`. Check the uploaded file first: the entry
-needs that merged image (1,647,968 bytes for v0.7.0, 1,648,672 for v0.7.1),
-not the app-only `tamagotcho-m5stack.bin` (1,582,432 and 1,583,136 bytes),
+below), so the rejection is not reproducible with the merged `m5stack` image
+(now the release's `tamagotcho-latest.bin`). Check the uploaded file first: the
+entry needs that merged image (1,647,968 bytes for v0.7.0, 1,648,672 for
+v0.7.1), not the app-only `m5stack` image (1,582,432 and 1,583,136 bytes),
 which goes at `0x10000`, not `0x0`. If the merged image was attached, upload
 it again (a truncated upload is the other possibility) and keep the boot log.
 
@@ -50,7 +52,7 @@ microSD card, the new-firmware notice). A new version:
 `/developer/firmware/2112925841991487490/versions/new` (My homepage › the
 entry › View all versions); it keeps the entry's name, categories, devices and
 description, and asks for the version, its notes, the release's
-`tamagotcho-m5stack-merged.bin`, the visibility and the cover.
+`tamagotcho-latest.bin`, the visibility and the cover.
 
 **v0.7.1** (2026-10-27) is ready to submit with the merged image: the v0.7.0
 rejection is not reproducible, and v0.7.1 booted on real hardware on
@@ -71,9 +73,9 @@ found.
 **v0.8.0 is the latest release** (2026-11-18): French and Portuguese join the
 UI, the language picker and the first-boot question, the deck set grows to 24
 packs, and the N5/N4 French/Portuguese example words get reviewed glosses.
-Submit **v0.8.0**: the release carries `Tamagotcho-0.8.0.bin` (the merged image
-for the Publish dialog) and `tamagotcho-m5burner-0.8.0.zip` (the
-M5Stack-Firmware package). Its version description is the first lines of
+Submit **v0.8.0**: the release carries `tamagotcho-latest.bin`, the merged
+`m5stack` image for the Publish dialog (the same file M5Launcher and esptool
+use). Its version description is the first lines of
 `docs/releases/v0.8.0.md` plus the fresh-install paragraph below (M5Burner
 users come from v0.6.0 or older); the older assets remain on their releases.
 
@@ -104,7 +106,7 @@ paragraph (M5Burner users are coming from v0.6.0 or older):
 | Devices | StickS3, Cardputer ADV |
 | Categories | Development & Learning, Productivity |
 | Project link | `https://github.com/dcarnicer/tamagotcho` |
-| Firmware package | `tamagotcho-m5stack-merged.bin` |
+| Firmware package | `tamagotcho-latest.bin` |
 | Cover | `docs/images/cover.png` (1280x720); `cover-cardputer.png` is the Cardputer's |
 | Description | the text below (shared by all versions) |
 | Version description | the first lines of `docs/releases/<tag>.md`; for v0.8.0 add the fresh-install paragraph above |

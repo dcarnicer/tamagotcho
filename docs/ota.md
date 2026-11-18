@@ -181,11 +181,11 @@ slot (read from the partition CSV, as `decks.yml` reads the per-pack cap from
 
 ```
 #tamagotcho-firmware	1
-version	v0.7.0
+version	v0.8.0
 app	sticks3	tamagotcho-sticks3.bin	1503216	<sha256 hex>
 app	tdisplay-s3	tamagotcho-tdisplay-s3.bin	1344128	<sha256 hex>
 app	cardputer-adv	tamagotcho-cardputer-adv.bin	1451184	<sha256 hex>
-app	m5stack	tamagotcho-m5stack.bin	1508720	<sha256 hex>
+app	m5stack	tamagotcho-0.8.0-ota.bin	1508720	<sha256 hex>
 ```
 
 **Manifest format, version 1** (spec):

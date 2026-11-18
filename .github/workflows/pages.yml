@@ -76,6 +76,7 @@ jobs:
           mkdir -p site
           gh release download "${{ steps.release.outputs.tag }}" --dir site \
             --pattern '*-merged.bin' \
+            --pattern 'tamagotcho-latest.bin' \
             --pattern '*-manifest.json' \
             --clobber
           ls -l site

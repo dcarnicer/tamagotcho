@@ -143,12 +143,35 @@ jobs:
       # App-only image (ESP image magic 0xE9, no bootloader/partition table):
       # what M5Launcher installs, what `pio run -t upload` writes to the app
       # slot and what an update over the air installs (its row in
-      # tamagotcho-firmware.txt, written by the release job). The merged image
-      # below is the one ESP Web Tools needs.
+      # tamagotcho-firmware.txt, written by the release job).
+      #
+      # The release asset names. The m5stack build is the one M5Burner and
+      # M5Launcher install: its 0x0 image is always `tamagotcho-latest.bin` and
+      # its app-only image, the OTA update, carries the version. The merged
+      # images are the ones ESP Web Tools needs.
+      - name: Asset names
+        id: names
+        env:
+          ENVNAME: ${{ matrix.env }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          if [ "$ENVNAME" = "m5stack" ]; then
+            app="tamagotcho-${TAG#v}-ota.bin"
+            merged="tamagotcho-latest.bin"
+          else
+            app="tamagotcho-${ENVNAME}.bin"
+            merged="tamagotcho-${ENVNAME}-merged.bin"
+          fi
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "merged=$merged" >> "$GITHUB_OUTPUT"
+          echo "app-only: $app; 0x0: $merged"
+
       - name: Stage app-only .bin
+        env:
+          APP: ${{ steps.names.outputs.app }}
         run: |
           mkdir -p ../dist
-          cp ".pio/build/${{ matrix.env }}/firmware.bin" "../dist/tamagotcho-${{ matrix.env }}.bin"
+          cp ".pio/build/${{ matrix.env }}/firmware.bin" "../dist/${APP}"
 
       # The framework's otadata record that boots app0. The tables have an
       # otadata partition (docs/ota.md), so the merged image needs it at
@@ -170,6 +193,8 @@ jobs:
           cp "$BOOT_APP0" ../dist/boot_app0.bin
 
       - name: Build merged flashable image (for ESP Web Tools)
+        env:
+          MERGED: ${{ steps.names.outputs.merged }}
         run: |
           mkdir -p ../dist
           # merge_image.py shells out to the `esptool` CLI (installed above).
@@ -178,13 +203,14 @@ jobs:
             --partitions "partitions/${{ matrix.partitions }}" \
             --flash-size "${{ matrix.flash_size }}" \
             --boot-app0 "$BOOT_APP0" \
-            --out "../dist/tamagotcho-${{ matrix.env }}-merged.bin"
+            --out "../dist/${MERGED}"
 
       - name: ESP Web Tools manifest
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
           ENVNAME: ${{ matrix.env }}
           BOARDNAME: ${{ matrix.name }}
+          MERGED: ${{ steps.names.outputs.merged }}
         run: |
           cat > "../dist/tamagotcho-${ENVNAME}-manifest.json" <<JSON
           {
@@ -195,7 +221,7 @@ jobs:
               {
                 "chipFamily": "ESP32-S3",
                 "parts": [
-                  { "path": "tamagotcho-${ENVNAME}-merged.bin", "offset": 0 }
+                  { "path": "${MERGED}", "offset": 0 }
                 ]
               }
             ]
@@ -224,8 +250,6 @@ jobs:
             docs/images
             firmware/platformio.ini
             firmware/partitions
-            LICENSE
-            m5burner
             tools/release
           sparse-checkout-cone-mode: false
           path: repo
@@ -237,38 +261,24 @@ jobs:
 
       # tamagotcho-firmware.txt, the manifest the devices read from
       # releases/latest/download/ (docs/ota.md, "The release side"): one row
-      # per app-only image of the four builds. It fails, before anything is
-      # published, when an image is larger than its env's app slot (read from
-      # the env's partition table), or the tag is not a plain vX.Y.Z.
+      # per app-only image of the four builds. The m5stack row names the
+      # versioned `*-ota.bin` asset; the other boards keep their env name. It
+      # fails, before anything is published, when an image is larger than its
+      # env's app slot (read from the env's partition table), or the tag is not
+      # a plain vX.Y.Z.
       - name: Firmware manifest and app slot check
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           python3 repo/tools/release/firmware_manifest.py --version "$TAG" \
-            --project repo/firmware --dist dist --out dist/tamagotcho-firmware.txt
+            --project repo/firmware --dist dist \
+            --m5stack-ota "dist/tamagotcho-${TAG#v}-ota.bin" \
+            --out dist/tamagotcho-firmware.txt
           cat dist/tamagotcho-firmware.txt
 
-      # The M5Burner entry takes the merged m5stack image at 0x0. Keep the
-      # package's .bin and .zip as release assets; the unpacked package
-      # directory is not one.
-      - name: M5Burner package
-        env:
-          TAG: ${{ needs.resolve.outputs.tag }}
-          REPOSITORY: ${{ github.repository }}
+      - name: Checksums
         run: |
-          version="${TAG#v}"
-          python3 repo/tools/release/build_dist.py \
-            --version "$TAG" \
-            --m5burner-only \
-            --dist dist \
-            --repository "$REPOSITORY"
-          cp "dist/m5burner/Tamagotcho-${version}.bin" "dist/Tamagotcho-${version}.bin"
-          cp "dist/m5burner/tamagotcho-${version}.zip" \
-             "dist/tamagotcho-m5burner-${version}.zip"
-          rm -rf dist/m5burner
-          rm -f dist/SHA256SUMS.txt
-          (cd dist && sha256sum * > SHA256SUMS.txt)
-          ls -l dist
+          (cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - name: Write release notes
         env:
@@ -295,39 +305,39 @@ jobs:
 
           | file | what |
           |---|---|
-          | \`tamagotcho-sticks3.bin\` | app-only image (M5Launcher, \`pio run -t upload\`) |
-          | \`tamagotcho-tdisplay-s3.bin\`, \`tamagotcho-cardputer-adv.bin\` | app-only images (T-Display-S3, Cardputer ADV) |
-          | \`tamagotcho-m5stack.bin\` | app-only image for the StickS3 **and** the Cardputer ADV (the board is found at boot; the one on M5Burner) |
+          | \`tamagotcho-latest.bin\` | the \`m5stack\` image at \`0x0\` for the StickS3 **and** the Cardputer ADV (the board is found at boot): M5Burner, M5Launcher and esptool |
+          | \`tamagotcho-<version>-ota.bin\` | the app-only \`m5stack\` image the update manifest names (over the air, or USB with \`boot_app0.bin\` at \`0x10000\`); not for M5Burner or M5Launcher |
+          | \`tamagotcho-sticks3.bin\`, \`tamagotcho-tdisplay-s3.bin\`, \`tamagotcho-cardputer-adv.bin\` | app-only images (M5Launcher, \`pio run -t upload\`) |
           | \`tamagotcho-<board>-merged.bin\` | single images for a first install (offset 0x0), one per board |
           | \`boot_app0.bin\` | the OTA data record that boots the first app slot: written at 0xe000 with an app-only image over USB (the same for every board) |
           | \`tamagotcho-firmware.txt\` | the update manifest the devices read: per build, its app-only image, size and SHA-256 |
           | \`tamagotcho-*-manifest.json\` | ESP Web Tools manifests (for an install page) |
-          | \`Tamagotcho-<version>.bin\` | the M5Burner package image: the merged \`m5stack\` image at \`0x0\` (same bytes as \`tamagotcho-m5stack-merged.bin\`) |
-          | \`tamagotcho-m5burner-<version>.zip\` | the M5Burner package (\`m5burner.json\`, firmware, cover, README and licence) for the M5Stack-Firmware route |
           | \`SHA256SUMS.txt\` | SHA-256 of every release file |
 
           ## Flash it
 
           - **First install, USB:** \`esptool --chip esp32s3 write_flash 0x0 tamagotcho-sticks3-merged.bin\`
-          - **First install, browser** (Chrome or Edge): open
-            <https://espressif.github.io/esptool-js/>, **Connect**, add
-            \`tamagotcho-sticks3-merged.bin\` at address \`0x0\`, **Program**.
+          - **First install, M5Stack:** write \`tamagotcho-latest.bin\` at \`0x0\`
+            (M5Burner, esptool, or M5Launcher), or use the browser installer.
+          - **First install, browser** (Chrome or Edge): open the
+            [install page](https://dcarnicer.github.io/tamagotcho/), **Connect**,
+            pick your board and **Install**.
           - **Update, over the air** (from v0.7.0): on the device, Settings >
             Device > Firmware, **Check now**, then hold **Install**. The device
             reads \`tamagotcho-firmware.txt\` from the latest release and installs
             its own build's image; settings, decks and progress stay.
-          - **Update, USB:** \`esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-sticks3.bin\`.
+          - **Update, USB:** \`esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-sticks3.bin\`
+            (for the M5Stack build, \`tamagotcho-<version>-ota.bin\`).
             \`boot_app0.bin\` makes the first app slot, where the image goes, the
             one that boots: after an update over the air the device may run from
             the other. The merged image also erases the settings (home Wi-Fi,
             preferences); the app-only image keeps them. Decks and study progress
             survive both.
-          - **M5Launcher:** install the app-only \`tamagotcho-sticks3.bin\` (or the
-            Cardputer ADV's), then put a deck on the device over Wi-Fi (a device
+          - **M5Launcher:** install \`tamagotcho-latest.bin\` for the StickS3 or the
+            Cardputer ADV, then put a deck on the device over Wi-Fi (a device
             with no deck boots into the Wi-Fi upload screen).
           - The other boards' files take the same commands with
-            \`tdisplay-s3\` or \`cardputer-adv\` in place of \`sticks3\`; the
-            \`m5stack\` files run on the StickS3 and the Cardputer ADV alike.
+            \`tdisplay-s3\` or \`cardputer-adv\` in place of \`sticks3\`.
 
           ## Decks
 
@@ -362,8 +372,21 @@ jobs:
           TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
+          version="${TAG#v}"
           ls -l dist
           if gh release view "$TAG" >/dev/null 2>&1; then
+            # Releases before v0.8.0 carried a separate M5Burner image and zip
+            # and an env-named m5stack pair; the two-image scheme replaced
+            # them. Rebuilds must not leave the old copies behind.
+            for old in "Tamagotcho-${version}.bin" \
+                       "tamagotcho-m5burner-${version}.zip" \
+                       "tamagotcho-m5stack.bin" \
+                       "tamagotcho-m5stack-merged.bin"; do
+              if gh release view "$TAG" --json assets \
+                   --jq '.assets[].name' | grep -qxF "$old"; then
+                gh release delete-asset "$TAG" "$old" --yes
+              fi
+            done
             gh release upload "$TAG" dist/* --clobber
           else
             gh release create "$TAG" --title "Tamagotcho ${TAG}" --notes-file notes.md dist/*

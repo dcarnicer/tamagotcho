@@ -3894,7 +3894,26 @@ strings and language picker, 24 prebuilt decks, and the reviewed N5/N4
 French/Portuguese example glosses. `docs/releases/v0.8.0.md` is the "What's
 new"; the decks release is `decks-v3` (rebuilt in place). The flash layout is
 unchanged from v0.7.x, so a device on v0.7.2 takes it over the air. M5Burner
-still needs the manual v0.8.0 submission with `Tamagotcho-0.8.0.bin` and
-`tamagotcho-m5burner-0.8.0.zip` (docs/m5burner.md). N3-N1/Jōyō example glosses
-are not in this release; the Spanish tables for those levels must be reviewed
-first.
+still needs the manual v0.8.0 submission with `tamagotcho-latest.bin`
+(docs/m5burner.md). N3-N1/Jōyō example glosses are not in this release; the
+Spanish tables for those levels must be reviewed first.
+
+## 2026-11-18 – Two release images: `latest` and `<version>-ota`
+
+Every release carries two kinds of image, and only one of each is needed for
+the StickS3/Cardputer ADV build:
+
+- **`tamagotcho-latest.bin`** — the merged `m5stack` image at `0x0`. It is
+  what M5Burner, M5Launcher and esptool write, and it always has the same
+  name, so an entry or a launcher favourite keeps working across versions.
+- **`tamagotcho-<version>-ota.bin`** — the app-only `m5stack` image, the row
+  `tamagotcho-firmware.txt` names for updates over the air (and the file for
+  an app-only USB update with `boot_app0.bin`).
+
+The other boards keep `tamagotcho-<env>.bin` and
+`tamagotcho-<env>-merged.bin`. The separate M5Burner package
+(`Tamagotcho-<version>.bin` plus `tamagotcho-m5burner-<version>.zip`) is gone:
+both were copies of the merged image, and the M5Stack-Firmware route was
+never used. `paperdiy-reader` follows the same scheme and the reference for
+the workflow is its `release-paperdiy.yml`. Rebuilds delete the old assets
+before uploading so a release does not keep both schemes.

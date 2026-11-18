@@ -6,14 +6,17 @@ build environment (docs/ota.md, "The release side"). Format version 1, as
 docs/ota.md specifies it (fields separated by one TAB, lines end in LF):
 
     #tamagotcho-firmware    1
-    version                 v0.7.0
+    version                 v0.8.0
     app                     <env>  tamagotcho-<env>.bin  <size>  <sha256>
+    app                     m5stack  tamagotcho-<version>-ota.bin  <size>  <sha256>
 
 One ``app`` row per app-only image ``tamagotcho-<env>.bin`` in the dist
-directory (the ``-merged`` images are not app images), sorted by file name;
-the file name is resolved by the device against the manifest's own URL, so the
-row names the asset of the same release. The size is decimal, the SHA-256
-lowercase hex.
+directory (the ``-merged`` and ``tamagotcho-latest.bin`` images are not app
+images, and ``*-ota.bin`` is skipped unless ``--m5stack-ota`` names the
+m5stack one); sorted by file name, with m5stack last. The m5stack row names
+the release's ``tamagotcho-<version>-ota.bin`` asset. The file name is
+resolved by the device against the manifest's own URL, so the row names the
+asset of the same release. The size is decimal, the SHA-256 lowercase hex.
 
 The script fails, before anything is published, when:
 
@@ -28,8 +31,10 @@ The script fails, before anything is published, when:
 
 Usage (release.yml):
 
-    python3 tools/release/firmware_manifest.py --version v0.7.0 \\
-        --project firmware --dist dist --out dist/tamagotcho-firmware.txt
+    python3 tools/release/firmware_manifest.py --version v0.8.0 \\
+        --project firmware --dist dist \\
+        --m5stack-ota dist/tamagotcho-0.8.0-ota.bin \\
+        --out dist/tamagotcho-firmware.txt
 """
 
 from __future__ import annotations
@@ -117,10 +122,18 @@ def slot_size(csv_path: Path) -> int:
     return sizes[0]
 
 
-def find_images(dist: Path) -> list[tuple[str, Path]]:
-    """(env, path) of every app-only ``tamagotcho-<env>.bin``, by file name."""
+def find_images(dist: Path, m5stack_ota: Path | None = None) -> list[tuple[str, Path]]:
+    """(env, path) of every app-only ``tamagotcho-<env>.bin``, by file name.
+
+    ``tamagotcho-latest.bin`` (the 0x0 image) and ``*-ota.bin`` are not app
+    images by that naming rule; the latter is added explicitly by ``build()``
+    when it is the m5stack update asset."""
     images = []
     for path in sorted(dist.glob("tamagotcho-*.bin")):
+        if path.name == "tamagotcho-latest.bin" or path.name.endswith("-ota.bin"):
+            continue
+        if m5stack_ota is not None and path.name == "tamagotcho-m5stack.bin":
+            continue
         env = IMAGE_RE.fullmatch(path.name).group(1)
         if env.endswith("-merged"):
             continue
@@ -151,12 +164,22 @@ def manifest_text(version: str, rows: list[tuple[str, str, int, str]]) -> str:
     return text
 
 
-def build(version: str, project: Path, dist: Path) -> tuple[str, list[str]]:
+def build(version: str, project: Path, dist: Path,
+          m5stack_ota: Path | None = None) -> tuple[str, list[str]]:
     """The manifest text and a usage report; ManifestError for any image over
-    its slot (all of them listed) or any other problem."""
+    its slot (all of them listed) or any other problem.
+
+    ``m5stack_ota`` is the app-only m5stack image under its release asset name
+    (``tamagotcho-<version>-ota.bin``): the m5stack row then names that file,
+    while the other envs keep ``tamagotcho-<env>.bin``."""
     check_version(version)
     rows, report, over = [], [], []
-    for env, path in find_images(dist):
+    images = find_images(dist, m5stack_ota)
+    if m5stack_ota is not None:
+        if not m5stack_ota.is_file():
+            raise ManifestError(f"missing m5stack OTA image: {m5stack_ota}")
+        images.append(("m5stack", m5stack_ota))
+    for env, path in images:
         csv_path = env_partitions(project, env)
         slot = slot_size(csv_path)
         size, sha = image_digest(path)
@@ -178,13 +201,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--project", default=str(DEFAULT_PROJECT),
                     help="the PlatformIO project (platformio.ini, partitions/); default: firmware/")
     ap.add_argument("--dist", required=True, help="the directory with the tamagotcho-<env>.bin images")
+    ap.add_argument("--m5stack-ota", metavar="PATH",
+                    help="the m5stack app-only image under its release asset name "
+                         "(tamagotcho-<version>-ota.bin); its manifest row names that file")
     ap.add_argument("--out", help=f"manifest to write (default: <dist>/{MANIFEST_NAME})")
     a = ap.parse_args(argv)
 
     dist = Path(a.dist)
     out = Path(a.out) if a.out else dist / MANIFEST_NAME
     try:
-        text, report = build(a.version, Path(a.project), dist)
+        text, report = build(a.version, Path(a.project), dist,
+                             Path(a.m5stack_ota) if a.m5stack_ota else None)
     except ManifestError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

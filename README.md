@@ -99,20 +99,23 @@ cards Japanese students carry around, which the M5Stack StickS3 resembles.
 
 | | Board | Screen | Input | Firmware files |
 |---|---|---|---|---|
-| <img src="docs/images/board-sticks3.png" width="90" alt="StickS3 screen"> | [M5Stack StickS3](https://docs.m5stack.com/en/core/StickS3) | 1.14″, 135×240 | two buttons, auto-rotate | `tamagotcho-m5stack-*.bin` or `tamagotcho-sticks3-*.bin` |
-| <img src="docs/images/board-cardputer.png" width="120" alt="Cardputer ADV screen"> | [M5Stack Cardputer ADV](https://docs.m5stack.com/en/core/Cardputer-Adv) | 1.14″, 240×135 | keyboard | `tamagotcho-m5stack-*.bin` or `tamagotcho-cardputer-adv-*.bin` |
+| <img src="docs/images/board-sticks3.png" width="90" alt="StickS3 screen"> | [M5Stack StickS3](https://docs.m5stack.com/en/core/StickS3) | 1.14″, 135×240 | two buttons, auto-rotate | `tamagotcho-latest.bin` or `tamagotcho-sticks3-*.bin` |
+| <img src="docs/images/board-cardputer.png" width="120" alt="Cardputer ADV screen"> | [M5Stack Cardputer ADV](https://docs.m5stack.com/en/core/Cardputer-Adv) | 1.14″, 240×135 | keyboard | `tamagotcho-latest.bin` or `tamagotcho-cardputer-adv-*.bin` |
 | <img src="docs/images/board-tdisplay.png" width="90" alt="T-Display-S3 screen"> | [LilyGO T-Display-S3](https://lilygo.cc/products/t-display-s3) | 1.9″, 170×320 | two buttons | `tamagotcho-tdisplay-s3-*.bin` |
 
 ## Install
 
-Every [release](https://github.com/dcarnicer/tamagotcho/releases/latest) has,
-per board, a **merged** image (`*-merged.bin`, the whole flash from `0x0`) and
-an **app-only** image (`*.bin`, for updates). The `m5stack` ones run on the
-StickS3 and the Cardputer ADV alike: the firmware finds the board at boot.
+Every [release](https://github.com/dcarnicer/tamagotcho/releases/latest) has
+two images: a **merged** one for a first install (`0x0`) and an **app-only**
+one for updates. The combined StickS3/Cardputer ADV build always keeps the
+same names, `tamagotcho-latest.bin` (`0x0`: M5Burner, M5Launcher, esptool) and
+`tamagotcho-<version>-ota.bin` (updates). The per-board files are
+`tamagotcho-<board>-merged.bin` and `tamagotcho-<board>.bin`.
 
 **M5Burner** (StickS3 and Cardputer ADV). In [M5Burner](https://burner.m5stack.com/)
 (on the web in Chrome or Edge, or the desktop app), search for **Tamagotcho**,
-connect the device over USB and press **Burn**. One entry serves both boards.
+connect the device over USB and press **Burn**. One entry serves both boards
+with the release's `tamagotcho-latest.bin`.
 
 **From the browser, first install** (Chrome or Edge on a computer). Open the
 [install page](https://dcarnicer.github.io/tamagotcho/), pick the board and
@@ -133,6 +136,9 @@ address `0x0` and press **Program**.
 esptool --chip esp32s3 write_flash 0x0 tamagotcho-sticks3-merged.bin     # a new device
 esptool --chip esp32s3 write_flash 0xe000 boot_app0.bin 0x10000 tamagotcho-sticks3.bin  # update, keep the settings
 ```
+
+For the combined StickS3/Cardputer ADV build, use `tamagotcho-latest.bin` at
+`0x0` and `tamagotcho-<version>-ota.bin` for the update.
 
 A merged image erases the settings (home Wi-Fi, preferences); the decks and
 the study progress live in their own partition and stay, unless the flash was
@@ -226,10 +232,9 @@ Upload a `.tgc` from the portal page (**Advanced**). More:
 |-----------------------|-----------------------------------------|
 | `firmware/`           | PlatformIO firmware (StickS3, T-Display-S3, Cardputer ADV) |
 | `tools/pack-builder/` | Python CLI that builds `.tgc` packs     |
-| `tools/release/`      | release helper: merge a build into one flashable image, the OTA manifest, and the local `dist/` + M5Burner package |
+| `tools/release/`      | release helper: merge a build into one flashable image, the OTA manifest, and the local `dist/` |
 | `tools/ui-font/`      | generator of the firmware's UI font (`firmware/src/ui/UiFont.h`) |
 | `tools/screenshots/`  | serial remote: press a device's buttons and save its screen over USB (`-shots` builds) |
-| `m5burner/`           | M5Burner package template (`m5burner.json`) and publishing checklist |
 | `.github/workflows/`  | CI, firmware release and decks release automation |
 | `docs/`               | user guide, architecture, pack format, decisions, roadmap |
 

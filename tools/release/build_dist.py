@@ -1,37 +1,26 @@
 #!/usr/bin/env python3
-"""Build Tamagotcho's release ``dist/`` locally, including the M5Burner package.
+"""Build Tamagotcho's release ``dist/`` locally.
 
-This mirrors what ``.github/workflows/release.yml`` does, but on the machine in
-front of you, and adds the package M5Burner's desktop publish dialog and the
-M5Stack-Firmware repository want.
+This mirrors what ``.github/workflows/release.yml`` does, on the machine in
+front of you.
 
 Release artifacts (``dist/``):
 
-- ``tamagotcho-<env>.bin``: app-only image for USB/OTA/M5Launcher.
-- ``tamagotcho-<env>-merged.bin``: one image at ``0x0`` for a first install.
+- ``tamagotcho-latest.bin``: the merged ``m5stack`` image at ``0x0`` for
+  M5Burner, M5Launcher and esptool (the board is found at boot).
+- ``tamagotcho-<version>-ota.bin``: the app-only ``m5stack`` image the update
+  manifest points at.
+- ``tamagotcho-<env>.bin``: app-only image for the other boards (USB/OTA).
+- ``tamagotcho-<env>-merged.bin``: one image at ``0x0`` for the other boards.
 - ``tamagotcho-<env>-manifest.json``: ESP Web Tools manifest.
 - ``boot_app0.bin``: the OTA boot record for app-only USB updates.
 - ``tamagotcho-firmware.txt``: the OTA manifest devices read.
 - ``SHA256SUMS.txt``: every top-level artifact.
 
-M5Burner package (``dist/m5burner/``):
-
-- ``Tamagotcho-<version>.bin``: the merged ``m5stack`` image for the Publish
-  dialog.
-- ``tamagotcho-<version>.zip``: ``m5burner.json`` + ``firmware/`` + docs, for
-  the M5Stack-Firmware PR route.
-- ``tamagotcho-<version>/``: the unpacked package.
-
 Usage:
 
-    python3 tools/release/build_dist.py --version v0.7.2
-    python3 tools/release/build_dist.py --version v0.7.2 --skip-build
-    python3 tools/release/build_dist.py --version v0.7.1 --m5burner-only \\
-        --merged ~/Downloads/tangocho-m5burner/v0.7.1/tamagotcho-m5stack-merged.bin
-
-``--skip-build`` reuses ``firmware/.pio/build/<env>``; the version string in
-each image must already be ``--version``. ``--m5burner-only`` packages an
-existing merged image and touches nothing else.
+    python3 tools/release/build_dist.py --version v0.8.0
+    python3 tools/release/build_dist.py --version v0.8.0 --skip-build
 """
 
 from __future__ import annotations
@@ -44,7 +33,6 @@ import re
 import shutil
 import subprocess
 import sys
-import zipfile
 from pathlib import Path
 
 import firmware_manifest as fm
@@ -52,10 +40,6 @@ import firmware_manifest as fm
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_PROJECT = REPO / "firmware"
 DEFAULT_DIST = REPO / "dist"
-M5BURNER_TEMPLATE = REPO / "m5burner" / "m5burner.json"
-M5BURNER_README = REPO / "m5burner" / "PACKAGE_README.md"
-M5BURNER_COVER = REPO / "docs" / "images" / "cover.png"
-LICENSE = REPO / "LICENSE"
 
 # One row per release environment; keep in step with release.yml.
 RELEASE_ENVS = (
@@ -98,6 +82,18 @@ def normalize_version(value: str) -> str:
     if not match:
         raise SystemExit(f"--version must be vMAJOR.MINOR.PATCH (got {value!r})")
     return "v" + match.group(1)
+
+
+def app_name(env: str, version: str) -> str:
+    """The app-only asset: the m5stack one is the OTA image, named by version;
+    the other boards keep their env name."""
+    return (f"tamagotcho-{version[1:]}-ota.bin" if env == "m5stack"
+            else f"tamagotcho-{env}.bin")
+
+
+def merged_name(env: str) -> str:
+    """The 0x0 asset: one fixed ``latest`` for the shared m5stack image."""
+    return "tamagotcho-latest.bin" if env == "m5stack" else f"tamagotcho-{env}-merged.bin"
 
 
 def sha256(path: Path) -> str:
@@ -147,7 +143,7 @@ def check_image_version(app_image: Path, version: str) -> None:
 def stage_app(project: Path, dist: Path, env: str, version: str) -> Path:
     build = project / ".pio" / "build" / env / "firmware.bin"
     check_image_version(build, version)
-    out = dist / f"tamagotcho-{env}.bin"
+    out = dist / app_name(env, version)
     shutil.copy2(build, out)
     print(f"app-only  {out.name:36} {out.stat().st_size:>10,} B")
     return out
@@ -162,7 +158,7 @@ def merge_image(
     boot_app0: Path,
     esptool: str,
 ) -> Path:
-    out = dist / f"tamagotcho-{env}-merged.bin"
+    out = dist / merged_name(env)
     run(
         [
             sys.executable,
@@ -188,6 +184,7 @@ def merge_image(
 
 def write_esp_manifest(dist: Path, env: str, name: str, version: str) -> Path:
     path = dist / f"tamagotcho-{env}-manifest.json"
+    image = merged_name(env)
     data = {
         "name": f"Tamagotcho {name}",
         "version": version[1:],
@@ -195,17 +192,18 @@ def write_esp_manifest(dist: Path, env: str, name: str, version: str) -> Path:
         "builds": [
             {
                 "chipFamily": "ESP32-S3",
-                "parts": [{"path": f"tamagotcho-{env}-merged.bin", "offset": 0}],
+                "parts": [{"path": image, "offset": 0}],
             }
         ],
     }
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    print(f"manifest  {path.name}")
+    print(f"manifest  {path.name} -> {image}")
     return path
 
 
 def write_firmware_manifest(project: Path, dist: Path, version: str) -> Path:
-    text, report = fm.build(version, project, dist)
+    text, report = fm.build(version, project, dist,
+                            m5stack_ota=dist / app_name("m5stack", version))
     for line in report:
         print(line)
     out = dist / fm.MANIFEST_NAME
@@ -225,71 +223,6 @@ def write_sha256sums(dist: Path) -> Path:
     return out
 
 
-def package_m5burner(
-    dist: Path,
-    version: str,
-    merged: Path,
-    *,
-    repository: str,
-    cover: Path,
-    template: Path = M5BURNER_TEMPLATE,
-    readme: Path = M5BURNER_README,
-    license_file: Path = LICENSE,
-) -> tuple[Path, Path, Path]:
-    """Create the M5Burner package from a merged ``0x0`` image.
-
-    Returns (binary for the Publish dialog, zip for the repo/PR route,
-    unpacked package directory).
-    """
-    if not merged.is_file():
-        raise SystemExit(f"missing merged image: {merged}")
-    for path, label in ((template, "m5burner.json template"), (readme, "package README"),
-                        (cover, "cover"), (license_file, "LICENSE")):
-        if not path.is_file():
-            raise SystemExit(f"missing {label}: {path}")
-    slug = version[1:]
-    output = dist / "m5burner"
-    package = output / f"tamagotcho-{slug}"
-    if package.exists():
-        shutil.rmtree(package)
-    (package / "firmware").mkdir(parents=True)
-
-    metadata = json.loads(template.read_text(encoding="utf-8"))
-    metadata["version"] = slug
-    metadata["repository"] = f"https://github.com/{repository}"
-    (package / "m5burner.json").write_text(
-        json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    shutil.copy2(merged, package / "firmware" / "Tamagotcho_0x0.bin")
-    shutil.copy2(cover, package / "cover.png")
-    shutil.copy2(readme, package / "README.md")
-    shutil.copy2(license_file, package / "LICENSE")
-    notes = REPO / "docs" / "releases" / f"{version}.md"
-    if notes.is_file():
-        shutil.copy2(notes, package / "VERSION_DESCRIPTION.md")
-
-    archive = output / f"tamagotcho-{slug}.zip"
-    if archive.exists():
-        archive.unlink()
-    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for path in sorted(package.rglob("*")):
-            if path.is_file():
-                zf.write(path, path.relative_to(package))
-
-    binary = output / f"Tamagotcho-{slug}.bin"
-    shutil.copy2(merged, binary)
-    (output / "SHA256SUMS.txt").write_text(
-        f"{sha256(binary)}  {binary.name}\n{sha256(archive)}  {archive.name}\n",
-        encoding="utf-8",
-    )
-    print(f"m5burner  {binary}")
-    print(f"m5burner  {archive}")
-    print(f"m5burner  {package}/")
-    print(f"binary SHA256: {sha256(binary)}")
-    print(f"archive SHA256: {sha256(archive)}")
-    return binary, archive, package
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="build_dist", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -299,12 +232,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--skip-build", action="store_true",
                     help="use firmware/.pio/build/<env> instead of running pio")
     ap.add_argument("--keep", action="store_true", help="do not clear dist/ first")
-    ap.add_argument("--no-m5burner", action="store_true", help="skip the M5Burner package")
-    ap.add_argument("--m5burner-only", action="store_true",
-                    help="only package an existing merged image")
-    ap.add_argument("--merged", help="merged image for --m5burner-only")
-    ap.add_argument("--repository", default="dcarnicer/tamagotcho")
-    ap.add_argument("--cover", default=str(M5BURNER_COVER))
     ap.add_argument("--boot-app0", help="override the framework's boot_app0.bin")
     ap.add_argument("--pio", default="pio", help="PlatformIO executable")
     ap.add_argument("--esptool", default="esptool", help="esptool executable")
@@ -313,13 +240,6 @@ def main(argv: list[str] | None = None) -> int:
     version = normalize_version(args.version)
     project = Path(args.project).expanduser().resolve()
     dist = Path(args.dist).expanduser().resolve()
-
-    if args.m5burner_only:
-        merged = (Path(args.merged).expanduser().resolve() if args.merged
-                  else dist / "tamagotcho-m5stack-merged.bin")
-        package_m5burner(dist, version, merged, repository=args.repository,
-                         cover=Path(args.cover).expanduser().resolve())
-        return 0
 
     if dist.exists() and not args.keep:
         print(f"clearing {dist}")
@@ -343,14 +263,6 @@ def main(argv: list[str] | None = None) -> int:
                   f"{(dist / 'boot_app0.bin').stat().st_size:>10,} B")
 
     write_firmware_manifest(project, dist, version)
-    if not args.no_m5burner:
-        package_m5burner(
-            dist,
-            version,
-            dist / "tamagotcho-m5stack-merged.bin",
-            repository=args.repository,
-            cover=Path(args.cover).expanduser().resolve(),
-        )
     write_sha256sums(dist)
     print(f"\nDone: {dist}")
     return 0

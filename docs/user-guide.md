@@ -460,10 +460,14 @@ contains no bootloader and no partition table; `esptool`/PlatformIO write it to
 the app slot together with the bootloader and `partitions.bin`. The normal USB
 path (`pio run -t upload` and `-t uploadfs`) is unchanged.
 
-[M5Launcher](https://github.com/bmorcelli/Launcher) can install such app-only
-binaries: copy `firmware.bin` to the SD card (or upload it through the
-launcher's WebUI) and install it as an app. Launcher places the app image in an
-OTA app partition and can attach its own SPIFFS/LittleFS data partition.
+[M5Launcher](https://github.com/bmorcelli/Launcher) installs the release's
+`tamagotcho-latest.bin` (the 0x0 image for the StickS3 and the Cardputer ADV)
+from the SD card, its WebUI or Favorites; Launcher names the app after the
+file, so the stable `latest` name also keeps it one app across updates. It can
+also install an app-only binary: copy `firmware.bin` to the SD card (or upload
+it through the launcher's WebUI) and install it as an app. Launcher places the
+app image in an OTA app partition and can attach its own SPIFFS/LittleFS data
+partition.
 
 Honest status — **not verified on hardware**:
 
@@ -587,29 +591,17 @@ build by hand: `TGC_VERSION=v0.1.0-rc1 pio run -e sticks3`.
 2. Merge into `main`, push, then tag `vX.Y.Z` and push the tag; `release.yml`
    builds and publishes the images.
 3. **Test the merged image on hardware**: write the release's
-   `tamagotcho-m5stack-merged.bin` at `0x0` on a StickS3 and/or a Cardputer ADV
-   and confirm it boots. M5Stack rejects an image that does not (v0.7.0 was
+   `tamagotcho-latest.bin` at `0x0` on a StickS3 and/or a Cardputer ADV and
+   confirm it boots. M5Stack rejects an image that does not (v0.7.0 was
    rejected for this on 2026-11-06).
 4. **Publish it on M5Burner**: add version `vX.Y.Z` to the Tamagotcho entry
-   with the release's `tamagotcho-m5stack-merged.bin` (StickS3 and Cardputer
-   ADV), as [docs/m5burner.md](m5burner.md) describes. M5Burner does not
-   follow GitHub: without this step it keeps offering the previous version.
-   The release also carries `Tamagotcho-<version>.bin` (the merged `m5stack`
-   image, ready for the Publish dialog) and
-   `tamagotcho-m5burner-<version>.zip` (the M5Stack-Firmware package), built
-   by the release job.
+   with the release's `tamagotcho-latest.bin` (StickS3 and Cardputer ADV), as
+   [docs/m5burner.md](m5burner.md) describes. M5Burner does not follow GitHub:
+   without this step it keeps offering the previous version.
 
 For a **local dry run**, `make dist VERSION=vX.Y.Z` builds the four release
 environments and writes the same artifacts as the workflow to `dist/`:
+`tamagotcho-latest.bin`, `tamagotcho-<version>-ota.bin`, the other boards'
 app-only and merged images, the ESP Web Tools manifests, `boot_app0.bin`,
-`tamagotcho-firmware.txt`, `SHA256SUMS.txt` and the M5Burner package under
-`dist/m5burner/` (`Tamagotcho-X.Y.Z.bin`, a `.zip` for the M5Stack-Firmware
-route, and the unpacked package with `m5burner.json`, cover, README and
-licence). To package an existing merged image without rebuilding, for example
-the asset of a release already published:
-
-```sh
-make m5burner VERSION=vX.Y.Z MERGED=~/Downloads/tamagotcho-m5stack-merged.bin
-```
-
-The M5Burner details are in [m5burner/README.md](../m5burner/README.md).
+`tamagotcho-firmware.txt` and `SHA256SUMS.txt`. Use `--skip-build` to reuse
+the images already in `firmware/.pio/build/`.
