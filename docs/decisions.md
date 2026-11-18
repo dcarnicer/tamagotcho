@@ -3725,3 +3725,18 @@ release envs, app-only and merged images, ESP Web Tools manifests,
 - Tests (`tools/release/test_build_dist.py`) cover the version normalizer, the
   app-image check and the package layout; CI already runs the `tools/release`
   unittest discovery.
+
+## 2026-11-18 – Spanish example glosses: N4 reviewed
+
+The N4 rows of `data/example_glosses_es.tsv` were reviewed level by level, as
+N5 was on 2026-10-23. `sync-glosses --jlpt 4` appended the 268 words the deck
+picked; 78 FreeDict suggestions were clearly wrong for the word (手
+"manecilla", 会社 "compañía de bomberos", 春 "fuente", 者 "chero", 死亡 "el
+arcano de la muerte") and were rewritten, and seven words were skipped as bad
+examples: rare readings or surnames (上田, 稲田, 字 あざ, 一朝一夕, 千秋),
+the ateji 半田 ("solder") and the rare 大字. The builder then picked the next
+candidate (田んぼ, 新田, 今夕, 千秋楽). The table now has 274 N4 rows (267 `ok`,
+7 `skip`); three asked readings still have no usable word. The N4 Spanish pack
+builds with 297 example words and a gloss for all 297, where before the review
+only the 11 words shared with N5 had one. Glosses stay within the table's
+24-character budget; the review changed no builder code.

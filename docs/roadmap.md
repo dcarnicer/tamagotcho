@@ -490,8 +490,9 @@ Scope for now: **kanji only** (no vocabulary decks).
       card (Settings › Study › Introduce), and example words (pack format v3)
       with English glosses from JMdict_e and Spanish ones from a reviewed
       project table (docs/example-words.md), published in `decks-v3`.
-      Later, on hold: the Spanish glosses beyond N5 (reviewed level by level,
-      then `decks-v3` rebuilt in place) and the long-run checks of
+      Later, on hold: the Spanish glosses beyond N4 (N5 and N4 are reviewed;
+      N4 on 2026-11-18; the remaining levels are reviewed one at a time, then
+      `decks-v3` is rebuilt in place) and the long-run checks of
       docs/learning-mode.md §5.
 - [x] **OTA firmware updates** (idea, 2026-10-21; design approved 2026-10-24
       in `docs/ota.md`; released in v0.7.0, 2026-10-24). Update the firmware over

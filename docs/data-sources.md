@@ -440,7 +440,7 @@ shown, in every language.
   `skip` rows are never an example (in any language). `sync-glosses` appends
   the words a deck picks and the table lacks as `draft` rows, pre-filled with
   FreeDict's translation of the JMdict_e gloss, for review. Reviewed so far:
-  N5 (2026-10-23).
+  N5 (2026-10-23) and N4 (2026-11-18).
 - Authored by the Tamagotcho project, distributed with the packs under CC BY-SA
   4.0. Derived from JMdict_e's English glosses (EDRDG, CC BY-SA 4.0) and, where
   a draft kept its suggestion, FreeDict eng-spa (CC BY-SA 3.0, above). No text
