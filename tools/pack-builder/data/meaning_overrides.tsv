@@ -1,6 +1,6 @@
 # Meaning overrides for `tamagotcho-pack build --meaning-order` (docs/meaning-order.md).
 # Authored by the Tamagotcho project; distributed with the packs under CC BY-SA
-# (docs/data-sources.md). Only for clear errors in JLPT N5-N3 that the learner
+# (docs/data-sources.md). Only for clear errors in JLPT N5-N1 that the learner
 # signal and the English-Spanish matching leave; each line puts one of
 # KANJIDIC2's own meanings for that kanji and language first (never new text).
 # An English line also steers the Spanish order, which follows the English one.
@@ -55,3 +55,18 @@
 営	es	negocio	dirigir un negocio; campamento	営 is business/management (営業, 経営); the camp sense is rare
 貨	es	dinero	moneda; bienes; artículos	貨 is money/goods (貨幣, 貨物); "bienes" alone is less common
 訓	es	lección	lectura japonesa de un carácter	"lección" is the kanji's basic meaning; the 訓読み sense is long and compound
+霞	es	neblina	bruma; estar brumoso; estar nebuloso	霞 is haze/mist; the verb is 霞む
+施	es	distribuir	dar limosnas; administrar primeros auxilios	施 is give/bestow/perform; almsgiving is one sense (施し)
+趣	es	significado	sentido; apariencia; proceder	趣 is purport/gist; "proceder" comes from a related form
+慎	es	prudencia	precaverse; ser cuidadoso; discrección; ser discreto; modestia; refrenarse	the kanji is the noun; the verb is 慎む
+坪	es	unidad de superficie	área de dos tatami (36 pies cuadrados)	the long gloss overflows; 坪 is a unit of area
+豆	es	legumbres	habichuelas; prefijo diminutivo	豆 is beans/peas, not just green beans
+概	es	aproximadamente	generalmente; condición; situación	概ね is "approximately"; "condición" is a derived sense
+脚	es	pie	pata; posición; contador de patas	脚 is the leg/foot; "pata" is an animal or furniture leg
+甚	es	tremendamente	en extremo; intenso; grave	甚だ is "very/extremely"; "grave" is a derived sense
+隊	es	grupo	partido; banda	隊 is a group/company; "partido" reads as a political party or match
+椎	es	roble	mazo	椎 is a tree (chinquapin/oak); the mallet is 槌
+洞	es	cavidad	hueco; excavación; prever	洞 is a cavity/cave; "excavación" is a derived sense
+篤	es	sincero	serio; genuino; grave (enfermedad)	篤 is sincere/kind; "serio" is a derived sense
+票	es	voto	etiqueta; contador de papeletas	票 is a ballot/vote; "etiqueta" is a minor sense
+繁	es	exuberante	próspero; sobrecrecido; complejo; problemático; confuso	繁 is luxuriant/thick; "complejo" is the 繁雑 sense

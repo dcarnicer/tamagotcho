@@ -162,8 +162,8 @@ it translates, now against the reordered English list:
 
 ### C. Overrides
 
-`tools/pack-builder/data/meaning_overrides.tsv`, 48 lines, written by the
-project for clear errors left in N5-N2: kanji, language, the meaning to put
+`tools/pack-builder/data/meaning_overrides.tsv`, 63 lines, written by the
+project for clear errors left in N5-N1: kanji, language, the meaning to put
 first, optionally more to follow it, and the reason. Every listed meaning must
 be one of KANJIDIC2's own meanings for that kanji and language (no new text):
 the builder checks it and refuses to build otherwise, and a test checks the
@@ -181,6 +181,15 @@ and the forehead; "framed picture" is the compound 額縁), 灯 lamp / lámpara,
 泊 alojarse (the intransitive 泊まる; "hospedar" is transitive), 版 edición
 (出版, 初版; "impresión" is the printing), 営 negocio (営業, 経営; the camp sense
 is rare), 貨 dinero (貨幣, 貨物), 訓 lección (the long 訓読み sense goes second).
+
+The N1 review (2026-11-18) added 15 more: 霞 neblina (the noun; 霞む is the
+verb), 施 distribuir (施し "almsgiving" is one sense), 趣 significado
+("proceder" is a related form), 慎 prudencia (慎む is the verb), 坪 unidad de
+superficie (the long two-tatami gloss overflows), 豆 legumbres, 概
+aproximadamente (概ね), 脚 pie ("pata" is an animal leg), 甚 tremendamente
+(甚だ), 隊 grupo ("partido" reads as a political party), 椎 roble (the mallet
+is 槌), 洞 cavidad, 篤 sincero, 票 voto (not "etiqueta") and 繁 exuberante
+(繁雑 is the "complex" sense).
 
 Then the builder's existing caps apply (as many as English has, at most
 three). Nothing is added, removed or rewritten.
@@ -344,8 +353,8 @@ version's Spanish; the stored lists.
 **JLPT N4** (50 English, 45 Spanish) and **N3** (163 English, 130 Spanish):
 the report script lists every change.
 
-**The original override table and the N2 additions** (what the first meaning
-would be without it; the 12 N5-N4 lines are described above):
+**The original override table and the N2/N1 additions** (what the first
+meaning would be without it; the 12 N5-N4 lines are described above):
 
 | kanji | lang | first | without | reason |
 |---|---|---|---|---|
@@ -385,13 +394,28 @@ would be without it; the 12 N5-N4 lines are described above):
 | 営 | es | negocio; dirigir un negocio; campamento | campamento | 営 is business/management (営業, 経営); the camp sense is rare |
 | 貨 | es | dinero; moneda; bienes; artículos | bienes | 貨 is money/goods (貨幣, 貨物); "bienes" alone is less common |
 | 訓 | es | lección; lectura japonesa de un carácter | lectura japonesa de un carácter | "lección" is the kanji's basic meaning; the 訓読み sense is long and compound |
+| 霞 | es | neblina; bruma; estar brumoso; estar nebuloso | estar brumoso | 霞 is haze/mist; the verb is 霞む |
+| 施 | es | distribuir; dar limosnas; administrar primeros auxilios | dar limosnas | 施 is give/bestow/perform; almsgiving is one sense (施し) |
+| 趣 | es | significado; sentido; apariencia; proceder | proceder | 趣 is purport/gist; "proceder" comes from a related form |
+| 慎 | es | prudencia; precaverse; ser cuidadoso; discrección; ser discreto; modestia; refrenarse | precaverse | the kanji is the noun; the verb is 慎む |
+| 坪 | es | unidad de superficie; área de dos tatami (36 pies cuadrados) | área de dos tatami (36 pies cuadrados) | the long gloss overflows; 坪 is a unit of area |
+| 豆 | es | legumbres; habichuelas; prefijo diminutivo | habichuelas | 豆 is beans/peas, not just green beans |
+| 概 | es | aproximadamente; generalmente; condición; situación | condición | 概ね is "approximately"; "condición" is a derived sense |
+| 脚 | es | pie; pata; posición; contador de patas | pata | 脚 is the leg/foot; "pata" is an animal or furniture leg |
+| 甚 | es | tremendamente; en extremo; intenso; grave | grave | 甚だ is "very/extremely"; "grave" is a derived sense |
+| 隊 | es | grupo; partido; banda | partido | 隊 is a group/company; "partido" reads as a political party or match |
+| 椎 | es | roble; mazo | mazo | 椎 is a tree (chinquapin/oak); the mallet is 槌 |
+| 洞 | es | cavidad; hueco; excavación; prever | excavación | 洞 is a cavity/cave; "excavación" is a derived sense |
+| 篤 | es | sincero; serio; genuino; grave (enfermedad) | serio | 篤 is sincere/kind; "serio" is a derived sense |
+| 票 | es | voto; etiqueta; contador de papeletas | etiqueta | 票 is a ballot/vote; "etiqueta" is a minor sense |
+| 繁 | es | exuberante; próspero; sobrecrecido; complejo; problemático; confuso | complejo | 繁 is luxuriant/thick; "complejo" is the 繁雑 sense |
 
 Of the original 27 rows, twenty put back KANJIDIC2's own first meaning where a
 step goes wrong (the English signal for 事, 意, 家, 早, 不, 転, 位, 刻, 息, 助,
 収; the Spanish matching for 図, 勉, 申, 過, 御, 構, 合, 組, 確); seven choose
 another of KANJIDIC2's meanings (中 dentro, 屋 shop, 計 medir, 機 machine, 突
-sudden, 説 explicar, 演 representar). The 12 N5-N4 lines and the 9 N2 lines are
-the later reviews.
+sudden, 説 explicar, 演 representar). The 12 N5-N4 lines are described above;
+the 9 N2 and 15 N1 lines are in the table.
 
 **Still doubtful** (no override; most are defensible):
 
@@ -401,8 +425,9 @@ the later reviews.
 - Spanish: 好 gustar algo, 着 llegar, 去 dejar, 台 pedestal, 主 jefe, 収
   ingresar, 居 existir, 曲 curva, 学 aprendizaje; N2's 枚 (a 41-character
   counter gloss), 宇 "cielo" and 預 "dejar al cuidado de" are left as they
-  are; the N1 changes are not hand-checked (the report lists those through a
-  related form or a later English gloss).
+  are. The N1 review (2026-11-18) covered its 121 flags; the remaining ones
+  are defensible (e.g. 堕 "cometer un desliz", 聡 "que aprende rápido", 惨
+  "desastroso", 密 "en secreto", 廉 "sincero").
 
 **Built decks.** Every default deck (N5-N1 and Jōyō, es and en, with stroke
 order and `--common-readings`) builds with the flag, validates, and passes

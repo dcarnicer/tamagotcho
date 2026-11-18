@@ -136,16 +136,17 @@ Scope for now: **kanji only** (no vocabulary decks).
         orders the English meanings by the JLPT vocabulary words that use the
         kanji (their JMdict glosses), the Spanish ones by the English ones they
         translate (FreeDict's English-Spanish dictionary, CC BY-SA 3.0), then
-        applies a 48-line project-authored override table; 523 English and 702
+        applies a 63-line project-authored override table; 523 English and 687
         Spanish first meanings change (N5: 14 and 14), English decks included,
         and in every language meaning distractors also avoid the meanings a
         pack leaves out. The maintainer reviewed the N5-N4 doubtful cases
-        (2026-10-20) and the N2 ones (2026-11-18). On `main` and in the
-        published decks since 2026-10-20.
+        (2026-10-20), the N2 ones (2026-11-18) and the N1 ones (2026-11-18).
+        On `main` and in the published decks since 2026-10-20.
       - [ ] Follow-up: French and Portuguese meanings in the English order too
         (about as many changes as Spanish), once a pinned English-French /
         English-Portuguese dictionary under a compatible licence exists.
-      - [ ] Follow-up: hand-check the N1 meaning changes the report flags.
+      - [x] Hand-check the N1 meaning changes the report flags (2026-11-18;
+        15 overrides, the rest defensible).
       Invariant enforced: **no option may be another valid reading or meaning of
       the target** (otherwise two options are correct); checked in `Quiz.cpp`
       and in the builder's distractor lists.

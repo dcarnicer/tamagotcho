@@ -3789,3 +3789,20 @@ small stdlib tool, `tools/quiz-log/`, now reads a capture:
   the report; CI runs them next to the release tools. The tool only
   recommends: the setting stays Settings › Study › Hard after, and a capture
   needs the `sticks3-dev` build and a few days of normal use.
+
+## 2026-11-18 – N1 meanings hand-checked
+
+The 121 N1 entries flagged by the Spanish "to double-check" report were
+reviewed. Fifteen overrides were added, all with KANJIDIC2's own meanings:
+霞 neblina (the noun; 霞む is the verb), 施 distribuir (not only "dar
+limosnas"), 趣 significado ("proceder" is a related form), 慎 prudencia,
+坪 unidad de superficie (the two-tatami gloss overflows), 豆 legumbres, 概
+aproximadamente (概ね), 脚 pie ("pata" is an animal leg), 甚 tremendamente,
+隊 grupo ("partido" is a political party), 椎 roble (the mallet is 槌), 洞
+cavidad, 篤 sincero, 票 voto and 繁 exuberante. The rest are defensible and
+left as they are (e.g. 堕 "cometer un desliz", 聡 "que aprende rápido", 惨
+"desastroso", 密 "en secreto", 廉 "sincero"). The English N1 changes were
+reviewed too; the eleven that also moved the English first meaning are all
+fine (隔, 驚, 厳, 慎, 酔, 騒, 跳, 劣, 訴, 飽, 履). The report now changes 523
+English and 687 Spanish first meanings, with 21 English and 42 Spanish
+overrides in 63 lines; the committed-table test's cap moved to 80.
