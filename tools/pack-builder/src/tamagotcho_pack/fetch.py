@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import time
 import urllib.request
+from http.client import HTTPException
 from pathlib import Path
 
 from . import paths
@@ -119,6 +121,25 @@ class ChecksumError(RuntimeError):
     pass
 
 
+def download(url: str, attempts: int = 4, timeout: int = 120, sleep=time.sleep) -> bytes:
+    """The URL's bytes, retried on a transient network error (GitHub's runners
+    see Tatoeba and the Internet Archive reset connections now and then)."""
+    last: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "tamagotcho-pack"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read()
+        except (OSError, HTTPException) as e:  # URLError, resets, timeouts, HTTP
+            last = e
+            if attempt + 1 < attempts:
+                wait = 1 << attempt
+                print(f"retry {url} ({attempt + 1}/{attempts}) after {wait}s: {e}")
+                sleep(wait)
+    assert last is not None
+    raise last
+
+
 def fetch_all(force: bool = False, klee_one: bool = False, readings: bool = False,
               meanings: bool = False) -> None:
     extra = ((KLEE_SOURCES if klee_one else []) + (READINGS_SOURCES if readings else [])
@@ -133,9 +154,7 @@ def fetch_all(force: bool = False, klee_one: bool = False, readings: bool = Fals
                 continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         print(f"get   {url}")
-        req = urllib.request.Request(url, headers={"User-Agent": "tamagotcho-pack"})
-        with urllib.request.urlopen(req, timeout=120) as r:
-            data = r.read()
+        data = download(url)
         if want and hashlib.sha256(data).hexdigest() != want:
             raise ChecksumError(f"{url}: SHA256 {hashlib.sha256(data).hexdigest()}, "
                                 f"expected {want}")
