@@ -475,7 +475,7 @@ Short log of non-obvious choices. Newest last.
   restore key must be known first), and the ini hash covers the pinned platform
   (`espressif32@8.0.0`) and the exact `lib_deps` commits, so a dependency bump
   invalidates the cache. Action majors are pinned (`checkout@v7`,
-  `setup-python@v7`, `cache@v6`, `setup-uv@v10`); no secrets are used.
+  `setup-python@v7`, `cache@v6`, `setup-uv@v10.3.3`); no secrets are used.
   (Updated 2026-11-19 with the dependency bump below.)
 - **CI does not build packs.** KANJIDIC2/Klee One/KanjiVG downloads are slow and
   produce multi-MB CC BY-SA artifacts, so prebuilt packs belong in the release
@@ -3952,7 +3952,7 @@ All components were moved to their current upstream releases in one pass:
   **2.3.1+2026-10-25**;
   pack-builder **Pillow 13.0**, **pypdf 7.1**, **fonttools 4.68**,
   **pytest 9.2** (`uv lock --upgrade`); GitHub Actions to `checkout@v7`,
-  `setup-python@v7`, `cache@v6`, `setup-uv@v10`, `upload-artifact@v7`,
+  `setup-python@v7`, `cache@v6`, `setup-uv@v10.3.3`, `upload-artifact@v7`,
   `download-artifact@v8` and the pages actions at v5/v6; the release CLI is
   **esptool 5.6** (the workflow now uses its `merge-bin` / `--flash-*`
   spelling).
