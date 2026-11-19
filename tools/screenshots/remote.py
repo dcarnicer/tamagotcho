@@ -114,7 +114,7 @@ class Shot:
 class Device:
     """The serial link: a reader thread splits the stream into log lines and shots."""
 
-    def __init__(self, port: str, log_file: Path | None, quiet: bool):
+    def __init__(self, port: str, log_file: Path | None, quiet: bool, reset: bool = False):
         # A device path, or any pyserial URL (rfc2217://host:port, loop:// ...).
         s = serial.serial_for_url(port, do_not_open=True)
         s.baudrate = 115200
@@ -123,9 +123,17 @@ class Device:
         # down. The port opens with both up and pyserial then sets DTR before
         # RTS, so asking for both down resets it (seen on the StickS3). DTR up
         # and RTS down never passes through that state.
-        s.dtr = True
+        # --reset asks for a deterministic app boot instead: DTR low (GPIO0
+        # high) and a pulse of RTS (EN). Without it, the T-Display-S3 can be
+        # left in download mode by whatever held the port before.
+        s.dtr = False if reset else True
         s.rts = False
         s.open()
+        if reset:
+            s.rts = True
+            time.sleep(0.15)
+            s.rts = False
+            time.sleep(0.1)
         self.ser = s
         self.quiet = quiet
         self.log = open(log_file, "a", encoding="utf-8") if log_file else None  # noqa: SIM115
@@ -373,6 +381,8 @@ def main() -> None:
                    help="seconds of log to read after the last step")
     p.add_argument("-q", "--quiet", action="store_true",
                    help="do not echo the device log (still saved with --log)")
+    p.add_argument("--reset", action="store_true",
+                   help="reset the chip into the app before the first step (DTR low, RTS pulse)")
     p.add_argument("--no-wake", action="store_true",
                    help="never send a wake (a press on a dark panel then only wakes it, "
                    "as on the device)")
@@ -386,7 +396,7 @@ def main() -> None:
 
     port = args.port or find_port()
     try:
-        dev = Device(port, args.log, args.quiet)
+        dev = Device(port, args.log, args.quiet, args.reset)
     except serial.SerialException as e:
         raise SystemExit(f"cannot open {port}: {e}")
     try:
