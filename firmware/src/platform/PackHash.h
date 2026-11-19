@@ -23,7 +23,7 @@ inline bool fsFileSha256(fs::FS& fs, const String& path, uint8_t out[32]) {
 
     mbedtls_sha256_context ctx;
     mbedtls_sha256_init(&ctx);
-    bool ok = mbedtls_sha256_starts_ret(&ctx, 0) == 0;
+    bool ok = mbedtls_sha256_starts(&ctx, 0) == 0;
     uint8_t* buf = ok ? static_cast<uint8_t*>(malloc(kChunk)) : nullptr;
     if (!buf) ok = false;
     size_t total = 0;
@@ -35,13 +35,13 @@ inline bool fsFileSha256(fs::FS& fs, const String& path, uint8_t out[32]) {
             break;
         } else {
             total += static_cast<size_t>(n);
-            ok = mbedtls_sha256_update_ret(&ctx, buf, static_cast<size_t>(n)) == 0;
+            ok = mbedtls_sha256_update(&ctx, buf, static_cast<size_t>(n)) == 0;
         }
     }
     // A file that shrank or grew between stat() and open() is not the one the
     // caller measured; report a failure rather than a digest of other bytes.
     if (ok && total != expected) ok = false;
-    if (ok) ok = mbedtls_sha256_finish_ret(&ctx, out) == 0;
+    if (ok) ok = mbedtls_sha256_finish(&ctx, out) == 0;
     free(buf);
     mbedtls_sha256_free(&ctx);
     f.close();

@@ -166,8 +166,9 @@ void begin() {
     if (M5.getBoard() != m5::board_t::board_M5CardputerADV)
         Serial.printf("board: expected a Cardputer ADV, M5Unified found board %d\n",
                       static_cast<int>(M5.getBoard()));
-    // Landscape, the keyboard below the picture (M5GFX's own default here).
-    M5.Display.setRotation(1);
+    // Landscape, the keyboard below the picture. M5GFX 0.3.0 makes rotation 0
+    // the upright orientation on this board (it used to start at 1).
+    M5.Display.setRotation(0);
     M5.Display.setBrightness(gBrightness);
     M5.BtnA.setHoldThresh(kHoldMs);
     pinMode(kKbdIntPin, INPUT_PULLUP);
@@ -221,8 +222,9 @@ lgfx::LGFX_Device& display() { return M5.Display; }
 int width() { return M5.Display.width(); }
 int height() { return M5.Display.height(); }
 
-void setOrientation(bool landscape) { setRotation(landscape ? 1 : 0); }
+void setOrientation(bool landscape) { setRotation(landscape ? landscapeRotation() : 0); }
 bool landscape() { return M5.Display.width() > M5.Display.height(); }
+uint8_t landscapeRotation() { return 0; }
 void setRotation(uint8_t r) { M5.Display.setRotation(r & 3); }
 uint8_t rotation() { return M5.Display.getRotation() & 3; }
 
@@ -243,7 +245,7 @@ int batteryPercent() {
 }
 
 // No charger status reaches the ESP32 here (M5Unified reports it unknown).
-bool isCharging() { return M5.Power.isCharging() == m5::Power_Class::is_charging; }
+bool isCharging() { return M5.Power.isCharging(); }
 
 void setBrightness(uint8_t level) {
     gBrightness = level;

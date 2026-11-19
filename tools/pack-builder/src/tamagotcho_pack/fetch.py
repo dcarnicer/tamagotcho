@@ -51,7 +51,7 @@ KLEE_SOURCES: list[tuple[str, Path]] = [
 # official notice. The JLPT vocabulary lists come from the Internet Archive's
 # copies of tanos.co.uk (the site no longer resolves), pinned to the 2011-07-22
 # snapshots and checked against SHA256.
-JMDICT_FURIGANA_RELEASE = "2.3.1%2B2026-09-25"
+JMDICT_FURIGANA_RELEASE = "2.3.1%2B2026-10-25"
 WORDFREQ_TAG = "v3.2"
 JLPT_VOCAB_SNAPSHOTS = {  # level: (Wayback timestamp, sha256)
     5: ("20110722124915", "b304d00ead721eba3db54644386405442623776b1b53bc5fa82a406cfa46f0ab"),

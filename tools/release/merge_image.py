@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Merge a PlatformIO ESP32-S3 build into one flashable image.
 
-`esptool merge_bin` combines the second-stage bootloader, the partition table
+`esptool merge-bin` combines the second-stage bootloader, the partition table
 and the application (each at its own offset) into a single file. That is what
 ESP Web Tools needs: a browser flasher writes one image at offset 0 rather than
 several images at several offsets. The result mirrors what `pio run -t upload`
@@ -88,8 +88,8 @@ def image_parts(partitions: list[dict], build_dir: Path, boot_app0: Path | None)
 
 def esptool_args(parts, out: Path, chip: str, flash_mode: str, flash_freq: str,
                  flash_size: str, esptool: str) -> list[str]:
-    args = [esptool, "--chip", chip, "merge_bin", "-o", str(out),
-            "--flash_mode", flash_mode, "--flash_freq", flash_freq, "--flash_size", flash_size]
+    args = [esptool, "--chip", chip, "merge-bin", "-o", str(out),
+            "--flash-mode", flash_mode, "--flash-freq", flash_freq, "--flash-size", flash_size]
     for offset, path in parts:
         if not path.exists():
             raise SystemExit(f"missing build file: {path}")

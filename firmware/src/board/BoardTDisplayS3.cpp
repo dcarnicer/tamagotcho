@@ -8,7 +8,7 @@
 #include <driver/rtc_io.h>
 #include <esp_random.h>
 #include <esp_sleep.h>
-#include <soc/esp32s3/rtc.h>
+#include <esp_rtc_time.h>
 
 namespace tgc {
 namespace board {
@@ -134,8 +134,9 @@ int width() { return gDisplay.width(); }
 int height() { return gDisplay.height(); }
 
 // Rotation 0 = native portrait, 1 = landscape. width()/height() follow it.
-void setOrientation(bool landscape) { setRotation(landscape ? 1 : 0); }
+void setOrientation(bool landscape) { setRotation(landscape ? landscapeRotation() : 0); }
 bool landscape() { return gDisplay.width() > gDisplay.height(); }
+uint8_t landscapeRotation() { return 1; }
 void setRotation(uint8_t r) { gDisplay.setRotation(r & 3); }
 uint8_t rotation() { return gDisplay.getRotation() & 3; }
 

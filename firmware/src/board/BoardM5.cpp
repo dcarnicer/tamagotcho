@@ -32,6 +32,7 @@ namespace board {
     int width();                              \
     int height();                             \
     void setOrientation(bool landscape);      \
+    uint8_t landscapeRotation();              \
     bool landscape();                         \
     void setRotation(uint8_t r);              \
     uint8_t rotation();                       \
@@ -90,6 +91,7 @@ int width() { return TGC_BOARD_CALL(width); }
 int height() { return TGC_BOARD_CALL(height); }
 void setOrientation(bool landscape) { TGC_BOARD_CALL(setOrientation, landscape); }
 bool landscape() { return TGC_BOARD_CALL(landscape); }
+uint8_t landscapeRotation() { return TGC_BOARD_CALL(landscapeRotation); }
 void setRotation(uint8_t r) { TGC_BOARD_CALL(setRotation, r); }
 uint8_t rotation() { return TGC_BOARD_CALL(rotation); }
 bool hasAccel() { return TGC_BOARD_CALL(hasAccel); }

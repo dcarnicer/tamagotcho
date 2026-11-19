@@ -35,19 +35,20 @@ class Sha256 {
 public:
     Sha256() {
         mbedtls_sha256_init(&ctx_);
-        mbedtls_sha256_starts_ret(&ctx_, 0);
+        mbedtls_sha256_starts(&ctx_, 0);
     }
     ~Sha256() { mbedtls_sha256_free(&ctx_); }
     Sha256(const Sha256&) = delete;
     Sha256& operator=(const Sha256&) = delete;
-    void update(const uint8_t* p, size_t n) { mbedtls_sha256_update_ret(&ctx_, p, n); }
-    void finish(uint8_t out[32]) { mbedtls_sha256_finish_ret(&ctx_, out); }
+    void update(const uint8_t* p, size_t n) { mbedtls_sha256_update(&ctx_, p, n); }
+    void finish(uint8_t out[32]) { mbedtls_sha256_finish(&ctx_, out); }
 
 private:
     mbedtls_sha256_context ctx_;
 };
 
-// WiFiClientSecure as in this core (Arduino-ESP32 2.0.17), minus a close(0).
+// WiFiClientSecure as in this core (Arduino-ESP32 3.3.12; the same code was in
+// 2.0.17), minus a close(0).
 // stop_ssl_socket() ends by zeroing the whole context, socket number included,
 // so the socket reads 0, not -1, after a stop. Every request stops its client
 // more than once (HTTPClient::end(), then ~HTTPClient(), then the client's own

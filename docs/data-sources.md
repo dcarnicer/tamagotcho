@@ -252,7 +252,7 @@ without words.
 ### JmdictFurigana
 
 - URL: https://github.com/Doublevil/JmdictFurigana, release
-  `2.3.1+2026-09-25`, asset `JmdictFurigana.txt` (pinned in `fetch.py`).
+  `2.3.1+2026-10-25`, asset `JmdictFurigana.txt` (pinned in `fetch.py`).
 - Owner: Doublevil. Licence: "distributed under the same licence as JMDict
   (Creative Commons Attribution-ShareAlike Licence)" (README); the code is MIT.
 - Used for: which part of each JMdict word's reading belongs to each kanji

@@ -57,8 +57,8 @@ fills the gap between the partition table and the app with `0xFF` (hence
 M5Burner's "Burning erases the settings"). Writing the parts at their own
 offsets, as `pio run -t upload` does, keeps NVS.
 
-**The framework already has what OTA needs.** Arduino-ESP32 2.0.17 (IDF 4.4,
-`espressif32@6.12.0`):
+**The framework already has what OTA needs.** Arduino-ESP32 3.3.12 (IDF 5.5,
+`espressif32@8.0.0`; the same held for 2.0.17 / IDF 4.4):
 - Its precompiled bootloader has `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`: a
   new image boots in the `PENDING_VERIFY` state and, if it is not marked
   valid before the next reset, the bootloader goes back to the previous one.

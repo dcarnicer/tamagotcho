@@ -8,7 +8,7 @@
 //
 // Font: NotoSansJP-Regular.otf, sha256 dff723ba59d57d13..., (c) Adobe,
 // SIL Open Font License 1.1 (docs/data-sources.md). Rasterised by the pack
-// builder's FontRenderer (Pillow 12.3.0, FreeType 2.14.3): the format and
+// builder's FontRenderer (Pillow 13.0.0, FreeType 2.14.3): the format and
 // placement of pack text glyphs (docs/pack-format.md), see ui/UiFace.h.
 // Label 18 px: 205 glyphs, 13404 bytes; answers, row labels, values, the About title (docs/ux-refresh.md §2.3 Label).
 // Numeral 32 px: 17 glyphs, 2668 bytes; the date's day, statistics heroes (docs/ux-refresh.md §2.3 Numeral).

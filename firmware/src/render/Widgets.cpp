@@ -461,6 +461,9 @@ void presentRegion(lgfx::LGFX_Sprite& canvas, lgfx::LovyanGFX& display, int x, i
                    int h) {
     display.setClipRect(x, y, w, h);
     canvas.pushSprite(&display, 0, 0);
+    // A PSRAM sprite is pushed by DMA asynchronously (M5GFX/LovyanGFX 1.3+):
+    // the caller redraws the canvas as soon as this returns.
+    display.waitDMA();
     display.clearClipRect();
 }
 

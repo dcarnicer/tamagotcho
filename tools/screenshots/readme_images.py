@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["Pillow>=10.3"]
+# dependencies = ["Pillow>=13"]
 # ///
 """Build the README's pictures from screen shots taken with remote.py.
 

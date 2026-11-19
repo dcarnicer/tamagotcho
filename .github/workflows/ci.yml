@@ -23,14 +23,14 @@ jobs:
       run:
         working-directory: firmware
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Install PlatformIO
-        run: pip install "platformio>=6.1,<7"
+        run: pip install "platformio>=6.2,<7"
 
       # The cache restore key needs the PlatformIO version, so read it after the
       # install. The platform and packages PlatformIO downloads live in
@@ -40,7 +40,7 @@ jobs:
         id: pio
         run: echo "version=$(pio --version | sed -E 's/[^0-9]*([0-9][0-9.]*).*/\1/')" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.platformio
           key: ${{ runner.os }}-platformio-${{ steps.pio.outputs.version }}-${{ hashFiles('firmware/platformio.ini') }}
@@ -92,9 +92,9 @@ jobs:
       run:
         working-directory: tools/pack-builder
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
 

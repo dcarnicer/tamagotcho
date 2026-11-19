@@ -78,11 +78,16 @@ int height();  // height of the current rotation
 // Display rotation. Portrait is the default (begin() sets it); landscape swaps
 // the panel's width and height (e.g. 135x240 -> 240x135). width()/height()
 // follow the current rotation.
-void setOrientation(bool landscape);  // setRotation(landscape ? 1 : 0)
+void setOrientation(bool landscape);  // setRotation(landscape ? landscapeRotation() : 0)
 bool landscape();
-// Rotation 0-3 as LovyanGFX's setRotation(): the top of the picture is at the
-// panel's top (0, native portrait), right (1, landscape), bottom (2) or left
-// (3, landscape the other way) edge, as seen in rotation 0.
+// The logical landscape rotation. It is 1 on most boards; M5GFX 0.3.0 made
+// rotation 0 upright on every board, so the Cardputer ADV (always landscape)
+// uses 0 there.
+uint8_t landscapeRotation();
+// Logical rotation 0-3: portrait (0), landscape (landscapeRotation(), 1 on
+// most boards), portrait upside down (2) and landscape the other way (3), as
+// seen in rotation 0. The values are LovyanGFX/M5GFX's for the boards the app
+// rotates; the Cardputer ADV is fixed at its landscape rotation.
 void setRotation(uint8_t r);
 uint8_t rotation();
 

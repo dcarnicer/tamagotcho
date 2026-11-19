@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyserial>=3.5", "Pillow>=10.3"]
+# dependencies = ["pyserial>=3.5", "Pillow>=13"]
 # ///
 """Drive a device running a -shots firmware over USB and read its screen.
 

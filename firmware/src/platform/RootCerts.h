@@ -14,8 +14,9 @@
 //                   -> Let's Encrypt YR1 -> ISRG Root YR (cross-signed by
 //                      ISRG Root X1)
 // The certificates are copied verbatim from Mozilla's root store (certifi
-// 2026.07.22). mbedTLS parses all of them for each handshake (~16 KB of internal
-// heap, freed when the handshake ends). The device has no clock, so mbedTLS
+// 2026.10.23; checked: the eleven blocks are unchanged since 2026.07.22).
+// mbedTLS parses all of them for each handshake (~16 KB of internal heap,
+// freed when the handshake ends). The device has no clock, so mbedTLS
 // checks signatures and host names but not validity dates. How to update the
 // list: docs/decisions.md ("HTTPS for Get decks: embedded root CAs").
 

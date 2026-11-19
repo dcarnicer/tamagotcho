@@ -26,8 +26,8 @@ exFAT (§1); hot-plug detection (§3.5).
   MOSI G35, SCLK G36), so the card takes `SPI3_HOST` (an `SPIClass` on
   `HSPI`, not Arduino's global `SPI`, which is SPI2) and
   the two never share a bus or a lock. No card-detect pin.
-- **Filesystem**: Arduino-ESP32 2.0.17's FatFs is built with
-  `FF_FS_EXFAT 0`: **FAT16/FAT32 only**. Cards up to 32 GB come as FAT32;
+- **Filesystem**: Arduino-ESP32 3.3.12's FatFs is built with
+  `FF_FS_EXFAT 0` (the same in 2.0.17): **FAT16/FAT32 only**. Cards up to 32 GB come as FAT32;
   larger ones (SDXC) come as exFAT and must be reformatted as FAT32 (most
   formatters do it for 64 GB; the SD Association's tool does not, others
   do). Long file names are on (`CONFIG_FATFS_LFN_STACK`, 255 characters).

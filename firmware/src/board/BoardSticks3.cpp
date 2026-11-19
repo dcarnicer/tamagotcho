@@ -11,7 +11,7 @@
 #include <driver/rtc_io.h>
 #include <esp_random.h>
 #include <esp_sleep.h>
-#include <soc/esp32s3/rtc.h>
+#include <esp_rtc_time.h>
 
 namespace tgc {
 namespace board {
@@ -26,7 +26,9 @@ constexpr gpio_num_t kSelectPin = GPIO_NUM_11;  // BtnA, front button, active lo
 // M5GFX drives the StickS3 backlight (GPIO38) from LEDC channel 7 at 256 Hz with
 // 9-bit duty. 256 Hz is audible: the current pulses make the charger's inductor
 // buzz while on USB. Moved above the audible range.
-constexpr uint8_t kBacklightChannel = 7;
+// Arduino-ESP32 3.x addresses LEDC by pin, not by channel. M5GFX attaches the
+// panel backlight (GPIO38) with ledcAttach(), so this finds its channel.
+constexpr uint8_t kBacklightPin = 38;
 constexpr uint8_t kBacklightBits = 9;
 constexpr uint32_t kBacklightHz = 25000;
 uint8_t gBrightness = 128;
@@ -152,7 +154,7 @@ void begin() {
     M5.Display.setRotation(0);
     // StickS3 panel is natively portrait (135x240); make sure of it.
     if (M5.Display.width() > M5.Display.height()) M5.Display.setRotation(1);
-    ledcChangeFrequency(kBacklightChannel, kBacklightHz, kBacklightBits);
+    ledcChangeFrequency(kBacklightPin, kBacklightHz, kBacklightBits);
     M5.Display.setBrightness(gBrightness);
     M5.BtnA.setHoldThresh(kHoldMs);
     M5.BtnB.setHoldThresh(kHoldMs);
@@ -177,8 +179,9 @@ int width() { return M5.Display.width(); }
 int height() { return M5.Display.height(); }
 
 // Rotation 0 = native portrait, 1 = landscape. width()/height() follow it.
-void setOrientation(bool landscape) { setRotation(landscape ? 1 : 0); }
+void setOrientation(bool landscape) { setRotation(landscape ? landscapeRotation() : 0); }
 bool landscape() { return M5.Display.width() > M5.Display.height(); }
+uint8_t landscapeRotation() { return 1; }
 void setRotation(uint8_t r) { M5.Display.setRotation(r & 3); }
 uint8_t rotation() { return M5.Display.getRotation() & 3; }
 
@@ -208,7 +211,7 @@ int batteryPercent() {
     return (lvl < 0 || lvl > 100) ? -1 : lvl;
 }
 
-bool isCharging() { return M5.Power.isCharging() == m5::Power_Class::is_charging; }
+bool isCharging() { return M5.Power.isCharging(); }
 
 void setBrightness(uint8_t level) {
     gBrightness = level;

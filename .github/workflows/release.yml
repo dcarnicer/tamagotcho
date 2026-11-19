@@ -33,7 +33,7 @@ jobs:
     steps:
       # Get decks reads the decks release named in the firmware's default
       # catalog URL (HomeWifi::kDefaultCatalogUrl); the notes link to that one.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: firmware/src/platform/HomeWifi.h
           sparse-checkout-cone-mode: false
@@ -98,20 +98,20 @@ jobs:
     env:
       TGC_VERSION: ${{ needs.resolve.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Install PlatformIO and esptool
-        run: pip install "platformio>=6.1,<7" "esptool>=4,<6"
+        run: pip install "platformio>=6.2,<7" "esptool>=5.6,<6"
 
       - name: PlatformIO version
         id: pio
         run: echo "version=$(pio --version | sed -E 's/[^0-9]*([0-9][0-9.]*).*/\1/')" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.platformio
           key: ${{ runner.os }}-platformio-${{ steps.pio.outputs.version }}-${{ hashFiles('firmware/platformio.ini') }}
@@ -222,7 +222,7 @@ jobs:
           }
           JSON
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: firmware-${{ matrix.env }}
           path: dist/*
@@ -237,7 +237,7 @@ jobs:
     steps:
       # The release's "What's new": docs/releases/<tag>.md when there is one;
       # the manifest's script, platformio.ini and the partition tables.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: |
             docs/releases
@@ -248,7 +248,7 @@ jobs:
           sparse-checkout-cone-mode: false
           path: repo
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true

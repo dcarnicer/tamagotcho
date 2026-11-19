@@ -473,9 +473,10 @@ Short log of non-obvious choices. Newest last.
 - **`~/.platformio` is cached, keyed on the PlatformIO version and a hash of
   `firmware/platformio.ini`.** The version is read after `pip install` (a cache
   restore key must be known first), and the ini hash covers the pinned platform
-  (`espressif32@6.12.0`) and the exact `lib_deps` commits, so a dependency bump
-  invalidates the cache. Action majors are pinned (`checkout@v4`,
-  `setup-python@v5`, `cache@v4`, `setup-uv@v5`); no secrets are used.
+  (`espressif32@8.0.0`) and the exact `lib_deps` commits, so a dependency bump
+  invalidates the cache. Action majors are pinned (`checkout@v7`,
+  `setup-python@v7`, `cache@v6`, `setup-uv@v10`); no secrets are used.
+  (Updated 2026-11-19 with the dependency bump below.)
 - **CI does not build packs.** KANJIDIC2/Klee One/KanjiVG downloads are slow and
   produce multi-MB CC BY-SA artifacts, so prebuilt packs belong in the release
   workflow and only when the maintainer asks (below). CI also does not touch
@@ -985,7 +986,8 @@ Short log of non-obvious choices. Newest last.
   `raw.githubusercontent.com` -> Let's Encrypt YR1 -> ISRG Root YR, served
   cross-signed by ISRG Root X1.
 - **The embedded set** (`firmware/src/platform/RootCerts.h`, 11 roots, 14.6 KB
-  of PEM, copied verbatim from Mozilla's root store via certifi 2026.07.22):
+  of PEM, copied verbatim from Mozilla's root store via certifi 2026.10.23;
+  the eleven blocks are unchanged since 2026.07.22):
 
   | root | key | expires | why |
   |---|---|---|---|
@@ -3933,3 +3935,57 @@ image's octal-PSRAM framework (the PSRAM init fails and the boot goes on, as
 with M5Burner) instead of the dedicated no-PSRAM build; the tested heap
 margin is in the 2026-10-21 decision above. The local `sticks3-shots` and
 `cardputer-adv` environments stay for development and screenshots.
+
+## 2026-11-19 – Upstream dependencies to the latest (Arduino 3)
+
+All components were moved to their current upstream releases in one pass:
+
+- **Firmware.** `espressif32` 6.12.0 -> **8.0.0** (Arduino-ESP32 **3.3.12**,
+  IDF 5.5.5, replacing 2.0.17 / IDF 4.4); M5Unified 0.2.26 -> **0.3.0**
+  (commit `96576a1`), which brings M5GFX **0.3.0**; LovyanGFX 1.2.33 ->
+  **1.3.0**, now pinned exactly instead of `^1.1.16` so a build cannot drift
+  into an untested minor; M5PM1 stays 1.0.7 (still the latest).
+- **Tooling and data.** PlatformIO Core **6.2.0**, now the CI minimum
+  (`>=6.2,<7`): 6.1.19 mis-installs platform 8's new
+  `toolchain-xtensa-esp-elf` package; certifi's store **2026.10.23** (the
+  eleven embedded roots are byte-identical to 2026.07.22); JmdictFurigana
+  **2.3.1+2026-10-25**;
+  pack-builder **Pillow 13.0**, **pypdf 7.1**, **fonttools 4.68**,
+  **pytest 9.2** (`uv lock --upgrade`); GitHub Actions to `checkout@v7`,
+  `setup-python@v7`, `cache@v6`, `setup-uv@v10`, `upload-artifact@v7`,
+  `download-artifact@v8` and the pages actions at v5/v6; the release CLI is
+  **esptool 5.6** (the workflow now uses its `merge-bin` / `--flash-*`
+  spelling).
+
+Code changes forced by the new APIs:
+
+- **mbedTLS 3** removed the `mbedtls_sha256_*_ret` functions: use
+  `mbedtls_sha256_starts/update/finish`, which return `int` as before.
+- **SNTP.** `<esp_sntp.h>` and lwIP's `<lwip/apps/sntp.h>` now declare
+  `sntp_getoperatingmode()` with different types; include only `esp_sntp.h`
+  and use `esp_sntp_enabled()` / `esp_sntp_stop()`.
+- **LEDC is addressed by pin in Arduino 3.** `ledcChangeFrequency(7, ...)`
+  looked up GPIO7 and silently did nothing; the StickS3 backlight is now
+  changed through GPIO38, the pin M5GFX attaches.
+- **M5GFX 0.3.0 makes rotation 0 upright on every board.** The Cardputer ADV
+  starts in landscape at 0 (it used to be 1); a new
+  `board::landscapeRotation()` says which value is landscape on each board
+  (1 on StickS3/T-Display-S3, 0 on the Cardputer).
+- **PSRAM sprites are pushed asynchronously through DMA.** `Display::present()`
+  and `widgets::presentRegion()` call `display.waitDMA()` after `pushSprite()`,
+  because the canvas is drawn again on the next frame.
+- **`M5.Power.isCharging()` returns `bool`**, not the deprecated
+  `is_charging_t`; the two board files use it directly.
+- **The TLS `close(0)` workaround is still needed.** Arduino 3.3.12's
+  `stop_ssl_socket()` still ends with `memset()`, so `TlsClient` keeps
+  guarding the zeroed socket.
+
+Builds pass for `sticks3`, `tdisplay-s3`, `m5stack` and `cardputer-adv`;
+native tests pass (304 cases, 1 skipped) and the pack builder passes 259 tests
+(Pillow 13 / pypdf 7 included). **Not verified on hardware yet:** rotation and
+autodetection on the Cardputer ADV, the 25 kHz backlight change, PSRAM DMA
+frames, charging state, Wi-Fi/TLS and OTA rollback under 3.3.12. The combined
+image is 1,763,904 bytes (96.1 % of the 1.75 MiB slot, 71,104 B free), up from
+1,597,440 bytes (87 %) in v0.8.0; the T-Display-S3 is 1,569,904 bytes (74.9 %,
+527,248 B free). The combined slot is now tight: the next features need either
+size work (`-flto`, trimming M5GFX) or a partition rethink.

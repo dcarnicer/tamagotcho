@@ -14,7 +14,7 @@
 // the boot slot and the half-written one is overwritten next time. Update
 // writes the image's first 16 bytes last: a cut install never boots.
 //
-// The bootloader of the framework (Arduino-ESP32 2.0.17) rolls back: a new
+// The bootloader of the framework (Arduino-ESP32 3.3.12) rolls back: a new
 // image boots pending verification, and a reset before it is marked valid --
 // a crash, a watchdog, a power cut -- boots the previous image instead. (A
 // deep-sleep wake probably does not count: that bootloader is built with

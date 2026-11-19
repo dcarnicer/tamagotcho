@@ -5,7 +5,6 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_sntp.h>
-#include <lwip/apps/sntp.h>
 #include <sys/time.h>
 
 #include <cctype>
@@ -350,7 +349,7 @@ bool HomeWifi::fetchUtcMs(int64_t* outUtcMs, uint32_t timeoutMs) {
             }
             delay(50);
         }
-        if (sntp_enabled()) sntp_stop();  // one answer is all we need
+        if (esp_sntp_enabled()) esp_sntp_stop();  // one answer is all we need
         if (!synced) {
             Serial.printf("[net] NTP: no answer in %u ms%s\n", (unsigned)timeoutMs,
                           attempt == 0 ? ", asking once more" : "");

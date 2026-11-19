@@ -50,6 +50,9 @@ void present() {
     noteFrame(false);
     const uint32_t t0 = micros();
     gCanvas->pushSprite(&tgc::board::display(), 0, 0);
+    // M5GFX/LovyanGFX 1.3+ push a PSRAM sprite through DMA asynchronously; the
+    // canvas is drawn again on the next frame, so wait before returning.
+    tgc::board::display().waitDMA();
     gPushUs = micros() - t0;
     gPushRows = H;
 }
@@ -159,14 +162,15 @@ bool orientAuto() { return gOrientPref == kOrientAuto && tgc::board::hasAccel();
 // landscape-only board (the Cardputer ADV) is always landscape, whatever the
 // setting says (it has no Orientation row).
 uint8_t fixedRotation() {
-    if (tgc::board::fixedLandscape()) return 1;
+    if (tgc::board::fixedLandscape()) return tgc::board::landscapeRotation();
     return gOrientPref == kOrientLandscape ? 1 : 0;
 }
 
 // The setting as the Device page and its picker show it: that Auto reads as
 // Portrait, which is what it draws (the T-Display-S3 has no accelerometer).
 uint8_t shownOrientPref() {
-    return gOrientPref == kOrientAuto && !orientAuto() ? kOrientPortrait : gOrientPref;
+    return gOrientPref == kOrientAuto && !orientAuto() ? static_cast<uint8_t>(kOrientPortrait)
+                                                       : gOrientPref;
 }
 
 // The orientation setting. Up to 2026-10-18 it was the bool `land`; that key
@@ -176,7 +180,7 @@ uint8_t shownOrientPref() {
 uint8_t loadOrientPref() {
     if (gPrefs.isKey("orient")) {
         const uint8_t v = gPrefs.getUChar("orient", kOrientAuto);
-        return v <= kOrientAuto ? v : kOrientAuto;
+        return v <= kOrientAuto ? v : static_cast<uint8_t>(kOrientAuto);
     }
     const uint8_t v = gPrefs.getBool("land", false) ? kOrientLandscape : kOrientAuto;
     gPrefs.putUChar("orient", v);

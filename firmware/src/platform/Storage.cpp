@@ -268,7 +268,7 @@ bool copyFile(const String& from, const String& to, uint8_t digest[32], CopyProg
     uint8_t* buf = static_cast<uint8_t*>(std::malloc(kCopyChunk));
     mbedtls_sha256_context sha;
     mbedtls_sha256_init(&sha);
-    bool ok = buf && (!digest || mbedtls_sha256_starts_ret(&sha, 0) == 0);
+    bool ok = buf && (!digest || mbedtls_sha256_starts(&sha, 0) == 0);
     const size_t expected = in.size();
     size_t done = 0;
     while (ok && done < expected) {
@@ -277,12 +277,12 @@ bool copyFile(const String& from, const String& to, uint8_t digest[32], CopyProg
             ok = false;
             break;
         }
-        if (digest) ok = mbedtls_sha256_update_ret(&sha, buf, static_cast<size_t>(n)) == 0;
+        if (digest) ok = mbedtls_sha256_update(&sha, buf, static_cast<size_t>(n)) == 0;
         if (ok) ok = out.write(buf, static_cast<size_t>(n)) == static_cast<size_t>(n);
         done += static_cast<size_t>(n);
         if (progress) progress(done, ctx);
     }
-    if (ok && digest) ok = mbedtls_sha256_finish_ret(&sha, digest) == 0;
+    if (ok && digest) ok = mbedtls_sha256_finish(&sha, digest) == 0;
     mbedtls_sha256_free(&sha);
     std::free(buf);
     in.close();
