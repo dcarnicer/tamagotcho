@@ -3989,3 +3989,29 @@ image is 1,763,904 bytes (96.1 % of the 1.75 MiB slot, 71,104 B free), up from
 1,597,440 bytes (87 %) in v0.8.0; the T-Display-S3 is 1,569,904 bytes (74.9 %,
 527,248 B free). The combined slot is now tight: the next features need either
 size work (`-flto`, trimming M5GFX) or a partition rethink.
+
+## 2026-11-19 – Hardware checks after the Arduino 3 move
+
+The pre-release builds were tried on two boards with the `-shots` remote
+(`tools/screenshots/remote.py`), so the screens below are the app's back
+buffer, not a camera:
+
+- **StickS3, combined `m5stack-shots` image** (the same image the release
+  uses): detected as `board: StickS3 (M5 image)`, PM1 initialised and its
+  button configured. Joined "Shimokitazawa" through the strongest AP in 11 s
+  (-32 dBm), synced NTP, anchored the day (2026-11-19, UTC+1), read the
+  catalog over TLS (HTTP 200, 24 decks) and downloaded `n5-en.tgc` (124,456 B
+  in 5.9 s) with a good SHA into LittleFS. Quiz, grading, detail card,
+  next-card, settings, portal QR, Get decks and manual portrait/landscape
+  switching all render correctly; the SRS survived a reboot (`records 4, due
+  3, new 75`).
+- **Cardputer ADV, `cardputer-adv-shots`**: detected as the ADV (TCA8418
+  ready, no board warning), landscape 240x135 with M5GFX 0.3.0's rotation 0,
+  keyboard arrows / Enter / Tab / Esc working, and the microSD mounted
+  (29.7 GB FAT32) with an existing N2-Spanish pack loaded streamed from it.
+
+Still to check: the T-Display-S3 (LovyanGFX 1.3.0 and the new DMA wait), a
+physical look at the StickS3 panel (the remote reads the back buffer, so it
+cannot prove the DMA push), the PM1 click-to-sleep/wake, charging state and
+an OTA from v0.8.0 with the old bootloader. The Cardputer had no Tamagotcho
+Wi-Fi credentials, so its TLS path was not exercised; the StickS3's was.
