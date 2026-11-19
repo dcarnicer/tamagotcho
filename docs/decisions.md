@@ -3992,7 +3992,7 @@ size work (`-flto`, trimming M5GFX) or a partition rethink.
 
 ## 2026-11-19 – Hardware checks after the Arduino 3 move
 
-The pre-release builds were tried on two boards with the `-shots` remote
+The pre-release builds were tried on three boards with the `-shots` remote
 (`tools/screenshots/remote.py`), so the screens below are the app's back
 buffer, not a camera:
 
@@ -4009,9 +4009,16 @@ buffer, not a camera:
   ready, no board warning), landscape 240x135 with M5GFX 0.3.0's rotation 0,
   keyboard arrows / Enter / Tab / Esc working, and the microSD mounted
   (29.7 GB FAT32) with an existing N2-Spanish pack loaded streamed from it.
+- **T-Display-S3, `tdisplay-s3-shots`**: LovyanGFX 1.3.0 rendered both
+  320x170 and 170x320 after a settings rotation; joined the same AP (8.5 s,
+  -47 dBm), synced NTP, read the catalog over TLS (24 decks) and ran an OTA
+  from the local HTTP manifest: v0.9.0 was downloaded, installed in app1,
+  booted, marked valid and kept settings, decks and SRS. (The test device was
+  restored from its full-flash backup afterwards.)
 
-Still to check: the T-Display-S3 (LovyanGFX 1.3.0 and the new DMA wait), a
-physical look at the StickS3 panel (the remote reads the back buffer, so it
-cannot prove the DMA push), the PM1 click-to-sleep/wake, charging state and
-an OTA from v0.8.0 with the old bootloader. The Cardputer had no Tamagotcho
-Wi-Fi credentials, so its TLS path was not exercised; the StickS3's was.
+Still to check: a physical look at the panels (the remote reads the back
+buffer, so it cannot prove the DMA push), the PM1 click-to-sleep/wake, the
+charging state, and an OTA that starts on the **old v0.8.0 bootloader**
+(Arduino 2). The OTA above ran between two Arduino 3 images. The Cardputer
+had no Tamagotcho Wi-Fi credentials, so its TLS path was not exercised; the
+StickS3's and T-Display-S3's were.
