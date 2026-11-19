@@ -4016,9 +4016,20 @@ buffer, not a camera:
   booted, marked valid and kept settings, decks and SRS. (The test device was
   restored from its full-flash backup afterwards.)
 
-Still to check: a physical look at the panels (the remote reads the back
-buffer, so it cannot prove the DMA push), the PM1 click-to-sleep/wake, the
-charging state, and an OTA that starts on the **old v0.8.0 bootloader**
-(Arduino 2). The OTA above ran between two Arduino 3 images. The Cardputer
-had no Tamagotcho Wi-Fi credentials, so its TLS path was not exercised; the
-StickS3's and T-Display-S3's were.
+The **old Arduino 2 bootloader** was tested on all three boards with a local
+manifest and a real v0.9.0 image:
+
+- **StickS3 and Cardputer ADV**: flashed the v0.8.0 release (IDF 4.4.7,
+  bootloader `load:0x3fce3808`), OTA to v0.9.0 into the free slot, boot and
+  mark-valid, with NVS, deck and SRS preserved. The Cardputer's v0.8.0 app
+  drew 135x240 portrait (old M5GFX); the v0.9.0 image that replaced it is
+  240x135 landscape, confirming the rotation fix on the real panel.
+- **T-Display-S3**: its original v9.9.12 was also built on IDF 4.4.7; OTA to
+  v0.9.0 booted and marked valid.
+
+Each device was restored from its full-flash backup afterwards and the
+digest was checked. Still to check: a physical look at the panels (the remote
+reads the back buffer, so it cannot prove the DMA push), the PM1
+click-to-sleep/wake and the charging state. The Cardputer had no Tamagotcho
+Wi-Fi credentials when first tested, but the v0.8.0 image joined the copied
+home network and completed the OTA.
